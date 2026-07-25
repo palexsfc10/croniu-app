@@ -1,0 +1,63 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { apiFetch, formatBRL, type Service } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+
+export default function ServicesPage() {
+  const [items, setItems] = useState<Service[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<Service[]>("/api/v1/services");
+      if (cancelled) return;
+      if (result.error) setError(result.error.message);
+      else setItems(result.data ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="space-y-4 animate-fade-up">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="h-display text-3xl text-[var(--color-ink)]">Serviços</h1>
+          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Planos e pacotes oferecidos.</p>
+        </div>
+        <Link href="/app/services/new">
+          <Button>Novo</Button>
+        </Link>
+      </div>
+      {error ? (
+        <p role="alert" className="text-sm text-[var(--color-danger)]">
+          {error}
+        </p>
+      ) : null}
+      {!items.length ? (
+        <EmptyState title="Nenhum serviço" description="Cadastre um serviço antes de criar ciclos." />
+      ) : null}
+      <ul className="space-y-2">
+        {items.map((item) => (
+          <li
+            key={item.id}
+            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+          >
+            <p className="font-semibold">{item.name}</p>
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              {item.default_duration_days} dias · {formatBRL(item.default_price_cents)}
+            </p>
+          </li>
+        ))}
+      </ul>
+      <Link href="/app/profile" className="text-sm font-semibold text-[var(--color-primary)]">
+        Voltar ao perfil
+      </Link>
+    </div>
+  );
+}

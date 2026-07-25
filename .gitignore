@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Builds
+.next/
+out/
+dist/
+build/
+*.egg-info/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+playwright-report/
+test-results/
+**/e2e/artifacts/
+**/playwright/.cache/
+.turbo/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+.env.hml
+deploy/hml/.env.hml
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local databases / dumps
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+.docker-data/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Misc
+*.tsbuildinfo
+next-env.d.ts
+.vercel
