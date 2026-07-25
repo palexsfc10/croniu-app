@@ -25,10 +25,13 @@ from app.db import Base, get_db
 from app.main import create_app
 from app.models import (  # noqa: F401
     AdminAuditLog,
+    Appointment,
     Client,
     Cycle,
+    Location,
     Membership,
     Organization,
+    PasswordResetToken,
     PlatformMembership,
     PlatformSession,
     Receivable,
@@ -75,7 +78,8 @@ def clean_tables():
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE TABLE receivables, cycles, services, clients, "
+                "TRUNCATE TABLE appointments, locations, password_reset_tokens, "
+                "receivables, cycles, services, clients, "
                 "admin_audit_logs, platform_sessions, platform_memberships, "
                 "sessions, memberships, users, organizations "
                 "RESTART IDENTITY CASCADE"

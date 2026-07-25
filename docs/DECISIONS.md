@@ -153,11 +153,11 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 
 | | |
 |--|--|
-| Status | Aceito (implementação na Sprint 2B candidata) |
+| Status | Aceito · implementado (Sprint 2B) |
 | Data | 2026-07-24 |
 | Contexto | Datas de ciclos/agenda precisam de fuso explícito |
 | Decisão | Cada organização terá timezone IANA; default `America/Sao_Paulo`; instantes em UTC; UI no fuso da org |
-| Consequência | Sem migration na baseline Git; campo/org na sprint autorizada |
+| Consequência | `organizations.timezone` em `0005_sprint2b_agenda`; preferências em Mais |
 
 ## ADR-021 — Vocabulário de recebimentos
 
@@ -166,14 +166,25 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 | Status | Aceito (alvo; código ainda diverge) |
 | Data | 2026-07-24 |
 | Decisão | Persistidos: `pending`, `paid`, `cancelled`; `overdue` calculado; “expected” não compete com `pending` |
-| Divergência atual | Código usa `received` e referencia `expected` em queries — normalizar em sprint autorizada, sem mudança nesta baseline |
+| Divergência atual | Código usa `received` e referencia `expected` em queries — **não normalizado na 2B** (mantido registrado) |
 
-## ADR-022 — Escopo conceitual da Sprint 2B
+## ADR-022 — Escopo da Sprint 2B
 
 | | |
 |--|--|
-| Status | Aceito como candidato · **NÃO AUTORIZADA** |
+| Status | Aceito · **AUTORIZADA** · entregue local |
 | Data | 2026-07-24 |
 | Decisão | Locais, compromisso único, Agenda, timezone org, conflitos básicos, integração Hoje/nav |
 | Fora | Recorrência, Google Calendar, Meu Ciclo, sync, WhatsApp automático |
-| Evidência | `docs/sprints/SPRINT_2B_DRAFT.md`; branch `feature/sprint-2b-agenda-core` |
+| Evidência | `docs/sprints/SPRINT_2B.md`; `docs/reports/SPRINT_2B_REPORT.md` |
+
+## ADR-023 — Conflito de horário: bloqueio sem override
+
+| | |
+|--|--|
+| Status | Aceito (MVP) · override = `PENDENTE_DE_DECISAO` |
+| Data | 2026-07-24 |
+| Contexto | Sobreposição de compromissos ativos na mesma organização |
+| Decisão | Backend bloqueia com HTTP 409 `appointment_conflict` + detalhes estruturados; frontend exibe e força correção |
+| Não fazer | Override silencioso; confirmação de força sem registro documental |
+| Intervalo | Half-open `[starts_at, ends_at)`; consecutivos permitidos |

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import type { Cycle, HomeSummary, PriorityAction, Receivable } from "@/lib/api";
-import { formatBRL } from "@/lib/api";
+import type { Appointment, Cycle, HomeSummary, PriorityAction, Receivable } from "@/lib/api";
+import { appointmentStatusLabel, formatBRL, formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { ContextualBar } from "@/components/app/contextual-bar";
 
 type Props = {
   summary: HomeSummary;
@@ -22,6 +23,56 @@ function PriorityCard({ action }: { action: PriorityAction }) {
       <Link href={action.href} className="mt-3 inline-block">
         <Button>Abrir</Button>
       </Link>
+    </section>
+  );
+}
+
+function AppointmentList({
+  items,
+  timeZone,
+}: {
+  items: Appointment[];
+  timeZone: string;
+}) {
+  const active = items.filter((item) => item.status === "scheduled");
+  if (!active.length) {
+    return (
+      <EmptyState
+        title="Compromissos de hoje"
+        description="Nenhum compromisso agendado para hoje no fuso da organização."
+        action={
+          <Link href="/app/agenda">
+            <Button variant="secondary">Abrir Agenda</Button>
+          </Link>
+        }
+      />
+    );
+  }
+  return (
+    <section aria-label="Compromissos de hoje" className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold text-[var(--color-ink)]">Compromissos de hoje</h2>
+        <Link href="/app/agenda" className="text-sm font-semibold text-[var(--color-primary)]">
+          Agenda
+        </Link>
+      </div>
+      <ul className="space-y-2">
+        {active.map((item) => (
+          <li key={item.id}>
+            <Link
+              href={`/app/appointments/${item.id}`}
+              className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+            >
+              <p className="font-semibold text-[var(--color-ink)]">
+                {formatOrgDateTime(item.starts_at, timeZone)} · {item.client_name}
+              </p>
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                {item.location_name || "Sem local"} · {appointmentStatusLabel(item.status)}
+              </p>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -92,10 +143,14 @@ function PaymentList({ items }: { items: Receivable[] }) {
 export function TodayBoard({ summary }: Props) {
   return (
     <div className="space-y-4 animate-fade-up">
+      <ContextualBar
+        label={summary.priority_action?.title ?? null}
+        href={summary.priority_action?.href ?? null}
+      />
       <div>
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Hoje</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          O que precisa da sua atenção agora.
+          Fuso {summary.timezone} · {summary.local_today}
         </p>
       </div>
       {summary.contextual_hint ? (
@@ -107,24 +162,8 @@ export function TodayBoard({ summary }: Props) {
         </p>
       ) : null}
       {summary.priority_action ? <PriorityCard action={summary.priority_action} /> : null}
-      {summary.message ? (
-        <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-ink-muted)]">
-          {summary.message}
-        </p>
-      ) : null}
-      <EmptyState
-        title="Atendimentos de hoje"
-        description="Quando a agenda estiver disponível, seus compromissos do dia aparecerão aqui."
-      />
+      <AppointmentList items={summary.today_appointments} timeZone={summary.timezone} />
       <CycleList items={summary.cycles_nearing_end} />
-      <EmptyState
-        title="Renovações"
-        description={
-          summary.renewals.length
-            ? `${summary.renewals.length} ciclo(s) aguardando contato confirmado.`
-            : "Consultas de renovação em andamento aparecerão nesta seção."
-        }
-      />
       <PaymentList items={summary.pending_payments} />
     </div>
   );

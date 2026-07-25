@@ -28,6 +28,7 @@ class OverviewMetrics(BaseModel):
     organizations_evaluating: int
     organizations_suspended: int
     clients_active_total: int
+    appointments_scheduled_total: int = 0
     generated_at: datetime
 
 
@@ -46,6 +47,8 @@ class OrganizationListItem(BaseModel):
 
 class OrganizationDetail(OrganizationListItem):
     owner_email: str | None = None
+    timezone: str = "America/Sao_Paulo"
+    appointments_count: int = 0
 
 
 class UserListItem(BaseModel):

@@ -34,7 +34,12 @@ Ver ADR-004. Mensagens genéricas em login. Sem `localStorage` para sessão.
 
 ## Multi-tenant
 
-Organização da sessão; filtro em queries; proibido confiar em `organization_id` do cliente.
+Organização da sessão; filtro em queries; proibido confiar em `organization_id` do cliente.  
+Locais e compromissos: UUID conhecido de outro tenant → 404/403; cliente/ciclo/local cruzados recusados.
+
+## Observações internas
+
+Notas de local/compromisso só na área profissional; admin global não lista detalhes individuais de agenda.
 
 ## Links públicos (planejado)
 

@@ -1,13 +1,21 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { TodayBoard } from "@/components/app/today-board";
 import type { HomeSummary } from "@/lib/api";
 
+vi.mock("next/link", () => ({
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+}));
+
 const emptySummary: HomeSummary = {
   organization_id: "00000000-0000-0000-0000-000000000001",
+  timezone: "America/Sao_Paulo",
+  local_today: "2026-07-24",
   today_appointments: [],
   cycles_nearing_end: [],
   renewals: [],
@@ -18,6 +26,8 @@ const emptySummary: HomeSummary = {
 };
 
 describe("UI fundamentals", () => {
+  afterEach(() => cleanup());
+
   it("renders empty state", () => {
     render(<EmptyState title="Atendimentos de hoje" description="Sem itens." />);
     expect(screen.getByText("Atendimentos de hoje")).toBeInTheDocument();
@@ -72,7 +82,7 @@ describe("UI fundamentals", () => {
       />,
     );
     expect(screen.getByRole("heading", { name: "Hoje" })).toBeInTheDocument();
-    expect(screen.getByText("Conversar com Ana")).toBeInTheDocument();
+    expect(screen.getAllByText("Conversar com Ana").length).toBeGreaterThan(0);
     expect(screen.getByText("1 ciclo(s) encerrando")).toBeInTheDocument();
   });
 });

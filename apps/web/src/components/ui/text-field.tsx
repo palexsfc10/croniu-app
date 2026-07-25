@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useState, type InputHTMLAttributes } from "react";
+import { forwardRef, useId, useState, type InputHTMLAttributes } from "react";
 
 type Props = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
@@ -13,7 +13,8 @@ export const TextField = forwardRef<HTMLInputElement, Props>(function TextField(
   { label, error, id, className = "", revealable = false, type, ...props },
   ref,
 ) {
-  const fieldId = id ?? props.name;
+  const generatedId = useId();
+  const fieldId = id ?? props.name ?? generatedId;
   const [visible, setVisible] = useState(false);
   const inputType = revealable ? (visible ? "text" : "password") : type;
 

@@ -1,7 +1,9 @@
 from app.db import Base
 from app.models.admin_audit_log import AdminAuditLog
+from app.models.appointment import Appointment
 from app.models.client import Client
 from app.models.cycle import Cycle
+from app.models.location import Location
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.password_reset_token import PasswordResetToken
@@ -26,4 +28,6 @@ __all__ = [
     "Cycle",
     "Receivable",
     "PasswordResetToken",
+    "Location",
+    "Appointment",
 ]

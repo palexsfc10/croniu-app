@@ -52,6 +52,9 @@ def get_overview_metrics(db: Session) -> OverviewMetrics:
         or 0
     )
     clients_active_total = domain_svc.count_active_clients(db)
+    from app.services import agenda as agenda_svc
+
+    appointments_scheduled_total = agenda_svc.count_appointments(db)
 
     return OverviewMetrics(
         organizations_total=organizations_total,
@@ -61,6 +64,7 @@ def get_overview_metrics(db: Session) -> OverviewMetrics:
         organizations_evaluating=organizations_evaluating,
         organizations_suspended=organizations_suspended,
         clients_active_total=clients_active_total,
+        appointments_scheduled_total=appointments_scheduled_total,
         generated_at=datetime.now(UTC),
     )
 
@@ -137,6 +141,8 @@ def list_organizations(
 
 
 def get_organization_detail(db: Session, organization_id: uuid.UUID) -> OrganizationDetail | None:
+    from app.services import agenda as agenda_svc
+
     org = db.get(Organization, organization_id)
     if org is None:
         return None
@@ -153,6 +159,8 @@ def get_organization_detail(db: Session, organization_id: uuid.UUID) -> Organiza
         last_activity_at=org.last_activity_at,
         clients_count=domain_svc.count_active_clients(db, organization_id=org.id),
         cycles_count=domain_svc.count_cycles(db, organization_id=org.id),
+        timezone=org.timezone or "America/Sao_Paulo",
+        appointments_count=agenda_svc.count_appointments(db, organization_id=org.id),
     )
 
 

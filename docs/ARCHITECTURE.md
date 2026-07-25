@@ -1,6 +1,6 @@
 # Croniu — Arquitetura
 
-**Estado real auditado:** Sprint 2A.1. Hostnames abaixo são **planejamento**, não confirmação de DNS.
+**Estado real auditado:** Sprint 2B (Agenda Core) na branch `feature/sprint-2b-agenda-core`. Hostnames abaixo são **planejamento**, não confirmação de DNS.
 
 ## Visão geral
 
@@ -86,10 +86,12 @@ Compose sobe Postgres; API e Next tipicamente no host. Portas: ver [`PROJECT_STA
 
 **Não afirmar** registro, DNS, Tunnel ou certificados. Domínio ainda `PENDENTE_DE_DECISAO`.
 
-## HML / produção
+## Domínio (API)
 
-Artefatos em `deploy/hml/`. Jarvis **não** acessado nesta sprint documental. Produção inexistente.
+Rotas versionadas sob `/api/v1`: auth, domain (clientes/serviços/ciclos/recebíveis), **agenda** (preferências/timezone, locais, compromissos, agenda do dia), platform (admin).
+
+Instantes de compromisso em UTC; “hoje” e exibição pelo `organizations.timezone` (IANA).
 
 ## Limitações conscientes
 
-Sem filas, cache distribuído, WhatsApp API, Google Calendar, OpenAPI restrita em HML conforme config futura.
+Sem filas, cache distribuído, WhatsApp API, Google Calendar sync, OpenAPI restrita em HML conforme config futura. Sem override de conflito de agenda.

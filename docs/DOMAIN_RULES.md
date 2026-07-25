@@ -90,11 +90,33 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 
 | Regra | Status |
 |-------|--------|
-| Campo IANA por organização | `PLANEJADO` (Sprint 2B candidata) |
+| Campo IANA por organização | `IMPLEMENTADO` (`organizations.timezone`) |
 | Default inicial | `America/Sao_Paulo` |
-| Persistência de instantes | UTC |
-| Apresentação | Fuso da organização |
-| Migration nesta baseline | **Não** — só documentação |
+| Persistência de instantes | UTC (timezone-aware) |
+| Apresentação / “hoje” | Fuso da organização |
+| Alteração de timezone | Não muda instantes; muda representação e cálculos futuros |
+| DST | Depende da zona IANA; documentar limitações na UI de preferências |
+
+## Locais
+
+| Regra | Status |
+|-------|--------|
+| Entidade `location` por tenant | `IMPLEMENTADO` |
+| Status ativo / arquivado | `IMPLEMENTADO` (arquivar ≠ excluir) |
+| Arquivado em compromissos históricos | `IMPLEMENTADO` |
+| Arquivado fora do seletor padrão | `IMPLEMENTADO` |
+
+## Compromissos
+
+| Regra | Status |
+|-------|--------|
+| Compromisso único (`appointment`) | `IMPLEMENTADO` |
+| Cliente obrigatório | `IMPLEMENTADO` |
+| Status scheduled / completed / no_show / cancelled | `IMPLEMENTADO` |
+| Intervalo half-open `[start, end)` | `IMPLEMENTADO` |
+| Conflito por sobreposição na org | `IMPLEMENTADO` (bloqueio 409) |
+| Override explícito de conflito | `PENDENTE_DE_DECISAO` |
+| Recorrência | `PLANEJADO` |
 
 ---
 
@@ -118,7 +140,7 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 | Prioridades no `/home/summary` | `PARCIAL` |
 | Cálculo de ciclos encerrando / recebíveis | `IMPLEMENTADO` (serviço) |
 | Entidade Alert persistida + dedupe formal | `PLANEJADO` |
-| Timezone explícito da org | `PENDENTE_DE_DECISAO` (usar UTC/local conforme código atual) |
+| Timezone explícito da org | `IMPLEMENTADO` (Sprint 2B) |
 
 ---
 

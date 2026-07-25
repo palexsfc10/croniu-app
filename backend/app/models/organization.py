@@ -11,8 +11,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 if TYPE_CHECKING:
+    from app.models.appointment import Appointment
     from app.models.client import Client
     from app.models.cycle import Cycle
+    from app.models.location import Location
     from app.models.membership import Membership
     from app.models.receivable import Receivable
     from app.models.service import Service
@@ -25,6 +27,7 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="evaluating")
     plan_code: Mapped[str] = mapped_column(String(50), nullable=False, default="starter")
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/Sao_Paulo")
     last_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -40,3 +43,5 @@ class Organization(Base):
     services: Mapped[list[Service]] = relationship(back_populates="organization")
     cycles: Mapped[list[Cycle]] = relationship(back_populates="organization")
     receivables: Mapped[list[Receivable]] = relationship(back_populates="organization")
+    locations: Mapped[list[Location]] = relationship(back_populates="organization")
+    appointments: Mapped[list[Appointment]] = relationship(back_populates="organization")

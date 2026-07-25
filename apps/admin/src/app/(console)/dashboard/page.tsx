@@ -70,6 +70,10 @@ export default function DashboardPage() {
         <MetricCard label="Em avaliação" value={data.organizations_evaluating} />
         <MetricCard label="Suspensas" value={data.organizations_suspended} />
         <MetricCard label="Clientes ativos (agregado)" value={data.clients_active_total} />
+        <MetricCard
+          label="Compromissos (não cancelados)"
+          value={data.appointments_scheduled_total ?? 0}
+        />
       </div>
     </div>
   );

@@ -24,10 +24,13 @@ Instruções operacionais para agentes de IA. Detalhes: `docs/`.
 9. **Parar** diante de divergência material código ↔ docs ↔ regras; registrar em vez de silenciar.  
 10. Relatório ≠ homologação; teste automatizado ≠ teste manual.  
 
-## Sprint autorizada (baseline 2A.1)
+## Sprint autorizada
 
-Após Sprint 2A entregue e 2A.1 documental: **nenhuma sprint de feature autorizada**.  
-`SPRINT_2B_DRAFT` = **NÃO AUTORIZADA**.
+**Sprint 2B — Agenda Core** entregue localmente na branch `feature/sprint-2b-agenda-core`.  
+Spec: `docs/sprints/SPRINT_2B.md`. Relatório: `docs/reports/SPRINT_2B_REPORT.md`.  
+SHA-base: `e77905da6f6665ad69225d2902e646fa824844bc`.
+
+Não iniciar Google Calendar, Meu Ciclo ou recorrência sem nova autorização.
 
 ## Commits / PR
 

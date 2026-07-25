@@ -23,6 +23,7 @@ class OrganizationOut(BaseModel):
 
     id: uuid.UUID
     name: str
+    timezone: str = "America/Sao_Paulo"
 
 
 class UserOut(BaseModel):

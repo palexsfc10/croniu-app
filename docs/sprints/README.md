@@ -4,9 +4,9 @@
 |-----------|--------|
 | [`TEMPLATE.md`](./TEMPLATE.md) | Modelo obrigatório |
 | [`SPRINT_2A.md`](./SPRINT_2A.md) | Histórico — concluída (local) |
-| [`SPRINT_2B_DRAFT.md`](./SPRINT_2B_DRAFT.md) | **NÃO AUTORIZADA** |
+| [`SPRINT_2B.md`](./SPRINT_2B.md) | **ENTREGUE (local)** — Agenda Core |
+| [`SPRINT_2B_DRAFT.md`](./SPRINT_2B_DRAFT.md) | Histórico do rascunho (superseded) |
 
-Processo: [`../WORKFLOW.md`](../WORKFLOW.md).  
-Relatório 2A preservado: [`../SPRINT_2A_REPORT.md`](../SPRINT_2A_REPORT.md).
+Processo: [`../WORKFLOW.md`](../WORKFLOW.md).
 
-**Nenhuma sprint de feature está autorizada** após a 2A até nova autorização explícita. A 2A.1 foi documental.
+Sprint de feature autorizada atual: **2B** (`feature/sprint-2b-agenda-core`).

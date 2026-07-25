@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
+from app.schemas.agenda import AppointmentOut
+
 
 class ClientCreate(BaseModel):
     full_name: str = Field(min_length=2, max_length=200)
@@ -172,7 +174,9 @@ class PriorityActionOut(BaseModel):
 
 class HomeSummaryOut(BaseModel):
     organization_id: UUID
-    today_appointments: list[dict] = Field(default_factory=list)
+    timezone: str
+    local_today: date
+    today_appointments: list[AppointmentOut] = Field(default_factory=list)
     cycles_nearing_end: list[CycleOut]
     renewals: list[CycleOut]
     pending_payments: list[ReceivableOut]

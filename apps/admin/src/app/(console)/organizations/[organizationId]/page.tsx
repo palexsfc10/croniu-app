@@ -83,6 +83,14 @@ export default function OrganizationDetailPage() {
             {data.clients_count} / {data.cycles_count}
           </dd>
         </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Fuso</dt>
+          <dd>{data.timezone ?? "America/Sao_Paulo"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Compromissos</dt>
+          <dd>{data.appointments_count ?? 0}</dd>
+        </div>
       </dl>
       <p className="text-sm text-[var(--color-ink-muted)]">
         Ações mutáveis (suspender, ajustar trial) permanecem bloqueadas nesta fundação.

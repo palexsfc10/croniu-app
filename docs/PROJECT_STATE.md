@@ -35,9 +35,10 @@ Domínio real **não adquirido/confirmado**. Hostnames (`croniu.com.br`, `app.`,
 
 ## Migration
 
-- **Head:** `0003_sprint2a_domain`
-- Cadeia: `0001_initial` → `0002_platform_admin` → `0003_sprint2a_domain`
-- Tabelas de negócio 2A: `clients`, `services`, `cycles`, `receivables`
+- **Head:** `0005_sprint2b_agenda`
+- Cadeia: `0001_initial` → `0002_platform_admin` → `0003_sprint2a_domain` → `0004_password_reset` → `0005_sprint2b_agenda`
+- Tabelas de negócio: `clients`, `services`, `cycles`, `receivables`, `locations`, `appointments`
+- `organizations.timezone` (default `America/Sao_Paulo`)
 
 ## Modelos (`backend/app/models`)
 
@@ -88,17 +89,17 @@ E2E e artefatos (entrega 2A): `apps/web/e2e/sprint2a.spec.ts`, `artifacts/sprint
 
 ## Funcionalidades reais
 
-Auth org, multi-tenant, clientes (CRUD parcial UI), serviços (criar/listar; PATCH API), ciclos period (criar/listar/detalhe), recebimentos manuais, Hoje acionável, WhatsApp prep, confirmação de contato, admin métricas leitura, PWA básica, wordmark.
+Auth org, multi-tenant, clientes, serviços, ciclos period, recebimentos manuais, Hoje acionável, WhatsApp prep, confirmação de contato, **timezone org**, **locais**, **compromissos únicos**, **Agenda diária**, **barra contextual com próximo compromisso**, admin métricas leitura (incl. contagem agregada de compromissos), PWA básica, wordmark.
 
 ## Limitações conscientes
 
-- Sem agenda / locais / Meu Ciclo público  
+- Sem recorrência / Google Calendar / Meu Ciclo público  
+- Sem override de conflito de agenda (bloqueio 409)  
 - Sem pause/edit avançado de ciclo  
 - Sem session_count / hybrid  
 - Sem CSRF dual-token / rate limit login  
-- Sem Google Calendar  
-- Admin sem mutações  
-- Sem commits no git  
+- Admin sem mutações de agenda  
+- Sem remoto / push nesta linha  
 
 ## Integrações externas
 
@@ -112,8 +113,7 @@ Nenhuma ativa. WhatsApp = URL `wa.me` gerada no browser.
 
 ## Débitos técnicos (documentais)
 
-1. Repositório sem commit inicial  
-2. Docs antigos (`VISION`/`PRD`) desatualizados vs código 2A — mitigados por PRODUCT_SPEC  
+1. Vocabulário receivable `received` / `expected` vs alvo `pending`/`paid` — mantido na 2B  
+2. Warning ESLint `react-hook-form` watch no formulário de ciclo (não tocado na 2B)  
 3. Duplicação BrandWordmark web/admin por limitação Turbopack  
-4. Status `expected` em query de recebimentos sem fluxo de criação correspondente  
-5. Warning ESLint `react-hook-form` watch no formulário de ciclo  
+4. Override de conflito = `PENDENTE_DE_DECISAO`  

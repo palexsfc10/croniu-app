@@ -459,8 +459,16 @@ def mark_receivable_paid(
 
 
 def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummaryOut:
-    today = date.today()
+    from app.services import agenda as agenda_svc
+
+    org = agenda_svc.get_organization(db, organization_id)
+    today = agenda_svc.org_local_today(org)
+    tz_name = agenda_svc.get_org_timezone(org)
     horizon = today + timedelta(days=NEARING_END_DAYS)
+    now = datetime.now(UTC)
+
+    today_appts = agenda_svc.list_today_appointments(db, organization_id=organization_id)
+    next_appt = agenda_svc.next_upcoming_appointment(db, organization_id=organization_id, now=now)
 
     nearing_rows = db.scalars(
         select(Cycle)
@@ -490,10 +498,88 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         .order_by(Receivable.due_on.asc())
     ).all()
     pending = [_receivable_out(row) for row in pending_rows]
+    overdue = [item for item in pending if item.due_on < today]
+    due_soon = [item for item in pending if item.due_on >= today]
 
+    # Priority (Sprint 2B): in-progress → next 2h → conflict → overdue receivable →
+    # cycle ending today → cycle soon → receivable soon → renewal awaiting
     priority: PriorityActionOut | None = None
-    if renewals:
-        first = renewals[0]
+
+    in_progress = next(
+        (
+            a
+            for a in today_appts
+            if a.starts_at <= now < a.ends_at
+        ),
+        None,
+    )
+    soon_cutoff = now + timedelta(hours=2)
+    starting_soon = next(
+        (
+            a
+            for a in today_appts
+            if now < a.starts_at <= soon_cutoff
+        ),
+        None,
+    )
+
+    day_agenda = agenda_svc.list_day_agenda(db, organization_id=organization_id, day=today)
+    has_conflict = day_agenda.conflict_count > 0
+
+    ending_today = [c for c in nearing if c.ends_on == today]
+
+    def _appt_priority(kind: str, appt) -> PriorityActionOut:
+        from zoneinfo import ZoneInfo
+
+        local_start = appt.starts_at.astimezone(ZoneInfo(tz_name))
+        loc = appt.location_name or "Sem local"
+        label = "Em andamento" if kind == "appointment_in_progress" else "Próximo"
+        title = f"{label} · {local_start.strftime('%H:%M')} · {appt.client_name}"
+        return PriorityActionOut(
+            kind=kind,
+            title=title,
+            subtitle=loc,
+            href=f"/app/appointments/{appt.id}",
+            entity_id=appt.id,
+        )
+
+    if in_progress is not None:
+        priority = _appt_priority("appointment_in_progress", in_progress)
+    elif starting_soon is not None:
+        priority = _appt_priority("appointment_upcoming", starting_soon)
+    elif has_conflict:
+        first = day_agenda.appointments[0] if day_agenda.appointments else None
+        if first:
+            priority = PriorityActionOut(
+                kind="agenda_conflict",
+                title="Conflito na agenda de hoje",
+                subtitle="Há compromissos sobrepostos. Revise os horários.",
+                href="/app/agenda",
+                entity_id=first.id,
+            )
+    elif overdue:
+        first_pay = overdue[0]
+        priority = PriorityActionOut(
+            kind="pending_payment",
+            title=f"Recebimento atrasado · {first_pay.client_name}",
+            subtitle=f"Venceu em {first_pay.due_on.isoformat()}",
+            href=f"/app/receivables/{first_pay.id}",
+            entity_id=first_pay.id,
+        )
+    elif ending_today:
+        first = ending_today[0]
+        priority = PriorityActionOut(
+            kind="cycle_nearing_end",
+            title=f"Ciclo encerra hoje · {first.client_name}",
+            subtitle=first.service_name or "Ciclo",
+            href=f"/app/cycles/{first.id}",
+            entity_id=first.id,
+        )
+    elif next_appt is not None and starting_soon is None and in_progress is None:
+        out = agenda_svc.appointment_to_out(next_appt)
+        priority = _appt_priority("appointment_upcoming", out)
+    elif nearing:
+        first = nearing[0]
         priority = PriorityActionOut(
             kind="cycle_nearing_end",
             title=f"Conversar com {first.client_name}",
@@ -501,8 +587,8 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             href=f"/app/cycles/{first.id}",
             entity_id=first.id,
         )
-    elif pending:
-        first_pay = pending[0]
+    elif due_soon:
+        first_pay = due_soon[0]
         priority = PriorityActionOut(
             kind="pending_payment",
             title=f"Recebimento de {first_pay.client_name}",
@@ -510,22 +596,36 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             href=f"/app/receivables/{first_pay.id}",
             entity_id=first_pay.id,
         )
+    elif renewals:
+        first = renewals[0]
+        priority = PriorityActionOut(
+            kind="renewal_awaiting",
+            title=f"Renovação · {first.client_name}",
+            subtitle="Aguardando contato",
+            href=f"/app/cycles/{first.id}",
+            entity_id=first.id,
+        )
 
-    if priority is None and not nearing and not pending:
-        message = "Nenhuma ação pendente. Cadastre clientes, serviços e ciclos para começar."
+    parts: list[str] = []
+    if today_appts:
+        parts.append(f"{len(today_appts)} compromisso(s) hoje")
+    if nearing:
+        parts.append(f"{len(nearing)} ciclo(s) encerrando")
+    if pending:
+        parts.append(f"{len(pending)} recebimento(s) pendente(s)")
+
+    if priority is None and not parts:
+        message = "Nenhuma ação pendente. Cadastre clientes e compromissos para começar."
         hint = None
     else:
-        parts: list[str] = []
-        if nearing:
-            parts.append(f"{len(nearing)} ciclo(s) encerrando")
-        if pending:
-            parts.append(f"{len(pending)} recebimento(s) pendente(s)")
         message = "Priorize o que precisa da sua atenção agora."
-        hint = " · ".join(parts)
+        hint = " · ".join(parts) if parts else None
 
     return HomeSummaryOut(
         organization_id=organization_id,
-        today_appointments=[],
+        timezone=tz_name,
+        local_today=today,
+        today_appointments=today_appts,
         cycles_nearing_end=nearing,
         renewals=renewals,
         pending_payments=pending,

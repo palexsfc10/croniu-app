@@ -14,7 +14,7 @@ Vocabulário de estados: `IMPLEMENTADO` · `PARCIAL` · `PLANEJADO` · `FUTURO` 
 |-------|--------|
 | Produto | **Croniu** |
 | Empresa | NTWS Labs |
-| Posicionamento | Assistente de rotina, ciclos, recebimentos, renovações e (planejada) agenda para profissionais com clientes recorrentes |
+| Posicionamento | Assistente de rotina, ciclos, recebimentos, renovações e agenda para profissionais com clientes recorrentes |
 | Proposta de valor | Reduzir carga mental mostrando o que precisa de atenção **hoje**, com ciclos e renovações no núcleo |
 | Slogan provisório | “Sua rotina. Seus ciclos. Tudo sob controle.” |
 | Referência `Cron` | Tempo, rotina, periodicidade |
@@ -57,7 +57,7 @@ Dança, artes marciais, música, idiomas, reforço escolar, pilates, yoga, trein
 
 ### Croniu é assistente de
 
-Rotina · ciclos · recebimentos · renovações · agenda (quando implementada).
+Rotina · ciclos · recebimentos · renovações · agenda.
 
 ### Não é (MVP / posicionamento)
 
@@ -228,7 +228,9 @@ Estado: `FUTURO`.
 | WhatsApp manual | `IMPLEMENTADO` |
 | Envio automático WA | `FORA_DO_ESCOPO` |
 | Meu Ciclo | `PLANEJADO` |
-| Agenda interna | `PLANEJADO` |
+| Agenda interna | `IMPLEMENTADO` (compromisso único; sem recorrência) |
+| Locais | `IMPLEMENTADO` |
+| Timezone organização | `IMPLEMENTADO` |
 | Google Calendar RO | `PLANEJADO` |
 | Sync bidirecional GCal | `FUTURO` |
 | Admin plataforma | `PARCIAL` |
@@ -276,8 +278,11 @@ Menor escopo · consentimento · tokens criptografados · revogação · descone
 | FR-RECEIVABLE-03 | Vocabulário pending/paid/cancelled + overdue calc | `PLANEJADO` | docs ADR-021 | — | autorizada | Normalizar código |
 | FR-ALERT-01 | Prioridades no Hoje | `PARCIAL` | home summary | domain home | 2A | persistência |
 | FR-RENEWAL-01 | Prep WA + confirm contact | `IMPLEMENTADO` | cycle endpoints | domain + E2E | 2A | — |
-| FR-AGENDA-01 | Agenda interna | `PLANEJADO` | — | — | 2B draft | **não autorizada** |
+| FR-AGENDA-01 | Agenda interna diária + compromisso único | `IMPLEMENTADO` | agenda API/UI | test_agenda + E2E | 2B | recorrência fora |
+| FR-AGENDA-02 | Locais ativo/arquivado | `IMPLEMENTADO` | locations | test_agenda | 2B | — |
+| FR-AGENDA-03 | Conflito sobreposição (bloqueio) | `IMPLEMENTADO` | find_conflicts | test_agenda | 2B | override pendente |
 | FR-CALENDAR-01 | Google Calendar RO | `PLANEJADO` | — | — | TBD | — |
+| NFR-OPS-04 | Timezone org IANA | `IMPLEMENTADO` | org.timezone | test_agenda | 2B | DST doc |
 | FR-ADMIN-01 | Overview métricas | `PARCIAL` | platform API | `test_platform` | 2A | mutações |
 | FR-ADMIN-02 | Bootstrap admin | `IMPLEMENTADO` | CLI + docs | platform | Fundação | — |
 | NFR-SEC-01 | Isolamento multi-tenant | `IMPLEMENTADO` | domain filters | cross-tenant tests | 2A | — |

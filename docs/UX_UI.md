@@ -32,32 +32,42 @@ Gradientes excessivos; cards demais; ícones sem função; “purple SaaS”; ta
 
 Hoje · Agenda · Clientes · Ciclos · Mais
 
-### Real hoje (`IMPLEMENTADO`)
+### Real hoje (`IMPLEMENTADO` — Sprint 2B)
 
 | Item | Rota |
 |------|------|
 | Hoje | `/app` |
+| Agenda | `/app/agenda` |
 | Clientes | `/app/clients` |
 | Ciclos | `/app/cycles` |
-| Mais | `/app/profile` (+ serviços) |
+| Mais | `/app/profile` (+ Preferências, Locais, Serviços) |
 
-**Agenda:** ausente da nav até existir módulo (`PLANEJADO`).
+Logout permanece em Mais. Wordmark homologado preservado.
 
 ## Home “Hoje”
 
-Dados reais: ciclos encerrando, recebimentos, ação prioritária, hint contextual.  
-Não é dashboard decorativo.
+Dados reais: compromissos do dia, ciclos encerrando, recebimentos, ação prioritária, hint contextual.  
+Não é dashboard decorativo. Agenda não substitui dores comerciais.
 
 ## Barra contextual
 
 | Regra | Status |
 |-------|--------|
-| Uma ação / contexto | `PARCIAL` |
-| Sem carrossel automático | `IMPLEMENTADO` (não há carrossel) |
-| Oculta sem ação | parcial (componente por página) |
-| Próximo atendimento | `PLANEJADO` |
+| Uma ação / contexto | `IMPLEMENTADO` |
+| Sem carrossel automático | `IMPLEMENTADO` |
+| Oculta sem ação | `IMPLEMENTADO` |
+| Próximo compromisso | `IMPLEMENTADO` (prioridade: em andamento → próximas 2h → conflito → …) |
 
-Usada em detalhes de cliente/ciclo/recebível + hint no `TodayBoard`.
+Usada no shell + detalhes de cliente/ciclo/recebível.
+
+## Preferências / locais / agenda
+
+| Superfície | Status |
+|------------|--------|
+| Mais → Preferências (timezone IANA pesquisável) | `IMPLEMENTADO` |
+| Mais → Locais | `IMPLEMENTADO` |
+| Agenda diária (lista cronológica) | `IMPLEMENTADO` |
+| Calendário mensal | `PLANEJADO` |
 
 ## Tokens / tipografia / cores
 

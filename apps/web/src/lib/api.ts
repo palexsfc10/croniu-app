@@ -14,6 +14,7 @@ export type MeResponse = {
   organization: {
     id: string;
     name: string;
+    timezone?: string;
   };
   role: string;
 };
@@ -84,6 +85,53 @@ export type PriorityAction = {
   entity_id: string;
 };
 
+export type Location = {
+  id: string;
+  name: string;
+  address: string | null;
+  address_detail: string | null;
+  map_url: string | null;
+  meeting_url: string | null;
+  notes: string | null;
+  status: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Appointment = {
+  id: string;
+  client_id: string;
+  cycle_id: string | null;
+  service_id: string | null;
+  location_id: string | null;
+  title: string | null;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  client_name: string | null;
+  service_name: string | null;
+  location_name: string | null;
+  cycle_service_name: string | null;
+};
+
+export type DayAgenda = {
+  date: string;
+  timezone: string;
+  appointments: Appointment[];
+  conflict_count: number;
+};
+
+export type OrgPreferences = {
+  id: string;
+  name: string;
+  timezone: string;
+  local_today: string;
+};
+
 export type WhatsAppPrep = {
   cycle_id: string;
   client_id: string;
@@ -96,7 +144,9 @@ export type WhatsAppPrep = {
 
 export type HomeSummary = {
   organization_id: string;
-  today_appointments: unknown[];
+  timezone: string;
+  local_today: string;
+  today_appointments: Appointment[];
   cycles_nearing_end: Cycle[];
   renewals: Cycle[];
   pending_payments: Receivable[];
@@ -178,4 +228,47 @@ export function reaisToCents(value: string) {
   const parsed = Number.parseFloat(normalized);
   if (Number.isNaN(parsed)) return null;
   return Math.round(parsed * 100);
+}
+
+/** Format an ISO instant in an IANA timezone for display. */
+export function formatOrgDateTime(iso: string, timeZone: string, opts?: Intl.DateTimeFormatOptions) {
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      ...opts,
+    }).format(new Date(iso));
+  } catch {
+    return new Date(iso).toLocaleString("pt-BR");
+  }
+}
+
+/** Convert datetime-local value to ISO with the browser's current offset. */
+export function localInputToIso(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+export function isoToLocalInput(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function appointmentStatusLabel(status: string) {
+  switch (status) {
+    case "scheduled":
+      return "Agendado";
+    case "completed":
+      return "Realizado";
+    case "no_show":
+      return "Falta do cliente";
+    case "cancelled":
+      return "Cancelado";
+    default:
+      return status;
+  }
 }

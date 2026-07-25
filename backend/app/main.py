@@ -4,11 +4,13 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api import agenda as agenda_routes
 from app.api import auth as auth_routes
 from app.api import clients as clients_routes
 from app.api import cycles as cycles_routes
@@ -66,7 +68,7 @@ def create_app() -> FastAPI:
             content={
                 "code": "validation_error",
                 "message": "Dados inválidos.",
-                "details": exc.errors(),
+                "details": jsonable_encoder(exc.errors()),
             },
         )
 
@@ -77,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(services_routes.router, prefix="/api/v1")
     app.include_router(cycles_routes.router, prefix="/api/v1")
     app.include_router(receivables_routes.router, prefix="/api/v1")
+    app.include_router(agenda_routes.router, prefix="/api/v1")
     app.include_router(platform_routes.router, prefix="/api/v1")
     return app
 

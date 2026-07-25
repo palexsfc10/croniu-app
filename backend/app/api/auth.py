@@ -40,9 +40,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _http_error(exc: AuthError) -> HTTPException:
+    detail: dict = {"code": exc.code, "message": exc.message}
+    if exc.details is not None:
+        detail["details"] = exc.details
     return HTTPException(
         status_code=exc.status_code,
-        detail={"code": exc.code, "message": exc.message},
+        detail=detail,
     )
 
 

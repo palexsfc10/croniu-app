@@ -21,32 +21,37 @@ Auditoria, baseline e especificação mestre (documentação viva). **Sem featur
 
 ---
 
-## Próximo candidato — Sprint 2B (**NÃO AUTORIZADA**)
+## Sprint 2B — Agenda Core (**ENTREGUE local**)
 
-Rascunho: [`sprints/SPRINT_2B_DRAFT.md`](./sprints/SPRINT_2B_DRAFT.md).  
-Branch local (sem código da sprint): `feature/sprint-2b-agenda-core`.
+Documento: [`sprints/SPRINT_2B.md`](./sprints/SPRINT_2B.md). Relatório: [`reports/SPRINT_2B_REPORT.md`](./reports/SPRINT_2B_REPORT.md).  
+Branch: `feature/sprint-2b-agenda-core` (sem merge em `main` nesta entrega).
 
-Escopo candidato **aprovado conceitualmente**:
+Entregue: timezone org · locais · compromisso único · conflitos (bloqueio) · Agenda diária · Hoje · barra contextual · nav 5 itens.
 
-- Locais · compromisso único · Agenda · timezone da organização · conflitos básicos · integração nav/Hoje  
+**Fora (permanece planejado):** recorrência · Google Calendar · Meu Ciclo · sync · WhatsApp automático.
 
-**Fora:** recorrência · Google Calendar · Meu Ciclo · sincronização · WhatsApp automático.
+---
 
-Não implementar até `AUTORIZADA`.
+## Próximo candidato sugerido (**NÃO AUTORIZADO**)
+
+Endurecimento de Agenda **ou** Google Calendar somente leitura — escolher em autorização formal. Não iniciar sem sprint autorizada.
 
 ---
 
 ## Futuro
 
+- Recorrência de compromissos  
+- Google Calendar RO / sync  
+- Meu Ciclo (página pública)  
 - WhatsApp oficial / API  
 - Pagamentos / gateway / billing SaaS  
 - Notificações PWA  
 - Equipe multi-membro rica  
 - App nativo (se validado)  
 - Internacionalização  
-- Sync bidirecional Google  
 - Ciclos `session_count` / `hybrid`  
 - Rate limit, CSRF dual-token, MFA admin  
+- Override explícito de conflito de agenda  
 - HML implantada · produção  
 
 ## Explicitamente fora do posicionamento próximo

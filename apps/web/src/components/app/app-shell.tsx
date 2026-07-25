@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrandWordmark } from "@/components/brand";
 import { useAuth } from "@/components/auth/auth-provider";
-import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/app", label: "Hoje" },
+  { href: "/app/agenda", label: "Agenda" },
   { href: "/app/clients", label: "Clientes" },
   { href: "/app/cycles", label: "Ciclos" },
   { href: "/app/profile", label: "Mais" },
@@ -15,7 +15,7 @@ const navItems = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { me, loading, logout } = useAuth();
+  const { me, loading } = useAuth();
 
   if (loading) {
     return (
@@ -53,9 +53,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav
         aria-label="Navegação principal"
-        className="fixed inset-x-0 bottom-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur"
+        className="fixed inset-x-0 bottom-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur"
       >
-        <div className="mx-auto flex max-w-lg items-center justify-around px-2 py-2">
+        <div className="mx-auto flex max-w-lg items-center justify-between gap-1 px-1 py-2">
           {navItems.map((item) => {
             const active =
               item.href === "/app"
@@ -66,7 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={[
-                  "min-h-11 min-w-20 rounded-[var(--radius-md)] px-3 py-2 text-center text-sm font-semibold",
+                  "min-h-11 flex-1 rounded-[var(--radius-md)] px-1 py-2 text-center text-xs font-semibold sm:text-sm",
                   active
                     ? "bg-[var(--color-surface-muted)] text-[var(--color-primary)]"
                     : "text-[var(--color-ink-muted)]",
@@ -77,9 +77,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
-          <Button variant="ghost" className="min-w-20 text-sm" onClick={() => void logout()}>
-            Sair
-          </Button>
         </div>
       </nav>
     </div>

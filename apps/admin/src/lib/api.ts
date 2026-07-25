@@ -18,6 +18,7 @@ export type OverviewMetrics = {
   organizations_evaluating: number;
   organizations_suspended: number;
   clients_active_total: number;
+  appointments_scheduled_total?: number;
   generated_at: string;
 };
 
@@ -36,6 +37,8 @@ export type OrganizationListItem = {
 
 export type OrganizationDetail = OrganizationListItem & {
   owner_email?: string | null;
+  timezone?: string;
+  appointments_count?: number;
 };
 
 export type UserListItem = {
