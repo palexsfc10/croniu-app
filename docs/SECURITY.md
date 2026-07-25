@@ -19,6 +19,7 @@ Produto: [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md).
 | Logs sem secrets/PII sensível | parcial | política documentada |
 | Secrets via env; `.env` fora do Git | implementado (política) | `.env.example` |
 | Isolamento multi-tenant | implementado | testes cruzados |
+| Invariantes financeiras de ciclo (pago / snapshot) | implementado | política compartilhada em `cycle_intelligence`; rotas `/intelligent` e `/financial` |
 | Autorização admin plataforma | implementado | `platform_membership` |
 | Bootstrap admin só CLI | implementado | `create_platform_admin` |
 | Mutações admin | bloqueadas / parcial | leitura only |

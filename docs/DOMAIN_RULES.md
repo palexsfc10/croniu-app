@@ -65,6 +65,7 @@ Nomenclatura interna: `Client` (UI pode dizer “Aluno” no futuro).
 | Edição contratual/financeira | `IMPLEMENTADO` |
 | Edição financeira na UI (desconto XOR final) | `IMPLEMENTADO` (2C.1) |
 | Bloqueio se recebimento confirmado | `IMPLEMENTADO` (409 `payment_confirmed`) |
+| Invariantes nas rotas `/intelligent` e `/financial` | `IMPLEMENTADO` (política compartilhada; sem bypass estrutural) |
 | Edição financeira sem criar recebimento ausente | `IMPLEMENTADO` (não inventa estado) |
 | Sync de compromissos futuros na edição | `PLANEJADO` (ADR-024) |
 | Modo `session_count` | `PLANEJADO` |

@@ -37,8 +37,9 @@ async function seedCycle(page: import("@playwright/test").Page) {
   await page.getByLabel("Nome").fill("Ana Souza");
   await page.getByRole("button", { name: "Salvar cliente" }).click();
 
-  await nav(page, "Ciclos").click();
-  await page.getByRole("link", { name: "Novo" }).click();
+  // Prefer direct navigation — "Novo" on list can be unstable during fade-up animation.
+  await page.goto("/app/cycles/new");
+  await expect(page.getByRole("heading", { name: /Novo ciclo/i })).toBeVisible();
   await page.locator("select").nth(0).selectOption({ index: 1 });
   await page.locator("select").nth(1).selectOption({ index: 1 });
   await page.locator("select").nth(2).selectOption({ index: 1 });

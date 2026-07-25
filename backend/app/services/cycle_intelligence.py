@@ -28,6 +28,21 @@ from app.services import domain as domain_svc
 from app.services.auth import AuthError
 from app.services.cycle_calc import compose_financial, compute_renewal_on, enumerate_lesson_dates
 
+# Shared financial policy for PATCH /intelligent and PATCH /financial (ADR-026).
+FINANCIAL_INPUT_KEYS = frozenset({"adjustment_cents", "final_cents"})
+STRUCTURAL_RECALC_KEYS = frozenset(
+    {"weekdays", "starts_on", "cycle_template_id", "service_id"}
+)
+SNAPSHOT_IMMUTABLE_KEYS = frozenset(
+    {
+        "unit_price_cents",
+        "unit_price_snapshot",
+        "subtotal_cents",
+        "lesson_count",
+        "value_cents",
+    }
+)
+
 
 def duration_label(duration_type: str, duration_value: int) -> str:
     if duration_type == "calendar_months":
@@ -444,17 +459,9 @@ def update_intelligent_cycle(
         )
 
     fields = payload.model_dump(exclude_unset=True)
-    if "unit_price_cents" in fields:
-        raise AuthError(
-            "snapshot_immutable",
-            "O valor por aula congelado no ciclo não pode ser alterado.",
-            422,
-        )
-
-    financial_keys = {"adjustment_cents", "final_cents"}
-    touching_financial = bool(financial_keys & fields.keys())
-    if touching_financial:
-        _assert_financial_editable(cycle)
+    _reject_snapshot_mutation(fields)
+    # Shared policy: paid cycles cannot change financial outcome via any route.
+    _guard_financial_outcome_mutation(cycle, fields)
 
     if "notes" in fields:
         cycle.notes = domain_svc._normalize_optional_str(fields["notes"])
@@ -489,6 +496,7 @@ def update_intelligent_cycle(
     if "lesson_duration_minutes" in fields and fields["lesson_duration_minutes"] is not None:
         cycle.lesson_duration_minutes = fields["lesson_duration_minutes"]
 
+    touching_financial = bool(FINANCIAL_INPUT_KEYS & fields.keys())
     # Pure financial edit: keep lesson snapshot, only recompose money.
     only_financial = touching_financial and not any(
         k in fields
@@ -515,10 +523,7 @@ def update_intelligent_cycle(
         db.commit()
         return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
 
-    structural = any(
-        k in fields
-        for k in ("weekdays", "starts_on", "cycle_template_id", "service_id")
-    ) or touching_financial
+    structural = bool(STRUCTURAL_RECALC_KEYS & fields.keys()) or touching_financial
 
     if structural:
         starts_on = fields.get("starts_on", cycle.starts_on)
@@ -596,9 +601,8 @@ def update_cycle_financial(
         )
 
     fields = payload.model_dump(exclude_unset=True)
-    touching_financial = "adjustment_cents" in fields or "final_cents" in fields
-    if touching_financial:
-        _assert_financial_editable(cycle)
+    _reject_snapshot_mutation(fields)
+    _guard_financial_outcome_mutation(cycle, fields)
 
     if "notes" in fields:
         note = domain_svc._normalize_optional_str(fields["notes"])
@@ -607,6 +611,7 @@ def update_cycle_financial(
             appendix = f"\n[Ajuste financeiro] {note}"
             cycle.notes = (existing + appendix).strip()
 
+    touching_financial = bool(FINANCIAL_INPUT_KEYS & fields.keys())
     if touching_financial:
         _apply_financial_composition(
             db,
@@ -620,6 +625,29 @@ def update_cycle_financial(
     db.add(cycle)
     db.commit()
     return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
+
+
+def _reject_snapshot_mutation(fields: dict) -> None:
+    """Snapshot / derived money fields are never client-writable."""
+    if "unit_price_cents" in fields:
+        raise AuthError(
+            "snapshot_immutable",
+            "O valor por aula congelado no ciclo não pode ser alterado.",
+            422,
+        )
+    leaked = SNAPSHOT_IMMUTABLE_KEYS & fields.keys()
+    if leaked:
+        raise AuthError(
+            "snapshot_immutable",
+            "Campos de snapshot financeiro não podem ser alterados diretamente.",
+            422,
+        )
+
+
+def _guard_financial_outcome_mutation(cycle: Cycle, fields: dict) -> None:
+    """Block paid cycles before any path that can change money outcome."""
+    if (FINANCIAL_INPUT_KEYS | STRUCTURAL_RECALC_KEYS) & fields.keys():
+        _assert_financial_editable(cycle)
 
 
 def _assert_financial_editable(cycle: Cycle) -> None:

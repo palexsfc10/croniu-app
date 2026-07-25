@@ -192,10 +192,11 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 
 | | |
 |--|--|
-| Status | Aceito |
+| Status | Aceito · reforçado (auditoria de bypass entre rotas) |
 | Data | 2026-07-24 |
 | Decisão | Fluxo dedicado `PATCH /cycles/{id}/financial` + página “Editar valores”; desconto XOR valor final; snapshot unitário imutável; se recebimento `received`/`paid` → 409 `payment_confirmed` com mensagem clara; sem auto-criar recebimento ausente |
-| Evidência | `docs/sprints/SPRINT_2C_1_FINANCIAL_EDIT.md`; `docs/reports/SPRINT_2C_1_REPORT.md` |
+| Reforço | Política compartilhada `_guard_financial_outcome_mutation` / `_reject_snapshot_mutation` / `_apply_financial_composition` / `_sync_pending_receivable` — cobre também recálculo estrutural via `PATCH /intelligent` (antes: bypass se pago + `starts_on`/`weekdays` sem ajuste/final). Schemas de update com `extra="forbid"`. |
+| Evidência | `docs/sprints/SPRINT_2C_1_FINANCIAL_EDIT.md`; `docs/reports/SPRINT_2C_1_REPORT.md`; `test_cycle_financial_invariants.py` |
 
 ## ADR-025 — `calendar_months` ≠ `fixed_days`
 

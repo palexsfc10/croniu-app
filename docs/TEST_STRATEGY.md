@@ -20,7 +20,7 @@ flowchart TB
 
 ## Backend (pytest)
 
-Arquivos: `test_auth.py`, `test_platform.py`, `test_domain_sprint2a.py`, `test_agenda_sprint2b.py`, `test_cycle_calc.py`, `test_cycle_intelligence_sprint2c.py`, `test_cycle_financial_sprint2c1.py`.
+Arquivos: `test_auth.py`, `test_platform.py`, `test_domain_sprint2a.py`, `test_agenda_sprint2b.py`, `test_cycle_calc.py`, `test_cycle_intelligence_sprint2c.py`, `test_cycle_financial_sprint2c1.py`, `test_cycle_financial_invariants.py`.
 
 | Área | Regras cobertas (exemplos) |
 |------|----------------------------|
@@ -28,6 +28,7 @@ Arquivos: `test_auth.py`, `test_platform.py`, `test_domain_sprint2a.py`, `test_a
 | Platform | anônimo/org owner negados; admin overview; mascaramento; elevação recusada; auditoria login |
 | Domínio 2A | clientes/serviços/ciclos/recebíveis; isolamento; mark-paid; WhatsApp prep; home summary |
 | Agenda 2B | timezone válido/inválido; locais CRUD/arquivo; compromissos; conflito half-open; consecutivos OK; isolamento; agenda do dia |
+| Ciclo 2C.1 | edição financeira; bloqueio pago; invariantes `/intelligent` ≡ `/financial` (ajuste, final, estrutural, snapshot, rollback, tenant) |
 
 Mapear sempre aos IDs `FR-*` / `NFR-*`.
 

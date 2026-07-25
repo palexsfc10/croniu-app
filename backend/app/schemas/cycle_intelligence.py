@@ -130,7 +130,10 @@ class IntelligentCycleCreate(BaseModel):
 class IntelligentCycleUpdate(BaseModel):
     """Contractual/financial edit only — does not sync existing appointments."""
 
+    model_config = ConfigDict(extra="forbid")
+
     notes: str | None = Field(default=None, max_length=2000)
+    # Accepted only to return a stable domain code (snapshot_immutable); never applied.
     unit_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
     adjustment_cents: int | None = Field(default=None, ge=-100_000_000, le=100_000_000)
     final_cents: int | None = Field(default=None, ge=0, le=100_000_000)
@@ -161,6 +164,8 @@ class IntelligentCycleUpdate(BaseModel):
 
 class FinancialCycleUpdate(BaseModel):
     """Financial-only edit: discount/adjustment XOR final total. Snapshot unit price immutable."""
+
+    model_config = ConfigDict(extra="forbid")
 
     adjustment_cents: int | None = Field(default=None, ge=-100_000_000, le=100_000_000)
     final_cents: int | None = Field(default=None, ge=0, le=100_000_000)

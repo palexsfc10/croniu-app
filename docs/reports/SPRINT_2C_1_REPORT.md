@@ -59,11 +59,11 @@ Busca por `watch(` em `apps/web`: **0 ocorrências**. Eliminado com a substitui�
 | Gate | Resultado |
 |------|-----------|
 | Backend ruff | OK |
-| Backend pytest | **59 passed** |
+| Backend pytest | **72 passed** (incl. `test_cycle_financial_invariants`) |
 | Migration current = head | `0006_sprint2c_cycle_intelligence` |
 | Web lint / typecheck / vitest / build | OK / **19** testes |
 | Admin lint / typecheck / vitest / build | OK / **4** testes |
-| E2E `sprint2c1.spec.ts` | **3 passed** |
+| E2E `sprint2c1.spec.ts` | **3 passed** (seed endurecido: `goto /cycles/new`) |
 | Secrets scan | sem achados novos |
 | Screenshots E2E | continuam em `.gitignore` (`**/e2e/artifacts/`) |
 
@@ -110,6 +110,34 @@ Pré-commit staged: **25 files, +1152 / −87** vs `5451480`. Sem migration nova
 3. Conferir Agenda inalterada.  
 4. Marcar pago → Editar valores → mensagem de bloqueio.  
 5. (Opcional) Segundo tenant não edita o ciclo.
+
+## 17. Auditoria corretiva — bypass entre rotas (pós-`55ebfd4`)
+
+### Matriz **antes** da correção
+
+| Caminho | Pode alterar financeiro? | Bloqueia pago? | Snapshot protegido? | Atualiza recebimento? |
+| --------------------------- | ---: | ---: | ---: | ---: |
+| PATCH `/intelligent` | Sim (ajuste/final **e** recálculo estrutural) | Parcial — só se enviasse ajuste/final | Parcial — `unit_price` rejeitado; extras ignorados | Sim se recalcular |
+| PATCH `/financial` | Sim | Sim (`payment_confirmed`) | Sim no schema financeiro | Sim (pending) |
+| POST `/cycles` (legado create) | Só na criação | N/A | N/A | Opcional na criação |
+| Frontend | Só `/financial` na UI de edição | UI preventiva | N/A | Via `/financial` |
+
+**Bypass existia:** sim. Rota vulnerável: `PATCH /intelligent` com mudança estrutural (`starts_on`, `weekdays`, `service_id`, `cycle_template_id`) em ciclo com recebimento confirmado, **sem** enviar `adjustment_cents`/`final_cents` — recalculava aulas/subtotal/total e podia sincronizar recebimento pendente sem passar por `_assert_financial_editable`.
+
+### Correção
+
+Política compartilhada em `cycle_intelligence`:
+
+- `_guard_financial_outcome_mutation` — bloqueia pago antes de inputs financeiros **ou** chaves estruturais de recálculo
+- `_reject_snapshot_mutation` — snapshot/derived imutáveis
+- `_apply_financial_composition` + `_sync_pending_receivable` — composição e sync únicos
+- `IntelligentCycleUpdate` / `FinancialCycleUpdate` com `extra="forbid"`
+
+### Evidência
+
+`backend/tests/test_cycle_financial_invariants.py` — chama `/intelligent` e `/financial` diretamente; cobre ajuste/final/estrutural pagos, snapshot, extras, pending sync, rollback, tenant, paridade de códigos.
+
+Commit corretivo: `fix: enforce cycle financial invariants across routes` (não reescreve `55ebfd4`).
 
 ## 16. Próximo
 

@@ -66,7 +66,7 @@ Domínio real **não adquirido/confirmado**. Hostnames (`croniu.com.br`, `app.`,
 
 | Suite | Resultado |
 |-------|-----------|
-| Backend pytest | **59 passed** |
+| Backend pytest | **72 passed** |
 | Web vitest | **19 passed** |
 | Admin vitest | **4 passed** |
 | Backend ruff | OK |
