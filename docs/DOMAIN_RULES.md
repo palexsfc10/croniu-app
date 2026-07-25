@@ -146,7 +146,12 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 | Confirmação manual de contato | `IMPLEMENTADO` |
 | Criação automática de novo ciclo | **Proibido** no MVP |
 | Máquina de estados completa (`wants_renew`, etc.) | `PLANEJADO` |
-| Página pública Meu Ciclo | `PLANEJADO` |
+| Página pública Meu Ciclo | `IMPLEMENTADO` (2D) |
+| Token opaco + hash / revogação / rotação | `IMPLEMENTADO` |
+| Renovação = interesse (sem criar ciclo) | `IMPLEMENTADO` |
+| Informe de pagamento ≠ mark-paid automático | `IMPLEMENTADO` |
+| Aulas previstas restantes (sem presença) | `IMPLEMENTADO` |
+| Preferências Pix / link https | `IMPLEMENTADO` |
 
 ---
 

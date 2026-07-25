@@ -625,7 +625,35 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             href=f"/app/cycles/{first.id}",
             entity_id=first.id,
         )
-    elif due_soon:
+
+    # Sprint 2D: renewal requests & payment reports after cycle-ending signals
+    from app.services import my_cycle as my_cycle_svc
+
+    renewal_reqs = my_cycle_svc.list_renewal_requests(db, organization_id=organization_id)
+    pay_reports = my_cycle_svc.list_payment_reports(
+        db, organization_id=organization_id, status="pending_review"
+    )
+
+    if priority is None and renewal_reqs:
+        first_rr = renewal_reqs[0]
+        priority = PriorityActionOut(
+            kind="renewal_requested",
+            title=f"Renovação solicitada · {first_rr.client_name}",
+            subtitle="Cliente pediu renovação no Meu Ciclo",
+            href="/app/renewals",
+            entity_id=first_rr.id,
+        )
+    if priority is None and pay_reports:
+        first_pr = pay_reports[0]
+        priority = PriorityActionOut(
+            kind="payment_report_pending",
+            title=f"Pagamento informado · {first_pr.client_name}",
+            subtitle="Aguardando sua confirmação",
+            href="/app/payment-reports",
+            entity_id=first_pr.id,
+        )
+
+    if priority is None and due_soon:
         first_pay = due_soon[0]
         priority = PriorityActionOut(
             kind="pending_payment",
@@ -634,7 +662,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             href=f"/app/receivables/{first_pay.id}",
             entity_id=first_pay.id,
         )
-    elif renewals:
+    elif priority is None and renewals:
         first = renewals[0]
         priority = PriorityActionOut(
             kind="renewal_awaiting",
@@ -651,6 +679,10 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         parts.append(f"{len(nearing)} ciclo(s) encerrando")
     if pending:
         parts.append(f"{len(pending)} recebimento(s) pendente(s)")
+    if renewal_reqs:
+        parts.append(f"{len(renewal_reqs)} renovação(ões) solicitada(s)")
+    if pay_reports:
+        parts.append(f"{len(pay_reports)} pagamento(s) a confirmar")
 
     if priority is None and not parts:
         message = "Nenhuma ação pendente. Cadastre clientes e compromissos para começar."
@@ -667,6 +699,8 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         cycles_nearing_end=nearing,
         renewals=renewals,
         pending_payments=pending,
+        renewal_requests=[r.model_dump(mode="json") for r in renewal_reqs],
+        payment_reports_pending=[r.model_dump(mode="json") for r in pay_reports],
         priority_action=priority,
         contextual_hint=hint,
         message=message,

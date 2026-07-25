@@ -89,7 +89,7 @@ HTML semântico; teclado; foco; labels; contraste; toques ≥ 44px; `prefers-red
 
 ## Meu Ciclo (público)
 
-`PLANEJADO` — simples, minimização LGPD.
+`IMPLEMENTADO` — `/c/{token}`; BrandWordmark; sem nav do profissional; robots noindex.
 
 ## Dados
 

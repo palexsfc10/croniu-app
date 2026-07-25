@@ -193,9 +193,74 @@ export type HomeSummary = {
   cycles_nearing_end: Cycle[];
   renewals: Cycle[];
   pending_payments: Receivable[];
+  renewal_requests?: Array<{
+    id: string;
+    client_id: string;
+    source_cycle_id: string;
+    status: string;
+    client_name?: string | null;
+    service_name?: string | null;
+    requested_at: string;
+  }>;
+  payment_reports_pending?: Array<{
+    id: string;
+    client_id: string;
+    status: string;
+    amount_cents: number;
+    client_name?: string | null;
+    has_proof?: boolean;
+  }>;
   priority_action: PriorityAction | null;
   contextual_hint: string | null;
   message: string;
+};
+
+export type ClientAccess = {
+  has_active_link: boolean;
+  created_at?: string | null;
+  last_used_at?: string | null;
+  token?: string | null;
+  public_path?: string | null;
+  public_url?: string | null;
+  wa_message_template?: string | null;
+};
+
+export type PaymentSettings = {
+  holder_name?: string | null;
+  pix_key_type?: string | null;
+  pix_key?: string | null;
+  instructions?: string | null;
+  external_payment_url?: string | null;
+  show_on_my_cycle: boolean;
+};
+
+export type PublicMyCycle = {
+  professional_display_name: string;
+  client_first_name: string;
+  cycle: {
+    service_name: string;
+    status_summary: string;
+    starts_on: string;
+    ends_on: string;
+    renewal_on?: string | null;
+    lesson_count?: number | null;
+    remaining_planned_lessons?: number | null;
+    value_cents?: number | null;
+    payment_status: string;
+    renewal_request_status?: string | null;
+    payment_report_status?: string | null;
+  } | null;
+  empty_message?: string | null;
+  payment_instructions: {
+    holder_name?: string | null;
+    pix_key_type?: string | null;
+    pix_key?: string | null;
+    instructions?: string | null;
+    external_payment_url?: string | null;
+    configured: boolean;
+  };
+  can_request_renewal: boolean;
+  can_report_payment: boolean;
 };
 
 const SERVER_API_URL = (

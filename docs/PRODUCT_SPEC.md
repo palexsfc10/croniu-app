@@ -71,7 +71,7 @@ Prescritor de treino · biblioteca de exercícios · dietas · marketplace · ch
 |--------|-----------|--------|
 | Profissional | Usuário da org; opera clientes/ciclos/recebimentos | `IMPLEMENTADO` (papel `owner`/`admin`/`member` no membership) |
 | Administrador da organização | Gestão da org do tenant | `PARCIAL` (mesmo app; papéis existem; UI de gestão limitada) |
-| Cliente final | Sem login no MVP; futuro “Meu Ciclo” | `PLANEJADO` |
+| Cliente final | Sem login; Meu Ciclo por link opaco | `IMPLEMENTADO` (2D) |
 | Administrador da plataforma | Painel `/admin` separado; memberships platform | `PARCIAL` (leitura + métricas) |
 | Equipe futura | Multi-membro operacional rico | `FUTURO` |
 
@@ -227,7 +227,7 @@ Estado: `FUTURO`.
 | Alertas internos | `PARCIAL` |
 | WhatsApp manual | `IMPLEMENTADO` |
 | Envio automático WA | `FORA_DO_ESCOPO` |
-| Meu Ciclo | `PLANEJADO` |
+| Meu Ciclo | `IMPLEMENTADO` |
 | Agenda interna | `IMPLEMENTADO` (compromisso único; sem recorrência) |
 | Locais | `IMPLEMENTADO` |
 | Timezone organização | `IMPLEMENTADO` |
@@ -282,7 +282,10 @@ Menor escopo · consentimento · tokens criptografados · revogação · descone
 | FR-RECEIVABLE-02 | Pagamento parcial | `FUTURO` | — | — | — | — |
 | FR-RECEIVABLE-03 | Vocabulário pending/paid/cancelled + overdue calc | `PLANEJADO` | docs ADR-021 | — | autorizada | Normalizar código |
 | FR-ALERT-01 | Prioridades no Hoje | `PARCIAL` | home summary | domain home | 2A | persistência |
-| FR-RENEWAL-01 | Prep WA + confirm contact | `IMPLEMENTADO` | cycle endpoints | domain + E2E | 2A | — |
+| FR-MYCYCLE-01 | Portal público por token opaco | `IMPLEMENTADO` | `/c/{token}` + public API | 2D | — |
+| FR-MYCYCLE-02 | Solicitação renovação idempotente | `IMPLEMENTADO` | renewal_requests | 2D | — |
+| FR-MYCYCLE-03 | Informe pagamento + confirmação pro | `IMPLEMENTADO` | payment_reports | 2D | gateway fora |
+| FR-MYCYCLE-04 | Preferências Pix/link https | `IMPLEMENTADO` | payment-settings | 2D | — |
 | FR-AGENDA-01 | Agenda interna diária + compromisso único | `IMPLEMENTADO` | agenda API/UI | test_agenda + E2E | 2B | recorrência fora |
 | FR-AGENDA-02 | Locais ativo/arquivado | `IMPLEMENTADO` | locations | test_agenda | 2B | — |
 | FR-AGENDA-03 | Conflito sobreposição (bloqueio) | `IMPLEMENTADO` | find_conflicts | test_agenda | 2B | override pendente |

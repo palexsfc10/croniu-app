@@ -24,7 +24,7 @@ Produto: [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md).
 | Bootstrap admin só CLI | implementado | `create_platform_admin` |
 | Mutações admin | bloqueadas / parcial | leitura only |
 | MFA admin | planejado | antes de produção |
-| Links públicos Meu Ciclo | planejado | — |
+| Links públicos Meu Ciclo | implementado | token hash; rate limit; no-store/noindex |
 | Google OAuth tokens | planejado | criptografar; sem log |
 | WhatsApp | N/A envio | só URL `wa.me` gerada no client |
 | LGPD minimização | parcial | princípios; link público futuro |

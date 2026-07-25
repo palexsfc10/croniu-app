@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     admin_session_ttl_hours: int = Field(default=8, alias="ADMIN_SESSION_TTL_HOURS")
     platform_list_max_limit: int = Field(default=50, alias="PLATFORM_LIST_MAX_LIMIT")
     platform_search_min_chars: int = Field(default=2, alias="PLATFORM_SEARCH_MIN_CHARS")
+    public_app_base_url: str = Field(
+        default="http://localhost:3000",
+        alias="PUBLIC_APP_BASE_URL",
+    )
+    proof_storage_dir: str = Field(
+        default="var/proofs",
+        alias="PROOF_STORAGE_DIR",
+    )
+    public_rate_limit_per_minute: int = Field(default=60, alias="PUBLIC_RATE_LIMIT_PER_MINUTE")
+    max_proof_bytes: int = Field(default=5_242_880, alias="MAX_PROOF_BYTES")
 
     @field_validator("secret_key")
     @classmethod

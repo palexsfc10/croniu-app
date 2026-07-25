@@ -26,13 +26,11 @@ Instruções operacionais para agentes de IA. Detalhes: `docs/`.
 
 ## Sprint autorizada
 
-**Sprint 2C.1 — Edição financeira de ciclos** entregue localmente na branch `feature/sprint-2c1-cycle-financial-edit`.  
-Spec: `docs/sprints/SPRINT_2C_1_FINANCIAL_EDIT.md`. Relatório: `docs/reports/SPRINT_2C_1_REPORT.md`.  
-SHA-base (2C): `545148029442d89c08834195e30535dd06c93bfe`.
+**Sprint 2D — Meu Ciclo, renovação e pagamento manual** em andamento/entregue na branch `feature/sprint-2d-my-cycle-renewal`.  
+Spec: `docs/sprints/SPRINT_2D_MY_CYCLE_RENEWAL.md`. Relatório: `docs/reports/SPRINT_2D_REPORT.md`.  
+SHA-base (2C.1): `3ee9248cdfd8c577aa7453c90ade250f8509c32b`.
 
-Sprint 2C (prévia): `feature/sprint-2c-cycle-intelligence` — `docs/sprints/SPRINT_2C_CYCLE_INTELLIGENCE.md`.
-
-Não iniciar Google Calendar, Meu Ciclo, gateway, Sprint 2D ou itens fora do escopo sem nova autorização.
+Não iniciar gateway, GCal, WhatsApp API ou itens fora do escopo sem nova autorização.
 
 ## Commits / PR
 

@@ -57,7 +57,6 @@ Desktop.ini
 *.log
 logs/
 
-# Misc
-*.tsbuildinfo
-next-env.d.ts
-.vercel
+# Local proof uploads (Sprint 2D) — never commit contents
+var/proofs/
+**/var/proofs/

@@ -13,11 +13,16 @@ Branch: `feature/sprint-2c-cycle-intelligence`.
 Documento: [`sprints/SPRINT_2C_1_FINANCIAL_EDIT.md`](./sprints/SPRINT_2C_1_FINANCIAL_EDIT.md). Relatório: [`reports/SPRINT_2C_1_REPORT.md`](./reports/SPRINT_2C_1_REPORT.md).  
 Branch: `feature/sprint-2c1-cycle-financial-edit` (sem merge em `main`).
 
+## Sprint 2D — Meu Ciclo (**ENTREGUE local**)
+
+Documento: [`sprints/SPRINT_2D_MY_CYCLE_RENEWAL.md`](./sprints/SPRINT_2D_MY_CYCLE_RENEWAL.md). Relatório: [`reports/SPRINT_2D_REPORT.md`](./reports/SPRINT_2D_REPORT.md).  
+Branch: `feature/sprint-2d-my-cycle-renewal`.
+
 ---
 
 ## Próximo candidato sugerido (**NÃO AUTORIZADO**)
 
-Homologação conjunta 2B+2C+2C.1 **ou** Google Calendar RO. Não iniciar sem autorização.
+Homologação 2B–2D **ou** Google Calendar RO. Não iniciar sem autorização.
 
 ---
 
@@ -25,7 +30,7 @@ Homologação conjunta 2B+2C+2C.1 **ou** Google Calendar RO. Não iniciar sem au
 
 - Recorrência de compromissos  
 - Google Calendar RO / sync  
-- Meu Ciclo (página pública)  
+- Meu Ciclo (página pública) → **entregue na 2D** (evoluções futuras: login cliente, histórico completo)  
 - WhatsApp oficial / API  
 - Pagamentos / gateway / billing SaaS  
 - Notificações PWA  

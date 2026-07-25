@@ -29,10 +29,17 @@ function NewIntelligentCycleForm() {
   const [locations, setLocations] = useState<Location[]>([]);
 
   const [clientId, setClientId] = useState(search.get("clientId") ?? "");
-  const [serviceId, setServiceId] = useState("");
-  const [templateId, setTemplateId] = useState("");
+  const [serviceId, setServiceId] = useState(search.get("serviceId") ?? "");
+  const [templateId, setTemplateId] = useState(search.get("templateId") ?? "");
   const [startsOn, setStartsOn] = useState(new Date().toISOString().slice(0, 10));
-  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [weekdays, setWeekdays] = useState<number[]>(() => {
+    const raw = search.get("weekdays");
+    if (!raw) return [];
+    return raw
+      .split(",")
+      .map((v) => Number.parseInt(v, 10))
+      .filter((n) => n >= 0 && n <= 6);
+  });
   const [discountReais, setDiscountReais] = useState("");
   const [finalReais, setFinalReais] = useState("");
   const [generate, setGenerate] = useState(false);

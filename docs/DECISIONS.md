@@ -51,9 +51,41 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 
 | | |
 |--|--|
-| Status | Aceito (planejado) |
-| Decisão | Token alta entropia + hash; rate limit; revogação |
-| Evidência | Ainda não implementado |
+| Status | Aceito · **implementado** (Sprint 2D) |
+| Decisão | Token alta entropia (urlsafe ≥256 bits) + SHA-256; um ativo por cliente; revogação/rotação; rate limit in-process; `no-store`/`noindex` |
+| Evidência | `client_public_accesses`; `/c/{token}`; `0007_sprint2d_my_cycle` |
+
+## ADR-027 — Renovação via Meu Ciclo = interesse apenas
+
+| | |
+|--|--|
+| Status | Aceito |
+| Data | 2026-07-24 |
+| Decisão | `renewal_requests` com status requested/acknowledged/resolved/dismissed; não cria ciclo/recebimento/compromisso; “Preparar renovação” só pré-preenche o fluxo existente |
+
+## ADR-028 — Informe de pagamento separado do recebimento
+
+| | |
+|--|--|
+| Status | Aceito |
+| Data | 2026-07-24 |
+| Decisão | `payment_reports` (pending_review/confirmed/rejected); “Já paguei” não marca receivable; confirmação profissional marca `received` na mesma transação |
+
+## ADR-029 — Comprovante opcional com storage abstrato
+
+| | |
+|--|--|
+| Status | Aceito |
+| Data | 2026-07-24 |
+| Decisão | JPEG/PNG/WebP ≤5MB; validação por assinatura; chave aleatória; download autenticado `Content-Disposition: attachment`; local `PROOF_STORAGE_DIR` (não versionado) |
+
+## ADR-030 — Aulas previstas restantes
+
+| | |
+|--|--|
+| Status | Aceito |
+| Data | 2026-07-24 |
+| Decisão | Contagem de datas enumeradas do ciclo com `date >= hoje_org` em `[starts_on, ends_on)`; sem usar presença/cancelamento de compromissos |
 
 ## ADR-007 — Monorepositório
 

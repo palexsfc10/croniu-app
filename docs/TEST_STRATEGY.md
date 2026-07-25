@@ -20,15 +20,11 @@ flowchart TB
 
 ## Backend (pytest)
 
-Arquivos: `test_auth.py`, `test_platform.py`, `test_domain_sprint2a.py`, `test_agenda_sprint2b.py`, `test_cycle_calc.py`, `test_cycle_intelligence_sprint2c.py`, `test_cycle_financial_sprint2c1.py`, `test_cycle_financial_invariants.py`.
+Arquivos: … `test_cycle_financial_invariants.py`, `test_my_cycle_sprint2d.py`.
 
 | Área | Regras cobertas (exemplos) |
 |------|----------------------------|
-| Auth | register, login, logout, me, sessão inválida, e-mail duplicado |
-| Platform | anônimo/org owner negados; admin overview; mascaramento; elevação recusada; auditoria login |
-| Domínio 2A | clientes/serviços/ciclos/recebíveis; isolamento; mark-paid; WhatsApp prep; home summary |
-| Agenda 2B | timezone válido/inválido; locais CRUD/arquivo; compromissos; conflito half-open; consecutivos OK; isolamento; agenda do dia |
-| Ciclo 2C.1 | edição financeira; bloqueio pago; invariantes `/intelligent` ≡ `/financial` (ajuste, final, estrutural, snapshot, rollback, tenant) |
+| Meu Ciclo 2D | token hash; revogação; portal mínimo; renovação idempotente; Pix https; informe; comprovante; confirmação; tenant |
 
 Mapear sempre aos IDs `FR-*` / `NFR-*`.
 
@@ -46,6 +42,7 @@ Login / acesso negado.
 - Sprint 2A: fluxo domínio + artefatos em `apps/web/e2e/artifacts/sprint2a/`  
 - Sprint 2C: serviço → modelo → ciclo inteligente + desconto (`e2e/sprint2c.spec.ts`)  
 - Sprint 2C.1: edição financeira UI + bloqueio pago + isolamento (`e2e/sprint2c1.spec.ts`, 3 cenários)  
+- Sprint 2D: link Meu Ciclo + renovação/pagamento + rotação (`e2e/sprint2d.spec.ts`, 3 cenários)  
 - Admin E2E: especificado; executar quando ambiente disponível  
 
 ## Multi-tenancy

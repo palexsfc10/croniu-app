@@ -197,6 +197,8 @@ class HomeSummaryOut(BaseModel):
     cycles_nearing_end: list[CycleOut]
     renewals: list[CycleOut]
     pending_payments: list[ReceivableOut]
+    renewal_requests: list[dict] = Field(default_factory=list)
+    payment_reports_pending: list[dict] = Field(default_factory=list)
     priority_action: PriorityActionOut | None = None
     contextual_hint: str | None = None
     message: str

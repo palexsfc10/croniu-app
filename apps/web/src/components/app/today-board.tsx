@@ -164,6 +164,61 @@ export function TodayBoard({ summary }: Props) {
       {summary.priority_action ? <PriorityCard action={summary.priority_action} /> : null}
       <AppointmentList items={summary.today_appointments} timeZone={summary.timezone} />
       <CycleList items={summary.cycles_nearing_end} />
+      {(summary.renewal_requests?.length ?? 0) > 0 ? (
+        <section aria-label="Renovações solicitadas" className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-[var(--color-ink)]">
+              Renovações solicitadas
+            </h2>
+            <Link href="/app/renewals" className="text-sm font-semibold text-[var(--color-primary)]">
+              Ver todas
+            </Link>
+          </div>
+          <ul className="space-y-2">
+            {summary.renewal_requests!.slice(0, 3).map((item) => (
+              <li key={item.id}>
+                <Link
+                  href="/app/renewals"
+                  className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+                >
+                  <p className="font-semibold">{item.client_name}</p>
+                  <p className="text-sm text-[var(--color-ink-muted)]">{item.service_name}</p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {(summary.payment_reports_pending?.length ?? 0) > 0 ? (
+        <section aria-label="Pagamentos aguardando confirmação" className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-[var(--color-ink)]">
+              Pagamentos a confirmar
+            </h2>
+            <Link
+              href="/app/payment-reports"
+              className="text-sm font-semibold text-[var(--color-primary)]"
+            >
+              Revisar
+            </Link>
+          </div>
+          <ul className="space-y-2">
+            {summary.payment_reports_pending!.slice(0, 3).map((item) => (
+              <li key={item.id}>
+                <Link
+                  href="/app/payment-reports"
+                  className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+                >
+                  <p className="font-semibold">{item.client_name}</p>
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    {formatBRL(item.amount_cents)}
+                  </p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <PaymentList items={summary.pending_payments} />
     </div>
   );
