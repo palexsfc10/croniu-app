@@ -63,6 +63,9 @@ Nomenclatura interna: `Client` (UI pode dizer “Aluno” no futuro).
 | Snapshot unitário / subtotal / ajuste / total | `IMPLEMENTADO` |
 | Geração opcional de agenda (atômica) | `IMPLEMENTADO` |
 | Edição contratual/financeira | `IMPLEMENTADO` |
+| Edição financeira na UI (desconto XOR final) | `IMPLEMENTADO` (2C.1) |
+| Bloqueio se recebimento confirmado | `IMPLEMENTADO` (409 `payment_confirmed`) |
+| Edição financeira sem criar recebimento ausente | `IMPLEMENTADO` (não inventa estado) |
 | Sync de compromissos futuros na edição | `PLANEJADO` (ADR-024) |
 | Modo `session_count` | `PLANEJADO` |
 | Modo `hybrid` | `PLANEJADO` |
@@ -92,6 +95,7 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 | Valor monetário + vencimento | `IMPLEMENTADO` |
 | Status `pending` → `received` (mark-paid) | `IMPLEMENTADO` (divergência vs alvo `paid`) |
 | Status `expected` em queries de home | **Divergência** — referenciado no código; criação usa `pending`; normalizar em sprint autorizada |
+| Sync valor do recebimento `pending` na edição financeira | `IMPLEMENTADO` (mesmo vínculo; sem duplicar) |
 | Atraso calculado | `IMPLEMENTADO` |
 | Pagamento parcial | `FUTURO` |
 | Gateway de pagamento | `FORA_DO_ESCOPO` do MVP |

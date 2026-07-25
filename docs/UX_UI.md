@@ -69,6 +69,9 @@ Usada no shell + detalhes de cliente/ciclo/recebível.
 | Mais → Serviços (valor/aula) | `IMPLEMENTADO` |
 | Mais → Modelos de ciclo | `IMPLEMENTADO` |
 | Fluxo progressivo de ciclo inteligente | `IMPLEMENTADO` |
+| Detalhe do ciclo → Editar valores (desconto/final) | `IMPLEMENTADO` (2C.1) |
+| Confirmação + aviso “Agenda permanecerá igual” | `IMPLEMENTADO` |
+| Bloqueio UX se pagamento confirmado | `IMPLEMENTADO` |
 | Agenda diária (lista cronológica) | `IMPLEMENTADO` |
 | Calendário mensal | `PLANEJADO` |
 

@@ -1,16 +1,16 @@
 # Croniu — Estado do projeto (auditoria)
 
-**Data da auditoria:** 2026-07-24 (Sprint 2A.1)  
+**Data da auditoria:** 2026-07-24 (Sprint 2C.1)  
 **Este documento descreve o que existe hoje**, não o ideal.
 
 ## Git
 
 | Item | Valor |
 |------|-------|
-| Branch | `master` |
-| HEAD / SHA | *inexistente — repositório sem commits* |
-| Working tree | Conteúdo completo untracked (`apps/`, `backend/`, `docs/`, …) |
-| Remoto | Não configurado nesta auditoria |
+| Branch | `feature/sprint-2c1-cycle-financial-edit` |
+| SHA-base 2C | `545148029442d89c08834195e30535dd06c93bfe` |
+| Remoto | Não configurado |
+| Merge em `main` | Não |
 
 ## Stack e versões
 
@@ -27,8 +27,8 @@
 | Serviço | Porta típica | Notas |
 |---------|--------------|-------|
 | Postgres Croniu | **5433** → 5432 container | Host 5432 reservado a outro projeto |
-| API | **8010** | Uvicorn |
-| Web | **3010** (ou 3000) | Next; preferir proxy `/api` |
+| API | **8010**–**8012** | Uvicorn |
+| Web | **3010**–**3015** | Next; preferir proxy `/api` |
 | Admin | **3002** | Next separado |
 
 Domínio real **não adquirido/confirmado**. Hostnames (`croniu.com.br`, `app.`, `api.`, `admin.`) são apenas planejamento.
@@ -36,51 +36,43 @@ Domínio real **não adquirido/confirmado**. Hostnames (`croniu.com.br`, `app.`,
 ## Migration
 
 - **Head:** `0006_sprint2c_cycle_intelligence`
-- Cadeia: `0001` → `0002` → `0003` → `0004` → `0005` → `0006_sprint2c_cycle_intelligence`
-- Tabelas: + `cycle_templates`; serviços com `default_duration_minutes`; ciclos com snapshot financeiro/aulas
+- Cadeia: `0001` → `0002` → `0003` → `0004` → `0005` → `0006`
+- Sem migration nova na 2C.1
 
 ## Modelos (`backend/app/models`)
 
-`User`, `Organization`, `Membership`, `Session`, `PlatformMembership`, `PlatformSession`, `AdminAuditLog`, `Client`, `Service`, `Cycle`, `Receivable`
+`User`, `Organization`, `Membership`, `Session`, `PlatformMembership`, `PlatformSession`, `AdminAuditLog`, `Client`, `Service`, `Cycle`, `CycleTemplate`, `Receivable`, `Location`, `Appointment`
 
 ## Endpoints principais (`/api/v1`)
 
 **Auth:** register, login, logout, me  
 **Home:** `/home/summary`, `/ping-auth`  
-**Domínio:** clients, services, cycles (+ whatsapp-prep, confirm-contact), receivables (+ mark-paid)  
+**Domínio:** clients, services, cycles (+ intelligent, preview, financial, whatsapp-prep, confirm-contact), cycle-templates, receivables (+ mark-paid)  
+**Agenda:** locations, appointments, agenda/day, organization/preferences  
 **Platform:** auth admin, overview, organizations, users (leitura)  
 **Health:** `/health`
 
 ## Páginas web (`apps/web`)
 
-`/`, `/login`, `/register`, `/app` (Hoje), `/app/clients`, `/app/clients/new`, `/app/clients/[id]`, `/app/services`, `/app/services/new`, `/app/cycles`, `/app/cycles/new`, `/app/cycles/[id]`, `/app/receivables/[id]`, `/app/profile`
+`/`, `/login`, `/register`, `/app` (Hoje), `/app/agenda`, `/app/clients`, `/app/clients/new`, `/app/clients/[id]`, `/app/services`, `/app/services/new`, `/app/cycle-templates`, `/app/cycles`, `/app/cycles/new`, `/app/cycles/[id]`, `/app/cycles/[id]/financial`, `/app/receivables/[id]`, `/app/profile`, preferências/locais via Mais
 
-**Nav real:** Hoje · Clientes · Ciclos · Mais (sem Agenda)
+**Nav real:** Hoje · Agenda · Clientes · Ciclos · Mais
 
 ## Páginas admin (`apps/admin`)
 
 `/`, `/login`, `/dashboard`, `/organizations`, `/organizations/[id]`, `/users` — **leitura**
 
-## Componentes principais
-
-- `BrandWordmark` (identidade homologada)
-- `AuthScreen` / `AdminAuthScreen`
-- `AppShell` / `AdminShell`
-- `TodayBoard`, `ContextualBar`
-- UI: `Button`, `TextField`, `EmptyState`
-
-## Testes (auditoria 2A.1)
+## Testes (pós-2C.1)
 
 | Suite | Resultado |
 |-------|-----------|
-| Backend pytest | **21 passed** |
-| Web vitest | **11 passed** |
+| Backend pytest | **59 passed** |
+| Web vitest | **19 passed** |
 | Admin vitest | **4 passed** |
 | Backend ruff | OK |
-| Web lint | OK (1 warning RHF `watch`) |
-| Web/Admin typecheck | OK |
-
-E2E e artefatos (entrega 2A): `apps/web/e2e/sprint2a.spec.ts`, `artifacts/sprint2a/`
+| Web lint | OK (sem warning RHF `watch`) |
+| Web/Admin typecheck / build | OK |
+| E2E 2C.1 | **3 passed** (`e2e/sprint2c1.spec.ts`) |
 
 ## Seed
 
@@ -88,17 +80,18 @@ E2E e artefatos (entrega 2A): `apps/web/e2e/sprint2a.spec.ts`, `artifacts/sprint
 
 ## Funcionalidades reais
 
-Auth org, multi-tenant, clientes, serviços, ciclos period, recebimentos manuais, Hoje acionável, WhatsApp prep, confirmação de contato, **timezone org**, **locais**, **compromissos únicos**, **Agenda diária**, **barra contextual com próximo compromisso**, admin métricas leitura (incl. contagem agregada de compromissos), PWA básica, wordmark.
+Auth org, multi-tenant, clientes, serviços (valor/aula), modelos de ciclo, ciclos inteligentes (preview + geração opcional), **edição financeira na UI** (desconto/final; bloqueio se pago), recebimentos manuais, Hoje acionável, WhatsApp prep, confirmação de contato, timezone org, locais, compromissos únicos, Agenda diária, barra contextual, admin métricas leitura, PWA básica, wordmark.
 
 ## Limitações conscientes
 
+- Sem sync de agenda na edição de ciclo (ADR-024)  
 - Sem recorrência / Google Calendar / Meu Ciclo público  
 - Sem override de conflito de agenda (bloqueio 409)  
-- Sem pause/edit avançado de ciclo  
 - Sem session_count / hybrid  
 - Sem CSRF dual-token / rate limit login  
 - Admin sem mutações de agenda  
 - Sem remoto / push nesta linha  
+- Vocabulário receivable `received` / `expected` mantido (não normalizado)
 
 ## Integrações externas
 
@@ -112,7 +105,7 @@ Nenhuma ativa. WhatsApp = URL `wa.me` gerada no browser.
 
 ## Débitos técnicos (documentais)
 
-1. Vocabulário receivable `received` / `expected` vs alvo `pending`/`paid` — mantido na 2B  
-2. Warning ESLint `react-hook-form` watch no formulário de ciclo (não tocado na 2B)  
-3. Duplicação BrandWordmark web/admin por limitação Turbopack  
-4. Override de conflito = `PENDENTE_DE_DECISAO`  
+1. Vocabulário receivable `received` / `expected` vs alvo `pending`/`paid`  
+2. Duplicação BrandWordmark web/admin por limitação Turbopack  
+3. Override de conflito = `PENDENTE_DE_DECISAO`  
+4. Sync de compromissos na edição de ciclo = planejado (ADR-024)  

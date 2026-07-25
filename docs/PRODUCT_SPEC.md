@@ -277,6 +277,7 @@ Menor escopo · consentimento · tokens criptografados · revogação · descone
 | FR-CYCLE-05 | Modelos de ciclo reutilizáveis | `IMPLEMENTADO` | cycle_templates | 2C | — |
 | FR-CYCLE-06 | Cálculo exato de aulas + financeiro | `IMPLEMENTADO` | cycle_calc + preview | 2C | — |
 | FR-CYCLE-07 | Geração opcional atômica na agenda | `IMPLEMENTADO` | intelligent create | 2C | sync edição pendente |
+| FR-CYCLE-08 | Edição financeira (desconto/final) na UI | `IMPLEMENTADO` | `/financial` + PATCH financial | 2C.1 | sync agenda ADR-024 |
 | FR-RECEIVABLE-01 | Recebimento + mark-paid | `IMPLEMENTADO` | receivables | domain + E2E | 2A | Alvo vocab: `paid` (hoje `received`); `expected` divergente |
 | FR-RECEIVABLE-02 | Pagamento parcial | `FUTURO` | — | — | — | — |
 | FR-RECEIVABLE-03 | Vocabulário pending/paid/cancelled + overdue calc | `PLANEJADO` | docs ADR-021 | — | autorizada | Normalizar código |

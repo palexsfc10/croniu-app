@@ -157,3 +157,23 @@ class IntelligentCycleUpdate(BaseModel):
         if self.adjustment_cents is not None and self.final_cents is not None:
             raise ValueError("Informe desconto/ajuste ou valor final, não ambos.")
         return self
+
+
+class FinancialCycleUpdate(BaseModel):
+    """Financial-only edit: discount/adjustment XOR final total. Snapshot unit price immutable."""
+
+    adjustment_cents: int | None = Field(default=None, ge=-100_000_000, le=100_000_000)
+    final_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_combo(self) -> FinancialCycleUpdate:
+        has_adj = self.adjustment_cents is not None
+        has_final = self.final_cents is not None
+        if has_adj and has_final:
+            raise ValueError("Informe desconto/ajuste ou valor final, não ambos.")
+        if not has_adj and not has_final and self.notes is None:
+            raise ValueError("Informe desconto/ajuste, valor final ou observação.")
+        if has_adj or has_final:
+            return self
+        return self

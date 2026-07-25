@@ -8,11 +8,16 @@ Branch: `feature/sprint-2b-agenda-core` (sem merge em `main`).
 Documento: [`sprints/SPRINT_2C_CYCLE_INTELLIGENCE.md`](./sprints/SPRINT_2C_CYCLE_INTELLIGENCE.md). Relatório: [`reports/SPRINT_2C_REPORT.md`](./reports/SPRINT_2C_REPORT.md).  
 Branch: `feature/sprint-2c-cycle-intelligence`.
 
+## Sprint 2C.1 — Edição financeira de ciclos (**ENTREGUE local**)
+
+Documento: [`sprints/SPRINT_2C_1_FINANCIAL_EDIT.md`](./sprints/SPRINT_2C_1_FINANCIAL_EDIT.md). Relatório: [`reports/SPRINT_2C_1_REPORT.md`](./reports/SPRINT_2C_1_REPORT.md).  
+Branch: `feature/sprint-2c1-cycle-financial-edit` (sem merge em `main`).
+
 ---
 
 ## Próximo candidato sugerido (**NÃO AUTORIZADO**)
 
-Homologação conjunta 2B+2C **ou** Google Calendar RO. Não iniciar sem autorização.
+Homologação conjunta 2B+2C+2C.1 **ou** Google Calendar RO. Não iniciar sem autorização.
 
 ---
 

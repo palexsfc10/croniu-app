@@ -257,8 +257,10 @@ def test_paid_receivable_not_silently_changed(client, register_payload):
         f"/api/v1/cycles/{cycle_id}/intelligent",
         json={"final_cents": 50000},
     )
-    assert upd.status_code == 201 or upd.status_code == 200
+    assert upd.status_code == 409
+    assert upd.json()["code"] == "payment_confirmed"
     # receivable stays received with original amount
     recv = client.get(f"/api/v1/receivables/{recv_id}")
     assert recv.json()["status"] == "received"
     assert recv.json()["amount_cents"] == 72000
+    assert client.get(f"/api/v1/cycles/{cycle_id}").json()["value_cents"] == 72000

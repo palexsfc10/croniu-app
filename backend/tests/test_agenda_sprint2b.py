@@ -223,18 +223,28 @@ def test_appointment_result_and_invalid_interval(client, register_payload):
 
 
 def test_home_summary_includes_appointments(client, register_payload):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
     _auth_client(client, register_payload)
     person = _create_client(client)
     day = client.get("/api/v1/organization/preferences").json()["local_today"]
-    # far future today slot to avoid flaky "in progress"
-    client.post(
+    # Priority: in-progress or starting within 2h — avoid fixed 22:00 (fails after 23h).
+    tz = ZoneInfo("America/Sao_Paulo")
+    now_local = datetime.now(tz)
+    start = now_local + timedelta(minutes=30)
+    if start.date().isoformat() != day:
+        start = now_local - timedelta(minutes=15)
+    end = start + timedelta(hours=1)
+    created = client.post(
         "/api/v1/appointments",
         json={
             "client_id": person["id"],
-            "starts_at": f"{day}T22:00:00-03:00",
-            "ends_at": f"{day}T23:00:00-03:00",
+            "starts_at": start.isoformat(),
+            "ends_at": end.isoformat(),
         },
     )
+    assert created.status_code == 201
     home = client.get("/api/v1/home/summary")
     assert home.status_code == 200
     body = home.json()

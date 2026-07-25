@@ -182,11 +182,20 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 
 | | |
 |--|--|
-| Status | Aceito (MVP 2C) |
+| Status | Aceito (MVP 2C) · UI financeira 2C.1 |
 | Data | 2026-07-24 |
 | Contexto | Recalcular aulas pode divergir de compromissos já criados/realizados |
-| Decisão | Edição inteligente atualiza contrato/financeiro e recebimento `pending`; **não** altera compromissos existentes |
-| Consequência | Sync futura de agenda = sprint autorizada; UI avisa |
+| Decisão | Edição inteligente/financeira atualiza contrato/financeiro e recebimento `pending`; **não** altera compromissos existentes |
+| Consequência | Sync futura de agenda = sprint autorizada; UI avisa (“Agenda permanecerá igual”) |
+
+## ADR-026 — Edição financeira na UI e bloqueio se pago (Sprint 2C.1)
+
+| | |
+|--|--|
+| Status | Aceito |
+| Data | 2026-07-24 |
+| Decisão | Fluxo dedicado `PATCH /cycles/{id}/financial` + página “Editar valores”; desconto XOR valor final; snapshot unitário imutável; se recebimento `received`/`paid` → 409 `payment_confirmed` com mensagem clara; sem auto-criar recebimento ausente |
+| Evidência | `docs/sprints/SPRINT_2C_1_FINANCIAL_EDIT.md`; `docs/reports/SPRINT_2C_1_REPORT.md` |
 
 ## ADR-025 — `calendar_months` ≠ `fixed_days`
 

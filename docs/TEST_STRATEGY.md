@@ -1,6 +1,6 @@
 # Croniu — Estratégia de testes
 
-Alinhada ao código pós-Sprint 2C. Matriz: [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) §9.
+Alinhada ao código pós-Sprint 2C.1. Matriz: [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) §9.
 
 ## Pirâmide
 
@@ -13,14 +13,14 @@ flowchart TB
 ```
 
 1. **Unitário/UI** — Vitest + Testing Library (web/admin)  
-2. **API/integração** — pytest (auth, platform, domínio 2A + agenda 2B)  
-3. **E2E** — Playwright (auth + Sprint 2A + Sprint 2B)  
+2. **API/integração** — pytest (auth, platform, domínio 2A + agenda 2B + ciclo 2C/2C.1)  
+3. **E2E** — Playwright (auth + Sprint 2A + 2B + 2C + 2C.1)  
 4. **Visual/manual** — artefatos + homologação de identidade  
 5. **HML smokes** — quando HML existir e for autorizada  
 
 ## Backend (pytest)
 
-Arquivos: `test_auth.py`, `test_platform.py`, `test_domain_sprint2a.py`, `test_agenda_sprint2b.py`, `test_cycle_calc.py`, `test_cycle_intelligence_sprint2c.py`.
+Arquivos: `test_auth.py`, `test_platform.py`, `test_domain_sprint2a.py`, `test_agenda_sprint2b.py`, `test_cycle_calc.py`, `test_cycle_intelligence_sprint2c.py`, `test_cycle_financial_sprint2c1.py`.
 
 | Área | Regras cobertas (exemplos) |
 |------|----------------------------|
@@ -44,6 +44,7 @@ Login / acesso negado.
 - Fundação: cadastro → painel; logout; anônimo bloqueado  
 - Sprint 2A: fluxo domínio + artefatos em `apps/web/e2e/artifacts/sprint2a/`  
 - Sprint 2C: serviço → modelo → ciclo inteligente + desconto (`e2e/sprint2c.spec.ts`)  
+- Sprint 2C.1: edição financeira UI + bloqueio pago + isolamento (`e2e/sprint2c1.spec.ts`, 3 cenários)  
 - Admin E2E: especificado; executar quando ambiente disponível  
 
 ## Multi-tenancy

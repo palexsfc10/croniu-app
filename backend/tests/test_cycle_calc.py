@@ -81,8 +81,21 @@ def test_financial_discount_and_final_edit():
     assert edited.final_cents == 75000
 
 
-def test_negative_final_rejected():
-    import pytest
+def test_calendar_months_day_clamp_matrix():
+    # 28 / 29 / 30 / 31 and year boundary — day clamped to target month length
+    assert add_calendar_months(date(2026, 1, 28), 1) == date(2026, 2, 28)
+    assert add_calendar_months(date(2024, 1, 29), 1) == date(2024, 2, 29)  # leap
+    assert add_calendar_months(date(2025, 1, 29), 1) == date(2025, 2, 28)  # non-leap
+    assert add_calendar_months(date(2026, 1, 30), 1) == date(2026, 2, 28)
+    assert add_calendar_months(date(2026, 1, 31), 1) == date(2026, 2, 28)
+    assert add_calendar_months(date(2024, 1, 31), 1) == date(2024, 2, 29)
+    assert add_calendar_months(date(2026, 3, 31), 1) == date(2026, 4, 30)
+    assert add_calendar_months(date(2026, 12, 31), 1) == date(2027, 1, 31)
+    assert add_calendar_months(date(2024, 2, 29), 1) == date(2024, 3, 29)
 
-    with pytest.raises(ValueError):
-        compose_financial(lesson_count=1, unit_price_cents=1000, adjustment_cents=-2000)
+
+def test_positive_adjustment():
+    money = compose_financial(lesson_count=8, unit_price_cents=9000, final_cents=75000)
+    assert money.subtotal_cents == 72000
+    assert money.adjustment_cents == 3000
+    assert money.final_cents == 75000

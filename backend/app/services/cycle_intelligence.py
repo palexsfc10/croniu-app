@@ -18,6 +18,7 @@ from app.schemas.cycle_intelligence import (
     CyclePreviewIn,
     CyclePreviewOut,
     CycleTemplateOut,
+    FinancialCycleUpdate,
     IntelligentCycleCreate,
     IntelligentCycleUpdate,
 )
@@ -433,7 +434,7 @@ def update_intelligent_cycle(
     cycle_id: uuid.UUID,
     payload: IntelligentCycleUpdate,
 ) -> Cycle:
-    """Financial/contractual update. Does not modify existing appointments (ADR-024)."""
+    """Contractual/financial update. Does not modify existing appointments (ADR-024)."""
     cycle = domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle_id)
     if cycle.is_legacy:
         raise AuthError(
@@ -443,6 +444,18 @@ def update_intelligent_cycle(
         )
 
     fields = payload.model_dump(exclude_unset=True)
+    if "unit_price_cents" in fields:
+        raise AuthError(
+            "snapshot_immutable",
+            "O valor por aula congelado no ciclo não pode ser alterado.",
+            422,
+        )
+
+    financial_keys = {"adjustment_cents", "final_cents"}
+    touching_financial = bool(financial_keys & fields.keys())
+    if touching_financial:
+        _assert_financial_editable(cycle)
+
     if "notes" in fields:
         cycle.notes = domain_svc._normalize_optional_str(fields["notes"])
 
@@ -476,10 +489,36 @@ def update_intelligent_cycle(
     if "lesson_duration_minutes" in fields and fields["lesson_duration_minutes"] is not None:
         cycle.lesson_duration_minutes = fields["lesson_duration_minutes"]
 
+    # Pure financial edit: keep lesson snapshot, only recompose money.
+    only_financial = touching_financial and not any(
+        k in fields
+        for k in (
+            "weekdays",
+            "starts_on",
+            "cycle_template_id",
+            "service_id",
+            "lesson_duration_minutes",
+            "default_location_id",
+            "default_starts_time",
+        )
+    )
+    if only_financial:
+        _apply_financial_composition(
+            db,
+            cycle=cycle,
+            adjustment_cents=fields.get("adjustment_cents"),
+            final_cents=fields.get("final_cents"),
+            has_final="final_cents" in fields,
+            has_adjustment="adjustment_cents" in fields,
+        )
+        db.add(cycle)
+        db.commit()
+        return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
+
     structural = any(
         k in fields
-        for k in ("weekdays", "starts_on", "cycle_template_id", "service_id", "unit_price_cents")
-    ) or ("adjustment_cents" in fields) or ("final_cents" in fields)
+        for k in ("weekdays", "starts_on", "cycle_template_id", "service_id")
+    ) or touching_financial
 
     if structural:
         starts_on = fields.get("starts_on", cycle.starts_on)
@@ -488,7 +527,6 @@ def update_intelligent_cycle(
         if template_id is None:
             raise AuthError("missing_template", "Ciclo sem modelo não pode recalcular.", 422)
         if cycle.weekly_frequency and len(weekdays) != cycle.weekly_frequency:
-            # refresh frequency from template if changed
             tmpl = get_template(db, organization_id=organization_id, template_id=template_id)
             if len(weekdays) != tmpl.weekly_frequency:
                 raise AuthError(
@@ -505,10 +543,7 @@ def update_intelligent_cycle(
                 cycle_template_id=template_id,
                 starts_on=starts_on,
                 weekdays=weekdays,
-                unit_price_cents=fields.get(
-                    "unit_price_cents",
-                    cycle.unit_price_cents,
-                ),
+                unit_price_cents=cycle.unit_price_cents,
                 adjustment_cents=fields.get("adjustment_cents")
                 if "final_cents" not in fields
                 else None,
@@ -531,26 +566,124 @@ def update_intelligent_cycle(
         cycle.duration_type = preview.duration_type
         cycle.duration_value = preview.duration_value
         cycle.weekly_frequency = preview.weekly_frequency
-
-        # Update pending receivable amount only; never touch received/paid
-        pending = [
-            r
-            for r in (cycle.receivables or [])
-            if r.status in {"pending", "expected"}
-        ]
-        if len(pending) == 1:
-            pending[0].amount_cents = preview.final_cents
-            db.add(pending[0])
-        elif len(pending) > 1:
-            raise AuthError(
-                "receivable_ambiguous",
-                "Há mais de um recebimento aberto; ajuste manualmente.",
-                409,
-            )
+        _sync_pending_receivable(db, cycle=cycle, amount_cents=preview.final_cents)
 
     db.add(cycle)
     db.commit()
     return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
+
+
+def update_cycle_financial(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    cycle_id: uuid.UUID,
+    payload: FinancialCycleUpdate,
+) -> Cycle:
+    """Financial-only edit. Never touches appointments (ADR-024)."""
+    cycle = domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle_id)
+    if cycle.is_legacy:
+        raise AuthError(
+            "legacy_cycle",
+            "Ciclo legado não permite edição financeira inteligente.",
+            422,
+        )
+    if cycle.lesson_count is None or cycle.unit_price_cents is None:
+        raise AuthError(
+            "incomplete_snapshot",
+            "Este ciclo não possui composição financeira completa.",
+            422,
+        )
+
+    fields = payload.model_dump(exclude_unset=True)
+    touching_financial = "adjustment_cents" in fields or "final_cents" in fields
+    if touching_financial:
+        _assert_financial_editable(cycle)
+
+    if "notes" in fields:
+        note = domain_svc._normalize_optional_str(fields["notes"])
+        if note:
+            existing = cycle.notes or ""
+            appendix = f"\n[Ajuste financeiro] {note}"
+            cycle.notes = (existing + appendix).strip()
+
+    if touching_financial:
+        _apply_financial_composition(
+            db,
+            cycle=cycle,
+            adjustment_cents=fields.get("adjustment_cents"),
+            final_cents=fields.get("final_cents"),
+            has_final="final_cents" in fields,
+            has_adjustment="adjustment_cents" in fields,
+        )
+
+    db.add(cycle)
+    db.commit()
+    return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
+
+
+def _assert_financial_editable(cycle: Cycle) -> None:
+    received = [
+        r
+        for r in (cycle.receivables or [])
+        if r.status in {"received", "paid"}
+    ]
+    if received:
+        raise AuthError(
+            "payment_confirmed",
+            "Este pagamento já foi confirmado. Para preservar o histórico financeiro, "
+            "os valores deste ciclo não podem ser alterados por este fluxo.",
+            409,
+        )
+
+
+def _apply_financial_composition(
+    db: Session,
+    *,
+    cycle: Cycle,
+    adjustment_cents: int | None,
+    final_cents: int | None,
+    has_final: bool,
+    has_adjustment: bool,
+) -> None:
+    if cycle.lesson_count is None or cycle.unit_price_cents is None:
+        raise AuthError(
+            "incomplete_snapshot",
+            "Este ciclo não possui composição financeira completa.",
+            422,
+        )
+    try:
+        money = compose_financial(
+            lesson_count=cycle.lesson_count,
+            unit_price_cents=cycle.unit_price_cents,
+            adjustment_cents=adjustment_cents if has_adjustment and not has_final else None,
+            final_cents=final_cents if has_final else None,
+        )
+    except ValueError as exc:
+        raise AuthError("invalid_financial", str(exc), 422) from exc
+
+    cycle.subtotal_cents = money.subtotal_cents
+    cycle.adjustment_cents = money.adjustment_cents
+    cycle.value_cents = money.final_cents
+    _sync_pending_receivable(db, cycle=cycle, amount_cents=money.final_cents)
+
+
+def _sync_pending_receivable(db: Session, *, cycle: Cycle, amount_cents: int) -> None:
+    pending = [
+        r
+        for r in (cycle.receivables or [])
+        if r.status in {"pending", "expected"}
+    ]
+    if len(pending) == 1:
+        pending[0].amount_cents = amount_cents
+        db.add(pending[0])
+    elif len(pending) > 1:
+        raise AuthError(
+            "receivable_ambiguous",
+            "Há mais de um recebimento aberto; ajuste manualmente.",
+            409,
+        )
+    # Zero pending: do not auto-create (documented divergence for cycles without receivable)
 
 
 def enrich_cycle_out(cycle: Cycle, base: CycleOut) -> CycleOut:

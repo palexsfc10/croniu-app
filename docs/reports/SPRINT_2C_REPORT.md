@@ -66,8 +66,8 @@ Enumeração real de datas `[starts_on, ends_on)`; `subtotal = aulas × unit`; a
 - Sync de agenda na edição de ciclo
 - Override de conflito
 - Normalização `expected`/`received`
-- UI rica de edição financeira no detalhe
+- ~~UI rica de edição financeira no detalhe~~ → fechada na Sprint 2C.1
 
 ## Próxima sprint sugerida
 
-Homologação 2B+2C **ou** Google Calendar RO — não iniciar sem autorização.
+Homologação 2B+2C+2C.1 **ou** Google Calendar RO — não iniciar sem autorização.

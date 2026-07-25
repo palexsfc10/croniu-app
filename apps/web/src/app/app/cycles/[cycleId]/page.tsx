@@ -112,10 +112,16 @@ export default function CycleDetailPage() {
           ) : null}
           <p className="text-sm font-semibold">Total: {formatBRL(cycle.value_cents)}</p>
           {!cycle.is_legacy ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              Edição financeira disponível via API; sincronizar agenda futura ainda não altera
-              compromissos existentes.
-            </p>
+            <>
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Esta edição financeira não altera compromissos da Agenda.
+              </p>
+              <Link href={`/app/cycles/${cycle.id}/financial`}>
+                <Button fullWidth variant="secondary">
+                  Editar valores
+                </Button>
+              </Link>
+            </>
           ) : null}
           {cycle.is_nearing_end ? (
             <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">

@@ -25,7 +25,7 @@ Permitir que qualquer agente ou pessoa entenda o que o Croniu é, o que já exis
 | [`DECISIONS.md`](./DECISIONS.md) | ADRs e decisões de produto |
 | [`WORKFLOW.md`](./WORKFLOW.md) | Processo oficial de sprints |
 | [`PLATFORM_ADMIN.md`](./PLATFORM_ADMIN.md) | Painel da plataforma (detalhe) |
-| [`sprints/`](./sprints/) | Template, histórico 2A, rascunho 2B |
+| [`sprints/`](./sprints/) | Template, histórico 2A–2C.1 |
 | [`reports/`](./reports/) | Índice de relatórios |
 | [`VISION.md`](./VISION.md) | Visão inicial (histórica; ver PRODUCT_SPEC) |
 | [`PRD.md`](./PRD.md) | PRD inicial (histórica; ver PRODUCT_SPEC) |

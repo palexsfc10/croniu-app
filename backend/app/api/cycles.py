@@ -9,6 +9,7 @@ from app.db import get_db
 from app.schemas.cycle_intelligence import (
     CyclePreviewIn,
     CyclePreviewOut,
+    FinancialCycleUpdate,
     IntelligentCycleCreate,
     IntelligentCycleUpdate,
 )
@@ -113,6 +114,25 @@ def update_intelligent_cycle(
 ) -> CycleOut:
     try:
         cycle = intel_svc.update_intelligent_cycle(
+            db,
+            organization_id=auth.organization.id,
+            cycle_id=cycle_id,
+            payload=payload,
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return domain_svc.cycle_to_out(cycle)
+
+
+@router.patch("/{cycle_id}/financial", response_model=CycleOut)
+def update_cycle_financial(
+    cycle_id: UUID,
+    payload: FinancialCycleUpdate,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> CycleOut:
+    try:
+        cycle = intel_svc.update_cycle_financial(
             db,
             organization_id=auth.organization.id,
             cycle_id=cycle_id,
