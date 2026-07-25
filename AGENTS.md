@@ -26,10 +26,11 @@ Instruções operacionais para agentes de IA. Detalhes: `docs/`.
 
 ## Sprint autorizada
 
-**Sprint 2C — Serviços, modelos de ciclo e cálculo inteligente** está **AUTORIZADA** na branch `feature/sprint-2c-cycle-intelligence`.  
-Spec: `docs/sprints/SPRINT_2C_CYCLE_INTELLIGENCE.md`. SHA-base: `b8ef0b980f54571328d716ea0424731449bca92b`.
+**Sprint 2C — Cycle intelligence** entregue localmente na branch `feature/sprint-2c-cycle-intelligence`.  
+Spec: `docs/sprints/SPRINT_2C_CYCLE_INTELLIGENCE.md`. Relatório: `docs/reports/SPRINT_2C_REPORT.md`.  
+SHA-base: `b8ef0b980f54571328d716ea0424731449bca92b`. Commit: `9989474`.
 
-Não iniciar Google Calendar, Meu Ciclo, gateway ou itens fora do escopo da 2C.
+Não iniciar Google Calendar, Meu Ciclo, gateway ou itens fora do escopo sem nova autorização.
 
 ## Commits / PR
 
