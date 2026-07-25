@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiFetch, formatBRL, type Service } from "@/lib/api";
+import { apiFetch, type CycleTemplate } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 
-export default function ServicesPage() {
-  const [items, setItems] = useState<Service[]>([]);
+export default function CycleTemplatesPage() {
+  const [items, setItems] = useState<CycleTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const result = await apiFetch<Service[]>("/api/v1/services?status=active");
+      const result = await apiFetch<CycleTemplate[]>("/api/v1/cycle-templates?status=active");
       if (cancelled) return;
       if (result.error) setError(result.error.message);
       else setItems(result.data ?? []);
@@ -30,10 +30,12 @@ export default function ServicesPage() {
       </Link>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">Serviços</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">O que você oferece e o valor por aula.</p>
+          <h1 className="h-display text-3xl text-[var(--color-ink)]">Modelos de ciclo</h1>
+          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+            Padrões reutilizáveis. Os dias da semana você escolhe no ciclo do cliente.
+          </p>
         </div>
-        <Link href="/app/services/new">
+        <Link href="/app/cycle-templates/new">
           <Button>Novo</Button>
         </Link>
       </div>
@@ -43,7 +45,10 @@ export default function ServicesPage() {
         </p>
       ) : null}
       {!items.length ? (
-        <EmptyState title="Nenhum serviço" description="Cadastre um serviço antes de criar ciclos." />
+        <EmptyState
+          title="Nenhum modelo"
+          description="Crie um modelo como “2x por semana — mensal”."
+        />
       ) : null}
       <ul className="space-y-2">
         {items.map((item) => (
@@ -53,7 +58,7 @@ export default function ServicesPage() {
           >
             <p className="font-semibold text-[var(--color-ink)]">{item.name}</p>
             <p className="text-sm text-[var(--color-ink-muted)]">
-              {formatBRL(item.default_price_cents)} / aula · {item.default_duration_minutes} min
+              {item.weekly_frequency}x / semana · {item.duration_label}
             </p>
           </li>
         ))}

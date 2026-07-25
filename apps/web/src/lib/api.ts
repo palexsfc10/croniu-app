@@ -35,21 +35,64 @@ export type Service = {
   name: string;
   description: string | null;
   default_duration_days: number;
+  default_duration_minutes: number;
   default_price_cents: number | null;
   status: string;
   created_at: string;
   updated_at: string;
 };
 
+export type CycleTemplate = {
+  id: string;
+  name: string;
+  weekly_frequency: number;
+  duration_type: "calendar_months" | "fixed_days" | string;
+  duration_value: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  duration_label: string | null;
+};
+
+export type CyclePreview = {
+  starts_on: string;
+  ends_on: string;
+  weekdays: number[];
+  lesson_dates: string[];
+  lesson_count: number;
+  unit_price_cents: number;
+  subtotal_cents: number;
+  adjustment_cents: number;
+  final_cents: number;
+  lesson_duration_minutes: number;
+  duration_type: string;
+  duration_value: number;
+  weekly_frequency: number;
+};
+
 export type Cycle = {
   id: string;
   client_id: string;
   service_id: string;
+  cycle_template_id?: string | null;
   cycle_type: string;
   status: string;
   starts_on: string;
   ends_on: string;
+  weekdays?: number[] | null;
+  lesson_count?: number | null;
+  unit_price_cents?: number | null;
+  subtotal_cents?: number | null;
+  adjustment_cents?: number | null;
   value_cents: number | null;
+  lesson_duration_minutes?: number | null;
+  default_location_id?: string | null;
+  default_starts_time?: string | null;
+  duration_type?: string | null;
+  duration_value?: number | null;
+  weekly_frequency?: number | null;
+  is_legacy?: boolean;
+  duration_label?: string | null;
   notes: string | null;
   last_contacted_at: string | null;
   contact_confirmed_at: string | null;
@@ -222,6 +265,22 @@ export function formatBRL(cents: number | null | undefined) {
   if (cents == null) return "—";
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
+export function formatDateBR(isoDate: string) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  if (!y || !m || !d) return isoDate;
+  return new Date(y, m - 1, d).toLocaleDateString("pt-BR");
+}
+
+export const WEEKDAY_OPTIONS = [
+  { value: 0, label: "Seg" },
+  { value: 1, label: "Ter" },
+  { value: 2, label: "Qua" },
+  { value: 3, label: "Qui" },
+  { value: 4, label: "Sex" },
+  { value: 5, label: "Sáb" },
+  { value: 6, label: "Dom" },
+] as const;
 
 export function reaisToCents(value: string) {
   const normalized = value.replace(",", ".").trim();

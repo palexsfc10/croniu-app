@@ -60,12 +60,15 @@ Não é dashboard decorativo. Agenda não substitui dores comerciais.
 
 Usada no shell + detalhes de cliente/ciclo/recebível.
 
-## Preferências / locais / agenda
+## Preferências / locais / agenda / ciclo
 
 | Superfície | Status |
 |------------|--------|
 | Mais → Preferências (timezone IANA pesquisável) | `IMPLEMENTADO` |
 | Mais → Locais | `IMPLEMENTADO` |
+| Mais → Serviços (valor/aula) | `IMPLEMENTADO` |
+| Mais → Modelos de ciclo | `IMPLEMENTADO` |
+| Fluxo progressivo de ciclo inteligente | `IMPLEMENTADO` |
 | Agenda diária (lista cronológica) | `IMPLEMENTADO` |
 | Calendário mensal | `PLANEJADO` |
 

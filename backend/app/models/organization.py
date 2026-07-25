@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.appointment import Appointment
     from app.models.client import Client
     from app.models.cycle import Cycle
+    from app.models.cycle_template import CycleTemplate
     from app.models.location import Location
     from app.models.membership import Membership
     from app.models.receivable import Receivable
@@ -41,6 +42,7 @@ class Organization(Base):
     memberships: Mapped[list[Membership]] = relationship(back_populates="organization")
     clients: Mapped[list[Client]] = relationship(back_populates="organization")
     services: Mapped[list[Service]] = relationship(back_populates="organization")
+    cycle_templates: Mapped[list[CycleTemplate]] = relationship(back_populates="organization")
     cycles: Mapped[list[Cycle]] = relationship(back_populates="organization")
     receivables: Mapped[list[Receivable]] = relationship(back_populates="organization")
     locations: Mapped[list[Location]] = relationship(back_populates="organization")

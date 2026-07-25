@@ -35,10 +35,9 @@ Domínio real **não adquirido/confirmado**. Hostnames (`croniu.com.br`, `app.`,
 
 ## Migration
 
-- **Head:** `0005_sprint2b_agenda`
-- Cadeia: `0001_initial` → `0002_platform_admin` → `0003_sprint2a_domain` → `0004_password_reset` → `0005_sprint2b_agenda`
-- Tabelas de negócio: `clients`, `services`, `cycles`, `receivables`, `locations`, `appointments`
-- `organizations.timezone` (default `America/Sao_Paulo`)
+- **Head:** `0006_sprint2c_cycle_intelligence`
+- Cadeia: `0001` → `0002` → `0003` → `0004` → `0005` → `0006_sprint2c_cycle_intelligence`
+- Tabelas: + `cycle_templates`; serviços com `default_duration_minutes`; ciclos com snapshot financeiro/aulas
 
 ## Modelos (`backend/app/models`)
 

@@ -95,8 +95,28 @@ export default function CycleDetailPage() {
           <h1 className="h-display text-3xl text-[var(--color-ink)]">{cycle.client_name}</h1>
           <p className="text-sm text-[var(--color-ink-muted)]">
             {cycle.service_name} · {cycle.starts_on} → {cycle.ends_on}
+            {cycle.is_legacy ? " · ciclo legado" : ""}
           </p>
-          <p className="text-sm">Valor: {formatBRL(cycle.value_cents)}</p>
+          {cycle.lesson_count != null ? (
+            <p className="text-sm">
+              {cycle.lesson_count} aulas · {formatBRL(cycle.unit_price_cents)} / aula
+            </p>
+          ) : null}
+          {cycle.subtotal_cents != null ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Subtotal {formatBRL(cycle.subtotal_cents)}
+              {cycle.adjustment_cents
+                ? ` · ajuste ${formatBRL(cycle.adjustment_cents)}`
+                : ""}
+            </p>
+          ) : null}
+          <p className="text-sm font-semibold">Total: {formatBRL(cycle.value_cents)}</p>
+          {!cycle.is_legacy ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Edição financeira disponível via API; sincronizar agenda futura ainda não altera
+              compromissos existentes.
+            </p>
+          ) : null}
           {cycle.is_nearing_end ? (
             <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
               Ciclo encerrando{cycle.days_remaining != null ? ` em ${cycle.days_remaining} dia(s)` : ""}.

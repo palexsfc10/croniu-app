@@ -3,6 +3,7 @@ from app.models.admin_audit_log import AdminAuditLog
 from app.models.appointment import Appointment
 from app.models.client import Client
 from app.models.cycle import Cycle
+from app.models.cycle_template import CycleTemplate
 from app.models.location import Location
 from app.models.membership import Membership
 from app.models.organization import Organization
@@ -26,6 +27,7 @@ __all__ = [
     "Client",
     "Service",
     "Cycle",
+    "CycleTemplate",
     "Receivable",
     "PasswordResetToken",
     "Location",

@@ -76,7 +76,18 @@ def run(*, force: bool = False) -> None:
                 name=f"Plano Mensal {DEMO_MARKER}",
                 description="Pacote fictício de demonstração",
                 default_duration_days=30,
-                default_price_cents=40000,
+                default_duration_minutes=60,
+                default_price_cents=9000,
+            )
+            from app.services.cycle_intelligence import create_template
+
+            create_template(
+                db,
+                organization_id=organization.id,
+                name=f"2x semana — mensal {DEMO_MARKER}",
+                weekly_frequency=2,
+                duration_type="calendar_months",
+                duration_value=1,
             )
 
         starts = date.today()

@@ -1,6 +1,6 @@
 # Croniu — Estratégia de testes
 
-Alinhada ao código pós-Sprint 2B. Matriz detalhada de requisitos: [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) §9.
+Alinhada ao código pós-Sprint 2C. Matriz: [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) §9.
 
 ## Pirâmide
 
@@ -20,7 +20,7 @@ flowchart TB
 
 ## Backend (pytest)
 
-Arquivos: `test_auth.py`, `test_platform.py`, `test_domain_sprint2a.py`, `test_agenda_sprint2b.py`.
+Arquivos: `test_auth.py`, `test_platform.py`, `test_domain_sprint2a.py`, `test_agenda_sprint2b.py`, `test_cycle_calc.py`, `test_cycle_intelligence_sprint2c.py`.
 
 | Área | Regras cobertas (exemplos) |
 |------|----------------------------|
@@ -43,7 +43,7 @@ Login / acesso negado.
 
 - Fundação: cadastro → painel; logout; anônimo bloqueado  
 - Sprint 2A: fluxo domínio + artefatos em `apps/web/e2e/artifacts/sprint2a/`  
-- Sprint 2B: local → compromisso → Agenda/Hoje/contextual → conflito → resultado (`e2e/sprint2b.spec.ts`)  
+- Sprint 2C: serviço → modelo → ciclo inteligente + desconto (`e2e/sprint2c.spec.ts`)  
 - Admin E2E: especificado; executar quando ambiente disponível  
 
 ## Multi-tenancy

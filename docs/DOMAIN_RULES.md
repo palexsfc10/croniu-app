@@ -38,12 +38,19 @@ Nomenclatura interna: `Client` (UI pode dizer “Aluno” no futuro).
 
 | Regra | Status |
 |-------|--------|
-| Tipos/valores cadastráveis | `IMPLEMENTADO` (criar/listar) |
-| PATCH de serviço | `PARCIAL` (API; UI limitada) |
-| Inativação formal | `PARCIAL` / `PENDENTE_DE_DECISAO` de política de UI |
-| Ciclos históricos mantêm snapshot/valor associado | `PARCIAL` (ciclo guarda dados; política completa pendente) |
+| Tipos/valores cadastráveis | `IMPLEMENTADO` |
+| Valor-base por aula (centavos) | `IMPLEMENTADO` |
+| Duração padrão da aula (minutos) | `IMPLEMENTADO` |
+| Arquivamento; histórico preservado | `IMPLEMENTADO` |
+| Preço atual não altera ciclos históricos | `IMPLEMENTADO` (snapshot no ciclo) |
 
----
+## Modelo de ciclo
+
+| Regra | Status |
+|-------|--------|
+| Frequência semanal + duração | `IMPLEMENTADO` |
+| `calendar_months` vs `fixed_days` | `IMPLEMENTADO` (não equivalentes) |
+| Dias da semana no ciclo do cliente | `IMPLEMENTADO` |
 
 ## Ciclo
 
@@ -52,14 +59,19 @@ Nomenclatura interna: `Client` (UI pode dizer “Aluno” no futuro).
 | Regra | Status |
 |-------|--------|
 | Modo `period` (datas) | `IMPLEMENTADO` |
+| Cálculo exato de aulas (enumeração) | `IMPLEMENTADO` |
+| Snapshot unitário / subtotal / ajuste / total | `IMPLEMENTADO` |
+| Geração opcional de agenda (atômica) | `IMPLEMENTADO` |
+| Edição contratual/financeira | `IMPLEMENTADO` |
+| Sync de compromissos futuros na edição | `PLANEJADO` (ADR-024) |
 | Modo `session_count` | `PLANEJADO` |
 | Modo `hybrid` | `PLANEJADO` |
 | Status persistidos usados | `active`, `ended`, `cancelled` (campo) |
 | `planned` / `paused` | **Não implementados** — `PLANEJADO` |
 | `nearing_end` | **Calculado** (~7 dias) na home — não status persistido |
-| Encerramento / histórico sem sobrescrita | `IMPLEMENTADO` (novos ciclos não apagam anteriores) |
-| Edição avançada / pausa com retorno | `PLANEJADO` |
-| Próximo ciclo só após confirmação profissional | `IMPLEMENTADO` (não auto-cria no confirm-contact) |
+| Encerramento / histórico sem sobrescrita | `IMPLEMENTADO` |
+| Próximo ciclo só após confirmação profissional | `IMPLEMENTADO` |
+| Ciclos legados (pré-2C) | `is_legacy`; sem backfill falso |
 
 ---
 

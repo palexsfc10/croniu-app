@@ -178,6 +178,24 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 | Fora | Recorrência, Google Calendar, Meu Ciclo, sync, WhatsApp automático |
 | Evidência | `docs/sprints/SPRINT_2B.md`; `docs/reports/SPRINT_2B_REPORT.md` |
 
+## ADR-024 — Edição de ciclo sem sync de agenda (Sprint 2C)
+
+| | |
+|--|--|
+| Status | Aceito (MVP 2C) |
+| Data | 2026-07-24 |
+| Contexto | Recalcular aulas pode divergir de compromissos já criados/realizados |
+| Decisão | Edição inteligente atualiza contrato/financeiro e recebimento `pending`; **não** altera compromissos existentes |
+| Consequência | Sync futura de agenda = sprint autorizada; UI avisa |
+
+## ADR-025 — `calendar_months` ≠ `fixed_days`
+
+| | |
+|--|--|
+| Status | Aceito |
+| Data | 2026-07-24 |
+| Decisão | Renovação por meses de calendário (dia clampado) é distinta de N dias corridos; UI usa “1 mês” vs “30 dias” |
+
 ## ADR-023 — Conflito de horário: bloqueio sem override
 
 | | |

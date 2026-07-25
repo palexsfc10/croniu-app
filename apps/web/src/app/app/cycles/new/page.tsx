@@ -2,169 +2,422 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { apiFetch, reaisToCents, type Client, type Cycle, type Service } from "@/lib/api";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import {
+  WEEKDAY_OPTIONS,
+  apiFetch,
+  formatBRL,
+  formatDateBR,
+  reaisToCents,
+  type Client,
+  type Cycle,
+  type CyclePreview,
+  type CycleTemplate,
+  type Location,
+  type Service,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 
-const schema = z.object({
-  client_id: z.string().uuid("Selecione o cliente."),
-  service_id: z.string().uuid("Selecione o serviço."),
-  starts_on: z.string().min(1, "Informe o início."),
-  ends_on: z.string().min(1, "Informe o fim."),
-  price_reais: z.string().optional(),
-  create_receivable: z.boolean(),
-});
-
-type Values = z.infer<typeof schema>;
-
-function NewCycleForm() {
+function NewIntelligentCycleForm() {
   const router = useRouter();
   const search = useSearchParams();
+  const [step, setStep] = useState(1);
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [formError, setFormError] = useState<string | null>(null);
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors, isSubmitting },
-  } = useForm<Values>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      client_id: search.get("clientId") ?? "",
-      service_id: "",
-      starts_on: new Date().toISOString().slice(0, 10),
-      ends_on: "",
-      price_reais: "",
-      create_receivable: true,
-    },
-  });
+  const [templates, setTemplates] = useState<CycleTemplate[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
 
-  const serviceId = watch("service_id");
+  const [clientId, setClientId] = useState(search.get("clientId") ?? "");
+  const [serviceId, setServiceId] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const [startsOn, setStartsOn] = useState(new Date().toISOString().slice(0, 10));
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [discountReais, setDiscountReais] = useState("");
+  const [finalReais, setFinalReais] = useState("");
+  const [generate, setGenerate] = useState(false);
+  const [locationId, setLocationId] = useState("");
+  const [startsTime, setStartsTime] = useState("09:00");
+  const [preview, setPreview] = useState<CyclePreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
-  const startsOn = watch("starts_on");
+  const template = templates.find((t) => t.id === templateId);
+  const service = services.find((s) => s.id === serviceId);
+  const client = clients.find((c) => c.id === clientId);
 
   useEffect(() => {
     void (async () => {
-      const [c, s] = await Promise.all([
-        apiFetch<Client[]>("/api/v1/clients"),
-        apiFetch<Service[]>("/api/v1/services"),
+      const [c, s, t, l] = await Promise.all([
+        apiFetch<Client[]>("/api/v1/clients?status=active"),
+        apiFetch<Service[]>("/api/v1/services?status=active"),
+        apiFetch<CycleTemplate[]>("/api/v1/cycle-templates?status=active"),
+        apiFetch<Location[]>("/api/v1/locations?status=active"),
       ]);
       setClients(c.data ?? []);
       setServices(s.data ?? []);
+      setTemplates(t.data ?? []);
+      setLocations(l.data ?? []);
     })();
   }, []);
 
-  useEffect(() => {
-    const service = services.find((item) => item.id === serviceId);
-    if (!service || !startsOn) return;
-    const d = new Date(`${startsOn}T12:00:00`);
-    d.setDate(d.getDate() + service.default_duration_days);
-    setValue("ends_on", d.toISOString().slice(0, 10));
-    if (service.default_price_cents != null) {
-      setValue("price_reais", (service.default_price_cents / 100).toFixed(2).replace(".", ","));
-    }
-  }, [serviceId, services, setValue, startsOn]);
+  function toggleDay(day: number) {
+    setWeekdays((prev) => {
+      if (prev.includes(day)) return prev.filter((d) => d !== day);
+      if (template && prev.length >= template.weekly_frequency) return prev;
+      return [...prev, day].sort((a, b) => a - b);
+    });
+  }
 
-  const onSubmit = handleSubmit(async (values) => {
-    setFormError(null);
-    const cents = values.price_reais ? reaisToCents(values.price_reais) : null;
-    if (values.price_reais && cents == null) {
-      setFormError("Valor inválido.");
-      return;
+  async function loadPreview() {
+    setError(null);
+    setConflicts([]);
+    if (!serviceId || !templateId || weekdays.length === 0) {
+      setError("Complete serviço, modelo e dias da semana.");
+      return false;
     }
-    const result = await apiFetch<Cycle>("/api/v1/cycles", {
+    if (template && weekdays.length !== template.weekly_frequency) {
+      setError(`Selecione exatamente ${template.weekly_frequency} dia(s).`);
+      return false;
+    }
+    const body: Record<string, unknown> = {
+      service_id: serviceId,
+      cycle_template_id: templateId,
+      starts_on: startsOn,
+      weekdays,
+    };
+    if (finalReais.trim()) {
+      const cents = reaisToCents(finalReais);
+      if (cents == null) {
+        setError("Valor final inválido.");
+        return false;
+      }
+      body.final_cents = cents;
+    } else if (discountReais.trim()) {
+      const cents = reaisToCents(discountReais);
+      if (cents == null) {
+        setError("Desconto inválido.");
+        return false;
+      }
+      body.adjustment_cents = -Math.abs(cents);
+    }
+    const result = await apiFetch<CyclePreview>("/api/v1/cycles/preview", {
       method: "POST",
-      body: JSON.stringify({
-        client_id: values.client_id,
-        service_id: values.service_id,
-        starts_on: values.starts_on,
-        ends_on: values.ends_on,
-        value_cents: cents,
-        create_receivable: values.create_receivable,
-      }),
+      body: JSON.stringify(body),
     });
     if (result.error) {
-      setFormError(result.error.message);
+      setError(result.error.message);
+      return false;
+    }
+    setPreview(result.data ?? null);
+    return true;
+  }
+
+  async function goPreview() {
+    const ok = await loadPreview();
+    if (ok) setStep(4);
+  }
+
+  async function confirm() {
+    setSaving(true);
+    setError(null);
+    setConflicts([]);
+    const body: Record<string, unknown> = {
+      client_id: clientId,
+      service_id: serviceId,
+      cycle_template_id: templateId,
+      starts_on: startsOn,
+      weekdays,
+      create_receivable: true,
+      generate_appointments: generate,
+      idempotency_key: `web-${crypto.randomUUID()}`,
+    };
+    if (finalReais.trim()) {
+      body.final_cents = reaisToCents(finalReais);
+    } else if (discountReais.trim()) {
+      const cents = reaisToCents(discountReais);
+      body.adjustment_cents = cents == null ? 0 : -Math.abs(cents);
+    }
+    if (generate) {
+      body.starts_time = `${startsTime}:00`;
+      body.location_id = locationId || null;
+    }
+    const result = await apiFetch<Cycle>("/api/v1/cycles/intelligent", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    setSaving(false);
+    if (result.error) {
+      setError(result.error.message);
+      const details = result.error.details as
+        | { conflicts?: { client_name?: string; starts_at: string }[] }
+        | undefined;
+      if (details?.conflicts?.length) {
+        setConflicts(
+          details.conflicts.map(
+            (c) => `${c.client_name ?? "Cliente"} · ${c.starts_at}`,
+          ),
+        );
+      }
       return;
     }
     router.replace(`/app/cycles/${result.data!.id}`);
-  });
+  }
+
+  const lessonSummary = useMemo(() => {
+    if (!preview) return "";
+    const shown = preview.lesson_dates.slice(0, 6).map(formatDateBR);
+    const more = preview.lesson_dates.length > 6 ? ` +${preview.lesson_dates.length - 6}` : "";
+    return `${shown.join(", ")}${more}`;
+  }, [preview]);
 
   return (
     <div className="space-y-4 animate-fade-up">
       <Link href="/app/cycles" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        Voltar
+        ← Ciclos
       </Link>
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo ciclo</h1>
-      <p className="text-sm text-[var(--color-ink-muted)]">
-        Escolha cliente e serviço; as datas e o valor são sugeridos.
-      </p>
-      {!services.length ? (
-        <p className="text-sm text-[var(--color-warning)]">
-          Cadastre um{" "}
-          <Link href="/app/services/new" className="font-semibold underline">
-            serviço
-          </Link>{" "}
-          antes.
+      <p className="text-sm text-[var(--color-ink-muted)]">Passo {step} de 4</p>
+
+      {step === 1 ? (
+        <div className="space-y-4">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Cliente</span>
+            <select
+              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              required
+            >
+              <option value="">Selecione</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Serviço</span>
+            <select
+              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+              value={serviceId}
+              onChange={(e) => setServiceId(e.target.value)}
+            >
+              <option value="">Selecione</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · {formatBRL(s.default_price_cents)}/aula
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Modelo de ciclo</span>
+            <select
+              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+              value={templateId}
+              onChange={(e) => {
+                setTemplateId(e.target.value);
+                setWeekdays([]);
+              }}
+            >
+              <option value="">Selecione</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!templates.length ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Sem modelos.{" "}
+              <Link href="/app/cycle-templates/new" className="font-semibold text-[var(--color-primary)]">
+                Criar modelo
+              </Link>
+            </p>
+          ) : null}
+          <Button
+            fullWidth
+            disabled={!clientId || !serviceId || !templateId}
+            onClick={() => setStep(2)}
+          >
+            Continuar
+          </Button>
+        </div>
+      ) : null}
+
+      {step === 2 ? (
+        <div className="space-y-4">
+          <TextField
+            label="Data inicial"
+            type="date"
+            value={startsOn}
+            onChange={(e) => setStartsOn(e.target.value)}
+          />
+          <fieldset>
+            <legend className="text-sm font-medium">
+              Dias da semana
+              {template ? ` (${template.weekly_frequency})` : ""}
+            </legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {WEEKDAY_OPTIONS.map((d) => {
+                const active = weekdays.includes(d.value);
+                return (
+                  <button
+                    key={d.value}
+                    type="button"
+                    aria-pressed={active}
+                    className={`min-h-11 min-w-11 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
+                      active
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                        : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)]"
+                    }`}
+                    onClick={() => toggleDay(d.value)}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+          <div className="flex gap-2">
+            <Button variant="secondary" fullWidth onClick={() => setStep(1)}>
+              Voltar
+            </Button>
+            <Button fullWidth onClick={() => void goPreview()}>
+              Calcular aulas
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === 4 && preview ? (
+        <div className="space-y-4">
+          <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Cliente</span> · {client?.full_name}
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Serviço</span> · {service?.name}
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Validade</span> ·{" "}
+              {formatDateBR(preview.starts_on)} até antes de {formatDateBR(preview.ends_on)}
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Renovação</span> ·{" "}
+              {formatDateBR(preview.ends_on)}
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Aulas</span> · {preview.lesson_count}{" "}
+              ({lessonSummary})
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Valor/aula</span> ·{" "}
+              {formatBRL(preview.unit_price_cents)}
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Subtotal</span> ·{" "}
+              {formatBRL(preview.subtotal_cents)}
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Ajuste</span> ·{" "}
+              {formatBRL(preview.adjustment_cents)}
+            </p>
+            <p className="text-base font-semibold">
+              Total · {formatBRL(preview.final_cents)}
+            </p>
+          </div>
+
+          <TextField
+            label="Desconto (R$) — opcional"
+            inputMode="decimal"
+            value={discountReais}
+            onChange={(e) => {
+              setDiscountReais(e.target.value);
+              setFinalReais("");
+            }}
+          />
+          <TextField
+            label="Ou valor final (R$) — opcional"
+            inputMode="decimal"
+            value={finalReais}
+            onChange={(e) => {
+              setFinalReais(e.target.value);
+              setDiscountReais("");
+            }}
+          />
+          <Button variant="secondary" fullWidth onClick={() => void loadPreview()}>
+            Recalcular valores
+          </Button>
+
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1 min-h-5 min-w-5"
+              checked={generate}
+              onChange={(e) => setGenerate(e.target.checked)}
+            />
+            <span>Adicionar estas aulas à Agenda</span>
+          </label>
+          {generate ? (
+            <div className="space-y-3">
+              <TextField
+                label="Horário"
+                type="time"
+                value={startsTime}
+                onChange={(e) => setStartsTime(e.target.value)}
+              />
+              <label className="block space-y-1.5">
+                <span className="text-sm font-medium">Local (opcional)</span>
+                <select
+                  className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                  value={locationId}
+                  onChange={(e) => setLocationId(e.target.value)}
+                >
+                  <option value="">Sem local</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          {error ? (
+            <p role="alert" className="text-sm text-[var(--color-danger)]">
+              {error}
+            </p>
+          ) : null}
+          {conflicts.length ? (
+            <ul className="text-sm text-[var(--color-danger)]">
+              {conflicts.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          ) : null}
+
+          <div className="flex gap-2">
+            <Button variant="secondary" fullWidth onClick={() => setStep(2)}>
+              Voltar
+            </Button>
+            <Button fullWidth disabled={saving} onClick={() => void confirm()}>
+              {saving ? "Salvando…" : "Confirmar ciclo"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {error && step !== 4 ? (
+        <p role="alert" className="text-sm text-[var(--color-danger)]">
+          {error}
         </p>
       ) : null}
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium">Cliente</span>
-          <select
-            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-            {...register("client_id")}
-          >
-            <option value="">Selecione</option>
-            {clients.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.full_name}
-              </option>
-            ))}
-          </select>
-          {errors.client_id ? (
-            <span className="text-sm text-[var(--color-danger)]">{errors.client_id.message}</span>
-          ) : null}
-        </label>
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium">Serviço</span>
-          <select
-            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-            {...register("service_id")}
-          >
-            <option value="">Selecione</option>
-            {services.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-          {errors.service_id ? (
-            <span className="text-sm text-[var(--color-danger)]">{errors.service_id.message}</span>
-          ) : null}
-        </label>
-        <TextField label="Início" type="date" error={errors.starts_on?.message} {...register("starts_on")} />
-        <TextField label="Fim" type="date" error={errors.ends_on?.message} {...register("ends_on")} />
-        <TextField label="Valor (R$)" inputMode="decimal" {...register("price_reais")} />
-        <label className="flex min-h-11 items-center gap-2 text-sm">
-          <input type="checkbox" {...register("create_receivable")} />
-          Criar recebimento pendente
-        </label>
-        {formError ? (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {formError}
-          </p>
-        ) : null}
-        <Button type="submit" fullWidth disabled={isSubmitting || !services.length}>
-          {isSubmitting ? "Criando…" : "Criar ciclo"}
-        </Button>
-      </form>
     </div>
   );
 }
@@ -172,7 +425,7 @@ function NewCycleForm() {
 export default function NewCyclePage() {
   return (
     <Suspense fallback={<p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>}>
-      <NewCycleForm />
+      <NewIntelligentCycleForm />
     </Suspense>
   );
 }

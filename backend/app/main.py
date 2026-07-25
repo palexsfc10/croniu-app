@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api import agenda as agenda_routes
 from app.api import auth as auth_routes
 from app.api import clients as clients_routes
+from app.api import cycle_intelligence as cycle_intelligence_routes
 from app.api import cycles as cycles_routes
 from app.api import health as health_routes
 from app.api import home as home_routes
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(home_routes.router, prefix="/api/v1")
     app.include_router(clients_routes.router, prefix="/api/v1")
     app.include_router(services_routes.router, prefix="/api/v1")
+    app.include_router(cycle_intelligence_routes.router, prefix="/api/v1")
     app.include_router(cycles_routes.router, prefix="/api/v1")
     app.include_router(receivables_routes.router, prefix="/api/v1")
     app.include_router(agenda_routes.router, prefix="/api/v1")

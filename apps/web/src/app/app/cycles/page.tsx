@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiFetch, type Cycle } from "@/lib/api";
+import { apiFetch, formatBRL, formatDateBR, type Cycle } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 
@@ -28,7 +28,7 @@ export default function CyclesPage() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="h-display text-3xl text-[var(--color-ink)]">Ciclos</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Pacotes e períodos contratados.</p>
+          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Contratos e períodos de aula.</p>
         </div>
         <Link href="/app/cycles/new">
           <Button>Novo</Button>
@@ -40,7 +40,10 @@ export default function CyclesPage() {
         </p>
       ) : null}
       {!items.length ? (
-        <EmptyState title="Nenhum ciclo" description="Crie um ciclo a partir de um cliente e serviço." />
+        <EmptyState
+          title="Nenhum ciclo"
+          description="Crie um ciclo a partir de cliente, serviço e modelo."
+        />
       ) : null}
       <ul className="space-y-2">
         {items.map((item) => (
@@ -49,9 +52,14 @@ export default function CyclesPage() {
               href={`/app/cycles/${item.id}`}
               className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
             >
-              <p className="font-semibold">{item.client_name}</p>
+              <p className="font-semibold text-[var(--color-ink)]">{item.client_name}</p>
               <p className="text-sm text-[var(--color-ink-muted)]">
-                {item.service_name} · {item.starts_on} → {item.ends_on}
+                {item.service_name} · {formatDateBR(item.starts_on)} → {formatDateBR(item.ends_on)}
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink)]">
+                {item.lesson_count != null ? `${item.lesson_count} aulas · ` : ""}
+                {formatBRL(item.value_cents)}
+                {item.is_legacy ? " · legado" : ""}
                 {item.is_nearing_end ? " · encerrando" : ""}
               </p>
             </Link>

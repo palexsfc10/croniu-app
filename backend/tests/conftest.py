@@ -28,6 +28,7 @@ from app.models import (  # noqa: F401
     Appointment,
     Client,
     Cycle,
+    CycleTemplate,
     Location,
     Membership,
     Organization,
@@ -79,7 +80,7 @@ def clean_tables():
         conn.execute(
             text(
                 "TRUNCATE TABLE appointments, locations, password_reset_tokens, "
-                "receivables, cycles, services, clients, "
+                "receivables, cycles, cycle_templates, services, clients, "
                 "admin_audit_logs, platform_sessions, platform_memberships, "
                 "sessions, memberships, users, organizations "
                 "RESTART IDENTITY CASCADE"

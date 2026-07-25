@@ -144,12 +144,14 @@ def create_service(
     description: str | None,
     default_duration_days: int,
     default_price_cents: int | None,
+    default_duration_minutes: int = 60,
 ) -> Service:
     service = Service(
         organization_id=organization_id,
         name=name.strip(),
         description=_normalize_optional_str(description),
         default_duration_days=default_duration_days,
+        default_duration_minutes=default_duration_minutes,
         default_price_cents=default_price_cents,
         status="active",
     )
@@ -167,7 +169,14 @@ def update_service(
     **fields: object,
 ) -> Service:
     service = get_service(db, organization_id=organization_id, service_id=service_id)
-    for key in ("name", "description", "default_duration_days", "default_price_cents", "status"):
+    for key in (
+        "name",
+        "description",
+        "default_duration_days",
+        "default_duration_minutes",
+        "default_price_cents",
+        "status",
+    ):
         if key in fields and fields[key] is not None:
             if key in {"name", "description", "status"}:
                 setattr(
@@ -196,15 +205,43 @@ def _cycle_out(cycle: Cycle, today: date | None = None) -> CycleOut:
     today = today or date.today()
     days_remaining = (cycle.ends_on - today).days
     is_nearing = cycle.status == "active" and 0 <= days_remaining <= NEARING_END_DAYS
+    duration_label = None
+    if cycle.duration_type and cycle.duration_value:
+        if cycle.duration_type == "calendar_months":
+            duration_label = (
+                "1 mês" if cycle.duration_value == 1 else f"{cycle.duration_value} meses"
+            )
+        elif cycle.duration_type == "fixed_days":
+            duration_label = (
+                "1 dia" if cycle.duration_value == 1 else f"{cycle.duration_value} dias"
+            )
     return CycleOut(
         id=cycle.id,
         client_id=cycle.client_id,
         service_id=cycle.service_id,
+        cycle_template_id=cycle.cycle_template_id,
         cycle_type=cycle.cycle_type,
         status=cycle.status,
         starts_on=cycle.starts_on,
         ends_on=cycle.ends_on,
+        weekdays=list(cycle.weekdays) if cycle.weekdays is not None else None,
+        lesson_count=cycle.lesson_count,
+        unit_price_cents=cycle.unit_price_cents,
+        subtotal_cents=cycle.subtotal_cents,
+        adjustment_cents=cycle.adjustment_cents,
         value_cents=cycle.value_cents,
+        lesson_duration_minutes=cycle.lesson_duration_minutes,
+        default_location_id=cycle.default_location_id,
+        default_starts_time=(
+            cycle.default_starts_time.isoformat(timespec="minutes")
+            if cycle.default_starts_time
+            else None
+        ),
+        duration_type=cycle.duration_type,
+        duration_value=cycle.duration_value,
+        weekly_frequency=cycle.weekly_frequency,
+        is_legacy=bool(cycle.is_legacy),
+        duration_label=duration_label,
         notes=cycle.notes,
         last_contacted_at=cycle.last_contacted_at,
         contact_confirmed_at=cycle.contact_confirmed_at,
@@ -283,6 +320,7 @@ def create_cycle(
         ends_on=ends_on,
         value_cents=amount,
         notes=_normalize_optional_str(notes),
+        is_legacy=True,
     )
     db.add(cycle)
     db.flush()

@@ -23,6 +23,7 @@ class Service(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     default_duration_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    default_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     default_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(

@@ -57,6 +57,7 @@ class ServiceCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     default_duration_days: int = Field(default=30, ge=1, le=730)
+    default_duration_minutes: int = Field(default=60, ge=15, le=480)
     default_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
 
 
@@ -64,6 +65,7 @@ class ServiceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     default_duration_days: int | None = Field(default=None, ge=1, le=730)
+    default_duration_minutes: int | None = Field(default=None, ge=15, le=480)
     default_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
     status: str | None = Field(default=None, pattern="^(active|archived)$")
 
@@ -75,6 +77,7 @@ class ServiceOut(BaseModel):
     name: str
     description: str | None
     default_duration_days: int
+    default_duration_minutes: int
     default_price_cents: int | None
     status: str
     created_at: datetime
@@ -104,11 +107,25 @@ class CycleOut(BaseModel):
     id: UUID
     client_id: UUID
     service_id: UUID
+    cycle_template_id: UUID | None = None
     cycle_type: str
     status: str
     starts_on: date
     ends_on: date
+    weekdays: list[int] | None = None
+    lesson_count: int | None = None
+    unit_price_cents: int | None = None
+    subtotal_cents: int | None = None
+    adjustment_cents: int | None = None
     value_cents: int | None
+    lesson_duration_minutes: int | None = None
+    default_location_id: UUID | None = None
+    default_starts_time: str | None = None
+    duration_type: str | None = None
+    duration_value: int | None = None
+    weekly_frequency: int | None = None
+    is_legacy: bool = True
+    duration_label: str | None = None
     notes: str | None
     last_contacted_at: datetime | None
     contact_confirmed_at: datetime | None

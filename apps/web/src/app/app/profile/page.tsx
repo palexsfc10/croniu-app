@@ -35,10 +35,16 @@ export default function ProfilePage() {
       </dl>
       <div className="space-y-2">
         <Link
-          href="/app/preferences"
+          href="/app/services"
           className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
         >
-          Preferências (fuso horário)
+          Serviços
+        </Link>
+        <Link
+          href="/app/cycle-templates"
+          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
+        >
+          Modelos de ciclo
         </Link>
         <Link
           href="/app/locations"
@@ -47,10 +53,10 @@ export default function ProfilePage() {
           Locais
         </Link>
         <Link
-          href="/app/services"
+          href="/app/preferences"
           className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
         >
-          Serviços e planos
+          Preferências (fuso horário)
         </Link>
       </div>
       <Button variant="secondary" fullWidth onClick={() => void logout()}>

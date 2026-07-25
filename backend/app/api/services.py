@@ -45,6 +45,7 @@ def create_service(
             name=payload.name,
             description=payload.description,
             default_duration_days=payload.default_duration_days,
+            default_duration_minutes=payload.default_duration_minutes,
             default_price_cents=payload.default_price_cents,
         )
     except AuthError as exc:

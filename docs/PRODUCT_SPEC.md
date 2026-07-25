@@ -267,12 +267,16 @@ Menor escopo · consentimento · tokens criptografados · revogação · descone
 | FR-AUTH-03 | `/me` sessão atual | `IMPLEMENTADO` | auth router | `test_auth` | Fundação | — |
 | FR-CLIENT-01 | Criar/listar clientes tenant | `IMPLEMENTADO` | clients API/UI | domain + E2E | 2A | — |
 | FR-CLIENT-02 | Arquivar cliente | `IMPLEMENTADO` | PATCH status | domain | 2A | edição completa UI |
-| FR-SERVICE-01 | Criar/listar serviços | `IMPLEMENTADO` | services | domain | 2A | UI edit |
-| FR-SERVICE-02 | Atualizar serviço | `PARCIAL` | PATCH API | parcial | 2A | UI |
+| FR-SERVICE-01 | Criar/listar serviços (valor/aula) | `IMPLEMENTADO` | services | domain + 2C | 2C | — |
+| FR-SERVICE-02 | Atualizar/arquivar serviço | `IMPLEMENTADO` | PATCH API + UI lista | 2C | — |
+| FR-SERVICE-03 | Duração padrão em minutos | `IMPLEMENTADO` | default_duration_minutes | 2C | — |
 | FR-CYCLE-01 | Ciclo mode=period | `IMPLEMENTADO` | cycles | domain + E2E | 2A | — |
 | FR-CYCLE-02 | Ciclo mode=session_count | `PLANEJADO` | — | — | futuro | decisão sprint |
 | FR-CYCLE-03 | Ciclo híbrido | `PLANEJADO` | — | — | futuro | — |
 | FR-CYCLE-04 | Pausar ciclo | `PLANEJADO` | — | — | futuro | docs antigos citavam |
+| FR-CYCLE-05 | Modelos de ciclo reutilizáveis | `IMPLEMENTADO` | cycle_templates | 2C | — |
+| FR-CYCLE-06 | Cálculo exato de aulas + financeiro | `IMPLEMENTADO` | cycle_calc + preview | 2C | — |
+| FR-CYCLE-07 | Geração opcional atômica na agenda | `IMPLEMENTADO` | intelligent create | 2C | sync edição pendente |
 | FR-RECEIVABLE-01 | Recebimento + mark-paid | `IMPLEMENTADO` | receivables | domain + E2E | 2A | Alvo vocab: `paid` (hoje `received`); `expected` divergente |
 | FR-RECEIVABLE-02 | Pagamento parcial | `FUTURO` | — | — | — | — |
 | FR-RECEIVABLE-03 | Vocabulário pending/paid/cancelled + overdue calc | `PLANEJADO` | docs ADR-021 | — | autorizada | Normalizar código |
