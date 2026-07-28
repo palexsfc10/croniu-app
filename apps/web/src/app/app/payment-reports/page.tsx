@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch, formatBRL } from "@/lib/api";
@@ -66,9 +67,7 @@ export default function PaymentReportsPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link href="/app" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Hoje
-      </Link>
+      <BackLink href="/app" label="Hoje" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Pagamentos informados</h1>
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">

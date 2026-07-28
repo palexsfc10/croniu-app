@@ -130,6 +130,7 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 | Compromisso único (`appointment`) | `IMPLEMENTADO` |
 | Cliente obrigatório | `IMPLEMENTADO` |
 | Status scheduled / completed / no_show / cancelled | `IMPLEMENTADO` |
+| Realizado / falta consome 1 aula do ciclo | `IMPLEMENTADO` (ADR-031) |
 | Intervalo half-open `[start, end)` | `IMPLEMENTADO` |
 | Conflito por sobreposição na org | `IMPLEMENTADO` (bloqueio 409) |
 | Override explícito de conflito | `PENDENTE_DE_DECISAO` |
@@ -150,7 +151,7 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 | Token opaco + hash / revogação / rotação | `IMPLEMENTADO` |
 | Renovação = interesse (sem criar ciclo) | `IMPLEMENTADO` |
 | Informe de pagamento ≠ mark-paid automático | `IMPLEMENTADO` |
-| Aulas previstas restantes (sem presença) | `IMPLEMENTADO` |
+| Aulas restantes (saldo = total − realizadas/faltas) | `IMPLEMENTADO` (ADR-031) |
 | Preferências Pix / link https | `IMPLEMENTADO` |
 
 ---

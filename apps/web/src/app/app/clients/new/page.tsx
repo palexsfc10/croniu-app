@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -53,9 +54,7 @@ export default function NewClientPage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <div>
-        <Link href="/app/clients" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-          Voltar
-        </Link>
+        <BackLink href="/app/clients" label="Clientes" />
         <h1 className="mt-2 h-display text-3xl text-[var(--color-ink)]">Novo cliente</h1>
       </div>
       <form onSubmit={onSubmit} className="space-y-4" noValidate>

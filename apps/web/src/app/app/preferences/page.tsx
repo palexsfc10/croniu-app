@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type OrgPreferences, type PaymentSettings } from "@/lib/api";
@@ -84,9 +85,7 @@ export default function PreferencesPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link href="/app/profile" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Mais
-      </Link>
+      <BackLink href="/app/profile" label="Mais" />
       <div>
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Preferências</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">

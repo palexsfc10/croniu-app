@@ -78,7 +78,7 @@ def create_intelligent_cycle(
         )
     except AuthError as exc:
         raise _http(exc) from exc
-    return domain_svc.cycle_to_out(cycle)
+    return domain_svc.cycle_to_out(db, cycle)
 
 
 @router.post("", response_model=CycleOut, status_code=status.HTTP_201_CREATED)
@@ -102,7 +102,7 @@ def create_cycle(
         )
     except AuthError as exc:
         raise _http(exc) from exc
-    return domain_svc.cycle_to_out(cycle)
+    return domain_svc.cycle_to_out(db, cycle)
 
 
 @router.patch("/{cycle_id}/intelligent", response_model=CycleOut)
@@ -121,7 +121,7 @@ def update_intelligent_cycle(
         )
     except AuthError as exc:
         raise _http(exc) from exc
-    return domain_svc.cycle_to_out(cycle)
+    return domain_svc.cycle_to_out(db, cycle)
 
 
 @router.patch("/{cycle_id}/financial", response_model=CycleOut)
@@ -140,7 +140,7 @@ def update_cycle_financial(
         )
     except AuthError as exc:
         raise _http(exc) from exc
-    return domain_svc.cycle_to_out(cycle)
+    return domain_svc.cycle_to_out(db, cycle)
 
 
 @router.get("/{cycle_id}", response_model=CycleOut)
@@ -153,7 +153,7 @@ def get_cycle(
         cycle = domain_svc.get_cycle(db, organization_id=auth.organization.id, cycle_id=cycle_id)
     except AuthError as exc:
         raise _http(exc) from exc
-    return domain_svc.cycle_to_out(cycle)
+    return domain_svc.cycle_to_out(db, cycle)
 
 
 @router.post("/{cycle_id}/whatsapp-prep", response_model=WhatsAppPrepOut)
@@ -186,3 +186,34 @@ def confirm_contact(
         )
     except AuthError as exc:
         raise _http(exc) from exc
+
+
+@router.post("/{cycle_id}/cancel", response_model=CycleOut)
+def cancel_cycle(
+    cycle_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> CycleOut:
+    try:
+        cycle = domain_svc.cancel_cycle(
+            db, organization_id=auth.organization.id, cycle_id=cycle_id
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return domain_svc.cycle_to_out(db, cycle)
+
+
+@router.delete("/{cycle_id}", response_model=CycleOut)
+def delete_cycle(
+    cycle_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> CycleOut:
+    """Alias de cancelamento (exclusão lógica)."""
+    try:
+        cycle = domain_svc.cancel_cycle(
+            db, organization_id=auth.organization.id, cycle_id=cycle_id
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return domain_svc.cycle_to_out(db, cycle)

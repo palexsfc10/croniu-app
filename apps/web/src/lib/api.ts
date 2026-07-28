@@ -81,6 +81,8 @@ export type Cycle = {
   ends_on: string;
   weekdays?: number[] | null;
   lesson_count?: number | null;
+  lessons_completed?: number;
+  lessons_remaining?: number | null;
   unit_price_cents?: number | null;
   subtotal_cents?: number | null;
   adjustment_cents?: number | null;
@@ -244,6 +246,7 @@ export type PublicMyCycle = {
     ends_on: string;
     renewal_on?: string | null;
     lesson_count?: number | null;
+    lessons_completed?: number;
     remaining_planned_lessons?: number | null;
     value_cents?: number | null;
     payment_status: string;
@@ -282,8 +285,24 @@ export function getApiBaseUrl() {
 
 async function parseError(response: Response): Promise<ApiError> {
   try {
-    const data = (await response.json()) as ApiError;
-    if (data?.code && data?.message) return data;
+    const data = (await response.json()) as {
+      code?: string;
+      message?: string;
+      details?: unknown;
+      detail?: string | { code?: string; message?: string; details?: unknown };
+    };
+    if (data?.code && data?.message) {
+      return { code: data.code, message: data.message, details: data.details };
+    }
+    if (data?.detail && typeof data.detail === "object") {
+      const detail = data.detail;
+      if (detail.code && detail.message) {
+        return { code: detail.code, message: detail.message, details: detail.details };
+      }
+    }
+    if (typeof data?.detail === "string" && data.detail.trim()) {
+      return { code: "http_error", message: data.detail };
+    }
   } catch {
     // fall through
   }

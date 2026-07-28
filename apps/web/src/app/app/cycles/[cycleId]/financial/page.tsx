@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { BackLink } from "@/components/app/back-link";
 
 type Mode = "discount" | "final";
 
@@ -122,12 +123,7 @@ export default function CycleFinancialEditPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link
-        href={`/app/cycles/${params.cycleId}`}
-        className="text-sm font-semibold text-[var(--color-ink-muted)]"
-      >
-        ← Ciclo
-      </Link>
+      <BackLink href={`/app/cycles/${params.cycleId}`} label="Ciclo" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Editar valores</h1>
 
       {cycle ? (

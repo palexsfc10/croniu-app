@@ -174,12 +174,13 @@ export default function PublicMyCyclePage() {
                 </section>
 
                 <section>
-                  <p className="text-sm text-[var(--color-ink-muted)]">Aulas previstas</p>
+                  <p className="text-sm text-[var(--color-ink-muted)]">Aulas</p>
                   <p className="text-base font-semibold">
-                    {data.cycle.lesson_count ?? "—"} no ciclo
-                    {data.cycle.remaining_planned_lessons != null
-                      ? ` · ${data.cycle.remaining_planned_lessons} previstas restantes`
+                    {data.cycle.lessons_completed ?? 0} realizadas
+                    {data.cycle.lesson_count != null
+                      ? ` · ${data.cycle.remaining_planned_lessons ?? data.cycle.lesson_count} restantes`
                       : ""}
+                    {data.cycle.lesson_count != null ? ` · ${data.cycle.lesson_count} no ciclo` : ""}
                   </p>
                 </section>
 

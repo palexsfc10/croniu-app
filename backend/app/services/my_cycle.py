@@ -39,7 +39,7 @@ from app.services import agenda as agenda_svc
 from app.services import domain as domain_svc
 from app.services import proof_storage
 from app.services.auth import AuthError
-from app.services.cycle_calc import compute_renewal_on, enumerate_lesson_dates
+from app.services.cycle_calc import compute_renewal_on
 
 logger = logging.getLogger("croniu.my_cycle")
 
@@ -297,19 +297,30 @@ def select_relevant_cycle(
     return None
 
 
-def remaining_planned_lessons(cycle: Cycle, *, today: date) -> int | None:
-    """Count planned lesson dates still ahead in [starts_on, ends_on) relative to org today.
-
-    Does not use attendance / appointment outcomes.
-    """
-    if not cycle.weekdays or cycle.lesson_count is None:
+def remaining_planned_lessons(
+    db: Session,
+    cycle: Cycle,
+    *,
+    organization_id: uuid.UUID,
+) -> int | None:
+    """Aulas restantes = total do ciclo − aulas encerradas (realizado ou falta)."""
+    if cycle.lesson_count is None:
         return None
-    dates = enumerate_lesson_dates(
-        starts_on=cycle.starts_on,
-        ends_on=cycle.ends_on,
-        weekdays=list(cycle.weekdays),
+    done = domain_svc.count_lessons_completed(
+        db, organization_id=organization_id, cycle_id=cycle.id
     )
-    return sum(1 for d in dates if d >= today)
+    return max(0, int(cycle.lesson_count) - int(done))
+
+
+def lessons_completed_for_cycle(
+    db: Session,
+    cycle: Cycle,
+    *,
+    organization_id: uuid.UUID,
+) -> int:
+    return domain_svc.count_lessons_completed(
+        db, organization_id=organization_id, cycle_id=cycle.id
+    )
 
 
 def _payment_status_label(cycle: Cycle) -> str:
@@ -453,7 +464,12 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         ends_on=cycle.ends_on,
         renewal_on=renewal_on,
         lesson_count=cycle.lesson_count,
-        remaining_planned_lessons=remaining_planned_lessons(cycle, today=today),
+        lessons_completed=lessons_completed_for_cycle(
+            db, cycle, organization_id=access.organization_id
+        ),
+        remaining_planned_lessons=remaining_planned_lessons(
+            db, cycle, organization_id=access.organization_id
+        ),
         value_cents=cycle.value_cents,
         payment_status=pay_status,
         renewal_request_status=renewal.status if renewal else None,

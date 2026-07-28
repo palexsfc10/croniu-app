@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch, type Client } from "@/lib/api";
@@ -27,6 +28,7 @@ export default function ClientsPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
+      <BackLink href="/app" label="Hoje" />
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="h-display text-3xl text-[var(--color-ink)]">Clientes</h1>

@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -76,9 +77,7 @@ export default function RenewalsPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link href="/app" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Hoje
-      </Link>
+      <BackLink href="/app" label="Hoje" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Renovações solicitadas</h1>
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">

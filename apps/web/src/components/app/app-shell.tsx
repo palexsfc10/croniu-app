@@ -43,9 +43,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <BrandWordmark size="sm" surface="light" compact />
             <p className="mt-0.5 truncate text-xs text-[var(--color-ink-muted)]">{me.organization.name}</p>
           </div>
-          <p className="max-w-[40%] truncate text-right text-sm text-[var(--color-ink-muted)]">
-            {me.user.full_name}
-          </p>
+          <div className="flex max-w-[55%] flex-col items-end gap-0.5">
+            <p className="truncate text-right text-sm text-[var(--color-ink-muted)]">
+              {me.user.full_name}
+            </p>
+            <Link
+              href="/app/manual"
+              className="text-xs font-semibold text-[var(--color-primary)]"
+            >
+              Manual
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -53,7 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav
         aria-label="Navegação principal"
-        className="fixed inset-x-0 bottom-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur"
+        className="app-bottom-nav fixed inset-x-0 bottom-0 border-t border-[var(--color-border)]/70 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
       >
         <div className="mx-auto flex max-w-lg items-center justify-between gap-1 px-1 py-2">
           {navItems.map((item) => {

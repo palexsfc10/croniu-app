@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch, type Location } from "@/lib/api";
@@ -44,9 +45,7 @@ export default function LocationsPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link href="/app/profile" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Mais
-      </Link>
+      <BackLink href="/app/profile" label="Mais" />
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="h-display text-3xl text-[var(--color-ink)]">Locais</h1>

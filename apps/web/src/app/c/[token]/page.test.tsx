@@ -32,6 +32,7 @@ describe("Public Meu Ciclo page", () => {
             ends_on: "2026-09-01",
             lesson_count: 8,
             remaining_planned_lessons: 3,
+            lessons_completed: 5,
             value_cents: 72000,
             payment_status: "pendente",
           },

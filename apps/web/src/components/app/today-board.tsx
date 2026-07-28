@@ -1,9 +1,19 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import type { Appointment, Cycle, HomeSummary, PriorityAction, Receivable } from "@/lib/api";
 import { appointmentStatusLabel, formatBRL, formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { ContextualBar } from "@/components/app/contextual-bar";
+import { useAuth } from "@/components/auth/auth-provider";
+import {
+  firstName,
+  formatDateAndTime,
+  greetingForHour,
+  hourInTimeZone,
+} from "@/lib/greeting";
 
 type Props = {
   summary: HomeSummary;
@@ -141,6 +151,20 @@ function PaymentList({ items }: { items: Receivable[] }) {
 }
 
 export function TodayBoard({ summary }: Props) {
+  const { me } = useAuth();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const hour = hourInTimeZone(now, summary.timezone);
+  const greeting = greetingForHour(hour);
+  const name = firstName(me?.user.full_name);
+  const headline = name ? `${greeting}, ${name}` : greeting;
+  const when = formatDateAndTime(now, summary.timezone);
+
   return (
     <div className="space-y-4 animate-fade-up">
       <ContextualBar
@@ -148,10 +172,8 @@ export function TodayBoard({ summary }: Props) {
         href={summary.priority_action?.href ?? null}
       />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Hoje</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Fuso {summary.timezone} · {summary.local_today}
-        </p>
+        <h1 className="h-display text-3xl text-[var(--color-ink)]">{headline}</h1>
+        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">{when}</p>
       </div>
       {summary.contextual_hint ? (
         <p

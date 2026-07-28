@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch, type Client, type ClientAccess } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ContextualBar } from "@/components/app/contextual-bar";
+import { BackLink } from "@/components/app/back-link";
 import { TextField } from "@/components/ui/text-field";
 
 export default function ClientDetailPage() {
@@ -116,9 +117,7 @@ export default function ClientDetailPage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <ContextualBar label={item ? `Cliente · ${item.full_name}` : null} />
-      <Link href="/app/clients" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        Voltar
-      </Link>
+      <BackLink href="/app/clients" label="Clientes" />
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}
@@ -170,13 +169,8 @@ export default function ClientDetailPage() {
                   Copiar link
                 </Button>
                 {rawToken ? (
-                  <a
-                    className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm font-semibold"
-                    href={`/c/${rawToken}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Abrir
+                  <a href={`/c/${rawToken}`} target="_blank" rel="noopener noreferrer" className="block">
+                    <Button fullWidth>Abrir</Button>
                   </a>
                 ) : null}
                 {rawToken || waMessage ? (
@@ -201,14 +195,16 @@ export default function ClientDetailPage() {
             )}
           </section>
 
-          <Link href={`/app/cycles/new?clientId=${item.id}`}>
-            <Button fullWidth>Criar ciclo</Button>
-          </Link>
-          {item.status === "active" ? (
-            <Button variant="secondary" fullWidth onClick={() => void archive()}>
-              Arquivar cliente
-            </Button>
-          ) : null}
+          <div className="flex flex-col gap-3 pb-2">
+            <Link href={`/app/cycles/new?clientId=${item.id}`} className="block">
+              <Button fullWidth>Criar ciclo</Button>
+            </Link>
+            {item.status === "active" ? (
+              <Button fullWidth onClick={() => void archive()}>
+                Arquivar cliente
+              </Button>
+            ) : null}
+          </div>
         </>
       ) : (
         <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>

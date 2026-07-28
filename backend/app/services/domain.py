@@ -8,6 +8,7 @@ from urllib.parse import quote
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.models.appointment import Appointment
 from app.models.client import Client
 from app.models.cycle import Cycle
 from app.models.receivable import Receivable
@@ -200,8 +201,50 @@ def update_service(
 
 # --- Cycles ------------------------------------------------------------------
 
+LESSON_CONSUMED_STATUSES = frozenset({"completed", "no_show"})
 
-def _cycle_out(cycle: Cycle, today: date | None = None) -> CycleOut:
+
+def count_lessons_completed(
+    db: Session, *, organization_id: uuid.UUID, cycle_id: uuid.UUID
+) -> int:
+    """Aulas encerradas no ciclo: realizado ou falta (consomem 1 do saldo)."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(Appointment)
+            .where(
+                Appointment.organization_id == organization_id,
+                Appointment.cycle_id == cycle_id,
+                Appointment.status.in_(tuple(LESSON_CONSUMED_STATUSES)),
+            )
+        )
+        or 0
+    )
+
+
+def map_lessons_completed(
+    db: Session, *, organization_id: uuid.UUID, cycle_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    if not cycle_ids:
+        return {}
+    rows = db.execute(
+        select(Appointment.cycle_id, func.count())
+        .where(
+            Appointment.organization_id == organization_id,
+            Appointment.cycle_id.in_(cycle_ids),
+            Appointment.status.in_(tuple(LESSON_CONSUMED_STATUSES)),
+        )
+        .group_by(Appointment.cycle_id)
+    ).all()
+    return {cycle_id: int(count) for cycle_id, count in rows if cycle_id is not None}
+
+
+def _cycle_out(
+    cycle: Cycle,
+    today: date | None = None,
+    *,
+    lessons_completed: int = 0,
+) -> CycleOut:
     today = today or date.today()
     days_remaining = (cycle.ends_on - today).days
     is_nearing = cycle.status == "active" and 0 <= days_remaining <= NEARING_END_DAYS
@@ -215,6 +258,9 @@ def _cycle_out(cycle: Cycle, today: date | None = None) -> CycleOut:
             duration_label = (
                 "1 dia" if cycle.duration_value == 1 else f"{cycle.duration_value} dias"
             )
+    lessons_remaining = None
+    if cycle.lesson_count is not None:
+        lessons_remaining = max(0, int(cycle.lesson_count) - int(lessons_completed))
     return CycleOut(
         id=cycle.id,
         client_id=cycle.client_id,
@@ -226,6 +272,8 @@ def _cycle_out(cycle: Cycle, today: date | None = None) -> CycleOut:
         ends_on=cycle.ends_on,
         weekdays=list(cycle.weekdays) if cycle.weekdays is not None else None,
         lesson_count=cycle.lesson_count,
+        lessons_completed=int(lessons_completed),
+        lessons_remaining=lessons_remaining,
         unit_price_cents=cycle.unit_price_cents,
         subtotal_cents=cycle.subtotal_cents,
         adjustment_cents=cycle.adjustment_cents,
@@ -270,8 +318,13 @@ def list_cycles(
         query = query.where(Cycle.status == status)
     if client_id:
         query = query.where(Cycle.client_id == client_id)
-    rows = db.scalars(query.order_by(Cycle.ends_on.asc())).all()
-    return [_cycle_out(row) for row in rows]
+    rows = list(db.scalars(query.order_by(Cycle.ends_on.asc())).all())
+    completed_map = map_lessons_completed(
+        db, organization_id=organization_id, cycle_ids=[row.id for row in rows]
+    )
+    return [
+        _cycle_out(row, lessons_completed=completed_map.get(row.id, 0)) for row in rows
+    ]
 
 
 def get_cycle(db: Session, *, organization_id: uuid.UUID, cycle_id: uuid.UUID) -> Cycle:
@@ -384,7 +437,47 @@ def confirm_cycle_contact(
     db.add(cycle)
     db.commit()
     db.refresh(cycle)
-    return _cycle_out(cycle)
+    return cycle_to_out(db, cycle)
+
+
+def cancel_cycle(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    cycle_id: uuid.UUID,
+) -> Cycle:
+    """Soft-delete: marks the cycle cancelled; cancels open agenda/receivables."""
+    cycle = get_cycle(db, organization_id=organization_id, cycle_id=cycle_id)
+    if cycle.status == "cancelled":
+        return cycle
+    if cycle.status not in {"active", "ended"}:
+        raise AuthError(
+            "invalid_status",
+            "Só é possível excluir ciclos ativos ou encerrados.",
+            422,
+        )
+
+    cycle.status = "cancelled"
+
+    appointments = db.scalars(
+        select(Appointment).where(
+            Appointment.organization_id == organization_id,
+            Appointment.cycle_id == cycle.id,
+            Appointment.status == "scheduled",
+        )
+    ).all()
+    for appointment in appointments:
+        appointment.status = "cancelled"
+        db.add(appointment)
+
+    for receivable in cycle.receivables:
+        if receivable.status in {"pending", "expected"}:
+            receivable.status = "cancelled"
+            db.add(receivable)
+
+    db.add(cycle)
+    db.commit()
+    return get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
 
 
 # --- Receivables -------------------------------------------------------------
@@ -508,18 +601,26 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     today_appts = agenda_svc.list_today_appointments(db, organization_id=organization_id)
     next_appt = agenda_svc.next_upcoming_appointment(db, organization_id=organization_id, now=now)
 
-    nearing_rows = db.scalars(
-        select(Cycle)
-        .where(
-            Cycle.organization_id == organization_id,
-            Cycle.status == "active",
-            Cycle.ends_on >= today,
-            Cycle.ends_on <= horizon,
-        )
-        .options(selectinload(Cycle.client), selectinload(Cycle.service))
-        .order_by(Cycle.ends_on.asc())
-    ).all()
-    nearing = [_cycle_out(row, today) for row in nearing_rows]
+    nearing_rows = list(
+        db.scalars(
+            select(Cycle)
+            .where(
+                Cycle.organization_id == organization_id,
+                Cycle.status == "active",
+                Cycle.ends_on >= today,
+                Cycle.ends_on <= horizon,
+            )
+            .options(selectinload(Cycle.client), selectinload(Cycle.service))
+            .order_by(Cycle.ends_on.asc())
+        ).all()
+    )
+    completed_map = map_lessons_completed(
+        db, organization_id=organization_id, cycle_ids=[row.id for row in nearing_rows]
+    )
+    nearing = [
+        _cycle_out(row, today, lessons_completed=completed_map.get(row.id, 0))
+        for row in nearing_rows
+    ]
 
     renewals = [item for item in nearing if item.contact_confirmed_at is None]
 
@@ -707,8 +808,11 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     )
 
 
-def cycle_to_out(cycle: Cycle, today: date | None = None) -> CycleOut:
-    return _cycle_out(cycle, today)
+def cycle_to_out(db: Session, cycle: Cycle, today: date | None = None) -> CycleOut:
+    completed = count_lessons_completed(
+        db, organization_id=cycle.organization_id, cycle_id=cycle.id
+    )
+    return _cycle_out(cycle, today, lessons_completed=completed)
 
 
 def receivable_to_out(row: Receivable) -> ReceivableOut:

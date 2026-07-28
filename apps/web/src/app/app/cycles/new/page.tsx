@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -181,9 +182,7 @@ function NewIntelligentCycleForm() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link href="/app/cycles" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Ciclos
-      </Link>
+      <BackLink href="/app/cycles" label="Ciclos" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo ciclo</h1>
       <p className="text-sm text-[var(--color-ink-muted)]">Passo {step} de 4</p>
 

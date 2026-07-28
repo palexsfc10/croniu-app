@@ -451,15 +451,24 @@ def update_intelligent_cycle(
 ) -> Cycle:
     """Contractual/financial update. Does not modify existing appointments (ADR-024)."""
     cycle = domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle_id)
-    if cycle.is_legacy:
-        raise AuthError(
-            "legacy_cycle",
-            "Ciclo legado: edite apenas observações ou crie um novo ciclo inteligente.",
-            422,
-        )
-
     fields = payload.model_dump(exclude_unset=True)
     _reject_snapshot_mutation(fields)
+
+    if cycle.is_legacy:
+        # Legacy: notes only — structural/financial edits require a new intelligent cycle.
+        allowed = set(fields.keys()) <= {"notes"}
+        if not allowed:
+            raise AuthError(
+                "legacy_cycle",
+                "Ciclo legado: edite apenas observações ou crie um novo ciclo inteligente.",
+                422,
+            )
+        if "notes" in fields:
+            cycle.notes = domain_svc._normalize_optional_str(fields["notes"])
+            db.add(cycle)
+            db.commit()
+        return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
+
     # Shared policy: paid cycles cannot change financial outcome via any route.
     _guard_financial_outcome_mutation(cycle, fields)
 

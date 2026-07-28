@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -65,9 +66,7 @@ export default function LocationDetailPage() {
 
   return (
     <form onSubmit={save} className="space-y-4 animate-fade-up">
-      <Link href="/app/locations" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Locais
-      </Link>
+      <BackLink href="/app/locations" label="Locais" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Editar local</h1>
       {item ? (
         <>

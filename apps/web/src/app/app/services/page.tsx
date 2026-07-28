@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch, formatBRL, type Service } from "@/lib/api";
@@ -25,9 +26,7 @@ export default function ServicesPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link href="/app/profile" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Mais
-      </Link>
+      <BackLink href="/app/profile" label="Mais" />
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="h-display text-3xl text-[var(--color-ink)]">Serviços</h1>
@@ -47,14 +46,16 @@ export default function ServicesPage() {
       ) : null}
       <ul className="space-y-2">
         {items.map((item) => (
-          <li
-            key={item.id}
-            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
-          >
-            <p className="font-semibold text-[var(--color-ink)]">{item.name}</p>
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              {formatBRL(item.default_price_cents)} / aula · {item.default_duration_minutes} min
-            </p>
+          <li key={item.id}>
+            <Link
+              href={`/app/services/${item.id}`}
+              className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+            >
+              <p className="font-semibold text-[var(--color-ink)]">{item.name}</p>
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                {formatBRL(item.default_price_cents)} / aula · {item.default_duration_minutes} min
+              </p>
+            </Link>
           </li>
         ))}
       </ul>

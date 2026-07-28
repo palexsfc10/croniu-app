@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -43,9 +44,7 @@ export default function NewLocationPage() {
 
   return (
     <form onSubmit={submit} className="space-y-4 animate-fade-up">
-      <Link href="/app/locations" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Locais
-      </Link>
+      <BackLink href="/app/locations" label="Locais" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo local</h1>
       <TextField label="Nome" value={name} onChange={(e) => setName(e.target.value)} required />
       <TextField label="Endereço" value={address} onChange={(e) => setAddress(e.target.value)} />

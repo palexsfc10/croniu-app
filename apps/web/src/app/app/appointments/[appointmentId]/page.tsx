@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -93,7 +94,7 @@ export default function AppointmentDetailPage() {
       }
       return;
     }
-    setItem(result.data ?? item);
+    router.replace("/app");
   }
 
   async function setStatus(status: string) {
@@ -107,9 +108,10 @@ export default function AppointmentDetailPage() {
       setError(result.error.message);
       return;
     }
-    setItem(result.data ?? item);
-    if (status === "cancelled") router.replace("/app/agenda");
+    router.replace("/app");
   }
+
+  const closed = item?.status === "completed" || item?.status === "no_show";
 
   if (!item && !error) {
     return <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>;
@@ -126,13 +128,24 @@ export default function AppointmentDetailPage() {
             : null
         }
       />
-      <Link href="/app/agenda" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Agenda
-      </Link>
+      <BackLink href="/app/agenda" label="Agenda" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Compromisso</h1>
       {item ? (
         <p className="text-sm text-[var(--color-ink-muted)]">
           Status: {appointmentStatusLabel(item.status)}
+        </p>
+      ) : null}
+      {closed ? (
+        <p
+          role="status"
+          className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
+        >
+          Aula encerrada
+          {item?.status === "completed" ? " (realizada)" : " (falta)"}
+          {item?.cycle_id
+            ? " · contabilizada no ciclo do cliente"
+            : " · sem ciclo vinculado para contabilizar"}
+          .
         </p>
       ) : null}
 

@@ -1,20 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiFetch, type CycleTemplate } from "@/lib/api";
+import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 
 export default function NewCycleTemplatePage() {
   const router = useRouter();
   const [name, setName] = useState("2x por semana — mensal");
-  const [weeklyFrequency, setWeeklyFrequency] = useState(2);
+  const [weeklyFrequency, setWeeklyFrequency] = useState("2");
   const [durationType, setDurationType] = useState<"calendar_months" | "fixed_days">(
     "calendar_months",
   );
-  const [durationValue, setDurationValue] = useState(1);
+  const [durationValue, setDurationValue] = useState("1");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -22,13 +22,27 @@ export default function NewCycleTemplatePage() {
     e.preventDefault();
     setSaving(true);
     setError(null);
+
+    const frequency = Number.parseInt(weeklyFrequency.trim(), 10);
+    const duration = Number.parseInt(durationValue.trim(), 10);
+    if (!Number.isFinite(frequency) || frequency < 1 || frequency > 7) {
+      setSaving(false);
+      setError("Informe a frequência semanal entre 1 e 7 aulas.");
+      return;
+    }
+    if (!Number.isFinite(duration) || duration < 1 || duration > 730) {
+      setSaving(false);
+      setError("Informe uma duração válida (1 a 730).");
+      return;
+    }
+
     const result = await apiFetch<CycleTemplate>("/api/v1/cycle-templates", {
       method: "POST",
       body: JSON.stringify({
         name,
-        weekly_frequency: weeklyFrequency,
+        weekly_frequency: frequency,
         duration_type: durationType,
-        duration_value: durationValue,
+        duration_value: duration,
       }),
     });
     setSaving(false);
@@ -41,20 +55,16 @@ export default function NewCycleTemplatePage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link
-        href="/app/cycle-templates"
-        className="text-sm font-semibold text-[var(--color-ink-muted)]"
-      >
-        ← Modelos
-      </Link>
+      <BackLink href="/app/cycle-templates" label="Modelos" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo modelo</h1>
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <TextField label="Nome" value={name} onChange={(e) => setName(e.target.value)} required />
         <TextField
           label="Frequência semanal (aulas/semana)"
-          type="number"
-          value={String(weeklyFrequency)}
-          onChange={(e) => setWeeklyFrequency(Number(e.target.value) || 1)}
+          inputMode="numeric"
+          autoComplete="off"
+          value={weeklyFrequency}
+          onChange={(e) => setWeeklyFrequency(e.target.value)}
           required
         />
         <label className="block space-y-1.5">
@@ -72,9 +82,10 @@ export default function NewCycleTemplatePage() {
         </label>
         <TextField
           label={durationType === "calendar_months" ? "Quantidade de meses" : "Quantidade de dias"}
-          type="number"
-          value={String(durationValue)}
-          onChange={(e) => setDurationValue(Number(e.target.value) || 1)}
+          inputMode="numeric"
+          autoComplete="off"
+          value={durationValue}
+          onChange={(e) => setDurationValue(e.target.value)}
           required
         />
         <p className="text-sm text-[var(--color-ink-muted)]">

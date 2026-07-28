@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
+      <BackLink href="/app" label="Hoje" />
       <div>
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Mais</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Conta, preferências e cadastros.</p>

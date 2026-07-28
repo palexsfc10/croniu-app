@@ -12,6 +12,18 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => ({
+    loading: false,
+    me: {
+      user: { id: "1", email: "a@b.com", full_name: "Ana Pro", created_at: "" },
+      organization: { id: "1", name: "Studio", timezone: "America/Sao_Paulo" },
+      role: "owner",
+    },
+    logout: vi.fn(),
+  }),
+}));
+
 const emptySummary: HomeSummary = {
   organization_id: "00000000-0000-0000-0000-000000000001",
   timezone: "America/Sao_Paulo",
@@ -81,7 +93,10 @@ describe("UI fundamentals", () => {
         }}
       />,
     );
-    expect(screen.getByRole("heading", { name: "Hoje" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      /Bom dia, Ana|Boa tarde, Ana|Boa noite, Ana/,
+    );
+    expect(screen.getByText(/\d{2}\/\d{2}\/\d{4}\s·\s\d{2}:\d{2}/)).toBeInTheDocument();
     expect(screen.getAllByText("Conversar com Ana").length).toBeGreaterThan(0);
     expect(screen.getByText("1 ciclo(s) encerrando")).toBeInTheDocument();
   });

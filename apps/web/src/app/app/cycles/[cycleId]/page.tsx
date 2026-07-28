@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   apiFetch,
@@ -12,9 +12,11 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ContextualBar } from "@/components/app/contextual-bar";
+import { BackLink } from "@/components/app/back-link";
 
 export default function CycleDetailPage() {
   const params = useParams<{ cycleId: string }>();
+  const router = useRouter();
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [prep, setPrep] = useState<WhatsAppPrep | null>(null);
   const [receivables, setReceivables] = useState<Receivable[]>([]);
@@ -77,14 +79,30 @@ export default function CycleDetailPage() {
     setCycle(result.data ?? null);
   }
 
+  async function cancelCycle() {
+    const ok = window.confirm(
+      "Excluir este ciclo? Ele será cancelado; aulas agendadas e recebimentos em aberto também.",
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    const result = await apiFetch<Cycle>(`/api/v1/cycles/${params.cycleId}/cancel`, {
+      method: "POST",
+    });
+    setBusy(false);
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    router.replace("/app/cycles");
+  }
+
   return (
     <div className="space-y-4 animate-fade-up">
       <ContextualBar
         label={cycle ? `Ciclo · ${cycle.client_name} · ${cycle.service_name}` : null}
       />
-      <Link href="/app/cycles" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        Voltar
-      </Link>
+      <BackLink href="/app/cycles" label="Ciclos" />
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}
@@ -99,7 +117,9 @@ export default function CycleDetailPage() {
           </p>
           {cycle.lesson_count != null ? (
             <p className="text-sm">
-              {cycle.lesson_count} aulas · {formatBRL(cycle.unit_price_cents)} / aula
+              {cycle.lessons_completed ?? 0} realizadas · {cycle.lessons_remaining ?? cycle.lesson_count}{" "}
+              restantes · {cycle.lesson_count} no ciclo
+              {cycle.unit_price_cents != null ? ` · ${formatBRL(cycle.unit_price_cents)} / aula` : ""}
             </p>
           ) : null}
           {cycle.subtotal_cents != null ? (
@@ -111,18 +131,26 @@ export default function CycleDetailPage() {
             </p>
           ) : null}
           <p className="text-sm font-semibold">Total: {formatBRL(cycle.value_cents)}</p>
-          {!cycle.is_legacy ? (
-            <>
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                Esta edição financeira não altera compromissos da Agenda.
-              </p>
-              <Link href={`/app/cycles/${cycle.id}/financial`}>
-                <Button fullWidth variant="secondary">
-                  Editar valores
-                </Button>
+          <p className="text-sm text-[var(--color-ink-muted)]">Status: {cycle.status}</p>
+          {cycle.status !== "cancelled" ? (
+            <div className="space-y-2">
+              <Link href={`/app/cycles/${cycle.id}/edit`} className="block">
+                <Button fullWidth>Editar ciclo</Button>
               </Link>
-            </>
-          ) : null}
+              {!cycle.is_legacy ? (
+                <Link href={`/app/cycles/${cycle.id}/financial`} className="block">
+                  <Button fullWidth>Editar valores</Button>
+                </Link>
+              ) : null}
+              <Button fullWidth disabled={busy} onClick={() => void cancelCycle()}>
+                Excluir ciclo
+              </Button>
+            </div>
+          ) : (
+            <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
+              Este ciclo foi excluído (cancelado).
+            </p>
+          )}
           {cycle.is_nearing_end ? (
             <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
               Ciclo encerrando{cycle.days_remaining != null ? ` em ${cycle.days_remaining} dia(s)` : ""}.

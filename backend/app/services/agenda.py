@@ -431,6 +431,27 @@ def create_appointment(
     return _load_appointment(db, organization_id=organization_id, appointment_id=row.id)
 
 
+def _active_cycle_for_appointment(db: Session, row: Appointment) -> Cycle | None:
+    """Vincula aula avulsa ao ciclo ativo do cliente na data do compromisso, se houver um."""
+    org = get_organization(db, row.organization_id)
+    tz_name = get_org_timezone(org)
+    local_day = row.starts_at.astimezone(ZoneInfo(tz_name)).date()
+    matches = list(
+        db.scalars(
+            select(Cycle).where(
+                Cycle.organization_id == row.organization_id,
+                Cycle.client_id == row.client_id,
+                Cycle.status == "active",
+                Cycle.starts_on <= local_day,
+                Cycle.ends_on > local_day,
+            )
+        ).all()
+    )
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 def update_appointment(
     db: Session,
     *,
@@ -483,6 +504,13 @@ def update_appointment(
         row.notes = _normalize_optional(fields["notes"])
     if "status" in fields and fields["status"] is not None:
         row.status = fields["status"]
+
+    # Realizado / falta encerra a aula e consome 1 do saldo do ciclo do cliente.
+    if row.status in {"completed", "no_show"}:
+        if row.cycle_id is None:
+            linked = _active_cycle_for_appointment(db, row)
+            if linked is not None:
+                row.cycle_id = linked.id
 
     db.add(row)
     db.commit()

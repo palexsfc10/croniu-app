@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -46,9 +47,7 @@ export default function NewServicePage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link href="/app/services" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        ← Serviços
-      </Link>
+      <BackLink href="/app/services" label="Serviços" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo serviço</h1>
       <p className="text-sm text-[var(--color-ink-muted)]">
         O preço é por aula. Alterar depois não muda ciclos já criados.

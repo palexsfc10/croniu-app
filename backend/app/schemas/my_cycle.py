@@ -105,6 +105,7 @@ class PublicCycleBlock(BaseModel):
     ends_on: date
     renewal_on: date | None = None
     lesson_count: int | None = None
+    lessons_completed: int = 0
     remaining_planned_lessons: int | None = None
     value_cents: int | None = None
     payment_status: str

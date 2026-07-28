@@ -1,5 +1,6 @@
 "use client";
 
+import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -49,9 +50,7 @@ export default function ReceivableDetailPage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <ContextualBar label={item ? `Recebimento · ${item.client_name}` : null} />
-      <Link href="/app" className="text-sm font-semibold text-[var(--color-ink-muted)]">
-        Voltar ao Hoje
-      </Link>
+      <BackLink href="/app" label="Hoje" />
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}

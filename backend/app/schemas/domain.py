@@ -114,6 +114,8 @@ class CycleOut(BaseModel):
     ends_on: date
     weekdays: list[int] | None = None
     lesson_count: int | None = None
+    lessons_completed: int = 0
+    lessons_remaining: int | None = None
     unit_price_cents: int | None = None
     subtotal_cents: int | None = None
     adjustment_cents: int | None = None

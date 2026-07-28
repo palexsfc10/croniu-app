@@ -83,9 +83,17 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 
 | | |
 |--|--|
-| Status | Aceito |
+| Status | **Supersedido** por ADR-031 |
 | Data | 2026-07-24 |
 | Decisão | Contagem de datas enumeradas do ciclo com `date >= hoje_org` em `[starts_on, ends_on)`; sem usar presença/cancelamento de compromissos |
+
+## ADR-031 — Aulas realizadas / restantes por presença
+
+| | |
+|--|--|
+| Status | Aceito |
+| Data | 2026-07-25 |
+| Decisão | Compromisso `completed` ou `no_show` encerra a aula e consome 1 do saldo do ciclo (`lessons_completed` / `lessons_remaining = lesson_count − completed`). `cancelled` não consome. Se o compromisso não tiver `cycle_id`, vincula ao único ciclo ativo do cliente na data da aula. |
 
 ## ADR-007 — Monorepositório
 
