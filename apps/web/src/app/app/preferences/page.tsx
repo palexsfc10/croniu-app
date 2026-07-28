@@ -1,7 +1,6 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type OrgPreferences, type PaymentSettings } from "@/lib/api";
 import { Button } from "@/components/ui/button";

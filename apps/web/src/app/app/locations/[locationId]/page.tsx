@@ -1,7 +1,6 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, type Location } from "@/lib/api";
