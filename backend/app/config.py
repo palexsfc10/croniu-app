@@ -11,6 +11,7 @@ class Settings(BaseSettings):
         env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     croniu_env: str = Field(default="development", alias="CRONIU_ENV")
@@ -46,6 +47,23 @@ class Settings(BaseSettings):
     )
     public_rate_limit_per_minute: int = Field(default=60, alias="PUBLIC_RATE_LIMIT_PER_MINUTE")
     max_proof_bytes: int = Field(default=5_242_880, alias="MAX_PROOF_BYTES")
+
+    # Agent / LLM — disabled by default; never commit real keys
+    ai_enabled: bool = Field(default=False, alias="AI_ENABLED")
+    llm_provider: str = Field(default="fake", alias="LLM_PROVIDER")
+    llm_model: str = Field(default="gpt-4.1-mini", alias="LLM_MODEL")
+    llm_api_key: str | None = Field(default=None, alias="LLM_API_KEY")
+    llm_api_base: str = Field(
+        default="https://api.openai.com/v1",
+        alias="LLM_API_BASE",
+    )
+    llm_timeout_seconds: float = Field(default=30.0, alias="LLM_TIMEOUT_SECONDS")
+    llm_max_tool_steps: int = Field(default=4, alias="LLM_MAX_TOOL_STEPS")
+    llm_max_input_chars: int = Field(default=4000, alias="LLM_MAX_INPUT_CHARS")
+    ai_rate_limit_per_hour: int = Field(default=60, alias="AI_RATE_LIMIT_PER_HOUR")
+    ai_pending_action_ttl_minutes: int = Field(default=15, alias="AI_PENDING_ACTION_TTL_MINUTES")
+    llm_input_token_cost_per_1k: float = Field(default=0.0, alias="LLM_INPUT_TOKEN_COST_PER_1K")
+    llm_output_token_cost_per_1k: float = Field(default=0.0, alias="LLM_OUTPUT_TOKEN_COST_PER_1K")
 
     @field_validator("secret_key")
     @classmethod
