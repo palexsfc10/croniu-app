@@ -26,11 +26,11 @@ Instruções operacionais para agentes de IA. Detalhes: `docs/`.
 
 ## Sprint autorizada
 
-**Sprint 2D — Meu Ciclo, renovação e pagamento manual** em andamento/entregue na branch `feature/sprint-2d-my-cycle-renewal`.  
-Spec: `docs/sprints/SPRINT_2D_MY_CYCLE_RENEWAL.md`. Relatório: `docs/reports/SPRINT_2D_REPORT.md`.  
-SHA-base (2C.1): `3ee9248cdfd8c577aa7453c90ade250f8509c32b`.
+**Sprint — Avaliações do cliente e fundação do agente LLM** autorizada na branch `feature/client-evaluations-and-agent-foundation`.  
+Spec: `docs/sprints/SPRINT_CLIENT_EVALS_AND_AGENT.md`.  
+SHA-base: `dcc1e664d0759e9a76da5a4a86449e19b1343aab` (contém 2D `2b17a30`).
 
-Não iniciar gateway, GCal, WhatsApp API ou itens fora do escopo sem nova autorização.
+Sprint 2D permanece entregue. Não iniciar gateway, GCal, WhatsApp API, deploy, Jarvis ou produção sem nova autorização.
 
 ## Commits / PR
 
