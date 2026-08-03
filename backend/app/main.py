@@ -82,11 +82,15 @@ def create_app() -> FastAPI:
     app.include_router(cycles_routes.router, prefix="/api/v1")
     app.include_router(receivables_routes.router, prefix="/api/v1")
     app.include_router(agenda_routes.router, prefix="/api/v1")
+    from app.api import agent as agent_routes
+    from app.api import evaluations as evaluations_routes
     from app.api import my_cycle as my_cycle_routes
     from app.api import public_my_cycle as public_my_cycle_routes
 
     app.include_router(my_cycle_routes.router, prefix="/api/v1")
     app.include_router(public_my_cycle_routes.router, prefix="/api/v1")
+    app.include_router(evaluations_routes.router, prefix="/api/v1")
+    app.include_router(agent_routes.router, prefix="/api/v1")
     app.include_router(platform_routes.router, prefix="/api/v1")
     return app
 

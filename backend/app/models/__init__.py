@@ -1,7 +1,9 @@
 from app.db import Base
 from app.models.admin_audit_log import AdminAuditLog
+from app.models.agent import AgentAuditLog, AgentPendingAction
 from app.models.appointment import Appointment
 from app.models.client import Client
+from app.models.client_evaluation import ClientEvaluation, ClientEvaluationCriterion
 from app.models.client_public_access import ClientPublicAccess
 from app.models.cycle import Cycle
 from app.models.cycle_template import CycleTemplate
@@ -29,7 +31,11 @@ __all__ = [
     "PlatformMembership",
     "PlatformSession",
     "AdminAuditLog",
+    "AgentAuditLog",
+    "AgentPendingAction",
     "Client",
+    "ClientEvaluation",
+    "ClientEvaluationCriterion",
     "ClientPublicAccess",
     "Service",
     "Cycle",

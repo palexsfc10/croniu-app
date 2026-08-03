@@ -25,17 +25,26 @@ from app.db import Base, get_db
 from app.main import create_app
 from app.models import (  # noqa: F401
     AdminAuditLog,
+    AgentAuditLog,
+    AgentPendingAction,
     Appointment,
     Client,
+    ClientEvaluation,
+    ClientEvaluationCriterion,
+    ClientPublicAccess,
     Cycle,
     CycleTemplate,
     Location,
     Membership,
     Organization,
+    OrganizationPaymentSettings,
     PasswordResetToken,
+    PaymentProof,
+    PaymentReport,
     PlatformMembership,
     PlatformSession,
     Receivable,
+    RenewalRequest,
     Service,
     Session,
     User,
@@ -79,7 +88,11 @@ def clean_tables():
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE TABLE appointments, locations, password_reset_tokens, "
+                "TRUNCATE TABLE agent_audit_logs, agent_pending_actions, "
+                "client_evaluation_criteria, client_evaluations, "
+                "payment_proofs, payment_reports, renewal_requests, "
+                "organization_payment_settings, client_public_accesses, "
+                "appointments, locations, password_reset_tokens, "
                 "receivables, cycles, cycle_templates, services, clients, "
                 "admin_audit_logs, platform_sessions, platform_memberships, "
                 "sessions, memberships, users, organizations "

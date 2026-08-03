@@ -37,6 +37,7 @@ from app.schemas.my_cycle import (
 from app.security.passwords import generate_session_token, hash_session_token
 from app.services import agenda as agenda_svc
 from app.services import domain as domain_svc
+from app.services import evaluations as eval_svc
 from app.services import proof_storage
 from app.services.auth import AuthError
 from app.services.cycle_calc import compute_renewal_on
@@ -405,6 +406,15 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
             configured=True,
         )
 
+    published_evals = [
+        eval_svc.evaluation_to_public(row)
+        for row in eval_svc.list_published_for_client(
+            db,
+            organization_id=access.organization_id,
+            client_id=access.client_id,
+        )
+    ]
+
     if cycle is None:
         return PublicMyCycleOut(
             professional_display_name=org.name,
@@ -414,6 +424,7 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
             payment_instructions=instructions,
             can_request_renewal=False,
             can_report_payment=False,
+            evaluations=published_evals,
         )
 
     renewal = _active_renewal(db, client_id=client.id, cycle_id=cycle.id)
@@ -491,6 +502,7 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         payment_instructions=instructions,
         can_request_renewal=can_renew,
         can_report_payment=can_pay,
+        evaluations=published_evals,
     )
 
 

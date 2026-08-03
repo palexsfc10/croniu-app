@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.evaluations import PublicEvaluationOut
+
 
 class ClientAccessOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -121,6 +123,7 @@ class PublicMyCycleOut(BaseModel):
     payment_instructions: PublicPaymentInstructions
     can_request_renewal: bool = False
     can_report_payment: bool = False
+    evaluations: list[PublicEvaluationOut] = Field(default_factory=list)
 
 
 class PublicRenewalOut(BaseModel):
