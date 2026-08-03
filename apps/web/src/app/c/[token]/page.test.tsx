@@ -39,6 +39,16 @@ describe("Public Meu Ciclo page", () => {
           payment_instructions: { configured: false },
           can_request_renewal: true,
           can_report_payment: true,
+          evaluations: [
+            {
+              title: "Evolução de julho",
+              summary: "Bom progresso",
+              achievements: "Rotina firme",
+              next_goals: "Manter consistência",
+              client_message: "Parabéns!",
+              criteria: [{ name: "Consistência", score: 4, scale_max: 5 }],
+            },
+          ],
         }),
       })),
     );
@@ -50,5 +60,14 @@ describe("Public Meu Ciclo page", () => {
     expect(screen.getByText(/Personal/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Quero renovar/i })).toBeInTheDocument();
     expect(screen.queryByText(/organization/i)).not.toBeInTheDocument();
+  });
+
+  it("renders published evolution without private notes", async () => {
+    render(<PublicMyCyclePage />);
+    expect(await screen.findByText(/Sua evolução/i)).toBeInTheDocument();
+    expect(screen.getByText(/Evolução de julho/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bom progresso/i)).toBeInTheDocument();
+    expect(screen.queryByText(/private/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SEGREDO/i)).not.toBeInTheDocument();
   });
 });

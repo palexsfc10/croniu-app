@@ -294,6 +294,80 @@ export default function PublicMyCyclePage() {
               </>
             )}
 
+            <section aria-label="Sua evolução" className="space-y-3">
+              <h2 className="text-lg font-semibold text-[var(--color-ink)]">Sua evolução</h2>
+              {!data.evaluations || data.evaluations.length === 0 ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  Ainda não há avaliações compartilhadas.
+                </p>
+              ) : (
+                <ul className="space-y-4">
+                  {data.evaluations.map((ev, index) => (
+                    <li
+                      key={`${ev.title}-${ev.published_at ?? index}`}
+                      className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 space-y-2"
+                    >
+                      <p className="font-semibold">{ev.title}</p>
+                      {ev.evaluated_from || ev.evaluated_to ? (
+                        <p className="text-sm text-[var(--color-ink-muted)]">
+                          {ev.evaluated_from ? formatDateBR(ev.evaluated_from) : "…"}
+                          {" → "}
+                          {ev.evaluated_to ? formatDateBR(ev.evaluated_to) : "…"}
+                        </p>
+                      ) : ev.published_at ? (
+                        <p className="text-sm text-[var(--color-ink-muted)]">
+                          {formatDateBR(ev.published_at.slice(0, 10))}
+                        </p>
+                      ) : null}
+                      {ev.summary ? (
+                        <p className="text-sm whitespace-pre-wrap">{ev.summary}</p>
+                      ) : null}
+                      {ev.achievements ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                            Conquistas
+                          </p>
+                          <p className="text-sm whitespace-pre-wrap">{ev.achievements}</p>
+                        </div>
+                      ) : null}
+                      {ev.attention_points ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                            Pontos de atenção
+                          </p>
+                          <p className="text-sm whitespace-pre-wrap">{ev.attention_points}</p>
+                        </div>
+                      ) : null}
+                      {ev.next_goals ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                            Próximos objetivos
+                          </p>
+                          <p className="text-sm whitespace-pre-wrap">{ev.next_goals}</p>
+                        </div>
+                      ) : null}
+                      {ev.criteria?.length ? (
+                        <ul className="space-y-1 text-sm">
+                          {ev.criteria.map((c, i) => (
+                            <li key={`${c.name}-${i}`}>
+                              {c.name}
+                              {c.score != null ? ` · ${c.score}/${c.scale_max}` : ""}
+                              {c.comment ? ` — ${c.comment}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {ev.client_message ? (
+                        <p className="text-sm whitespace-pre-wrap border-t border-[var(--color-border)] pt-2">
+                          {ev.client_message}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
             <p className="pt-4 text-center text-sm text-[var(--color-ink-muted)]">
               Fale com seu profissional se precisar de ajuda.
             </p>
