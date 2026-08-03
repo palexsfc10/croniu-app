@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch, type Client, type ClientAccess } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ContextualBar } from "@/components/app/contextual-bar";
+import { ClientEvaluationsSection } from "@/components/app/client-evaluations-section";
 import { BackLink } from "@/components/app/back-link";
 import { TextField } from "@/components/ui/text-field";
 
@@ -194,6 +195,8 @@ export default function ClientDetailPage() {
               </div>
             )}
           </section>
+
+          <ClientEvaluationsSection clientId={item.id} />
 
           <div className="flex flex-col gap-3 pb-2">
             <Link href={`/app/cycles/new?clientId=${item.id}`} className="block">

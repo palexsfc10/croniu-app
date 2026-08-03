@@ -264,6 +264,62 @@ export type PublicMyCycle = {
   };
   can_request_renewal: boolean;
   can_report_payment: boolean;
+  evaluations?: PublicEvaluation[];
+};
+
+export type EvaluationCriterionInput = {
+  name: string;
+  score?: number | null;
+  scale_max?: number;
+  comment?: string | null;
+  sort_order?: number;
+};
+
+export type ClientEvaluationCriterion = {
+  id: string;
+  name: string;
+  score: number | null;
+  scale_max: number;
+  comment: string | null;
+  sort_order: number;
+};
+
+export type ClientEvaluation = {
+  id: string;
+  client_id: string;
+  author_user_id: string;
+  title: string;
+  evaluated_from: string | null;
+  evaluated_to: string | null;
+  summary: string | null;
+  achievements: string | null;
+  attention_points: string | null;
+  next_goals: string | null;
+  client_message: string | null;
+  private_notes: string | null;
+  status: string;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  criteria: ClientEvaluationCriterion[];
+};
+
+export type PublicEvaluation = {
+  title: string;
+  evaluated_from?: string | null;
+  evaluated_to?: string | null;
+  summary?: string | null;
+  achievements?: string | null;
+  attention_points?: string | null;
+  next_goals?: string | null;
+  client_message?: string | null;
+  published_at?: string | null;
+  criteria: Array<{
+    name: string;
+    score?: number | null;
+    scale_max: number;
+    comment?: string | null;
+  }>;
 };
 
 const SERVER_API_URL = (
