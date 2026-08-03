@@ -256,3 +256,22 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 | Decisão | Backend bloqueia com HTTP 409 `appointment_conflict` + detalhes estruturados; frontend exibe e força correção |
 | Não fazer | Override silencioso; confirmação de força sem registro documental |
 | Intervalo | Half-open `[starts_at, ends_at)`; consecutivos permitidos |
+
+## ADR-032 — Avaliações de evolução do cliente
+
+| | |
+|--|--|
+| Status | Aceito · implementado |
+| Data | 2026-08-02 |
+| Decisão | Entidades relacionais `client_evaluations` + `client_evaluation_criteria`; status `draft`/`published`/`archived`; `private_notes` nunca serializado em endpoints públicos; portal Meu Ciclo lista só publicadas; sem média automática no portal; sem timeline paralela improvisada (ponto de extensão futuro) |
+| Evidência | migration `0008_client_evaluations`; `/api/v1/clients/{id}/evaluations*`; seção no detalhe do cliente e em `/c/{token}` |
+
+## ADR-033 — Fundação do agente LLM
+
+| | |
+|--|--|
+| Status | Aceito · fundação |
+| Data | 2026-08-02 |
+| Decisão | Agente atrás de `AI_ENABLED=false` por padrão; abstração de provedor (`fake` / `openai_compatible` via HTTP); ferramentas allowlisted chamando serviços de aplicação; mutações via `agent_pending_actions` com confirmação explícita, expiração e anti-replay; auditoria em `agent_audit_logs`; tenant sempre da sessão |
+| Não fazer nesta fundação | SQL pela LLM; pagamentos; publicar avaliação; exclusões; voz; billing completo |
+| Evidência | `backend/app/agent/*`; migration `0009_agent_foundation`; UI `/app/assistant` |

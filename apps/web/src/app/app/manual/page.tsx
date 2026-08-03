@@ -14,7 +14,7 @@ const sections = [
   },
   {
     title: "Clientes",
-    body: "Cadastre e abra o detalhe de cada cliente. No detalhe você gera o link do Meu Ciclo (portal do aluno), copia ou compartilha pelo WhatsApp, e pode arquivar quem não atende mais.",
+    body: "Cadastre e abra o detalhe de cada cliente. No detalhe você gera o link do Meu Ciclo, registra avaliações de evolução (rascunho/publicação no portal) e pode arquivar quem não atende mais.",
   },
   {
     title: "Serviços",
@@ -32,7 +32,12 @@ const sections = [
   },
   {
     title: "Meu Ciclo (aluno)",
-    body: "Link secreto do cliente. Nele o aluno vê o ciclo, pede renovação e informa “Já paguei” (com comprovante opcional). Você confirma ou rejeita em Pagamentos / Hoje. Renovação não cria ciclo sozinha — você decide.",
+    body: "Link secreto do cliente. Nele o aluno vê o ciclo, a seção Sua evolução (só avaliações publicadas — nunca notas privadas), pede renovação e informa “Já paguei”. Você confirma ou rejeita em Pagamentos / Hoje.",
+  },
+  {
+    title: "Assistente",
+    body: "Em Mais → Assistente. Consultas em linguagem natural sobre agenda, ciclos, recebimentos e avaliações. Ações de escrita pedem confirmação explícita. Pode estar desativado (AI_ENABLED).",
+    href: "/app/assistant",
   },
   {
     title: "Pagamentos e Pix",

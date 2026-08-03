@@ -23,6 +23,7 @@ Permitir que qualquer agente ou pessoa entenda o que o Croniu é, o que já exis
 | [`TEST_STRATEGY.md`](./TEST_STRATEGY.md) | Pirâmide e matriz de testes |
 | [`ROADMAP.md`](./ROADMAP.md) | Entregue / próximo / futuro |
 | [`DECISIONS.md`](./DECISIONS.md) | ADRs e decisões de produto |
+| [`CLIENT_EVALS_AND_AGENT.md`](./CLIENT_EVALS_AND_AGENT.md) | Avaliações + fundação do agente |
 | [`WORKFLOW.md`](./WORKFLOW.md) | Processo oficial de sprints |
 | [`PLATFORM_ADMIN.md`](./PLATFORM_ADMIN.md) | Painel da plataforma (detalhe) |
 | [`sprints/`](./sprints/) | Template, histórico 2A–2C.1 |

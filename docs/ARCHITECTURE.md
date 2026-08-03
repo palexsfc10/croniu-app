@@ -67,6 +67,10 @@ Independente de Kyvora / outros produtos NTWS Labs.
 
 Toda entidade de negócio com `organization_id`; filtro no serviço; testes de isolamento.
 
+## Agente LLM
+
+Camada `backend/app/agent/` sobre serviços existentes; feature flag `AI_ENABLED`; tools allowlisted; confirmação para escritas. Ver [`CLIENT_EVALS_AND_AGENT.md`](./CLIENT_EVALS_AND_AGENT.md).
+
 ## PWA
 
 Manifest + service worker básicos em `apps/web`. Offline rico: evolução.
