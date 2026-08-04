@@ -8,6 +8,7 @@ import { EvolutionEntry } from "@/components/app/evolution-entry";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TextField } from "@/components/ui/text-field";
+import { IconWhatsApp } from "@/components/ui/icons";
 
 const STATUS_LABEL: Record<string, string> = {
   vigente: "Ciclo em andamento",
@@ -49,7 +50,6 @@ export default function PublicMyCyclePage() {
   const [payOpen, setPayOpen] = useState(false);
   const [methodNote, setMethodNote] = useState("");
   const [notes, setNotes] = useState("");
-  const [file, setFile] = useState<File | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
   useEffect(() => {
@@ -107,13 +107,29 @@ export default function PublicMyCyclePage() {
     await reload();
   }
 
+  async function declareRenewalPayment() {
+    setBusy(true);
+    setFlash(null);
+    const res = await fetch(`/api/v1/public/my-cycle/${token}/renewal/declare-payment`, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    });
+    const body = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(body.message || body.detail?.message || "Não foi possível informar.");
+      return;
+    }
+    setFlash(body.message);
+    await reload();
+  }
+
   async function reportPayment() {
     setBusy(true);
     setFlash(null);
     const form = new FormData();
     if (methodNote.trim()) form.append("method_note", methodNote.trim());
     if (notes.trim()) form.append("notes", notes.trim());
-    if (file) form.append("proof", file);
     const res = await fetch(`/api/v1/public/my-cycle/${token}/payment-report`, {
       method: "POST",
       body: form,
@@ -270,8 +286,8 @@ export default function PublicMyCyclePage() {
                       <div className="space-y-3">
                         <p className="text-sm font-semibold">Pagamento da renovação</p>
                         <p className="text-sm text-[var(--color-ink-muted)]">
-                          Use os dados abaixo para realizar o pagamento. Depois, você pode enviar o
-                          comprovante para facilitar a confirmação.
+                          Use os dados abaixo para realizar o pagamento. Depois, envie o comprovante
+                          pelo WhatsApp do profissional.
                         </p>
                         {data.renewal_payment_instructions?.configured ? (
                           <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-progress-subtle)]/40 p-3 text-sm">
@@ -312,11 +328,30 @@ export default function PublicMyCyclePage() {
                         ) : (
                           <p className="text-sm text-[var(--color-ink-muted)]">
                             {data.professional_display_name} recebeu seu interesse e combinará com
-                            você a forma de pagamento.
+                            você os próximos passos.
                           </p>
                         )}
+                        {data.renewal_whatsapp?.available && data.renewal_whatsapp.whatsapp_url ? (
+                          <div className="space-y-2">
+                            <p className="text-sm font-semibold">Depois de realizar o Pix</p>
+                            <p className="text-sm text-[var(--color-ink-muted)]">
+                              Envie o comprovante diretamente para {data.professional_display_name}.
+                              A renovação será confirmada após a conferência do pagamento. Selecione
+                              o arquivo dentro do WhatsApp.
+                            </p>
+                            <a
+                              href={data.renewal_whatsapp.whatsapp_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-success)] px-4 text-sm font-semibold text-white"
+                            >
+                              <IconWhatsApp className="h-5 w-5 text-white" />
+                              Enviar comprovante pelo WhatsApp
+                            </a>
+                          </div>
+                        ) : null}
                         <p className="text-sm text-[var(--color-ink-muted)]">
-                          O envio do comprovante não confirma a renovação automaticamente.{" "}
+                          Abrir o WhatsApp ou informar o pagamento não confirma a renovação.{" "}
                           {data.professional_display_name} irá revisar as informações.
                         </p>
                         <Button fullWidth disabled={busy} onClick={() => void requestRenewal()}>
@@ -330,7 +365,7 @@ export default function PublicMyCyclePage() {
                   </div>
                 ) : null}
                 {data.cycle.renewal_request_status ? (
-                  <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                  <div className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
                     <p className="text-sm font-semibold text-[var(--color-ink)]">
                       Seu interesse foi enviado para {data.professional_display_name}.
                     </p>
@@ -339,14 +374,11 @@ export default function PublicMyCyclePage() {
                         Renovação confirmada. Seu novo ciclo segue a data configurada pelo
                         profissional.
                       </p>
-                    ) : data.renewal_payment_instructions?.configured ? (
-                      <div className="space-y-2 text-sm">
-                        <p className="text-[var(--color-ink-muted)]">
-                          Os dados para pagamento estão disponíveis. Após o pagamento, você pode
-                          enviar o comprovante.
-                        </p>
-                        {data.renewal_payment_instructions.pix_key ? (
-                          <div className="flex flex-wrap items-center gap-2">
+                    ) : (
+                      <>
+                        {data.renewal_payment_instructions?.configured &&
+                        data.renewal_payment_instructions.pix_key ? (
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
                             <span className="font-semibold">
                               {data.renewal_payment_instructions.pix_key}
                             </span>
@@ -364,8 +396,47 @@ export default function PublicMyCyclePage() {
                             </Button>
                           </div>
                         ) : null}
-                      </div>
-                    ) : null}
+                        {data.renewal_whatsapp?.available && data.renewal_whatsapp.whatsapp_url ? (
+                          <div className="space-y-2">
+                            <p className="text-sm text-[var(--color-ink-muted)]">
+                              Depois de realizar o Pix, envie o comprovante pelo WhatsApp. A
+                              renovação só será confirmada após a conferência.
+                            </p>
+                            <a
+                              href={data.renewal_whatsapp.whatsapp_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-success)] px-4 text-sm font-semibold text-white"
+                            >
+                              <IconWhatsApp className="h-5 w-5 text-white" />
+                              Enviar comprovante pelo WhatsApp
+                            </a>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-[var(--color-ink-muted)]">
+                            {data.professional_display_name} recebeu seu interesse e combinará com
+                            você os próximos passos.
+                          </p>
+                        )}
+                        {data.can_declare_renewal_payment &&
+                        data.cycle.renewal_request_status !== "payment_reported" ? (
+                          <Button
+                            variant="secondary"
+                            fullWidth
+                            disabled={busy}
+                            onClick={() => void declareRenewalPayment()}
+                          >
+                            Já realizei o pagamento
+                          </Button>
+                        ) : null}
+                        {data.cycle.renewal_request_status === "payment_reported" ? (
+                          <p className="text-sm text-[var(--color-ink-muted)]">
+                            Pagamento informado. Agora é só aguardar a conferência de{" "}
+                            {data.professional_display_name}. Seu novo ciclo ainda não foi iniciado.
+                          </p>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 ) : null}
 
@@ -373,12 +444,15 @@ export default function PublicMyCyclePage() {
                   <div className="space-y-2">
                     {!payOpen ? (
                       <Button variant="secondary" fullWidth onClick={() => setPayOpen(true)}>
-                        Já paguei
+                        Já paguei (ciclo atual)
                       </Button>
                     ) : (
                       <div className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
                         <p className="text-sm font-medium">
                           Valor esperado · {formatBRL(data.cycle.value_cents)}
+                        </p>
+                        <p className="text-sm text-[var(--color-ink-muted)]">
+                          Esta declaração não confirma o pagamento automaticamente.
                         </p>
                         <TextField
                           label="Forma utilizada (opcional)"
@@ -390,15 +464,6 @@ export default function PublicMyCyclePage() {
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
                         />
-                        <label className="block text-sm">
-                          Comprovante (opcional, PDF/JPEG/PNG, até 5 MB)
-                          <input
-                            type="file"
-                            accept="application/pdf,image/jpeg,image/png"
-                            className="mt-1 block w-full text-sm"
-                            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                          />
-                        </label>
                         <Button fullWidth disabled={busy} onClick={() => void reportPayment()}>
                           Confirmar que paguei
                         </Button>

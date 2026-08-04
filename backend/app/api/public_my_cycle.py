@@ -62,6 +62,19 @@ def post_renewal(token: str, request: Request, db: Session = Depends(get_db)) ->
     return _public_headers(JSONResponse(content=data.model_dump(mode="json")))
 
 
+@router.post("/{token}/renewal/declare-payment", response_model=PublicRenewalOut)
+def post_renewal_declare_payment(
+    token: str, request: Request, db: Session = Depends(get_db)
+) -> JSONResponse:
+    """Client declares payment made — does not confirm or create a cycle."""
+    _rate_limit(request, token)
+    try:
+        data = my_cycle_svc.declare_renewal_payment(db, raw_token=token)
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return _public_headers(JSONResponse(content=data.model_dump(mode="json")))
+
+
 @router.post("/{token}/payment-report", response_model=PublicPaymentReportOut)
 async def post_payment_report(
     token: str,

@@ -6,7 +6,7 @@ import logging
 import re
 import uuid
 from datetime import UTC, date, datetime
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +31,7 @@ from app.schemas.my_cycle import (
     PublicPaymentInstructions,
     PublicPaymentReportOut,
     PublicRenewalOut,
+    PublicRenewalWhatsApp,
     RenewalPrepareOut,
     RenewalRequestOut,
 )
@@ -44,7 +45,7 @@ from app.services.cycle_calc import compute_renewal_on
 
 logger = logging.getLogger("croniu.my_cycle")
 
-ACTIVE_RENEWAL = {"requested", "acknowledged"}
+ACTIVE_RENEWAL = {"requested", "acknowledged", "payment_reported"}
 UNIFORM_TOKEN_ERROR = AuthError(
     "access_unavailable",
     "Este acesso não está disponível.",
@@ -80,6 +81,54 @@ def _validate_https_url(url: str | None) -> str | None:
     if parsed.username or parsed.password:
         raise AuthError("invalid_payment_url", "URL de pagamento inválida.", 422)
     return cleaned
+
+
+def _normalize_whatsapp_e164(raw: str | None) -> str | None:
+    """Normalize to digits-only international form (e.g. 5511999999999)."""
+    if raw is None or not str(raw).strip():
+        return None
+    digits = re.sub(r"\D", "", raw.strip())
+    if digits.startswith("00"):
+        digits = digits[2:]
+    # BR local with leading 0 → drop trunk zero after country guess
+    if len(digits) == 10 or len(digits) == 11:
+        digits = f"55{digits}"
+    if not digits.isdigit() or len(digits) < 12 or len(digits) > 15:
+        raise AuthError(
+            "invalid_whatsapp",
+            "Informe o WhatsApp com DDI e DDD (ex.: 5511999999999).",
+            422,
+        )
+    if digits.startswith("55") and len(digits) not in {12, 13}:
+        raise AuthError(
+            "invalid_whatsapp",
+            "WhatsApp brasileiro inválido. Use DDI 55 + DDD + número.",
+            422,
+        )
+    return digits
+
+
+def _format_brl_cents(cents: int | None) -> str:
+    value = (cents or 0) / 100
+    return (
+        f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    )
+
+
+def build_renewal_whatsapp_url(
+    *,
+    e164: str,
+    professional_first_name: str,
+    client_full_name: str,
+    amount_cents: int | None,
+) -> str:
+    amount = _format_brl_cents(amount_cents)
+    message = (
+        f"Olá, {professional_first_name}. Sou {client_full_name}. "
+        f"Realizei o Pix de {amount} referente à renovação do meu acompanhamento. "
+        "Estou enviando o comprovante para sua conferência."
+    )
+    return f"https://wa.me/{e164}?text={quote(message)}"
 
 
 def _normalize_pix_key(key_type: str | None, key: str | None) -> str | None:
@@ -234,6 +283,8 @@ def get_payment_settings(
         external_payment_url=row.external_payment_url,
         institution=row.institution,
         show_on_my_cycle=row.show_on_my_cycle,
+        whatsapp_e164=row.whatsapp_e164,
+        whatsapp_enabled=bool(row.whatsapp_enabled),
     )
 
 
@@ -242,6 +293,13 @@ def upsert_payment_settings(
 ) -> PaymentSettingsOut:
     pix_key = _normalize_pix_key(payload.pix_key_type, payload.pix_key)
     url = _validate_https_url(payload.external_payment_url)
+    wa = _normalize_whatsapp_e164(payload.whatsapp_e164)
+    if payload.whatsapp_enabled and not wa:
+        raise AuthError(
+            "whatsapp_required",
+            "Informe um WhatsApp válido para disponibilizar o envio de comprovante.",
+            422,
+        )
     row = db.scalar(
         select(OrganizationPaymentSettings).where(
             OrganizationPaymentSettings.organization_id == organization_id
@@ -257,6 +315,8 @@ def upsert_payment_settings(
     row.external_payment_url = url
     row.institution = _normalize_optional(payload.institution, max_len=120)
     row.show_on_my_cycle = payload.show_on_my_cycle
+    row.whatsapp_e164 = wa
+    row.whatsapp_enabled = bool(payload.whatsapp_enabled and wa)
     db.add(row)
     db.commit()
     return get_payment_settings(db, organization_id=organization_id)
@@ -409,6 +469,7 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
     # Pix is not shown on the general portal surface — only during renewal step.
     instructions = PublicPaymentInstructions(configured=False)
     renewal_instructions = PublicPaymentInstructions(configured=False)
+    renewal_whatsapp = PublicRenewalWhatsApp(available=False)
     if settings.show_on_my_cycle and (
         settings.pix_key or settings.external_payment_url or settings.instructions
     ):
@@ -439,8 +500,10 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
             empty_message="Seu profissional ainda não disponibilizou um ciclo para acompanhamento.",
             payment_instructions=instructions,
             renewal_payment_instructions=renewal_instructions,
+            renewal_whatsapp=renewal_whatsapp,
             can_request_renewal=False,
             can_report_payment=False,
+            can_declare_renewal_payment=False,
             evaluations=published_evals,
         )
 
@@ -513,6 +576,19 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
 
     can_renew = status_summary in {"vigente", "encerrando", "encerrado", "proximo"}
     can_pay = pending_recv is not None and report is None and pay_status != "confirmado"
+    can_declare = renewal is not None and renewal.status in {"requested", "acknowledged"}
+
+    if settings.whatsapp_enabled and settings.whatsapp_e164:
+        pro_name = _first_name(settings.holder_name or org.name)
+        renewal_whatsapp = PublicRenewalWhatsApp(
+            available=True,
+            whatsapp_url=build_renewal_whatsapp_url(
+                e164=settings.whatsapp_e164,
+                professional_first_name=pro_name,
+                client_full_name=client.full_name,
+                amount_cents=cycle.value_cents,
+            ),
+        )
 
     return PublicMyCycleOut(
         professional_display_name=org.name,
@@ -521,9 +597,53 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         empty_message=None,
         payment_instructions=instructions,
         renewal_payment_instructions=renewal_instructions,
-        can_request_renewal=can_renew,
+        renewal_whatsapp=renewal_whatsapp,
+        can_request_renewal=can_renew and renewal is None,
         can_report_payment=can_pay,
+        can_declare_renewal_payment=can_declare,
         evaluations=published_evals,
+    )
+
+
+def declare_renewal_payment(db: Session, *, raw_token: str) -> PublicRenewalOut:
+    """Client declares payment was made — does not confirm financially or create a cycle."""
+    access = _resolve_access(db, raw_token)
+    org = agenda_svc.get_organization(db, access.organization_id)
+    today = agenda_svc.org_local_today(org)
+    cycle = select_relevant_cycle(
+        db,
+        organization_id=access.organization_id,
+        client_id=access.client_id,
+        today=today,
+    )
+    if cycle is None:
+        raise AuthError("no_cycle", "Não há ciclo disponível.", 422)
+    renewal = _active_renewal(db, client_id=access.client_id, cycle_id=cycle.id)
+    if renewal is None:
+        raise AuthError(
+            "no_renewal",
+            "Envie o interesse de renovação antes de informar o pagamento.",
+            422,
+        )
+    if renewal.status == "payment_reported":
+        return PublicRenewalOut(
+            status=renewal.status,
+            message=(
+                f"Pagamento informado. Agora é só aguardar a conferência de {org.name}. "
+                "Seu novo ciclo ainda não foi iniciado."
+            ),
+        )
+    if renewal.status not in {"requested", "acknowledged"}:
+        raise AuthError("renewal_closed", "Esta renovação não aceita nova declaração.", 422)
+    renewal.status = "payment_reported"
+    db.add(renewal)
+    db.commit()
+    return PublicRenewalOut(
+        status="payment_reported",
+        message=(
+            f"Pagamento informado. Agora é só aguardar a conferência de {org.name}. "
+            "Seu novo ciclo ainda não foi iniciado."
+        ),
     )
 
 

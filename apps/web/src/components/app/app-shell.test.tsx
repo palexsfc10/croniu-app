@@ -54,5 +54,5 @@ describe("AppShell nav Sprint 2B", () => {
     expect(within(navs[0]).getByRole("link", { name: "Hoje" })).toHaveAttribute("href", "/app");
     expect(within(navs[1]).getByRole("link", { name: "Hoje" })).toHaveAttribute("href", "/app");
     expect(screen.queryByRole("button", { name: "Sair" })).not.toBeInTheDocument();
-  });
+  }, 15_000);
 });

@@ -191,6 +191,20 @@ export default function PreferencesPage() {
           />
           Disponibilizar Pix na etapa de renovação do cliente
         </label>
+        <TextField
+          label="WhatsApp (DDI + DDD + número)"
+          value={pay.whatsapp_e164 ?? ""}
+          onChange={(e) => setPay((p) => ({ ...p, whatsapp_e164: e.target.value }))}
+          placeholder="5511999999999"
+        />
+        <label className="flex min-h-11 items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(pay.whatsapp_enabled)}
+            onChange={(e) => setPay((p) => ({ ...p, whatsapp_enabled: e.target.checked }))}
+          />
+          Disponibilizar envio de comprovante pelo WhatsApp na renovação
+        </label>
         {paySaved ? (
           <p role="status" className="text-sm text-[var(--color-success)]">
             Recebimentos salvos.
@@ -214,6 +228,8 @@ export default function PreferencesPage() {
                     instructions: pay.instructions || null,
                     external_payment_url: pay.external_payment_url || null,
                     show_on_my_cycle: pay.show_on_my_cycle,
+                    whatsapp_e164: pay.whatsapp_e164 || null,
+                    whatsapp_enabled: Boolean(pay.whatsapp_enabled),
                   }),
                 },
               );

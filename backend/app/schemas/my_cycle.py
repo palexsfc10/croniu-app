@@ -31,6 +31,8 @@ class PaymentSettingsIn(BaseModel):
     external_payment_url: str | None = Field(default=None, max_length=2000)
     institution: str | None = Field(default=None, max_length=120)
     show_on_my_cycle: bool = True
+    whatsapp_e164: str | None = Field(default=None, max_length=20)
+    whatsapp_enabled: bool = False
 
 
 class PaymentSettingsOut(BaseModel):
@@ -41,6 +43,8 @@ class PaymentSettingsOut(BaseModel):
     external_payment_url: str | None = None
     institution: str | None = None
     show_on_my_cycle: bool = True
+    whatsapp_e164: str | None = None
+    whatsapp_enabled: bool = False
 
 
 class RenewalRequestOut(BaseModel):
@@ -103,6 +107,13 @@ class PublicPaymentInstructions(BaseModel):
     configured: bool = False
 
 
+class PublicRenewalWhatsApp(BaseModel):
+    """Contact for sending proof via WhatsApp — only during renewal."""
+
+    available: bool = False
+    whatsapp_url: str | None = None
+
+
 class PublicCycleBlock(BaseModel):
     service_name: str
     status_summary: str
@@ -128,8 +139,10 @@ class PublicMyCycleOut(BaseModel):
     renewal_payment_instructions: PublicPaymentInstructions = Field(
         default_factory=PublicPaymentInstructions
     )
+    renewal_whatsapp: PublicRenewalWhatsApp = Field(default_factory=PublicRenewalWhatsApp)
     can_request_renewal: bool = False
     can_report_payment: bool = False
+    can_declare_renewal_payment: bool = False
     evaluations: list[PublicEvaluationOut] = Field(default_factory=list)
 
 

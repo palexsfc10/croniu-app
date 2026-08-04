@@ -68,6 +68,15 @@ export function IconBanknote({ className = "", ...props }: IconProps) {
   );
 }
 
+export function IconWhatsApp({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M20.5 11.5a8.5 8.5 0 0 1-12.7 7.4L3.5 20l1.2-4.1A8.5 8.5 0 1 1 20.5 11.5Z" />
+      <path d="M9.2 9.3c.3-.6.5-.6.7-.6h.6c.2 0 .4 0 .5.4l.7 1.7c.1.2 0 .4-.1.5l-.4.5c-.1.1-.2.3 0 .5.3.4.8 1 1.4 1.5.7.6 1.3.9 1.6 1 .3.1.5.1.6-.1l.7-.8c.2-.2.4-.1.6 0l1.6.8c.2.1.4.2.4.5 0 .7-.5 2-1.4 2.2-.7.2-1.7.1-3-.5-1.4-.7-2.8-1.9-3.9-3.4-1-1.3-1.5-2.5-1.6-3.2 0-.8.5-1.4 1-1.7Z" />
+    </svg>
+  );
+}
+
 export function IconCopy({ className = "", ...props }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>

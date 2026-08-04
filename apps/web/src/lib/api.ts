@@ -236,6 +236,8 @@ export type PaymentSettings = {
   external_payment_url?: string | null;
   institution?: string | null;
   show_on_my_cycle: boolean;
+  whatsapp_e164?: string | null;
+  whatsapp_enabled?: boolean;
 };
 
 export type PublicMyCycle = {
@@ -275,8 +277,13 @@ export type PublicMyCycle = {
     institution?: string | null;
     configured: boolean;
   };
+  renewal_whatsapp?: {
+    available: boolean;
+    whatsapp_url?: string | null;
+  };
   can_request_renewal: boolean;
   can_report_payment: boolean;
+  can_declare_renewal_payment?: boolean;
   evaluations?: PublicEvaluation[];
 };
 

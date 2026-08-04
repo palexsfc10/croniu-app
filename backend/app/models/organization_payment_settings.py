@@ -29,6 +29,8 @@ class OrganizationPaymentSettings(Base):
     external_payment_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     show_on_my_cycle: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     institution: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    whatsapp_e164: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    whatsapp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
