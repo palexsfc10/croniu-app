@@ -2,9 +2,16 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { TextField } from "@/components/ui/text-field";
 import { TodayBoard } from "@/components/app/today-board";
 import type { HomeSummary } from "@/lib/api";
+import {
+  cycleStatusLabel,
+  cycleStatusTone,
+  receivableStatusLabel,
+  receivableStatusTone,
+} from "@/lib/status-tone";
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -49,6 +56,41 @@ describe("UI fundamentals", () => {
   it("renders button with accessible name", () => {
     render(<Button>Entrar</Button>);
     expect(screen.getByRole("button", { name: "Entrar" })).toBeInTheDocument();
+  });
+
+  it("applies semantic button variants", () => {
+    const { rerender } = render(<Button variant="primary">Salvar</Button>);
+    expect(screen.getByRole("button", { name: "Salvar" }).className).toContain("btn-primary");
+    rerender(<Button variant="danger">Excluir</Button>);
+    expect(screen.getByRole("button", { name: "Excluir" }).className).toContain("btn-danger");
+    rerender(<Button variant="ai">Perguntar</Button>);
+    expect(screen.getByRole("button", { name: "Perguntar" }).className).toContain("btn-ai");
+    rerender(<Button variant="success">Confirmar</Button>);
+    expect(screen.getByRole("button", { name: "Confirmar" }).className).toContain("btn-success");
+  });
+
+  it("renders semantic badges with text", () => {
+    render(
+      <>
+        <Badge tone="warning">Pendente</Badge>
+        <Badge tone="progress">Vigente</Badge>
+        <Badge tone="ai">IA</Badge>
+      </>,
+    );
+    expect(screen.getByText("Pendente").className).toContain("badge-warning");
+    expect(screen.getByText("Vigente").className).toContain("badge-progress");
+    expect(screen.getByText("IA").className).toContain("badge-ai");
+  });
+
+  it("maps domain statuses to tones and labels", () => {
+    expect(cycleStatusTone("active", true)).toBe("warning");
+    expect(cycleStatusLabel("active", true)).toBe("Termina em breve");
+    expect(cycleStatusTone("active", false)).toBe("progress");
+    expect(cycleStatusLabel("active", false)).toBe("Vigente");
+    expect(receivableStatusTone("received")).toBe("success");
+    expect(receivableStatusLabel("received")).toBe("Recebido");
+    expect(receivableStatusTone("pending")).toBe("warning");
+    expect(receivableStatusLabel("pending")).toBe("Pendente");
   });
 
   it("associates label with input", () => {
@@ -99,5 +141,11 @@ describe("UI fundamentals", () => {
     expect(screen.getByText(/\d{2}\/\d{2}\/\d{4}\s·\s\d{2}:\d{2}/)).toBeInTheDocument();
     expect(screen.getAllByText("Conversar com Ana").length).toBeGreaterThan(0);
     expect(screen.getByText("1 ciclo(s) encerrando")).toBeInTheDocument();
+    expect(screen.getAllByText("Termina em breve").length).toBeGreaterThan(0);
+  });
+
+  it("shows calm empty day when nothing needs attention", () => {
+    render(<TodayBoard summary={emptySummary} />);
+    expect(screen.getByText("Rotina em dia")).toBeInTheDocument();
   });
 });

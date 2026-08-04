@@ -84,7 +84,7 @@ function ResetPasswordFormInner() {
         {formError ? (
           <p
             role="alert"
-            className="rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-sm text-[var(--color-danger)]"
+            className="rounded-[var(--radius-sm)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
           >
             {formError}
           </p>

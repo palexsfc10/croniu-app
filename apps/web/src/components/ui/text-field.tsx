@@ -29,9 +29,11 @@ export const TextField = forwardRef<HTMLInputElement, Props>(function TextField(
           id={fieldId}
           type={inputType}
           className={[
-            "min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-base text-[var(--color-ink)] outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] placeholder:text-[var(--color-ink-muted)] focus:border-[var(--color-primary)] focus:shadow-[0_0_0_3px_rgb(47_63_143_/_16%)]",
+            "min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-base text-[var(--color-ink)] outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] placeholder:text-[var(--color-ink-subtle)] focus:border-[var(--color-primary)] focus:shadow-[0_0_0_3px_var(--color-ring)] disabled:cursor-not-allowed disabled:bg-[var(--color-neutral-subtle)] disabled:text-[var(--color-ink-muted)]",
             revealable ? "pr-12" : "",
-            error ? "border-[var(--color-danger)]" : "",
+            error
+              ? "border-[var(--color-danger)] focus:border-[var(--color-danger)] focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-danger)_22%,transparent)]"
+              : "",
             className,
           ].join(" ")}
           aria-invalid={Boolean(error)}

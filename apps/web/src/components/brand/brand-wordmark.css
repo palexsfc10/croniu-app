@@ -1,8 +1,9 @@
 /* Croniu brand wordmark — sole visual source for the mark */
 
 :root {
-  --brand-wordmark-cron-color: var(--color-ink);
-  --brand-wordmark-iu-color: var(--color-primary);
+  /* Homologated mark colors — independent of UI primary drift */
+  --brand-wordmark-cron-color: #152033;
+  --brand-wordmark-iu-color: #2f3f8f;
   --brand-wordmark-cron-weight: 750;
   --brand-wordmark-iu-weight: 650;
   --brand-wordmark-tracking: -0.035em;
