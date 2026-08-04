@@ -132,8 +132,9 @@ def test_payment_settings_https_and_public_instructions(client, register_payload
     ids = _seed_cycle(client, "mc-pay-cfg")
     token = client.post(f"/api/v1/clients/{ids['client_id']}/public-access").json()["token"]
     pub = client.get(f"/api/v1/public/my-cycle/{token}").json()
-    assert pub["payment_instructions"]["configured"] is True
-    assert pub["payment_instructions"]["pix_key"] == "pix@studio.com"
+    assert pub["payment_instructions"]["configured"] is False
+    assert pub["renewal_payment_instructions"]["configured"] is True
+    assert pub["renewal_payment_instructions"]["pix_key"] == "pix@studio.com"
 
 
 def test_payment_report_keeps_receivable_pending_then_confirm(client, register_payload):

@@ -29,6 +29,7 @@ class PaymentSettingsIn(BaseModel):
     pix_key: str | None = Field(default=None, max_length=320)
     instructions: str | None = Field(default=None, max_length=2000)
     external_payment_url: str | None = Field(default=None, max_length=2000)
+    institution: str | None = Field(default=None, max_length=120)
     show_on_my_cycle: bool = True
 
 
@@ -38,6 +39,7 @@ class PaymentSettingsOut(BaseModel):
     pix_key: str | None = None
     instructions: str | None = None
     external_payment_url: str | None = None
+    institution: str | None = None
     show_on_my_cycle: bool = True
 
 
@@ -97,6 +99,7 @@ class PublicPaymentInstructions(BaseModel):
     pix_key: str | None = None
     instructions: str | None = None
     external_payment_url: str | None = None
+    institution: str | None = None
     configured: bool = False
 
 
@@ -108,6 +111,7 @@ class PublicCycleBlock(BaseModel):
     renewal_on: date | None = None
     lesson_count: int | None = None
     lessons_completed: int = 0
+    lessons_no_show: int = 0
     remaining_planned_lessons: int | None = None
     value_cents: int | None = None
     payment_status: str
@@ -121,6 +125,9 @@ class PublicMyCycleOut(BaseModel):
     cycle: PublicCycleBlock | None = None
     empty_message: str | None = None
     payment_instructions: PublicPaymentInstructions
+    renewal_payment_instructions: PublicPaymentInstructions = Field(
+        default_factory=PublicPaymentInstructions
+    )
     can_request_renewal: bool = False
     can_report_payment: bool = False
     evaluations: list[PublicEvaluationOut] = Field(default_factory=list)

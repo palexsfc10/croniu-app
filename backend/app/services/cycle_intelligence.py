@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -14,6 +14,7 @@ from app.models.cycle import Cycle
 from app.models.cycle_template import CycleTemplate
 from app.models.location import Location
 from app.models.receivable import Receivable
+from app.models.renewal_request import RenewalRequest
 from app.schemas.cycle_intelligence import (
     CyclePreviewIn,
     CyclePreviewOut,
@@ -290,6 +291,33 @@ def create_intelligent_cycle(
     if service.status != "active":
         raise AuthError("service_archived", "Não é possível criar ciclo com serviço arquivado.")
 
+    renewal_row: RenewalRequest | None = None
+    if payload.renewal_request_id is not None:
+        renewal_row = db.scalar(
+            select(RenewalRequest).where(
+                RenewalRequest.organization_id == organization_id,
+                RenewalRequest.id == payload.renewal_request_id,
+            )
+        )
+        if renewal_row is None:
+            raise AuthError("renewal_not_found", "Solicitação de renovação não encontrada.", 404)
+        if renewal_row.client_id != payload.client_id:
+            raise AuthError(
+                "renewal_client_mismatch",
+                "A renovação não pertence a este cliente.",
+                422,
+            )
+        if renewal_row.created_cycle_id is not None:
+            return domain_svc.get_cycle(
+                db, organization_id=organization_id, cycle_id=renewal_row.created_cycle_id
+            )
+        if renewal_row.status in {"dismissed", "canceled", "rejected"}:
+            raise AuthError(
+                "renewal_closed",
+                "Esta solicitação de renovação não pode mais ser aprovada.",
+                422,
+            )
+
     template = get_template(
         db, organization_id=organization_id, template_id=payload.cycle_template_id
     )
@@ -437,6 +465,12 @@ def create_intelligent_cycle(
                     status="scheduled",
                 )
             )
+
+    if payload.renewal_request_id is not None and renewal_row is not None:
+        renewal_row.status = "resolved"
+        renewal_row.resolved_at = datetime.now(UTC)
+        renewal_row.created_cycle_id = cycle.id
+        db.add(renewal_row)
 
     db.commit()
     return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)

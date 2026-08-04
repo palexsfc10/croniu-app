@@ -28,6 +28,7 @@ class OrganizationPaymentSettings(Base):
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_payment_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     show_on_my_cycle: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    institution: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

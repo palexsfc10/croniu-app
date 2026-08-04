@@ -35,6 +35,8 @@ def detect_mime(data: bytes) -> str | None:
         return "image/png"
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
+    if data.startswith(b"%PDF"):
+        return "application/pdf"
     return None
 
 
@@ -50,11 +52,20 @@ def store_proof_bytes(
         raise AuthError("proof_too_large", "O comprovante deve ter no máximo 5 MB.", 413)
     mime = detect_mime(data)
     if mime is None:
-        raise AuthError("proof_invalid", "Arquivo de imagem inválido.", 422)
+        raise AuthError(
+            "proof_invalid",
+            "Arquivo inválido. Envie PDF, JPEG ou PNG.",
+            422,
+        )
     if declared_mime and declared_mime != mime:
         raise AuthError("proof_mime_mismatch", "Tipo de arquivo inconsistente.", 422)
     digest = hashlib.sha256(data).hexdigest()
-    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
+    ext = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "application/pdf": "pdf",
+    }[mime]
     key = f"{organization_id}/{secrets.token_urlsafe(24)}.{ext}"
     path = _storage_root() / key
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -107,6 +107,7 @@ class IntelligentCycleCreate(BaseModel):
     location_id: UUID | None = None
     starts_time: time | None = None
     idempotency_key: str | None = Field(default=None, min_length=4, max_length=64)
+    renewal_request_id: UUID | None = None
 
     @field_validator("weekdays")
     @classmethod

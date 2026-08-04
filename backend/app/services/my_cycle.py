@@ -232,6 +232,7 @@ def get_payment_settings(
         pix_key=row.pix_key,
         instructions=row.instructions,
         external_payment_url=row.external_payment_url,
+        institution=row.institution,
         show_on_my_cycle=row.show_on_my_cycle,
     )
 
@@ -254,6 +255,7 @@ def upsert_payment_settings(
     row.pix_key = pix_key
     row.instructions = _normalize_optional(payload.instructions, max_len=2000)
     row.external_payment_url = url
+    row.institution = _normalize_optional(payload.institution, max_len=120)
     row.show_on_my_cycle = payload.show_on_my_cycle
     db.add(row)
     db.commit()
@@ -320,6 +322,17 @@ def lessons_completed_for_cycle(
     organization_id: uuid.UUID,
 ) -> int:
     return domain_svc.count_lessons_completed(
+        db, organization_id=organization_id, cycle_id=cycle.id
+    )
+
+
+def lessons_no_show_for_cycle(
+    db: Session,
+    cycle: Cycle,
+    *,
+    organization_id: uuid.UUID,
+) -> int:
+    return domain_svc.count_lessons_no_show(
         db, organization_id=organization_id, cycle_id=cycle.id
     )
 
@@ -393,16 +406,19 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         today=today,
     )
     settings = get_payment_settings(db, organization_id=access.organization_id)
+    # Pix is not shown on the general portal surface — only during renewal step.
     instructions = PublicPaymentInstructions(configured=False)
+    renewal_instructions = PublicPaymentInstructions(configured=False)
     if settings.show_on_my_cycle and (
         settings.pix_key or settings.external_payment_url or settings.instructions
     ):
-        instructions = PublicPaymentInstructions(
+        renewal_instructions = PublicPaymentInstructions(
             holder_name=settings.holder_name,
             pix_key_type=settings.pix_key_type,
             pix_key=settings.pix_key,
             instructions=settings.instructions,
             external_payment_url=settings.external_payment_url,
+            institution=settings.institution,
             configured=True,
         )
 
@@ -422,6 +438,7 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
             cycle=None,
             empty_message="Seu profissional ainda não disponibilizou um ciclo para acompanhamento.",
             payment_instructions=instructions,
+            renewal_payment_instructions=renewal_instructions,
             can_request_renewal=False,
             can_report_payment=False,
             evaluations=published_evals,
@@ -478,6 +495,9 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         lessons_completed=lessons_completed_for_cycle(
             db, cycle, organization_id=access.organization_id
         ),
+        lessons_no_show=lessons_no_show_for_cycle(
+            db, cycle, organization_id=access.organization_id
+        ),
         remaining_planned_lessons=remaining_planned_lessons(
             db, cycle, organization_id=access.organization_id
         ),
@@ -500,6 +520,7 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         cycle=block,
         empty_message=None,
         payment_instructions=instructions,
+        renewal_payment_instructions=renewal_instructions,
         can_request_renewal=can_renew,
         can_report_payment=can_pay,
         evaluations=published_evals,

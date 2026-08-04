@@ -40,6 +40,12 @@ class RenewalRequest(Base):
     )
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cycles.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -48,4 +54,5 @@ class RenewalRequest(Base):
     )
 
     client = relationship("Client")
-    source_cycle = relationship("Cycle")
+    source_cycle = relationship("Cycle", foreign_keys=[source_cycle_id])
+    created_cycle = relationship("Cycle", foreign_keys=[created_cycle_id])
