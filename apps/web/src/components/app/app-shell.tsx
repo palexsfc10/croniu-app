@@ -2,17 +2,29 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ComponentType, SVGProps } from "react";
 import { BrandWordmark } from "@/components/brand";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
+import {
+  IconCalendarDays,
+  IconHome,
+  IconLayoutGrid,
+  IconRefreshCw,
+  IconUsersRound,
+} from "@/components/ui/icons";
 
-const navItems = [
-  { href: "/app", label: "Hoje" },
-  { href: "/app/agenda", label: "Agenda" },
-  { href: "/app/clients", label: "Clientes" },
-  { href: "/app/cycles", label: "Ciclos" },
-  { href: "/app/profile", label: "Mais" },
-] as const;
+const navItems: {
+  href: string;
+  label: string;
+  Icon: ComponentType<SVGProps<SVGSVGElement> & { title?: string }>;
+}[] = [
+  { href: "/app", label: "Hoje", Icon: IconHome },
+  { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
+  { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
+  { href: "/app/cycles", label: "Ciclos", Icon: IconRefreshCw },
+  { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
+];
 
 function isNavActive(pathname: string, href: string) {
   if (href === "/app") return pathname === "/app";
@@ -87,13 +99,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             {navItems.map((item) => {
               const active = isNavActive(pathname, item.href);
+              const { Icon } = item;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={navLinkClass(active)}
+                  className={["inline-flex items-center gap-2.5", navLinkClass(active)].join(" ")}
                   aria-current={active ? "page" : undefined}
                 >
+                  <Icon aria-hidden className="opacity-90" />
                   {item.label}
                 </Link>
               );
@@ -166,22 +180,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="Navegação principal"
           className="app-bottom-nav fixed inset-x-0 bottom-0 border-t border-[var(--color-border)]/70 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden"
         >
-          <div className="mx-auto flex max-w-lg items-center justify-between gap-1 px-1 py-2">
+          <div className="mx-auto flex max-w-lg items-stretch justify-between gap-0.5 px-1.5 py-1.5">
             {navItems.map((item) => {
               const active = isNavActive(pathname, item.href);
+              const { Icon } = item;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-label={item.label}
+                  aria-current={active ? "page" : undefined}
                   className={[
-                    "min-h-11 flex-1 rounded-[var(--radius-md)] px-1 py-2 text-center text-xs font-semibold transition-colors duration-[var(--duration-fast)] sm:text-sm",
+                    "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-1 py-1.5 text-[0.65rem] font-semibold transition-[background-color,color] duration-[var(--duration-fast)] sm:text-xs",
                     active
                       ? "bg-[var(--color-primary-subtle)] text-[var(--color-primary)]"
                       : "text-[var(--color-ink-muted)]",
                   ].join(" ")}
-                  aria-current={active ? "page" : undefined}
                 >
-                  {item.label}
+                  <Icon
+                    className={active ? "h-[1.15rem] w-[1.15rem]" : "h-[1.15rem] w-[1.15rem] opacity-80"}
+                    aria-hidden
+                  />
+                  <span className="truncate">{item.label}</span>
                 </Link>
               );
             })}

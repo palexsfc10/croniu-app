@@ -7,6 +7,7 @@ import { appointmentStatusLabel, formatBRL, formatOrgDateTime } from "@/lib/api"
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { IconBanknote } from "@/components/ui/icons";
 import { ContextualBar } from "@/components/app/contextual-bar";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
@@ -137,23 +138,46 @@ function PaymentList({ items }: { items: Receivable[] }) {
   if (!items.length) {
     return (
       <EmptyState
-        title="Pagamentos pendentes"
-        description="Valores aguardando confirmação manual serão destacados aqui."
+        tone="neutral"
+        title="Tudo certo por aqui"
+        description="Pagamentos enviados pelos clientes aparecerão aqui para sua confirmação."
       />
     );
   }
+  const totalCents = items.reduce((sum, item) => sum + (item.amount_cents ?? 0), 0);
   return (
-    <section aria-label="Pagamentos pendentes" className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Pagamentos pendentes</h2>
-        <Badge tone="warning">Pendente</Badge>
+    <section
+      aria-label="Pagamentos pendentes"
+      className="card-rail card-rail-warning space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/20 bg-[var(--color-warning-subtle)]/50 p-3"
+    >
+      <div className="flex items-start gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-warning-subtle)] text-[var(--color-warning)]">
+          <IconBanknote className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-[var(--color-ink)]">Pagamentos pendentes</h2>
+            <Badge tone="warning">
+              {items.length} {items.length === 1 ? "pendente" : "pendentes"}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+            {items.length === 1
+              ? "1 pagamento aguarda sua confirmação."
+              : `${items.length} pagamentos aguardam sua confirmação.`}
+            {totalCents > 0 ? ` Total · ${formatBRL(totalCents)}.` : ""}
+          </p>
+          <Link href={`/app/receivables/${items[0].id}`} className="mt-2 inline-block">
+            <Button variant="secondary">Revisar</Button>
+          </Link>
+        </div>
       </div>
       <ul className="space-y-2">
         {items.map((item) => (
           <li key={item.id}>
             <Link
               href={`/app/receivables/${item.id}`}
-              className="card-rail card-rail-warning block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-warning-subtle)]/50"
+              className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-warning-subtle)]/40"
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="font-semibold text-[var(--color-ink)]">{item.client_name}</p>
