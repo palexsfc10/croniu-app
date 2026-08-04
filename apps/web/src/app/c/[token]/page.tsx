@@ -247,65 +247,126 @@ export default function PublicMyCyclePage() {
                       {PAY_LABEL[data.cycle.payment_status] ?? data.cycle.payment_status}
                     </Badge>
                   </p>
-                  {data.payment_instructions.configured ? (
-                    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
-                      {data.payment_instructions.holder_name ? (
-                        <p>Titular · {data.payment_instructions.holder_name}</p>
-                      ) : null}
-                      {data.payment_instructions.pix_key ? (
-                        <p>
-                          Pix ({data.payment_instructions.pix_key_type}) ·{" "}
-                          {data.payment_instructions.pix_key}
-                        </p>
-                      ) : null}
-                      {data.payment_instructions.instructions ? (
-                        <p className="mt-1 whitespace-pre-wrap">
-                          {data.payment_instructions.instructions}
-                        </p>
-                      ) : null}
-                      {data.payment_instructions.external_payment_url ? (
-                        <a
-                          className="mt-2 inline-block font-semibold text-[var(--color-primary)]"
-                          href={data.payment_instructions.external_payment_url}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          Abrir link de pagamento
-                        </a>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      Combine a forma de pagamento diretamente com seu profissional.
-                    </p>
-                  )}
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    Combine a forma de pagamento diretamente com seu profissional. A chave Pix
+                    aparece apenas na etapa de renovação.
+                  </p>
                 </section>
 
                 {data.can_request_renewal && !data.cycle.renewal_request_status ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                    <h2 className="text-lg font-semibold text-[var(--color-ink)]">
+                      Seu ciclo está chegando ao fim
+                    </h2>
+                    <p className="text-sm text-[var(--color-ink-muted)]">
+                      Se quiser continuar seu acompanhamento com {data.professional_display_name},
+                      envie sua solicitação de renovação.
+                    </p>
                     {!renewConfirm ? (
                       <Button fullWidth onClick={() => setRenewConfirm(true)}>
-                        Quero renovar
+                        Quero continuar
                       </Button>
                     ) : (
-                      <>
-                        <p className="text-sm">
-                          Confirmar interesse? Seu profissional ainda precisará criar o próximo ciclo.
+                      <div className="space-y-3">
+                        <p className="text-sm font-semibold">Pagamento da renovação</p>
+                        <p className="text-sm text-[var(--color-ink-muted)]">
+                          Use os dados abaixo para realizar o pagamento. Depois, você pode enviar o
+                          comprovante para facilitar a confirmação.
+                        </p>
+                        {data.renewal_payment_instructions?.configured ? (
+                          <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-progress-subtle)]/40 p-3 text-sm">
+                            {data.renewal_payment_instructions.holder_name ? (
+                              <p>Favorecido · {data.renewal_payment_instructions.holder_name}</p>
+                            ) : null}
+                            {data.renewal_payment_instructions.institution ? (
+                              <p>Instituição · {data.renewal_payment_instructions.institution}</p>
+                            ) : null}
+                            {data.renewal_payment_instructions.pix_key ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p>
+                                  Pix ({data.renewal_payment_instructions.pix_key_type}) ·{" "}
+                                  <span className="font-semibold">
+                                    {data.renewal_payment_instructions.pix_key}
+                                  </span>
+                                </p>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  className="min-h-9"
+                                  onClick={() => {
+                                    void navigator.clipboard?.writeText(
+                                      data.renewal_payment_instructions?.pix_key ?? "",
+                                    );
+                                  }}
+                                >
+                                  Copiar chave
+                                </Button>
+                              </div>
+                            ) : null}
+                            {data.renewal_payment_instructions.instructions ? (
+                              <p className="whitespace-pre-wrap">
+                                {data.renewal_payment_instructions.instructions}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-[var(--color-ink-muted)]">
+                            {data.professional_display_name} recebeu seu interesse e combinará com
+                            você a forma de pagamento.
+                          </p>
+                        )}
+                        <p className="text-sm text-[var(--color-ink-muted)]">
+                          O envio do comprovante não confirma a renovação automaticamente.{" "}
+                          {data.professional_display_name} irá revisar as informações.
                         </p>
                         <Button fullWidth disabled={busy} onClick={() => void requestRenewal()}>
-                          Confirmar interesse
+                          Enviar interesse
                         </Button>
                         <Button variant="secondary" fullWidth onClick={() => setRenewConfirm(false)}>
                           Cancelar
                         </Button>
-                      </>
+                      </div>
                     )}
                   </div>
                 ) : null}
                 {data.cycle.renewal_request_status ? (
-                  <p className="text-sm text-[var(--color-ink-muted)]">
-                    Interesse em renovação já enviado.
-                  </p>
+                  <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                    <p className="text-sm font-semibold text-[var(--color-ink)]">
+                      Seu interesse foi enviado para {data.professional_display_name}.
+                    </p>
+                    {data.cycle.renewal_request_status === "resolved" ? (
+                      <p className="text-sm text-[var(--color-success)]">
+                        Renovação confirmada. Seu novo ciclo segue a data configurada pelo
+                        profissional.
+                      </p>
+                    ) : data.renewal_payment_instructions?.configured ? (
+                      <div className="space-y-2 text-sm">
+                        <p className="text-[var(--color-ink-muted)]">
+                          Os dados para pagamento estão disponíveis. Após o pagamento, você pode
+                          enviar o comprovante.
+                        </p>
+                        {data.renewal_payment_instructions.pix_key ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold">
+                              {data.renewal_payment_instructions.pix_key}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="min-h-9"
+                              onClick={() => {
+                                void navigator.clipboard?.writeText(
+                                  data.renewal_payment_instructions?.pix_key ?? "",
+                                );
+                              }}
+                            >
+                              Copiar chave
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 {data.can_report_payment ? (
@@ -330,10 +391,10 @@ export default function PublicMyCyclePage() {
                           onChange={(e) => setNotes(e.target.value)}
                         />
                         <label className="block text-sm">
-                          Comprovante (opcional, JPEG/PNG/WebP, até 5 MB)
+                          Comprovante (opcional, PDF/JPEG/PNG, até 5 MB)
                           <input
                             type="file"
-                            accept="image/jpeg,image/png,image/webp"
+                            accept="application/pdf,image/jpeg,image/png"
                             className="mt-1 block w-full text-sm"
                             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                           />

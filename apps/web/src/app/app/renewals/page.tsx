@@ -100,7 +100,7 @@ export default function RenewalsPage() {
               </p>
               <div className="flex flex-col gap-2">
                 <Button fullWidth onClick={() => void prepare(item.id)}>
-                  Preparar renovação
+                  Revisar e aprovar renovação
                 </Button>
                 <Button
                   variant="secondary"

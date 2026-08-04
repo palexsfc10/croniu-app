@@ -42,6 +42,7 @@ export default function PreferencesPage() {
 
   const [pay, setPay] = useState<PaymentSettings>({
     show_on_my_cycle: true,
+    institution: null,
   });
   const [paySaved, setPaySaved] = useState(false);
 
@@ -168,6 +169,11 @@ export default function PreferencesPage() {
           onChange={(e) => setPay((p) => ({ ...p, pix_key: e.target.value }))}
         />
         <TextField
+          label="Instituição (opcional)"
+          value={pay.institution ?? ""}
+          onChange={(e) => setPay((p) => ({ ...p, institution: e.target.value }))}
+        />
+        <TextField
           label="Instruções adicionais"
           value={pay.instructions ?? ""}
           onChange={(e) => setPay((p) => ({ ...p, instructions: e.target.value }))}
@@ -183,7 +189,7 @@ export default function PreferencesPage() {
             checked={pay.show_on_my_cycle}
             onChange={(e) => setPay((p) => ({ ...p, show_on_my_cycle: e.target.checked }))}
           />
-          Exibir no Meu Ciclo
+          Disponibilizar Pix na etapa de renovação do cliente
         </label>
         {paySaved ? (
           <p role="status" className="text-sm text-[var(--color-success)]">
@@ -204,6 +210,7 @@ export default function PreferencesPage() {
                     holder_name: pay.holder_name || null,
                     pix_key_type: pay.pix_key_type || null,
                     pix_key: pay.pix_key || null,
+                    institution: pay.institution || null,
                     instructions: pay.instructions || null,
                     external_payment_url: pay.external_payment_url || null,
                     show_on_my_cycle: pay.show_on_my_cycle,

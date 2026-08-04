@@ -58,7 +58,7 @@ describe("Public Meu Ciclo page", () => {
     render(<PublicMyCyclePage />);
     expect(await screen.findByText(/Olá, Renata/i)).toBeInTheDocument();
     expect(screen.getByText(/Personal/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Quero renovar/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Quero continuar/i })).toBeInTheDocument();
     expect(screen.queryByText(/organization/i)).not.toBeInTheDocument();
   });
 
@@ -67,6 +67,8 @@ describe("Public Meu Ciclo page", () => {
     expect(await screen.findByText(/Sua evolução/i)).toBeInTheDocument();
     expect(screen.getByText(/Evolução de julho/i)).toBeInTheDocument();
     expect(screen.getByText(/Bom progresso/i)).toBeInTheDocument();
+    expect(screen.getByText(/Próximo foco/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bom ritmo/i)).toBeInTheDocument();
     expect(screen.queryByText(/private/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/SEGREDO/i)).not.toBeInTheDocument();
   });
