@@ -2,6 +2,7 @@
 
 **Branch:** `feature/home-daily-focus`  
 **SHA base:** `915ed66ae227b308e49700b6bce1f2cdc54cf698`  
+**SHA final:** `9d2327cbe0cae58700b1ef590b5f814d962fcf3a`  
 **Migration head:** `0011_renewal_whatsapp` (sem migration nesta sprint)
 
 ## 1. Diagnóstico inicial
