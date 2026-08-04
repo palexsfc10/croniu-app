@@ -37,12 +37,6 @@ export default function ProfilePage() {
       </dl>
       <div className="space-y-2">
         <Link
-          href="/app/assistant"
-          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
-        >
-          Assistente
-        </Link>
-        <Link
           href="/app/services"
           className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
         >

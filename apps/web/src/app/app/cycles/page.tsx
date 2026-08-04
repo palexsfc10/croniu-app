@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, formatBRL, formatDateBR, type Cycle } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { cycleStatusLabel, cycleStatusTone } from "@/lib/status-tone";
 
 export default function CyclesPage() {
   const router = useRouter();
@@ -79,35 +81,50 @@ export default function CyclesPage() {
         {items.map((item) => (
           <li
             key={item.id}
-            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+            className={[
+              "rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3",
+              item.is_nearing_end
+                ? "card-rail card-rail-warning"
+                : item.status === "active"
+                  ? "card-rail card-rail-progress"
+                  : "card-rail card-rail-info",
+            ].join(" ")}
           >
             <button
               type="button"
               className="w-full text-left"
               onClick={() => router.push(`/app/cycles/${item.id}`)}
             >
-              <p className="font-semibold text-[var(--color-ink)]">{item.client_name}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-semibold text-[var(--color-ink)]">{item.client_name}</p>
+                <Badge tone={cycleStatusTone(item.status, item.is_nearing_end)}>
+                  {cycleStatusLabel(item.status, item.is_nearing_end)}
+                </Badge>
+              </div>
               <p className="text-sm text-[var(--color-ink-muted)]">
                 {item.service_name} · {formatDateBR(item.starts_on)} → {formatDateBR(item.ends_on)}
               </p>
               <p className="mt-1 text-sm text-[var(--color-ink)]">
                 {item.lesson_count != null
-                  ? `${item.lessons_completed ?? 0}/${item.lesson_count} aulas · `
+                  ? `${item.lessons_completed ?? 0}/${item.lesson_count} aulas${
+                      (item.lessons_no_show ?? 0) > 0
+                        ? ` · ${item.lessons_no_show} falta${item.lessons_no_show === 1 ? "" : "s"}`
+                        : ""
+                    } · `
                   : ""}
                 {formatBRL(item.value_cents)}
-                {item.status !== "active" ? ` · ${item.status}` : ""}
                 {item.is_legacy ? " · legado" : ""}
-                {item.is_nearing_end ? " · encerrando" : ""}
               </p>
             </button>
             {item.status !== "cancelled" ? (
               <div className="mt-3 flex gap-2">
                 <Link href={`/app/cycles/${item.id}/edit`} className="min-w-0 flex-1">
-                  <Button fullWidth className="min-h-10">
+                  <Button variant="secondary" fullWidth className="min-h-10">
                     Editar
                   </Button>
                 </Link>
                 <Button
+                  variant="danger"
                   fullWidth
                   className="min-h-10 flex-1"
                   disabled={busyId === item.id}

@@ -149,7 +149,7 @@ function NewAppointmentForm() {
         </p>
       ) : null}
       {conflicts.length ? (
-        <ul className="rounded-[var(--radius-md)] bg-red-50 px-3 py-2 text-sm text-[var(--color-danger)]">
+        <ul className="rounded-[var(--radius-md)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]">
           {conflicts.map((c) => (
             <li key={c}>{c}</li>
           ))}

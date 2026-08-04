@@ -6,8 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, formatBRL, type Receivable } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ContextualBar } from "@/components/app/contextual-bar";
 import { TextField } from "@/components/ui/text-field";
+import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 
 export default function ReceivableDetailPage() {
   const params = useParams<{ receivableId: string }>();
@@ -61,8 +63,11 @@ export default function ReceivableDetailPage() {
           <h1 className="h-display text-3xl text-[var(--color-ink)]">{item.client_name}</h1>
           <p className="text-sm text-[var(--color-ink-muted)]">{item.cycle_service_name}</p>
           <p className="text-lg font-semibold">{formatBRL(item.amount_cents)}</p>
-          <p className="text-sm">
-            Status: <strong>{item.status === "received" ? "pago" : "pendente"}</strong>
+          <p className="flex flex-wrap items-center gap-2 text-sm">
+            Status:
+            <Badge tone={receivableStatusTone(item.status)}>
+              {receivableStatusLabel(item.status)}
+            </Badge>
           </p>
           <p className="text-sm text-[var(--color-ink-muted)]">Vencimento: {item.due_on}</p>
           {item.status !== "received" ? (
@@ -72,17 +77,17 @@ export default function ReceivableDetailPage() {
                 value={method}
                 onChange={(event) => setMethod(event.target.value)}
               />
-              <Button fullWidth disabled={busy} onClick={() => void markPaid()}>
+              <Button variant="success" fullWidth disabled={busy} onClick={() => void markPaid()}>
                 {busy ? "Confirmando…" : "Marcar como pago"}
               </Button>
             </div>
           ) : (
-            <p className="text-sm text-[var(--color-success)]">
-              Pago em {item.paid_at ? new Date(item.paid_at).toLocaleString("pt-BR") : "—"}
+            <p className="rounded-[var(--radius-md)] border border-[var(--color-success)]/20 bg-[var(--color-success-subtle)] px-3 py-2 text-sm text-[var(--color-success)]">
+              Recebido em {item.paid_at ? new Date(item.paid_at).toLocaleString("pt-BR") : "—"}
               {item.payment_method ? ` · ${item.payment_method}` : ""}
             </p>
           )}
-          <Link href={`/app/cycles/${item.cycle_id}`} className="text-sm font-semibold text-[var(--color-primary)]">
+          <Link href={`/app/cycles/${item.cycle_id}`} className="text-sm font-semibold text-[var(--color-link)]">
             Ver ciclo
           </Link>
         </>

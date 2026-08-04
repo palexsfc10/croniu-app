@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/app/app-shell";
 
@@ -24,6 +24,14 @@ vi.mock("@/components/auth/auth-provider", () => ({
   }),
 }));
 
+function expectLink(name: string | RegExp, href: string) {
+  const links = screen.getAllByRole("link", { name });
+  expect(links.length).toBeGreaterThanOrEqual(1);
+  for (const link of links) {
+    expect(link).toHaveAttribute("href", href);
+  }
+}
+
 describe("AppShell nav Sprint 2B", () => {
   afterEach(() => cleanup());
 
@@ -33,12 +41,18 @@ describe("AppShell nav Sprint 2B", () => {
         <p>content</p>
       </AppShell>,
     );
-    expect(screen.getByRole("link", { name: "Hoje" })).toHaveAttribute("href", "/app");
-    expect(screen.getByRole("link", { name: "Agenda" })).toHaveAttribute("href", "/app/agenda");
-    expect(screen.getByRole("link", { name: "Clientes" })).toHaveAttribute("href", "/app/clients");
-    expect(screen.getByRole("link", { name: "Ciclos" })).toHaveAttribute("href", "/app/cycles");
-    expect(screen.getByRole("link", { name: "Mais" })).toHaveAttribute("href", "/app/profile");
-    expect(screen.getByRole("link", { name: "Manual" })).toHaveAttribute("href", "/app/manual");
+    expectLink("Hoje", "/app");
+    expectLink("Agenda", "/app/agenda");
+    expectLink("Clientes", "/app/clients");
+    expectLink("Ciclos", "/app/cycles");
+    expectLink("Mais", "/app/profile");
+    expectLink("Manual", "/app/manual");
+    expectLink(/Assistente/, "/app/assistant");
+
+    const navs = screen.getAllByRole("navigation", { name: "Navegação principal" });
+    expect(navs.length).toBe(2);
+    expect(within(navs[0]).getByRole("link", { name: "Hoje" })).toHaveAttribute("href", "/app");
+    expect(within(navs[1]).getByRole("link", { name: "Hoje" })).toHaveAttribute("href", "/app");
     expect(screen.queryByRole("button", { name: "Sair" })).not.toBeInTheDocument();
   });
 });

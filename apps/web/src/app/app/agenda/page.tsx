@@ -110,7 +110,7 @@ export default function AgendaPage() {
       {agenda && agenda.conflict_count > 0 ? (
         <p
           role="status"
-          className="rounded-[var(--radius-md)] border border-[var(--color-warning)]/40 bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-warning)]"
+          className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/30 bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
         >
           Este dia tem {agenda.conflict_count} compromisso(s) com sobreposição.
         </p>
@@ -140,7 +140,7 @@ export default function AgendaPage() {
           <li key={item.id}>
             <Link
               href={`/app/appointments/${item.id}`}
-              className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+              className="card-rail card-rail-primary block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-primary-subtle)]/35"
             >
               <p className="font-semibold text-[var(--color-ink)]">
                 {formatOrgDateTime(item.starts_at, agenda.timezone)}–

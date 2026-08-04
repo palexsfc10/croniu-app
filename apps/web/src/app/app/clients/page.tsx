@@ -52,7 +52,7 @@ export default function ClientsPage() {
           <li key={item.id}>
             <Link
               href={`/app/clients/${item.id}`}
-              className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+              className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-primary-subtle)]/40"
             >
               <p className="font-semibold">{item.full_name}</p>
               <p className="text-sm text-[var(--color-ink-muted)]">

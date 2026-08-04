@@ -4,7 +4,9 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatBRL, formatDateBR, type PublicMyCycle } from "@/lib/api";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
+import { EvolutionEntry } from "@/components/app/evolution-entry";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { TextField } from "@/components/ui/text-field";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -14,12 +16,27 @@ const STATUS_LABEL: Record<string, string> = {
   proximo: "Próximo ciclo",
 };
 
+const STATUS_TONE: Record<string, "progress" | "warning" | "neutral" | "info"> = {
+  vigente: "progress",
+  encerrando: "warning",
+  encerrado: "neutral",
+  proximo: "info",
+};
+
 const PAY_LABEL: Record<string, string> = {
   pendente: "Pagamento pendente",
   confirmado: "Pagamento confirmado",
   aguardando_confirmacao: "Pagamento informado — aguardando confirmação",
   nao_confirmado: "Pagamento ainda não confirmado",
   sem_cobranca: "Sem cobrança vinculada",
+};
+
+const PAY_TONE: Record<string, "warning" | "success" | "neutral"> = {
+  pendente: "warning",
+  confirmado: "success",
+  aguardando_confirmacao: "warning",
+  nao_confirmado: "warning",
+  sem_cobranca: "neutral",
 };
 
 export default function PublicMyCyclePage() {
@@ -114,7 +131,7 @@ export default function PublicMyCyclePage() {
   }
 
   return (
-    <div className="min-h-dvh bg-[linear-gradient(165deg,#f7f4ef_0%,#eef6f3_45%,#f7f4ef_100%)]">
+    <div className="min-h-dvh bg-[linear-gradient(165deg,var(--color-bg)_0%,var(--color-progress-subtle)_42%,var(--color-primary-subtle)_100%)]">
       <main className="mx-auto flex min-h-dvh max-w-md flex-col px-4 py-6">
         <header className="mb-8 flex items-start justify-between gap-3">
           <div>
@@ -133,13 +150,16 @@ export default function PublicMyCyclePage() {
         {error ? (
           <p
             role="alert"
-            className="rounded-[var(--radius-md)] bg-[var(--color-surface)] px-4 py-4 text-sm text-[var(--color-ink)]"
+            className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)] px-4 py-4 text-sm text-[var(--color-danger)]"
           >
             {error}
           </p>
         ) : null}
         {flash ? (
-          <p role="status" className="mb-3 rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
+          <p
+            role="status"
+            className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-success)]/20 bg-[var(--color-success-subtle)] px-3 py-2 text-sm text-[var(--color-success)]"
+          >
             {flash}
           </p>
         ) : null}
@@ -158,10 +178,24 @@ export default function PublicMyCyclePage() {
               <p className="text-base text-[var(--color-ink)]">{data.empty_message}</p>
             ) : (
               <>
-                <section className="space-y-1">
-                  <h2 className="text-lg font-semibold text-[var(--color-ink)]">
-                    {STATUS_LABEL[data.cycle.status_summary] ?? data.cycle.status_summary}
-                  </h2>
+                <section
+                  className={[
+                    "space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4",
+                    data.cycle.status_summary === "encerrando"
+                      ? "card-rail card-rail-warning"
+                      : data.cycle.status_summary === "vigente"
+                        ? "card-rail card-rail-progress"
+                        : "",
+                  ].join(" ")}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold text-[var(--color-ink)]">
+                      {STATUS_LABEL[data.cycle.status_summary] ?? data.cycle.status_summary}
+                    </h2>
+                    <Badge tone={STATUS_TONE[data.cycle.status_summary] ?? "neutral"}>
+                      {STATUS_LABEL[data.cycle.status_summary] ?? data.cycle.status_summary}
+                    </Badge>
+                  </div>
                   <p className="text-sm text-[var(--color-ink-muted)]">{data.cycle.service_name}</p>
                   <p className="text-sm">
                     {formatDateBR(data.cycle.starts_on)} → {formatDateBR(data.cycle.ends_on)}
@@ -173,22 +207,45 @@ export default function PublicMyCyclePage() {
                   ) : null}
                 </section>
 
-                <section>
+                <section className="space-y-2">
                   <p className="text-sm text-[var(--color-ink-muted)]">Aulas</p>
                   <p className="text-base font-semibold">
-                    {data.cycle.lessons_completed ?? 0} realizadas
+                    {Math.max(
+                      0,
+                      (data.cycle.lessons_completed ?? 0) - (data.cycle.lessons_no_show ?? 0),
+                    )}{" "}
+                    realizadas
+                    {(data.cycle.lessons_no_show ?? 0) > 0
+                      ? ` · ${data.cycle.lessons_no_show} falta${
+                          data.cycle.lessons_no_show === 1 ? "" : "s"
+                        }`
+                      : ""}
                     {data.cycle.lesson_count != null
                       ? ` · ${data.cycle.remaining_planned_lessons ?? data.cycle.lesson_count} restantes`
                       : ""}
-                    {data.cycle.lesson_count != null ? ` · ${data.cycle.lesson_count} no ciclo` : ""}
+                    {data.cycle.lesson_count != null
+                      ? ` · ${data.cycle.lesson_count} no ciclo`
+                      : ""}
                   </p>
+                  {(data.cycle.lessons_no_show ?? 0) > 0 ? (
+                    <p
+                      role="status"
+                      className="rounded-[var(--radius-md)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink-muted)]"
+                    >
+                      {data.cycle.lessons_no_show === 1
+                        ? "Foi registrada 1 falta neste ciclo. A falta também desconta do saldo de aulas."
+                        : `Foram registradas ${data.cycle.lessons_no_show} faltas neste ciclo. Cada falta também desconta do saldo de aulas.`}
+                    </p>
+                  ) : null}
                 </section>
 
                 <section className="space-y-2">
                   <p className="text-sm text-[var(--color-ink-muted)]">Valor e pagamento</p>
                   <p className="text-xl font-semibold">{formatBRL(data.cycle.value_cents)}</p>
-                  <p className="text-sm">
-                    {PAY_LABEL[data.cycle.payment_status] ?? data.cycle.payment_status}
+                  <p className="flex flex-wrap items-center gap-2 text-sm">
+                    <Badge tone={PAY_TONE[data.cycle.payment_status] ?? "neutral"}>
+                      {PAY_LABEL[data.cycle.payment_status] ?? data.cycle.payment_status}
+                    </Badge>
                   </p>
                   {data.payment_instructions.configured ? (
                     <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
@@ -294,74 +351,22 @@ export default function PublicMyCyclePage() {
               </>
             )}
 
-            <section aria-label="Sua evolução" className="space-y-3">
-              <h2 className="text-lg font-semibold text-[var(--color-ink)]">Sua evolução</h2>
+            <section aria-label="Sua evolução" className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-[var(--color-ink)]">Sua evolução</h2>
+                <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
+                  Acompanhamento compartilhado pelo seu profissional
+                </p>
+              </div>
               {!data.evaluations || data.evaluations.length === 0 ? (
                 <p className="text-sm text-[var(--color-ink-muted)]">
-                  Ainda não há avaliações compartilhadas.
+                  Ainda não há registros compartilhados.
                 </p>
               ) : (
-                <ul className="space-y-4">
+                <ul className="space-y-3">
                   {data.evaluations.map((ev, index) => (
-                    <li
-                      key={`${ev.title}-${ev.published_at ?? index}`}
-                      className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 space-y-2"
-                    >
-                      <p className="font-semibold">{ev.title}</p>
-                      {ev.evaluated_from || ev.evaluated_to ? (
-                        <p className="text-sm text-[var(--color-ink-muted)]">
-                          {ev.evaluated_from ? formatDateBR(ev.evaluated_from) : "…"}
-                          {" → "}
-                          {ev.evaluated_to ? formatDateBR(ev.evaluated_to) : "…"}
-                        </p>
-                      ) : ev.published_at ? (
-                        <p className="text-sm text-[var(--color-ink-muted)]">
-                          {formatDateBR(ev.published_at.slice(0, 10))}
-                        </p>
-                      ) : null}
-                      {ev.summary ? (
-                        <p className="text-sm whitespace-pre-wrap">{ev.summary}</p>
-                      ) : null}
-                      {ev.achievements ? (
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
-                            Conquistas
-                          </p>
-                          <p className="text-sm whitespace-pre-wrap">{ev.achievements}</p>
-                        </div>
-                      ) : null}
-                      {ev.attention_points ? (
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
-                            Pontos de atenção
-                          </p>
-                          <p className="text-sm whitespace-pre-wrap">{ev.attention_points}</p>
-                        </div>
-                      ) : null}
-                      {ev.next_goals ? (
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
-                            Próximos objetivos
-                          </p>
-                          <p className="text-sm whitespace-pre-wrap">{ev.next_goals}</p>
-                        </div>
-                      ) : null}
-                      {ev.criteria?.length ? (
-                        <ul className="space-y-1 text-sm">
-                          {ev.criteria.map((c, i) => (
-                            <li key={`${c.name}-${i}`}>
-                              {c.name}
-                              {c.score != null ? ` · ${c.score}/${c.scale_max}` : ""}
-                              {c.comment ? ` — ${c.comment}` : ""}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {ev.client_message ? (
-                        <p className="text-sm whitespace-pre-wrap border-t border-[var(--color-border)] pt-2">
-                          {ev.client_message}
-                        </p>
-                      ) : null}
+                    <li key={`${ev.title}-${ev.published_at ?? index}`}>
+                      <EvolutionEntry evaluation={ev} />
                     </li>
                   ))}
                 </ul>

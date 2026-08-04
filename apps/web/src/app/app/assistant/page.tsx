@@ -142,9 +142,12 @@ export default function AssistantPage() {
 
   return (
     <div className="mx-auto flex min-h-[70dvh] w-full max-w-3xl flex-col gap-4 animate-fade-up">
-      <BackLink href="/app/profile" label="Mais" />
-      <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Assistente</h1>
+      <BackLink href="/app" label="Hoje" />
+      <div className="surface-ai rounded-[var(--radius-lg)] p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="h-display text-3xl text-[var(--color-ink)]">Assistente</h1>
+          <span className="badge badge-ai">IA</span>
+        </div>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Consultas sobre agenda, ciclos, recebimentos e avaliações. Escritas exigem confirmação.
         </p>
@@ -153,7 +156,7 @@ export default function AssistantPage() {
       {statusLoaded && status && !status.enabled ? (
         <p
           role="status"
-          className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
+          className="rounded-[var(--radius-md)] border border-[var(--color-ai-border)] bg-[var(--color-ai-subtle)] px-3 py-2 text-sm text-[var(--color-ai-hover)]"
         >
           IA desativada neste ambiente (`AI_ENABLED=false`). Você ainda pode abrir esta tela; as
           respostas indicarão a indisponibilidade.
@@ -161,7 +164,10 @@ export default function AssistantPage() {
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
+        <p
+          role="alert"
+          className="rounded-[var(--radius-md)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
+        >
           {error}
         </p>
       ) : null}
@@ -171,7 +177,7 @@ export default function AssistantPage() {
           <button
             key={s}
             type="button"
-            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-sm"
+            className="rounded-[var(--radius-md)] border border-[var(--color-ai-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-sm text-[var(--color-ai-hover)] transition-colors hover:bg-[var(--color-ai-subtle)]"
             onClick={() => void send(s)}
             disabled={busy}
           >
@@ -194,8 +200,8 @@ export default function AssistantPage() {
               key={`${m.role}-${i}`}
               className={
                 m.role === "user"
-                  ? "ml-6 rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
-                  : "mr-6 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-sm whitespace-pre-wrap"
+                  ? "ml-6 rounded-[var(--radius-md)] bg-[var(--color-primary-subtle)] px-3 py-2 text-sm"
+                  : "card-rail card-rail-ai mr-6 rounded-[var(--radius-md)] border border-[var(--color-ai-border)] bg-[var(--color-ai-subtle)]/50 px-3 py-2 text-sm whitespace-pre-wrap"
               }
             >
               {m.content}
@@ -206,8 +212,8 @@ export default function AssistantPage() {
       </div>
 
       {pending ? (
-        <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
-          <p className="text-sm font-semibold">Confirmação necessária</p>
+        <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-3">
+          <p className="text-sm font-semibold text-[var(--color-warning)]">Confirmação necessária</p>
           <p className="text-sm">{pending.summary}</p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button fullWidth disabled={busy} onClick={() => void confirmPending()}>
@@ -215,7 +221,7 @@ export default function AssistantPage() {
             </Button>
             <Button
               fullWidth
-              variant="secondary"
+              variant="outline"
               disabled={busy}
               onClick={() => void cancelPending()}
             >
@@ -238,7 +244,7 @@ export default function AssistantPage() {
           onChange={(e) => setInput(e.target.value)}
           hint="O contrato aceita texto agora; transcrição de voz poderá alimentar o mesmo campo no futuro."
         />
-        <Button fullWidth disabled={busy || !input.trim()} type="submit">
+        <Button variant="ai" fullWidth disabled={busy || !input.trim()} type="submit">
           Enviar
         </Button>
       </form>

@@ -23,7 +23,7 @@ const sections = [
   },
   {
     title: "Ciclos",
-    body: "Contrato de aulas com um cliente: datas, dias da semana, quantidade e valor. Crie a partir de cliente + serviço + modelo. No detalhe você edita, ajusta valores, prepara WhatsApp de renovação ou exclui (cancela) o ciclo.",
+    body: "Contrato de aulas com um cliente: data de início (você escolhe — não precisa ser hoje), dias da semana, quantidade e valor. Crie a partir de cliente + serviço + modelo. No detalhe você edita, ajusta valores, prepara WhatsApp de renovação ou exclui (cancela) o ciclo.",
     href: "/app/cycles",
   },
   {
@@ -36,7 +36,7 @@ const sections = [
   },
   {
     title: "Assistente",
-    body: "Em Mais → Assistente. Consultas em linguagem natural sobre agenda, ciclos, recebimentos e avaliações. Ações de escrita pedem confirmação explícita. Pode estar desativado (AI_ENABLED).",
+    body: "No topo, ao lado do logo. Consultas em linguagem natural sobre agenda, ciclos, recebimentos e avaliações. Ações de escrita pedem confirmação explícita. Pode estar desativado (AI_ENABLED).",
     href: "/app/assistant",
   },
   {
