@@ -79,13 +79,27 @@ Usada no shell + detalhes de cliente/ciclo/recebível.
 
 Design tokens em CSS (Tailwind 4 / variáveis `--color-*`). Tipografia e tokens: manter consistência com o wordmark; não introduzir Inter/Roboto/Arial como “marca”.
 
+### Sistema cromático (`IMPLEMENTADO` — visual color refresh)
+
+| Papel | Uso |
+|-------|-----|
+| Índigo (`--color-primary` / brand-700) | CTA, nav ativa, links, foco |
+| Violeta (`--color-ai*`) | Somente Assistente / IA |
+| Teal (`--color-progress*`) | Ciclo vigente, evolução, acompanhamento |
+| Verde / âmbar / vermelho / azul info | Sucesso, atenção, perigo, informação |
+| Neutros azulados | Fundo `#F8F9FC`, superfícies, bordas |
+
+Wordmark permanece homologado (`#152033` / `#2f3f8f`). Dark mode não implementado; tokens deixam espaço futuro.
+
+Componentes: `Button` (primary/secondary/outline/ghost/danger/success/ai), `Badge` semântico, trilhos `card-rail-*`.
+
 ## Estados de UI
 
 Carregando · vazio · erro · sucesso · sem conexão · acesso negado · sessão expirada.
 
 ## Acessibilidade e responsividade
 
-HTML semântico; teclado; foco; labels; contraste; toques ≥ 44px; `prefers-reduced-motion`; coluna única no mobile.
+HTML semântico; teclado; foco; labels; contraste; toques ≥ 44px; `prefers-reduced-motion`; coluna única no mobile. Desktop (`md+`): sidebar com nav principal + Assistente/Manual; bottom nav só no mobile.
 
 ## Meu Ciclo (público)
 
