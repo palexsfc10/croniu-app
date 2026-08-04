@@ -8,6 +8,7 @@ import {
   WEEKDAY_OPTIONS,
   apiFetch,
   formatBRL,
+  formatConflictLines,
   formatDateBR,
   reaisToCents,
   type Client,
@@ -19,10 +20,14 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { useAuth } from "@/components/auth/auth-provider";
 
 function NewIntelligentCycleForm() {
   const router = useRouter();
   const search = useSearchParams();
+  const { me } = useAuth();
+  const orgTz = me?.organization.timezone || "America/Sao_Paulo";
+  const renewalRequestId = search.get("renewalRequestId");
   const [step, setStep] = useState(1);
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -32,7 +37,8 @@ function NewIntelligentCycleForm() {
   const [clientId, setClientId] = useState(search.get("clientId") ?? "");
   const [serviceId, setServiceId] = useState(search.get("serviceId") ?? "");
   const [templateId, setTemplateId] = useState(search.get("templateId") ?? "");
-  const [startsOn, setStartsOn] = useState(new Date().toISOString().slice(0, 10));
+  // Never default to "today" — the professional must choose when the cycle starts.
+  const [startsOn, setStartsOn] = useState(search.get("startsOn") ?? "");
   const [weekdays, setWeekdays] = useState<number[]>(() => {
     const raw = search.get("weekdays");
     if (!raw) return [];
@@ -81,6 +87,10 @@ function NewIntelligentCycleForm() {
   async function loadPreview() {
     setError(null);
     setConflicts([]);
+    if (!startsOn) {
+      setError("Informe a data de início do ciclo.");
+      return false;
+    }
     if (!serviceId || !templateId || weekdays.length === 0) {
       setError("Complete serviço, modelo e dias da semana.");
       return false;
@@ -128,6 +138,10 @@ function NewIntelligentCycleForm() {
   }
 
   async function confirm() {
+    if (!startsOn) {
+      setError("Informe a data de início do ciclo.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setConflicts([]);
@@ -151,22 +165,25 @@ function NewIntelligentCycleForm() {
       body.starts_time = `${startsTime}:00`;
       body.location_id = locationId || null;
     }
+    if (renewalRequestId) {
+      body.renewal_request_id = renewalRequestId;
+    }
     const result = await apiFetch<Cycle>("/api/v1/cycles/intelligent", {
       method: "POST",
       body: JSON.stringify(body),
     });
     setSaving(false);
     if (result.error) {
-      setError(result.error.message);
+      setError(
+        result.error.code === "appointment_conflict"
+          ? "Não foi possível adicionar as aulas à agenda"
+          : result.error.message,
+      );
       const details = result.error.details as
         | { conflicts?: { client_name?: string; starts_at: string }[] }
         | undefined;
       if (details?.conflicts?.length) {
-        setConflicts(
-          details.conflicts.map(
-            (c) => `${c.client_name ?? "Cliente"} · ${c.starts_at}`,
-          ),
-        );
+        setConflicts(formatConflictLines(details.conflicts, orgTz));
       }
       return;
     }
@@ -258,11 +275,21 @@ function NewIntelligentCycleForm() {
       {step === 2 ? (
         <div className="space-y-4">
           <TextField
-            label="Data inicial"
+            label="Data de início do ciclo"
             type="date"
             value={startsOn}
             onChange={(e) => setStartsOn(e.target.value)}
+            required
           />
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Escolha quando o ciclo começa. Não precisa ser o dia de hoje — use a primeira aula
+            combinada com o cliente.
+          </p>
+          {error && step === 2 ? (
+            <p role="alert" className="text-sm text-[var(--color-danger)]">
+              {error}
+            </p>
+          ) : null}
           <fieldset>
             <legend className="text-sm font-medium">
               Dias da semana
@@ -293,7 +320,7 @@ function NewIntelligentCycleForm() {
             <Button variant="secondary" fullWidth onClick={() => setStep(1)}>
               Voltar
             </Button>
-            <Button fullWidth onClick={() => void goPreview()}>
+            <Button fullWidth disabled={!startsOn || weekdays.length === 0} onClick={() => void goPreview()}>
               Calcular aulas
             </Button>
           </div>
@@ -339,6 +366,17 @@ function NewIntelligentCycleForm() {
           </div>
 
           <TextField
+            label="Data de início do ciclo"
+            type="date"
+            value={startsOn}
+            onChange={(e) => setStartsOn(e.target.value)}
+            required
+          />
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Alterar a data recalcula validade, renovação e lista de aulas.
+          </p>
+
+          <TextField
             label="Desconto (R$) — opcional"
             inputMode="decimal"
             value={discountReais}
@@ -357,7 +395,7 @@ function NewIntelligentCycleForm() {
             }}
           />
           <Button variant="secondary" fullWidth onClick={() => void loadPreview()}>
-            Recalcular valores
+            Recalcular ciclo e valores
           </Button>
 
           <label className="flex items-start gap-3 text-sm">
@@ -396,16 +434,27 @@ function NewIntelligentCycleForm() {
           ) : null}
 
           {error ? (
-            <p role="alert" className="text-sm text-[var(--color-danger)]">
-              {error}
-            </p>
-          ) : null}
-          {conflicts.length ? (
-            <ul className="text-sm text-[var(--color-danger)]">
-              {conflicts.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
+            <div
+              role="alert"
+              className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)] px-3 py-3"
+            >
+              <p className="text-sm font-semibold text-[var(--color-danger)]">{error}</p>
+              {conflicts.length ? (
+                <>
+                  <p className="text-sm text-[var(--color-ink)]">
+                    Já existem compromissos nestes horários:
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-ink)]">
+                    {conflicts.map((c) => (
+                      <li key={c}>{c}</li>
+                    ))}
+                  </ul>
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    Ajuste o horário ou desmarque a opção de adicionar as aulas à agenda.
+                  </p>
+                </>
+              ) : null}
+            </div>
           ) : null}
 
           <div className="flex gap-2">
@@ -413,7 +462,11 @@ function NewIntelligentCycleForm() {
               Voltar
             </Button>
             <Button fullWidth disabled={saving} onClick={() => void confirm()}>
-              {saving ? "Salvando…" : "Confirmar ciclo"}
+              {saving
+                ? "Salvando…"
+                : renewalRequestId
+                  ? "Confirmar pagamento e aprovar renovação"
+                  : "Confirmar ciclo"}
             </Button>
           </div>
         </div>

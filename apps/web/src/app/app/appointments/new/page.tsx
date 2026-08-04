@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import {
   apiFetch,
+  formatConflictLines,
   isoToLocalInput,
   localInputToIso,
   type Appointment,
@@ -13,10 +14,13 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { useAuth } from "@/components/auth/auth-provider";
 
 function NewAppointmentForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { me } = useAuth();
+  const orgTz = me?.organization.timezone || "America/Sao_Paulo";
   const day = searchParams.get("day");
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -72,17 +76,16 @@ function NewAppointmentForm() {
     });
     setSaving(false);
     if (result.error) {
-      setError(result.error.message);
+      setError(
+        result.error.code === "appointment_conflict"
+          ? "Não foi possível adicionar o compromisso"
+          : result.error.message,
+      );
       const details = result.error.details as
         | { conflicts?: { client_name?: string; starts_at: string; ends_at: string }[] }
         | undefined;
       if (details?.conflicts?.length) {
-        setConflicts(
-          details.conflicts.map(
-            (c) =>
-              `${c.client_name ?? "Cliente"} · ${new Date(c.starts_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}–${new Date(c.ends_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
-          ),
-        );
+        setConflicts(formatConflictLines(details.conflicts, orgTz));
       }
       return;
     }
@@ -144,16 +147,22 @@ function NewAppointmentForm() {
       <TextField label="Observação interna" value={notes} onChange={(e) => setNotes(e.target.value)} />
 
       {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
-      {conflicts.length ? (
-        <ul className="rounded-[var(--radius-md)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]">
-          {conflicts.map((c) => (
-            <li key={c}>{c}</li>
-          ))}
-        </ul>
+        <div
+          role="alert"
+          className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)] px-3 py-3"
+        >
+          <p className="text-sm font-semibold text-[var(--color-danger)]">{error}</p>
+          {conflicts.length ? (
+            <>
+              <p className="text-sm text-[var(--color-ink)]">Já existem compromissos nestes horários:</p>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-ink)]">
+                {conflicts.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </div>
       ) : null}
 
       <Button type="submit" fullWidth disabled={saving}>

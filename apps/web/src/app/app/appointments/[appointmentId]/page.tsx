@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   apiFetch,
   appointmentStatusLabel,
+  formatConflictLines,
   formatOrgDateTime,
   isoToLocalInput,
   localInputToIso,
@@ -79,16 +80,17 @@ export default function AppointmentDetailPage() {
     });
     setSaving(false);
     if (result.error) {
-      setError(result.error.message);
+      setError(
+        result.error.code === "appointment_conflict"
+          ? "Não foi possível salvar o compromisso"
+          : result.error.message,
+      );
       const details = result.error.details as
         | { conflicts?: { client_name?: string; starts_at: string; ends_at: string }[] }
         | undefined;
       if (details?.conflicts?.length) {
         setConflicts(
-          details.conflicts.map(
-            (c) =>
-              `${c.client_name ?? "Cliente"} · ${new Date(c.starts_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
-          ),
+          formatConflictLines(details.conflicts, prefs?.timezone || "America/Sao_Paulo"),
         );
       }
       return;

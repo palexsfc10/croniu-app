@@ -82,6 +82,7 @@ export type Cycle = {
   weekdays?: number[] | null;
   lesson_count?: number | null;
   lessons_completed?: number;
+  lessons_no_show?: number;
   lessons_remaining?: number | null;
   unit_price_cents?: number | null;
   subtotal_cents?: number | null;
@@ -233,6 +234,7 @@ export type PaymentSettings = {
   pix_key?: string | null;
   instructions?: string | null;
   external_payment_url?: string | null;
+  institution?: string | null;
   show_on_my_cycle: boolean;
 };
 
@@ -247,6 +249,7 @@ export type PublicMyCycle = {
     renewal_on?: string | null;
     lesson_count?: number | null;
     lessons_completed?: number;
+    lessons_no_show?: number;
     remaining_planned_lessons?: number | null;
     value_cents?: number | null;
     payment_status: string;
@@ -260,6 +263,16 @@ export type PublicMyCycle = {
     pix_key?: string | null;
     instructions?: string | null;
     external_payment_url?: string | null;
+    institution?: string | null;
+    configured: boolean;
+  };
+  renewal_payment_instructions?: {
+    holder_name?: string | null;
+    pix_key_type?: string | null;
+    pix_key?: string | null;
+    instructions?: string | null;
+    external_payment_url?: string | null;
+    institution?: string | null;
     configured: boolean;
   };
   can_request_renewal: boolean;
@@ -441,6 +454,29 @@ export function formatOrgDateTime(iso: string, timeZone: string, opts?: Intl.Dat
   } catch {
     return new Date(iso).toLocaleString("pt-BR");
   }
+}
+
+/** Human conflict line in the professional's org timezone (never raw ISO UTC). */
+export function formatConflictLine(
+  conflict: { client_name?: string | null; starts_at: string; ends_at?: string | null },
+  timeZone: string,
+) {
+  const who = conflict.client_name?.trim() || "Cliente";
+  const when = formatOrgDateTime(conflict.starts_at, timeZone, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${who} — ${when}`;
+}
+
+export function formatConflictLines(
+  conflicts: { client_name?: string | null; starts_at: string; ends_at?: string | null }[],
+  timeZone: string,
+) {
+  return conflicts.map((c) => formatConflictLine(c, timeZone));
 }
 
 /** Convert datetime-local value to ISO with the browser's current offset. */
