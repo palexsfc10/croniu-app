@@ -251,6 +251,12 @@ def test_home_summary_includes_appointments(client, register_payload):
     assert body["timezone"] == "America/Sao_Paulo"
     assert len(body["today_appointments"]) >= 1
     assert body["priority_action"] is not None
+    assert body["priority_action"]["kind"] in {
+        "appointment_upcoming",
+        "appointment_in_progress",
+    }
+    assert body["priority_action"]["cta_label"] == "Ver compromisso"
+    assert body["priority_action"]["subtitle"]
 
 
 def test_tenant_isolation_location_and_appointment(client, register_payload):

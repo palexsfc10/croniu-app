@@ -129,6 +129,17 @@ export type PriorityAction = {
   subtitle: string;
   href: string;
   entity_id: string;
+  cta_label?: string;
+};
+
+export type AttentionItem = {
+  kind: string;
+  title: string;
+  subtitle: string;
+  href: string;
+  entity_id: string;
+  client_name?: string | null;
+  tone?: string;
 };
 
 export type Location = {
@@ -193,6 +204,8 @@ export type HomeSummary = {
   timezone: string;
   local_today: string;
   today_appointments: Appointment[];
+  upcoming_appointments?: Appointment[];
+  appointments_needing_outcome?: Appointment[];
   cycles_nearing_end: Cycle[];
   renewals: Cycle[];
   pending_payments: Receivable[];
@@ -213,6 +226,7 @@ export type HomeSummary = {
     client_name?: string | null;
     has_proof?: boolean;
   }>;
+  attention_items?: AttentionItem[];
   priority_action: PriorityAction | null;
   contextual_hint: string | null;
   message: string;

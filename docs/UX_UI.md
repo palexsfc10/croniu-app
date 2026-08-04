@@ -46,19 +46,18 @@ Logout permanece em Mais. Wordmark homologado preservado.
 
 ## Home “Hoje”
 
-Dados reais: compromissos do dia, ciclos encerrando, recebimentos, ação prioritária, hint contextual.  
+Estrutura operacional (Sprint home-daily-focus):
+
+1. Saudação + contexto curto (timezone da organização)
+2. Uma ação prioritária (regra determinística no backend)
+3. Próximos compromissos (futuros / em andamento; passados sem desfecho vão para atenção)
+4. Seção **Precisa de atenção** (renovações, pagamentos, ciclos, desfechos)
+
+Removidos da home: faixa “Próximo” redundante e resumo quantitativo azul (`contextual_hint`).
+
+`ContextualBar` permanece em telas de detalhe (cliente/ciclo/recebível/compromisso), não na home.
+
 Não é dashboard decorativo. Agenda não substitui dores comerciais.
-
-## Barra contextual
-
-| Regra | Status |
-|-------|--------|
-| Uma ação / contexto | `IMPLEMENTADO` |
-| Sem carrossel automático | `IMPLEMENTADO` |
-| Oculta sem ação | `IMPLEMENTADO` |
-| Próximo compromisso | `IMPLEMENTADO` (prioridade: em andamento → próximas 2h → conflito → …) |
-
-Usada no shell + detalhes de cliente/ciclo/recebível.
 
 ## Preferências / locais / agenda / ciclo
 

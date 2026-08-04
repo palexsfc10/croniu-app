@@ -115,6 +115,7 @@ class CycleOut(BaseModel):
     weekdays: list[int] | None = None
     lesson_count: int | None = None
     lessons_completed: int = 0
+    lessons_no_show: int = 0
     lessons_remaining: int | None = None
     unit_price_cents: int | None = None
     subtotal_cents: int | None = None
@@ -189,6 +190,17 @@ class PriorityActionOut(BaseModel):
     subtitle: str
     href: str
     entity_id: UUID
+    cta_label: str = "Abrir"
+
+
+class AttentionItemOut(BaseModel):
+    kind: str
+    title: str
+    subtitle: str
+    href: str
+    entity_id: UUID
+    client_name: str | None = None
+    tone: str = "warning"
 
 
 class HomeSummaryOut(BaseModel):
@@ -196,11 +208,14 @@ class HomeSummaryOut(BaseModel):
     timezone: str
     local_today: date
     today_appointments: list[AppointmentOut] = Field(default_factory=list)
+    upcoming_appointments: list[AppointmentOut] = Field(default_factory=list)
+    appointments_needing_outcome: list[AppointmentOut] = Field(default_factory=list)
     cycles_nearing_end: list[CycleOut]
     renewals: list[CycleOut]
     pending_payments: list[ReceivableOut]
     renewal_requests: list[dict] = Field(default_factory=list)
     payment_reports_pending: list[dict] = Field(default_factory=list)
+    attention_items: list[AttentionItemOut] = Field(default_factory=list)
     priority_action: PriorityActionOut | None = None
     contextual_hint: str | None = None
     message: str

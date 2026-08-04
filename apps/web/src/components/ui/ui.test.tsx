@@ -36,12 +36,15 @@ const emptySummary: HomeSummary = {
   timezone: "America/Sao_Paulo",
   local_today: "2026-07-24",
   today_appointments: [],
+  upcoming_appointments: [],
+  appointments_needing_outcome: [],
   cycles_nearing_end: [],
   renewals: [],
   pending_payments: [],
+  attention_items: [],
   priority_action: null,
   contextual_hint: null,
-  message: "Nenhuma ação pendente ainda.",
+  message: "Você não possui nenhuma pendência importante neste momento.",
 };
 
 describe("UI fundamentals", () => {
@@ -98,19 +101,30 @@ describe("UI fundamentals", () => {
     expect(screen.getByLabelText("E-mail")).toBeInTheDocument();
   });
 
-  it("shows today board sections and priority action", () => {
+  it("shows single priority action without redundant hint strip", () => {
     render(
       <TodayBoard
         summary={{
           ...emptySummary,
+          message: "Veja o que precisa da sua atenção hoje.",
           contextual_hint: "1 ciclo(s) encerrando",
           priority_action: {
             kind: "cycle_nearing_end",
-            title: "Conversar com Ana",
-            subtitle: "Ciclo encerra em 2026-07-28",
+            title: "Ciclo chegando ao fim",
+            subtitle: "O ciclo de Ana termina em 4 dias e ainda não possui renovação encaminhada.",
             href: "/app/cycles/abc",
             entity_id: "abc",
+            cta_label: "Ver ciclo",
           },
+          attention_items: [
+            {
+              kind: "cycle_nearing_end",
+              title: "Ana",
+              subtitle: "Ciclo termina em 4 dias",
+              href: "/app/cycles/abc",
+              entity_id: "abc",
+            },
+          ],
           cycles_nearing_end: [
             {
               id: "abc",
@@ -138,14 +152,49 @@ describe("UI fundamentals", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       /Bom dia, Ana|Boa tarde, Ana|Boa noite, Ana/,
     );
-    expect(screen.getByText(/\d{2}\/\d{2}\/\d{4}\s·\s\d{2}:\d{2}/)).toBeInTheDocument();
-    expect(screen.getAllByText("Conversar com Ana").length).toBeGreaterThan(0);
-    expect(screen.getByText("1 ciclo(s) encerrando")).toBeInTheDocument();
-    expect(screen.getAllByText("Termina em breve").length).toBeGreaterThan(0);
+    expect(screen.getByText("Veja o que precisa da sua atenção hoje.")).toBeInTheDocument();
+    expect(screen.queryByText("1 ciclo(s) encerrando")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ciclo chegando ao fim" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Ver ciclo/i })).toBeInTheDocument();
+    expect(screen.getByText(/Precisa de atenção/)).toBeInTheDocument();
+    expect(screen.getByText("Próximos compromissos")).toBeInTheDocument();
   });
 
   it("shows calm empty day when nothing needs attention", () => {
     render(<TodayBoard summary={emptySummary} />);
-    expect(screen.getByText("Rotina em dia")).toBeInTheDocument();
+    expect(screen.getByText("Tudo organizado")).toBeInTheDocument();
+    expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
+  });
+
+  it("does not show contradictory empty attention when items exist", () => {
+    render(
+      <TodayBoard
+        summary={{
+          ...emptySummary,
+          message: "Veja o que precisa da sua atenção hoje.",
+          priority_action: {
+            kind: "renewal_requested",
+            title: "Cliente quer continuar",
+            subtitle: "Pedro enviou uma solicitação de renovação.",
+            href: "/app/renewals",
+            entity_id: "rr1",
+            cta_label: "Revisar solicitação",
+          },
+          attention_items: [
+            {
+              kind: "renewal_requested",
+              title: "Pedro",
+              subtitle: "Renovação solicitada",
+              href: "/app/renewals",
+              entity_id: "rr1",
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("Cliente quer continuar")).toBeInTheDocument();
+    expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
+    expect(screen.getByText(/Precisa de atenção · 1/)).toBeInTheDocument();
   });
 });

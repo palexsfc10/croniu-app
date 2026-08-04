@@ -2,193 +2,201 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { Appointment, Cycle, HomeSummary, PriorityAction, Receivable } from "@/lib/api";
-import { appointmentStatusLabel, formatBRL, formatOrgDateTime } from "@/lib/api";
+import type { Appointment, AttentionItem, HomeSummary, PriorityAction } from "@/lib/api";
+import { formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { IconBanknote } from "@/components/ui/icons";
-import { ContextualBar } from "@/components/app/contextual-bar";
+import {
+  IconAlertCircle,
+  IconBanknote,
+  IconCalendarDays,
+  IconRefreshCw,
+} from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   firstName,
-  formatDateAndTime,
   greetingForHour,
   hourInTimeZone,
 } from "@/lib/greeting";
-import { receivableStatusLabel } from "@/lib/status-tone";
 
 type Props = {
   summary: HomeSummary;
 };
 
+const UPCOMING_LIMIT = 4;
+
+function priorityCta(action: PriorityAction) {
+  return action.cta_label || "Abrir";
+}
+
 function PriorityCard({ action }: { action: PriorityAction }) {
   return (
     <section
       aria-label="Ação prioritária"
-      className="card-rail card-rail-primary rounded-[var(--radius-lg)] border border-[var(--color-primary)]/20 bg-[var(--color-primary-subtle)]/40 p-4 shadow-[var(--shadow-sm)]"
+      className="rounded-[var(--radius-lg)] border border-[var(--color-primary)]/20 bg-[var(--color-primary-subtle)]/35 p-4 shadow-[var(--shadow-sm)]"
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-        Agora · ação prioritária
+        Ação prioritária
       </p>
       <h2 className="mt-1 text-lg font-semibold text-[var(--color-ink)]">{action.title}</h2>
       <p className="mt-1 text-sm text-[var(--color-ink-muted)]">{action.subtitle}</p>
       <Link href={action.href} className="mt-3 inline-block">
-        <Button>Abrir</Button>
+        <Button>{priorityCta(action)}</Button>
       </Link>
     </section>
   );
 }
 
-function AppointmentList({
+function OrganizedCard({ message }: { message: string }) {
+  return (
+    <section
+      aria-label="Dia organizado"
+      className="rounded-[var(--radius-lg)] border border-[var(--color-success)]/25 bg-[var(--color-success-subtle)]/40 p-4"
+    >
+      <h2 className="text-lg font-semibold text-[var(--color-ink)]">Seu dia está organizado</h2>
+      <p className="mt-1 text-sm text-[var(--color-ink-muted)]">{message}</p>
+    </section>
+  );
+}
+
+function appointmentTime(item: Appointment, timeZone: string) {
+  return formatOrgDateTime(item.starts_at, timeZone, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+}
+
+function UpcomingAppointments({
   items,
   timeZone,
+  priorityEntityId,
 }: {
   items: Appointment[];
   timeZone: string;
+  priorityEntityId?: string | null;
 }) {
-  const active = items.filter((item) => item.status === "scheduled");
-  if (!active.length) {
+  const visible = items.slice(0, UPCOMING_LIMIT);
+  const hasMore = items.length > UPCOMING_LIMIT;
+
+  if (!visible.length) {
     return (
-      <EmptyState
-        title="Compromissos de hoje"
-        description="Nenhum compromisso agendado para hoje no fuso da organização."
-        action={
-          <Link href="/app/agenda">
-            <Button variant="secondary">Abrir Agenda</Button>
-          </Link>
-        }
-      />
+      <section aria-label="Próximos compromissos" className="space-y-2">
+        <h2 className="text-base font-semibold text-[var(--color-ink)]">Próximos compromissos</h2>
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          Nenhum outro compromisso hoje. Sua agenda está livre pelo restante do dia.
+        </p>
+        <Link href="/app/agenda" className="text-sm font-semibold text-[var(--color-link)]">
+          Ver agenda completa
+        </Link>
+      </section>
     );
   }
+
   return (
-    <section aria-label="Compromissos de hoje" className="space-y-2">
+    <section aria-label="Próximos compromissos" className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Compromissos de hoje</h2>
+        <h2 className="text-base font-semibold text-[var(--color-ink)]">Próximos compromissos</h2>
         <Link href="/app/agenda" className="text-sm font-semibold text-[var(--color-link)]">
-          Agenda
+          Ver agenda completa
         </Link>
       </div>
       <ul className="space-y-2">
-        {active.map((item) => (
-          <li key={item.id}>
-            <Link
-              href={`/app/appointments/${item.id}`}
-              className="card-rail card-rail-primary block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-primary-subtle)]/40"
-            >
-              <p className="font-semibold text-[var(--color-ink)]">
-                {formatOrgDateTime(item.starts_at, timeZone)} · {item.client_name}
-              </p>
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                {item.location_name || "Sem local"} · {appointmentStatusLabel(item.status)}
-              </p>
-            </Link>
-          </li>
-        ))}
+        {visible.map((item) => {
+          const isPriority = priorityEntityId === item.id;
+          return (
+            <li key={item.id}>
+              <Link
+                href={`/app/appointments/${item.id}`}
+                className={[
+                  "block rounded-[var(--radius-md)] border px-3 py-3 transition-colors",
+                  isPriority
+                    ? "border-[var(--color-border)] bg-[var(--color-surface-subtle)]/80"
+                    : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-primary-subtle)]/40",
+                ].join(" ")}
+              >
+                <p className="font-semibold text-[var(--color-ink)]">
+                  {appointmentTime(item, timeZone)} · {item.client_name}
+                </p>
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  {[item.service_name || item.cycle_service_name, item.location_name]
+                    .filter(Boolean)
+                    .join(" · ") || "Compromisso"}
+                  {isPriority ? " · em foco acima" : ""}
+                </p>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
+      {hasMore ? (
+        <Link href="/app/agenda" className="text-sm font-semibold text-[var(--color-link)]">
+          Ver agenda completa
+        </Link>
+      ) : null}
     </section>
   );
 }
 
-function CycleList({ items }: { items: Cycle[] }) {
-  if (!items.length) {
-    return (
-      <EmptyState
-        title="Ciclos encerrando"
-        description="Quando restar 1 aula ou o ciclo estiver perto da data final, ele aparece aqui."
-      />
-    );
+function attentionIcon(kind: string) {
+  if (kind === "pending_payment" || kind === "payment_report_pending") {
+    return <IconBanknote className="h-4 w-4" aria-hidden />;
   }
-  return (
-    <section aria-label="Ciclos encerrando" className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Ciclos encerrando</h2>
-        <Badge tone="warning">Atenção</Badge>
-      </div>
-      <ul className="space-y-2">
-        {items.map((item) => (
-          <li key={item.id}>
-            <Link
-              href={`/app/cycles/${item.id}`}
-              className="card-rail card-rail-warning block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-warning-subtle)]/60"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-semibold text-[var(--color-ink)]">{item.client_name}</p>
-                <Badge tone="warning">Termina em breve</Badge>
-              </div>
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                {item.service_name}
-                {item.lessons_remaining != null && item.lessons_remaining <= 1
-                  ? item.lessons_remaining === 0
-                    ? " · aulas esgotadas"
-                    : " · 1 aula restante"
-                  : item.days_remaining != null
-                    ? ` · encerra ${item.ends_on} (${item.days_remaining}d)`
-                    : ` · encerra ${item.ends_on}`}
-              </p>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
+  if (kind === "cycle_nearing_end" || kind === "renewal_requested" || kind === "renewal_awaiting") {
+    return <IconRefreshCw className="h-4 w-4" aria-hidden />;
+  }
+  if (kind === "appointment_needs_outcome") {
+    return <IconCalendarDays className="h-4 w-4" aria-hidden />;
+  }
+  return <IconAlertCircle className="h-4 w-4" aria-hidden />;
 }
 
-function PaymentList({ items }: { items: Receivable[] }) {
+function AttentionSection({
+  items,
+  priorityEntityId,
+}: {
+  items: AttentionItem[];
+  priorityEntityId?: string | null;
+}) {
   if (!items.length) {
     return (
-      <EmptyState
-        tone="neutral"
-        title="Tudo certo por aqui"
-        description="Pagamentos enviados pelos clientes aparecerão aqui para sua confirmação."
-      />
+      <section aria-label="Precisa de atenção" className="space-y-2">
+        <h2 className="text-base font-semibold text-[var(--color-ink)]">Precisa de atenção</h2>
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          Tudo certo por aqui. Não há ciclos, renovações ou outras situações aguardando sua ação.
+        </p>
+      </section>
     );
   }
-  const totalCents = items.reduce((sum, item) => sum + (item.amount_cents ?? 0), 0);
+
   return (
-    <section
-      aria-label="Pagamentos pendentes"
-      className="card-rail card-rail-warning space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/20 bg-[var(--color-warning-subtle)]/50 p-3"
-    >
-      <div className="flex items-start gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-warning-subtle)] text-[var(--color-warning)]">
-          <IconBanknote className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold text-[var(--color-ink)]">Pagamentos pendentes</h2>
-            <Badge tone="warning">
-              {items.length} {items.length === 1 ? "pendente" : "pendentes"}
-            </Badge>
-          </div>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            {items.length === 1
-              ? "1 pagamento aguarda sua confirmação."
-              : `${items.length} pagamentos aguardam sua confirmação.`}
-            {totalCents > 0 ? ` Total · ${formatBRL(totalCents)}.` : ""}
-          </p>
-          <Link href={`/app/receivables/${items[0].id}`} className="mt-2 inline-block">
-            <Button variant="secondary">Revisar</Button>
-          </Link>
-        </div>
-      </div>
-      <ul className="space-y-2">
-        {items.map((item) => (
-          <li key={item.id}>
-            <Link
-              href={`/app/receivables/${item.id}`}
-              className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-warning-subtle)]/40"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-semibold text-[var(--color-ink)]">{item.client_name}</p>
-                <Badge tone="warning">{receivableStatusLabel(item.status)}</Badge>
-              </div>
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                {formatBRL(item.amount_cents)} · vence {item.due_on}
-              </p>
-            </Link>
-          </li>
-        ))}
+    <section aria-label="Precisa de atenção" className="space-y-2">
+      <h2 className="text-base font-semibold text-[var(--color-ink)]">
+        Precisa de atenção · {items.length}
+      </h2>
+      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+        {items.map((item) => {
+          const compact = priorityEntityId === item.entity_id;
+          return (
+            <li key={`${item.kind}-${item.entity_id}`}>
+              <Link
+                href={item.href}
+                className={[
+                  "flex min-h-11 items-start gap-3 px-3 py-3 transition-colors hover:bg-[var(--color-surface-subtle)]",
+                  compact ? "opacity-80" : "",
+                ].join(" ")}
+              >
+                <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-warning-subtle)] text-[var(--color-warning)]">
+                  {attentionIcon(item.kind)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-[var(--color-ink)]">{item.title}</span>
+                  <span className="block text-sm text-[var(--color-ink-muted)]">{item.subtitle}</span>
+                </span>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -207,106 +215,58 @@ export function TodayBoard({ summary }: Props) {
   const greeting = greetingForHour(hour);
   const name = firstName(me?.user.full_name);
   const headline = name ? `${greeting}, ${name}` : greeting;
-  const when = formatDateAndTime(now, summary.timezone);
-  const hasAttention =
-    Boolean(summary.priority_action) ||
-    summary.cycles_nearing_end.length > 0 ||
-    summary.pending_payments.length > 0 ||
-    (summary.renewal_requests?.length ?? 0) > 0 ||
-    (summary.payment_reports_pending?.length ?? 0) > 0;
+
+  const upcoming =
+    summary.upcoming_appointments ??
+    summary.today_appointments.filter((a) => new Date(a.ends_at).getTime() > now.getTime());
+
+  const attention = summary.attention_items ?? [];
+  const hasAttention = attention.length > 0;
+  const priority = summary.priority_action;
+  const fullyClear = !priority && !hasAttention && upcoming.length === 0;
 
   return (
-    <div className="space-y-4 animate-fade-up">
-      <ContextualBar
-        label={summary.priority_action?.title ?? null}
-        href={summary.priority_action?.href ?? null}
-      />
-      <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">{headline}</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">{when}</p>
-      </div>
-      {summary.contextual_hint ? (
-        <p
-          role="status"
-          className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-info-subtle)] px-3 py-2 text-sm text-[var(--color-info)]"
-        >
-          {summary.contextual_hint}
+    <div className="space-y-5 animate-fade-up">
+      <header className="space-y-1">
+        <h1 className="h-display text-3xl text-[var(--color-ink)] md:text-[2rem]">{headline}</h1>
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          {summary.message || "Veja o que precisa da sua atenção hoje."}
         </p>
-      ) : null}
-      {!hasAttention ? (
+      </header>
+
+      {fullyClear ? (
         <EmptyState
           tone="success"
-          title="Rotina em dia"
-          description="Nenhuma ação urgente agora. Quando houver compromissos, ciclos ou pagamentos, eles aparecem aqui."
+          title="Tudo organizado"
+          description="Você não possui nenhuma pendência para revisar agora."
+          action={
+            <Link href="/app/agenda">
+              <Button variant="secondary">Abrir Agenda</Button>
+            </Link>
+          }
         />
-      ) : null}
-      {summary.priority_action ? <PriorityCard action={summary.priority_action} /> : null}
-      <div className="grid gap-4 md:grid-cols-2">
-        <AppointmentList items={summary.today_appointments} timeZone={summary.timezone} />
-        <CycleList items={summary.cycles_nearing_end} />
-        {(summary.renewal_requests?.length ?? 0) > 0 ? (
-          <section aria-label="Renovações solicitadas" className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-[var(--color-ink)]">
-                Renovações solicitadas
-              </h2>
-              <Link href="/app/renewals" className="text-sm font-semibold text-[var(--color-link)]">
-                Ver todas
-              </Link>
-            </div>
-            <ul className="space-y-2">
-              {summary.renewal_requests!.slice(0, 3).map((item) => (
-                <li key={item.id}>
-                  <Link
-                    href="/app/renewals"
-                    className="card-rail card-rail-warning block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold">{item.client_name}</p>
-                      <Badge tone="warning">Renovação</Badge>
-                    </div>
-                    <p className="text-sm text-[var(--color-ink-muted)]">{item.service_name}</p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {(summary.payment_reports_pending?.length ?? 0) > 0 ? (
-          <section aria-label="Pagamentos aguardando confirmação" className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-[var(--color-ink)]">
-                Pagamentos a confirmar
-              </h2>
-              <Link
-                href="/app/payment-reports"
-                className="text-sm font-semibold text-[var(--color-link)]"
-              >
-                Revisar
-              </Link>
-            </div>
-            <ul className="space-y-2">
-              {summary.payment_reports_pending!.slice(0, 3).map((item) => (
-                <li key={item.id}>
-                  <Link
-                    href="/app/payment-reports"
-                    className="card-rail card-rail-warning block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold">{item.client_name}</p>
-                      <Badge tone="warning">A confirmar</Badge>
-                    </div>
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      {formatBRL(item.amount_cents)}
-                    </p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        <PaymentList items={summary.pending_payments} />
-      </div>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
+          <div className="space-y-5">
+            {priority ? (
+              <PriorityCard action={priority} />
+            ) : !hasAttention ? (
+              <OrganizedCard
+                message={
+                  summary.message ||
+                  "Você não possui nenhuma pendência importante neste momento."
+                }
+              />
+            ) : null}
+            <UpcomingAppointments
+              items={upcoming}
+              timeZone={summary.timezone}
+              priorityEntityId={priority?.entity_id}
+            />
+          </div>
+          <AttentionSection items={attention} priorityEntityId={priority?.entity_id} />
+        </div>
+      )}
     </div>
   );
 }

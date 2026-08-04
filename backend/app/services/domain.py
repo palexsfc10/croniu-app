@@ -14,6 +14,7 @@ from app.models.cycle import Cycle
 from app.models.receivable import Receivable
 from app.models.service import Service
 from app.schemas.domain import (
+    AttentionItemOut,
     CycleOut,
     HomeSummaryOut,
     PriorityActionOut,
@@ -23,6 +24,8 @@ from app.schemas.domain import (
 from app.services.auth import AuthError
 
 NEARING_END_DAYS = 7
+# Ciclo também entra em “encerrando” quando resta no máximo esta quantidade de aulas.
+LESSONS_NEARING_REMAINING = 1
 
 
 def _normalize_optional_str(value: str | None) -> str | None:
@@ -222,21 +225,59 @@ def count_lessons_completed(
     )
 
 
-def map_lessons_completed(
+def count_lessons_no_show(
+    db: Session, *, organization_id: uuid.UUID, cycle_id: uuid.UUID
+) -> int:
+    """Faltas registradas no ciclo (consomem saldo, mas devem ser avisadas)."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(Appointment)
+            .where(
+                Appointment.organization_id == organization_id,
+                Appointment.cycle_id == cycle_id,
+                Appointment.status == "no_show",
+            )
+        )
+        or 0
+    )
+
+
+def map_lesson_progress(
     db: Session, *, organization_id: uuid.UUID, cycle_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, int]:
+) -> dict[uuid.UUID, tuple[int, int]]:
+    """Map cycle_id → (lessons_consumed, lessons_no_show)."""
     if not cycle_ids:
         return {}
     rows = db.execute(
-        select(Appointment.cycle_id, func.count())
+        select(Appointment.cycle_id, Appointment.status, func.count())
         .where(
             Appointment.organization_id == organization_id,
             Appointment.cycle_id.in_(cycle_ids),
             Appointment.status.in_(tuple(LESSON_CONSUMED_STATUSES)),
         )
-        .group_by(Appointment.cycle_id)
+        .group_by(Appointment.cycle_id, Appointment.status)
     ).all()
-    return {cycle_id: int(count) for cycle_id, count in rows if cycle_id is not None}
+    progress: dict[uuid.UUID, list[int]] = {}
+    for cycle_id, status, count in rows:
+        if cycle_id is None:
+            continue
+        bucket = progress.setdefault(cycle_id, [0, 0])
+        bucket[0] += int(count)
+        if status == "no_show":
+            bucket[1] += int(count)
+    return {cid: (vals[0], vals[1]) for cid, vals in progress.items()}
+
+
+def map_lessons_completed(
+    db: Session, *, organization_id: uuid.UUID, cycle_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    return {
+        cid: consumed
+        for cid, (consumed, _no_show) in map_lesson_progress(
+            db, organization_id=organization_id, cycle_ids=cycle_ids
+        ).items()
+    }
 
 
 def _cycle_out(
@@ -244,10 +285,24 @@ def _cycle_out(
     today: date | None = None,
     *,
     lessons_completed: int = 0,
+    lessons_no_show: int = 0,
 ) -> CycleOut:
     today = today or date.today()
     days_remaining = (cycle.ends_on - today).days
-    is_nearing = cycle.status == "active" and 0 <= days_remaining <= NEARING_END_DAYS
+    lessons_remaining = None
+    if cycle.lesson_count is not None:
+        lessons_remaining = max(0, int(cycle.lesson_count) - int(lessons_completed))
+    nearing_by_date = cycle.status == "active" and 0 <= days_remaining <= NEARING_END_DAYS
+    nearing_by_lessons = (
+        cycle.status == "active"
+        and lessons_remaining is not None
+        and 0 < lessons_remaining <= LESSONS_NEARING_REMAINING
+    )
+    # 0 remaining: ciclo de aulas esgotado — ainda sinaliza para ação (renovar/fechar)
+    nearing_by_lessons_exhausted = (
+        cycle.status == "active" and lessons_remaining is not None and lessons_remaining == 0
+    )
+    is_nearing = nearing_by_date or nearing_by_lessons or nearing_by_lessons_exhausted
     duration_label = None
     if cycle.duration_type and cycle.duration_value:
         if cycle.duration_type == "calendar_months":
@@ -258,9 +313,6 @@ def _cycle_out(
             duration_label = (
                 "1 dia" if cycle.duration_value == 1 else f"{cycle.duration_value} dias"
             )
-    lessons_remaining = None
-    if cycle.lesson_count is not None:
-        lessons_remaining = max(0, int(cycle.lesson_count) - int(lessons_completed))
     return CycleOut(
         id=cycle.id,
         client_id=cycle.client_id,
@@ -273,6 +325,7 @@ def _cycle_out(
         weekdays=list(cycle.weekdays) if cycle.weekdays is not None else None,
         lesson_count=cycle.lesson_count,
         lessons_completed=int(lessons_completed),
+        lessons_no_show=int(lessons_no_show),
         lessons_remaining=lessons_remaining,
         unit_price_cents=cycle.unit_price_cents,
         subtotal_cents=cycle.subtotal_cents,
@@ -319,11 +372,16 @@ def list_cycles(
     if client_id:
         query = query.where(Cycle.client_id == client_id)
     rows = list(db.scalars(query.order_by(Cycle.ends_on.asc())).all())
-    completed_map = map_lessons_completed(
+    progress = map_lesson_progress(
         db, organization_id=organization_id, cycle_ids=[row.id for row in rows]
     )
     return [
-        _cycle_out(row, lessons_completed=completed_map.get(row.id, 0)) for row in rows
+        _cycle_out(
+            row,
+            lessons_completed=progress.get(row.id, (0, 0))[0],
+            lessons_no_show=progress.get(row.id, (0, 0))[1],
+        )
+        for row in rows
     ]
 
 
@@ -590,38 +648,78 @@ def mark_receivable_paid(
 
 
 def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummaryOut:
+    """Daily focus summary for Hoje.
+
+    Priority (deterministic):
+      1. appointment in progress
+      2. appointment starting within 2h
+      3. agenda conflict today
+      4. renewal requested (client portal)
+      5. payment report awaiting review
+      6. overdue receivable
+      7. cycle nearing end without an open renewal for the same cycle
+      8. next upcoming appointment (rest of day / later)
+    """
+    from zoneinfo import ZoneInfo
+
     from app.services import agenda as agenda_svc
+    from app.services import my_cycle as my_cycle_svc
 
     org = agenda_svc.get_organization(db, organization_id)
     today = agenda_svc.org_local_today(org)
     tz_name = agenda_svc.get_org_timezone(org)
-    horizon = today + timedelta(days=NEARING_END_DAYS)
+    tz = ZoneInfo(tz_name)
     now = datetime.now(UTC)
 
     today_appts = agenda_svc.list_today_appointments(db, organization_id=organization_id)
-    next_appt = agenda_svc.next_upcoming_appointment(db, organization_id=organization_id, now=now)
+    upcoming_appointments = [
+        a for a in today_appts if a.ends_at > now
+    ]
+    appointments_needing_outcome = [
+        a for a in today_appts if a.ends_at <= now
+    ]
+    next_appt = agenda_svc.next_upcoming_appointment(
+        db, organization_id=organization_id, now=now
+    )
 
-    nearing_rows = list(
+    active_rows = list(
         db.scalars(
             select(Cycle)
             .where(
                 Cycle.organization_id == organization_id,
                 Cycle.status == "active",
-                Cycle.ends_on >= today,
-                Cycle.ends_on <= horizon,
             )
             .options(selectinload(Cycle.client), selectinload(Cycle.service))
             .order_by(Cycle.ends_on.asc())
         ).all()
     )
-    completed_map = map_lessons_completed(
-        db, organization_id=organization_id, cycle_ids=[row.id for row in nearing_rows]
+    progress = map_lesson_progress(
+        db, organization_id=organization_id, cycle_ids=[row.id for row in active_rows]
     )
-    nearing = [
-        _cycle_out(row, today, lessons_completed=completed_map.get(row.id, 0))
-        for row in nearing_rows
-    ]
+    nearing_all: list[CycleOut] = []
+    for row in active_rows:
+        out = _cycle_out(
+            row,
+            today,
+            lessons_completed=progress.get(row.id, (0, 0))[0],
+            lessons_no_show=progress.get(row.id, (0, 0))[1],
+        )
+        if out.is_nearing_end:
+            nearing_all.append(out)
+    nearing_all.sort(
+        key=lambda c: (
+            c.lessons_remaining if c.lessons_remaining is not None else 10_000,
+            c.ends_on,
+        )
+    )
 
+    renewal_reqs = my_cycle_svc.list_renewal_requests(db, organization_id=organization_id)
+    pay_reports = my_cycle_svc.list_payment_reports(
+        db, organization_id=organization_id, status="pending_review"
+    )
+    renewal_cycle_ids = {r.source_cycle_id for r in renewal_reqs}
+    # Dedup: open renewal request supersedes generic "cycle ending" for the same cycle.
+    nearing = [c for c in nearing_all if c.id not in renewal_cycle_ids]
     renewals = [item for item in nearing if item.contact_confirmed_at is None]
 
     pending_rows = db.scalars(
@@ -640,47 +738,48 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     overdue = [item for item in pending if item.due_on < today]
     due_soon = [item for item in pending if item.due_on >= today]
 
-    # Priority (Sprint 2B): in-progress → next 2h → conflict → overdue receivable →
-    # cycle ending today → cycle soon → receivable soon → renewal awaiting
-    priority: PriorityActionOut | None = None
+    day_agenda = agenda_svc.list_day_agenda(db, organization_id=organization_id, day=today)
+    has_conflict = day_agenda.conflict_count > 0
 
     in_progress = next(
-        (
-            a
-            for a in today_appts
-            if a.starts_at <= now < a.ends_at
-        ),
+        (a for a in today_appts if a.starts_at <= now < a.ends_at),
         None,
     )
     soon_cutoff = now + timedelta(hours=2)
     starting_soon = next(
-        (
-            a
-            for a in today_appts
-            if now < a.starts_at <= soon_cutoff
-        ),
+        (a for a in today_appts if now < a.starts_at <= soon_cutoff),
         None,
     )
 
-    day_agenda = agenda_svc.list_day_agenda(db, organization_id=organization_id, day=today)
-    has_conflict = day_agenda.conflict_count > 0
+    def _local_time(appt) -> str:
+        return appt.starts_at.astimezone(tz).strftime("%H:%M")
 
-    ending_today = [c for c in nearing if c.ends_on == today]
+    def _appt_service(appt) -> str | None:
+        return getattr(appt, "service_name", None) or getattr(appt, "title", None)
 
     def _appt_priority(kind: str, appt) -> PriorityActionOut:
-        from zoneinfo import ZoneInfo
-
-        local_start = appt.starts_at.astimezone(ZoneInfo(tz_name))
-        loc = appt.location_name or "Sem local"
-        label = "Em andamento" if kind == "appointment_in_progress" else "Próximo"
-        title = f"{label} · {local_start.strftime('%H:%M')} · {appt.client_name}"
+        service = _appt_service(appt)
+        time_label = _local_time(appt)
+        bits = [f"{appt.client_name} às {time_label}"]
+        if service:
+            bits.append(str(service))
+        if appt.location_name:
+            bits.append(appt.location_name)
+        subtitle = " · ".join(bits)
+        if kind == "appointment_in_progress":
+            title = "Compromisso em andamento"
+        else:
+            title = "Seu próximo compromisso"
         return PriorityActionOut(
             kind=kind,
             title=title,
-            subtitle=loc,
+            subtitle=subtitle,
             href=f"/app/appointments/{appt.id}",
             entity_id=appt.id,
+            cta_label="Ver compromisso",
         )
+
+    priority: PriorityActionOut | None = None
 
     if in_progress is not None:
         priority = _appt_priority("appointment_in_progress", in_progress)
@@ -695,115 +794,198 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 subtitle="Há compromissos sobrepostos. Revise os horários.",
                 href="/app/agenda",
                 entity_id=first.id,
+                cta_label="Abrir agenda",
             )
+    elif renewal_reqs:
+        first_rr = renewal_reqs[0]
+        priority = PriorityActionOut(
+            kind="renewal_requested",
+            title="Cliente quer continuar",
+            subtitle=f"{first_rr.client_name} enviou uma solicitação de renovação.",
+            href="/app/renewals",
+            entity_id=first_rr.id,
+            cta_label="Revisar solicitação",
+        )
+    elif pay_reports:
+        first_pr = pay_reports[0]
+        priority = PriorityActionOut(
+            kind="payment_report_pending",
+            title="Pagamento aguardando conferência",
+            subtitle=f"{first_pr.client_name} informou um pagamento.",
+            href="/app/payment-reports",
+            entity_id=first_pr.id,
+            cta_label="Revisar pagamento",
+        )
     elif overdue:
         first_pay = overdue[0]
         priority = PriorityActionOut(
             kind="pending_payment",
-            title=f"Recebimento atrasado · {first_pay.client_name}",
-            subtitle=f"Venceu em {first_pay.due_on.isoformat()}",
+            title="Recebimento atrasado",
+            subtitle=f"{first_pay.client_name} · venceu em {first_pay.due_on.isoformat()}",
             href=f"/app/receivables/{first_pay.id}",
             entity_id=first_pay.id,
+            cta_label="Revisar recebimento",
         )
-    elif ending_today:
-        first = ending_today[0]
-        priority = PriorityActionOut(
-            kind="cycle_nearing_end",
-            title=f"Ciclo encerra hoje · {first.client_name}",
-            subtitle=first.service_name or "Ciclo",
-            href=f"/app/cycles/{first.id}",
-            entity_id=first.id,
-        )
-    elif next_appt is not None and starting_soon is None and in_progress is None:
-        out = agenda_svc.appointment_to_out(next_appt)
-        priority = _appt_priority("appointment_upcoming", out)
     elif nearing:
         first = nearing[0]
+        if first.days_remaining is not None and first.days_remaining >= 0:
+            when = (
+                "hoje"
+                if first.days_remaining == 0
+                else (
+                    "amanhã"
+                    if first.days_remaining == 1
+                    else f"em {first.days_remaining} dias"
+                )
+            )
+            subtitle = (
+                f"O ciclo de {first.client_name} termina {when}"
+                f" e ainda não possui renovação encaminhada."
+            )
+        else:
+            subtitle = (
+                f"O ciclo de {first.client_name} está encerrando"
+                f" e ainda não possui renovação encaminhada."
+            )
         priority = PriorityActionOut(
             kind="cycle_nearing_end",
-            title=f"Conversar com {first.client_name}",
-            subtitle=f"Ciclo encerra em {first.ends_on.isoformat()} ({first.days_remaining}d)",
+            title="Ciclo chegando ao fim",
+            subtitle=subtitle,
             href=f"/app/cycles/{first.id}",
             entity_id=first.id,
+            cta_label="Ver ciclo",
         )
-
-    # Sprint 2D: renewal requests & payment reports after cycle-ending signals
-    from app.services import my_cycle as my_cycle_svc
-
-    renewal_reqs = my_cycle_svc.list_renewal_requests(db, organization_id=organization_id)
-    pay_reports = my_cycle_svc.list_payment_reports(
-        db, organization_id=organization_id, status="pending_review"
-    )
-
-    if priority is None and renewal_reqs:
-        first_rr = renewal_reqs[0]
-        priority = PriorityActionOut(
-            kind="renewal_requested",
-            title=f"Renovação solicitada · {first_rr.client_name}",
-            subtitle="Cliente pediu renovação no Meu Ciclo",
-            href="/app/renewals",
-            entity_id=first_rr.id,
-        )
-    if priority is None and pay_reports:
-        first_pr = pay_reports[0]
-        priority = PriorityActionOut(
-            kind="payment_report_pending",
-            title=f"Pagamento informado · {first_pr.client_name}",
-            subtitle="Aguardando sua confirmação",
-            href="/app/payment-reports",
-            entity_id=first_pr.id,
-        )
-
-    if priority is None and due_soon:
+    elif next_appt is not None:
+        out = agenda_svc.appointment_to_out(next_appt)
+        priority = _appt_priority("appointment_upcoming", out)
+    elif due_soon:
         first_pay = due_soon[0]
         priority = PriorityActionOut(
             kind="pending_payment",
-            title=f"Recebimento de {first_pay.client_name}",
-            subtitle=f"Vence em {first_pay.due_on.isoformat()}",
+            title="Recebimento próximo",
+            subtitle=f"{first_pay.client_name} · vence em {first_pay.due_on.isoformat()}",
             href=f"/app/receivables/{first_pay.id}",
             entity_id=first_pay.id,
+            cta_label="Revisar recebimento",
         )
-    elif priority is None and renewals:
+    elif renewals:
         first = renewals[0]
         priority = PriorityActionOut(
             kind="renewal_awaiting",
-            title=f"Renovação · {first.client_name}",
-            subtitle="Aguardando contato",
+            title="Ciclo aguardando contato",
+            subtitle=f"{first.client_name} · ainda sem contato de renovação registrado.",
             href=f"/app/cycles/{first.id}",
             entity_id=first.id,
+            cta_label="Ver ciclo",
         )
 
-    parts: list[str] = []
-    if today_appts:
-        parts.append(f"{len(today_appts)} compromisso(s) hoje")
-    if nearing:
-        parts.append(f"{len(nearing)} ciclo(s) encerrando")
-    if pending:
-        parts.append(f"{len(pending)} recebimento(s) pendente(s)")
-    if renewal_reqs:
-        parts.append(f"{len(renewal_reqs)} renovação(ões) solicitada(s)")
-    if pay_reports:
-        parts.append(f"{len(pay_reports)} pagamento(s) a confirmar")
+    attention: list[AttentionItemOut] = []
+    for rr in renewal_reqs:
+        attention.append(
+            AttentionItemOut(
+                kind="renewal_requested",
+                title=rr.client_name or "Cliente",
+                subtitle="Renovação solicitada",
+                href="/app/renewals",
+                entity_id=rr.id,
+                client_name=rr.client_name,
+                tone="warning",
+            )
+        )
+    for pr in pay_reports:
+        attention.append(
+            AttentionItemOut(
+                kind="payment_report_pending",
+                title=pr.client_name or "Cliente",
+                subtitle="Pagamento aguardando conferência",
+                href="/app/payment-reports",
+                entity_id=pr.id,
+                client_name=pr.client_name,
+                tone="warning",
+            )
+        )
+    for pay in pending:
+        label = (
+            f"Recebimento atrasado · venceu {pay.due_on.isoformat()}"
+            if pay.due_on < today
+            else f"Recebimento pendente · vence {pay.due_on.isoformat()}"
+        )
+        attention.append(
+            AttentionItemOut(
+                kind="pending_payment",
+                title=pay.client_name or "Cliente",
+                subtitle=label,
+                href=f"/app/receivables/{pay.id}",
+                entity_id=pay.id,
+                client_name=pay.client_name,
+                tone="warning",
+            )
+        )
+    for cycle in nearing:
+        if cycle.days_remaining is not None:
+            when = (
+                "hoje"
+                if cycle.days_remaining == 0
+                else (
+                    "amanhã"
+                    if cycle.days_remaining == 1
+                    else f"em {cycle.days_remaining} dias"
+                )
+            )
+            sub = f"Ciclo termina {when}"
+        else:
+            sub = f"Ciclo encerra em {cycle.ends_on.isoformat()}"
+        if cycle.lessons_remaining is not None and cycle.lessons_remaining <= 1:
+            sub = (
+                "Aulas esgotadas"
+                if cycle.lessons_remaining == 0
+                else "1 aula restante"
+            )
+        attention.append(
+            AttentionItemOut(
+                kind="cycle_nearing_end",
+                title=cycle.client_name or "Cliente",
+                subtitle=sub,
+                href=f"/app/cycles/{cycle.id}",
+                entity_id=cycle.id,
+                client_name=cycle.client_name,
+                tone="warning",
+            )
+        )
+    for appt in appointments_needing_outcome:
+        attention.append(
+            AttentionItemOut(
+                kind="appointment_needs_outcome",
+                title=appt.client_name or "Cliente",
+                subtitle=f"Compromisso de hoje às {_local_time(appt)} · aguardando atualização",
+                href=f"/app/appointments/{appt.id}",
+                entity_id=appt.id,
+                client_name=appt.client_name,
+                tone="neutral",
+            )
+        )
 
-    if priority is None and not parts:
-        message = "Nenhuma ação pendente. Cadastre clientes e compromissos para começar."
-        hint = None
+    has_attention = bool(attention) or priority is not None
+    if not has_attention:
+        message = "Você não possui nenhuma pendência importante neste momento."
     else:
-        message = "Priorize o que precisa da sua atenção agora."
-        hint = " · ".join(parts) if parts else None
+        message = "Veja o que precisa da sua atenção hoje."
 
     return HomeSummaryOut(
         organization_id=organization_id,
         timezone=tz_name,
         local_today=today,
         today_appointments=today_appts,
+        upcoming_appointments=upcoming_appointments,
+        appointments_needing_outcome=appointments_needing_outcome,
         cycles_nearing_end=nearing,
         renewals=renewals,
         pending_payments=pending,
         renewal_requests=[r.model_dump(mode="json") for r in renewal_reqs],
         payment_reports_pending=[r.model_dump(mode="json") for r in pay_reports],
+        attention_items=attention,
         priority_action=priority,
-        contextual_hint=hint,
+        contextual_hint=None,
         message=message,
     )
 
@@ -812,7 +994,12 @@ def cycle_to_out(db: Session, cycle: Cycle, today: date | None = None) -> CycleO
     completed = count_lessons_completed(
         db, organization_id=cycle.organization_id, cycle_id=cycle.id
     )
-    return _cycle_out(cycle, today, lessons_completed=completed)
+    no_show = count_lessons_no_show(
+        db, organization_id=cycle.organization_id, cycle_id=cycle.id
+    )
+    return _cycle_out(
+        cycle, today, lessons_completed=completed, lessons_no_show=no_show
+    )
 
 
 def receivable_to_out(row: Receivable) -> ReceivableOut:
