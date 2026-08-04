@@ -2,6 +2,7 @@
 
 **Branch:** `feature/visual-color-system-refresh`  
 **SHA base:** `c956ed7c86e4c7f7830a4195d2f72c7b7a355d45`  
+**SHA final:** `f0bcfd533bbb9247f7640712320624bf0be3726a`  
 **Data:** 2026-08-04  
 
 ## Diagnóstico inicial
