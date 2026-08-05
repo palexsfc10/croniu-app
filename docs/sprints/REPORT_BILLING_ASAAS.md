@@ -2,14 +2,13 @@
 
 **Branch:** `feature/billing-asaas-hosted`  
 **SHA base:** `6d7d2c7aa17ef36c89032438993c4af56c655e2e`  
-**SHA tip:** `0397501aec597e64a0ec8e8ce68d93d604b784c1`  
+**SHA tip / HEAD final:** `f61c78d7d7b2ab3d565fcdc8206244f4f155de7d`  
 **Commits billing:**
 - `6b1f19f` — backend Asaas (migration 0012, entitlement, webhooks, tests)
 - `d55a529` — Next billing UI, return poll, BillingGate
 - `5eea824` — HML ops docs + evidências
-- `34fdb39` / `bdfebf6` / `4254e5e` — tip pointers + evidência parcial
-- `8e8b4f5` — fechamento homologação Sandbox
-- `0397501` — tip SHA final (**tip**)
+- `8e8b4f5` — fechamento homologação Sandbox (PAYMENT_CONFIRMED)
+- `f61c78d` — tip SHA nos docs (**tip**)
 
 ## Entregue
 
