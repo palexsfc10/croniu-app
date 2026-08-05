@@ -17,9 +17,17 @@
 
 ### HML Jarvis
 - Hostnames `*.ntws.cloud` via tunnel dedicado Croniu  
-- Webhook Asaas `croniu` ativo; eventos reais `CHECKOUT_CREATED` / `CHECKOUT_EXPIRED` recebidos  
-- Checkout sandbox + allowlist; card enabled só HML  
-- Pagamento UI: **pendente** (reCAPTCHA impede automação)
+- Webhook Asaas `croniu` ativo; token validado (inválido/ausente → 403)  
+- Eventos reais recebidos: `CHECKOUT_CREATED`, `CHECKOUT_EXPIRED`, `PAYMENT_CREATED`,
+  `SUBSCRIPTION_CREATED`, `CHECKOUT_PAID` — todos `processed`, HTTP 200  
+- Checkout sandbox + allowlist (3 orgs); card enabled só HML  
+- **Pagamento UI hospedada concluído** pelo operador em 2026-08-05T21:29Z ·
+  checkout `2bc48615…445f` → **`PAID`**
+
+### Pagamento vs entitlement
+- Asaas: assinatura `ACTIVE`, primeira cobrança `PENDING` vencendo 2026-08-12, sem captura  
+- Croniu: `billing_setup_status=subscription_prepared`, `payment_status=pending`, acesso por trial  
+- Comportamento **correto**: checkout `PAID` não libera entitlement pago sem evidência financeira
 
 ## Qualidade
 - Backend: 131 passed  
@@ -32,6 +40,6 @@
 | Escopo | Decisão |
 |--------|---------|
 | Continuar testes HML com cartão + allowlist | OK |
-| Preparar produção | **NO-GO** até pagamento UI real + `CHECKOUT_PAID` + evidência entitlement |
+| Preparar produção | **NO-GO** até `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED` real → `payment_status=paid` + idempotência sobre esse evento |
 
 Detalhes: [`EVIDENCE_BILLING_HML.md`](./EVIDENCE_BILLING_HML.md).

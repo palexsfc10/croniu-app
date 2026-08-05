@@ -25,37 +25,79 @@
 
 ### Eventos reais recebidos (IDs mascarados)
 
-| evt (prefixo) | tipo | status |
-|---------------|------|--------|
-| `evt_37260be8159d4472` | `CHECKOUT_CREATED` | processed |
-| `evt_884a48b028bcb7db` | `CHECKOUT_EXPIRED` | processed |
+| evt (prefixo) | tipo | status | org |
+|---------------|------|--------|-----|
+| `evt_37260be8159d4472` | `CHECKOUT_CREATED` | processed | `2346b5d7…` / `7ada96a9…` |
+| `evt_884a48b028bcb7db` | `CHECKOUT_EXPIRED` | processed | `7ada96a9…` |
+| `evt_05b708f961d739…` | `PAYMENT_CREATED` | processed | `2346b5d7…` |
+| `evt_6561b631fa5580…` | `SUBSCRIPTION_CREATED` | processed | `2346b5d7…` |
+| `evt_20f793f686aa47…` | `CHECKOUT_PAID` | processed | `2346b5d7…` |
 
-Autenticação por header `asaas-access-token` comprovada (token inválido → 403; token válido → 200).
+Todos com `attempts=1`, `last_error` vazio, HTTP **200** devolvido ao Asaas.
+
+Autenticação por header `asaas-access-token` comprovada em 2026-08-05T21:3xZ:
+token inválido → **403**, ausência de token → **403**, e nenhuma das tentativas gravou evento.
 
 Idempotência: retries de eventos sintéticos e reentregas → `duplicate` / sem efeito duplicado em checkout.
+Nenhum `external_event_id` duplicado por provider (constraint `uq_billing_webhook_provider_event`).
 
-## Pagamento UI hospedada
+## Pagamento UI hospedada — executado pelo operador
+
+Org de teste: `2346b5d7…345a` (adicionada à allowlist HML em 2026-08-05T21:16Z;
+allowlist passou de 2 para 3 entradas, `.env.hml` com backup e `chmod 600`,
+somente `croniu-hml-api` recriado).
 
 | Item | Status |
 |------|--------|
-| Checkout sandbox criado | OK · host `sandbox.asaas.com` · retry reutiliza mesmo `checkout_id` |
-| Checkout mascarado (último ativo) | `bbb2c756…2dd3` (org `7ada96a9…`) |
-| Setup pré-pagamento | `checkout_pending` · `payment_status=none` · access por trial |
-| Automação Playwright | **bloqueada por reCAPTCHA** (“Tente novamente e verifique o recaptcha”) |
-| Pagamento cartão teste 4444… pela UI | **PENDENTE operador** (ação humana no captcha) |
-| `CHECKOUT_PAID` / entitlement pago | **ainda não** — aguarda pagamento UI |
+| Checkout criado pela UI do Croniu | OK · host `sandbox.asaas.com` |
+| Checkout mascarado | `2bc48615…445f` (local `e8b94806…`) |
+| Retry reutiliza mesmo checkout | comprovado (tentativas anteriores, org `7ada96a9…`) |
+| Automação Playwright | bloqueada por reCAPTCHA — pagamento feito **manualmente** pelo operador |
+| Cartão de teste oficial Sandbox | usado na UI hospedada Asaas |
+| Retorno ao Croniu | `/app/billing/return/success` |
+| `CHECKOUT_PAID` real | recebido · checkout local → **`PAID`** · `paid_at=2026-08-05T21:29:32Z` |
 
-### Instruções ao operador (pagamento)
+### Estado financeiro real no Asaas (consulta ao vivo)
 
-1. DNS: use `1.1.1.1` se `*.ntws.cloud` não resolver.  
-2. Login: https://croniu-hml.ntws.cloud/login  
-   - e-mail: `uipay_1785957006@example.com`  
-   - senha: `SenhaForte1!`  
-3. Ou abra o checkout Asaas:  
-   `https://sandbox.asaas.com/checkoutSession/show/3b5b879f-bf8e-4d5d-ba65-545533cc9b9a`  
-4. Cartão oficial Sandbox: `4444 4444 4444 4444` · validade futura · CCV `123` · titular fictício.  
-5. Completar reCAPTCHA manualmente e pagar.  
-6. Validar retorno `/app/billing/return/success` (poll ≠ pago até webhook).
+| Objeto | Valor |
+|--------|-------|
+| Assinatura `sub_mwoa…8s` | `ACTIVE` · `MONTHLY` · `CREDIT_CARD` |
+| Primeira cobrança `pay_cmoj4o…` | **`PENDING`** · R$ 29,90 · vencimento **2026-08-12** |
+| `confirmedDate` / `paymentDate` | `null` / `null` |
+
+O cartão foi autorizado e a assinatura criada, mas **nenhum valor foi capturado**:
+a primeira cobrança vence ao fim do trial de 7 dias.
+
+### Entitlement resultante (org `2346b5d7…`)
+
+| Campo | Valor |
+|-------|-------|
+| `billing_setup_status` | `subscription_prepared` |
+| `payment_prepared` | `true` |
+| `payment_status` | `pending` |
+| `subscription_status` | `trial` (6 dias restantes) |
+| `can_start_checkout` / `can_resume_checkout` | `false` / `false` |
+| `can_cancel_subscription` | `true` |
+
+**Conclusão:** o comportamento está correto. `PAID` de entitlement exige evidência
+financeira (`PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED`), que ainda não existe.
+Checkout `PAID` ≠ pagamento capturado — a distinção foi preservada pelo código.
+
+### Isolamento e logs
+
+- Somente a org `2346b5d7…` mudou em 21:29:32Z; `7ada96a9…`, `b68db812…` e demais intactas.
+- Log com `502` anterior ao checkout bem-sucedido, causa sanitizada e legítima:
+  `"O CPF/CNPJ informado é inválido."` (primeira tentativa do operador).
+- `payload_sanitized` grava `customerData: "[redacted]"`; nenhum dado de cartão persistido.
+
+### Pendência aberta
+
+Confirmar a cobrança `pay_cmoj4o…` no painel Asaas Sandbox para observar
+`PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED` real → `payment_status=paid`.
+Sem isso, a cadeia só fecha naturalmente em 2026-08-12.
+
+Lacuna menor: `next_billing_at` fica `null` no entitlement enquanto o Asaas
+informa `nextDueDate=2026-09-12` (sincronização a partir de `SUBSCRIPTION_CREATED`).
 
 ## Já comprovado (card-off / infra)
 
@@ -77,9 +119,10 @@ Idempotência: retries de eventos sintéticos e reentregas → `duplicate` / sem
 ## Recomendação (neste momento)
 
 **NO-GO para preparar produção** até:
-1. pagamento Sandbox UI com cartão teste + reCAPTCHA concluído pelo operador;
-2. webhook real `CHECKOUT_PAID` (ou payment+subscription) → checkout `PAID` → entitlement coerente;
-3. revalidação de idempotência no evento de pagamento;
-4. idealmente separar conta Asaas Croniu da que ainda lista webhook Kyvora interrompido.
+1. ~~pagamento Sandbox UI com cartão teste + reCAPTCHA~~ — **concluído** pelo operador em 2026-08-05T21:29Z;
+2. ~~webhook real `CHECKOUT_PAID` → checkout `PAID`~~ — **concluído**;
+3. **pendente:** evidência financeira real (`PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED`) → `payment_status=paid`;
+4. **pendente:** revalidação de idempotência sobre o evento de pagamento confirmado;
+5. idealmente separar conta Asaas Croniu da que ainda lista webhook Kyvora interrompido.
 
 **HML card on** permanece aceitável para continuar testes com allowlist.
