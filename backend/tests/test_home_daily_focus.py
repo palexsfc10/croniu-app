@@ -286,13 +286,14 @@ def test_home_resolved_renewal_ends_source_and_clears_cards(client, register_pay
         },
     ).json()
     day = client.get("/api/v1/organization/preferences").json()["local_today"]
+    starts_near_end = (datetime.fromisoformat(day).date() - timedelta(days=25)).isoformat()
     source = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": person["id"],
             "service_id": service["id"],
             "cycle_template_id": template["id"],
-            "starts_on": day,
+            "starts_on": starts_near_end,
             "weekdays": [0],
             "idempotency_key": "home-renew-source",
             "generate_appointments": False,

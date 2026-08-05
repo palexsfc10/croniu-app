@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -16,7 +17,7 @@ def _auth(client: TestClient, payload: dict) -> None:
     )
 
 
-def _seed_cycle(client: TestClient, key: str) -> dict:
+def _seed_cycle(client: TestClient, key: str, *, near_end: bool = True) -> dict:
     client_id = client.post(
         "/api/v1/clients", json={"full_name": "Renata Silva", "phone": "11988887777"}
     ).json()["id"]
@@ -37,13 +38,19 @@ def _seed_cycle(client: TestClient, key: str) -> dict:
             "duration_value": 1,
         },
     ).json()["id"]
+    today = date.fromisoformat(
+        client.get("/api/v1/organization/preferences").json()["local_today"]
+    )
+    # Near end: started ~25d ago so 1-month cycle is in the last week.
+    # Early: starts tomorrow (próximo) — renewal must stay hidden.
+    starts_on = (today - timedelta(days=25)).isoformat() if near_end else (today + timedelta(days=1)).isoformat()
     created = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": client_id,
             "service_id": service_id,
             "cycle_template_id": template_id,
-            "starts_on": "2026-08-01",
+            "starts_on": starts_on,
             "weekdays": [1, 3],
             "idempotency_key": key,
         },
@@ -97,6 +104,9 @@ def test_renewal_idempotent_no_auto_cycle(client, register_payload):
     _auth(client, register_payload)
     ids = _seed_cycle(client, "mc-ren-1")
     token = client.post(f"/api/v1/clients/{ids['client_id']}/public-access").json()["token"]
+    pub = client.get(f"/api/v1/public/my-cycle/{token}").json()
+    assert pub["can_request_renewal"] is True
+    assert pub["cycle"]["status_summary"] in {"encerrando", "encerrado", "vigente"}
     before = len(client.get("/api/v1/cycles").json())
     r1 = client.post(f"/api/v1/public/my-cycle/{token}/renewal")
     r2 = client.post(f"/api/v1/public/my-cycle/{token}/renewal")
@@ -106,6 +116,18 @@ def test_renewal_idempotent_no_auto_cycle(client, register_payload):
     assert len(client.get("/api/v1/cycles").json()) == before
     home = client.get("/api/v1/home/summary").json()
     assert any(x["id"] == pending[0]["id"] for x in home["renewal_requests"])
+
+
+def test_portal_hides_renewal_at_cycle_start(client, register_payload):
+    _auth(client, register_payload)
+    ids = _seed_cycle(client, "mc-ren-early", near_end=False)
+    token = client.post(f"/api/v1/clients/{ids['client_id']}/public-access").json()["token"]
+    pub = client.get(f"/api/v1/public/my-cycle/{token}").json()
+    assert pub["cycle"]["status_summary"] == "proximo"
+    assert pub["can_request_renewal"] is False
+    blocked = client.post(f"/api/v1/public/my-cycle/{token}/renewal")
+    assert blocked.status_code == 422
+    assert blocked.json()["code"] == "renewal_not_available"
 
 
 def test_payment_settings_https_and_public_instructions(client, register_payload):

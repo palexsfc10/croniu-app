@@ -73,7 +73,8 @@ Nomenclatura interna: `Client` (UI pode dizer “Aluno” no futuro).
 | Status persistidos usados | `active`, `ended`, `cancelled` (campo) |
 | `planned` / `paused` | **Não implementados** — `PLANEJADO` |
 | `nearing_end` | **Calculado** na home/listagens — por data (≤ 7 dias) **ou** por saldo (≤ 1 aula restante / esgotado); não é status persistido |
-| Home: ocultar ciclo encerrando | **IMPLEMENTADO** quando: renovação portal aberta; renovação `resolved` com ciclo criado; `contact_confirmed_at`; ou ciclo sucessor ativo (mesmo cliente+serviço). Copy usa motivo real (aulas vs data). |
+| Encerrando (portal) | Data ≤ 7 dias **ou** ≤ 1 aula restante / esgotado |
+| CTA “Quero continuar” (Meu Ciclo) | Somente `encerrando` ou `encerrado` — **não** em `proximo` nem no início do `vigente` |
 | Aprovar renovação (intelligent + `renewal_request_id`) | Marca solicitação `resolved`, cria sucessor e encerra o ciclo origem (`ended`); cancela aulas futuras `scheduled` do origem |
 | Encerramento / histórico sem sobrescrita | `IMPLEMENTADO` |
 | Próximo ciclo só após confirmação profissional | `IMPLEMENTADO` |

@@ -397,6 +397,22 @@ def lessons_no_show_for_cycle(
     )
 
 
+def _cycle_is_near_end_for_portal(db: Session, *, cycle: Cycle, today: date) -> bool:
+    """Renewal CTA/API only when the cycle is ending (date or lesson balance)."""
+    if cycle.status == "ended" or cycle.ends_on <= today:
+        return True
+    if cycle.starts_on > today:
+        return False
+    if 0 <= (cycle.ends_on - today).days <= domain_svc.NEARING_END_DAYS:
+        return True
+    remaining = remaining_planned_lessons(
+        db, cycle, organization_id=cycle.organization_id
+    )
+    if remaining is not None and remaining <= domain_svc.LESSONS_NEARING_REMAINING:
+        return True
+    return False
+
+
 def _payment_status_label(cycle: Cycle) -> str:
     recs = list(cycle.receivables or [])
     if not recs:
@@ -521,12 +537,27 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
             .limit(1)
         )
 
+    lessons_completed = lessons_completed_for_cycle(
+        db, cycle, organization_id=access.organization_id
+    )
+    lessons_no_show = lessons_no_show_for_cycle(
+        db, cycle, organization_id=access.organization_id
+    )
+    remaining = remaining_planned_lessons(
+        db, cycle, organization_id=access.organization_id
+    )
+    if remaining is None and cycle.lesson_count is not None:
+        remaining = max(0, int(cycle.lesson_count) - int(lessons_completed))
+
     status_summary = "vigente"
     if cycle.starts_on > today:
         status_summary = "proximo"
     elif cycle.ends_on <= today or cycle.status == "ended":
         status_summary = "encerrado"
-    elif (cycle.ends_on - today).days <= 7:
+    elif (cycle.ends_on - today).days <= domain_svc.NEARING_END_DAYS:
+        status_summary = "encerrando"
+    elif remaining is not None and remaining <= domain_svc.LESSONS_NEARING_REMAINING:
+        # Saldo esgotado ou última aula — mesmo com data ainda longe.
         status_summary = "encerrando"
 
     renewal_on = None
@@ -555,15 +586,9 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         ends_on=cycle.ends_on,
         renewal_on=renewal_on,
         lesson_count=cycle.lesson_count,
-        lessons_completed=lessons_completed_for_cycle(
-            db, cycle, organization_id=access.organization_id
-        ),
-        lessons_no_show=lessons_no_show_for_cycle(
-            db, cycle, organization_id=access.organization_id
-        ),
-        remaining_planned_lessons=remaining_planned_lessons(
-            db, cycle, organization_id=access.organization_id
-        ),
+        lessons_completed=lessons_completed,
+        lessons_no_show=lessons_no_show,
+        remaining_planned_lessons=remaining,
         value_cents=cycle.value_cents,
         payment_status=pay_status,
         renewal_request_status=renewal.status if renewal else None,
@@ -574,7 +599,8 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         ),
     )
 
-    can_renew = status_summary in {"vigente", "encerrando", "encerrado", "proximo"}
+    # Cliente só renova no fim do ciclo — nunca no início / "próximo".
+    can_renew = status_summary in {"encerrando", "encerrado"}
     can_pay = pending_recv is not None and report is None and pay_status != "confirmado"
     can_declare = renewal is not None and renewal.status in {"requested", "acknowledged"}
 
@@ -659,6 +685,13 @@ def request_renewal(db: Session, *, raw_token: str) -> PublicRenewalOut:
     )
     if cycle is None:
         raise AuthError("no_cycle", "Não há ciclo disponível para renovação.", 422)
+
+    if not _cycle_is_near_end_for_portal(db, cycle=cycle, today=today):
+        raise AuthError(
+            "renewal_not_available",
+            "A renovação fica disponível quando o ciclo estiver perto do fim.",
+            422,
+        )
 
     existing = _active_renewal(db, client_id=access.client_id, cycle_id=cycle.id)
     if existing is not None:
