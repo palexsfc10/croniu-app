@@ -2,6 +2,13 @@ from app.db import Base
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.agent import AgentAuditLog, AgentPendingAction
 from app.models.appointment import Appointment
+from app.models.billing import (
+    BillingCheckout,
+    BillingPlan,
+    BillingPrice,
+    BillingWebhookEvent,
+    Subscription,
+)
 from app.models.client import Client
 from app.models.client_evaluation import ClientEvaluation, ClientEvaluationCriterion
 from app.models.client_public_access import ClientPublicAccess
@@ -48,4 +55,9 @@ __all__ = [
     "RenewalRequest",
     "PaymentReport",
     "PaymentProof",
+    "Subscription",
+    "BillingPlan",
+    "BillingPrice",
+    "BillingCheckout",
+    "BillingWebhookEvent",
 ]

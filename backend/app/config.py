@@ -65,6 +65,37 @@ class Settings(BaseSettings):
     llm_input_token_cost_per_1k: float = Field(default=0.0, alias="LLM_INPUT_TOKEN_COST_PER_1K")
     llm_output_token_cost_per_1k: float = Field(default=0.0, alias="LLM_OUTPUT_TOKEN_COST_PER_1K")
 
+    # SaaS billing / Asaas (separate from OrganizationPaymentSettings client Pix)
+    trial_days: int = Field(default=7, alias="TRIAL_DAYS")
+    asaas_api_key: str = Field(default="", alias="ASAAS_API_KEY")
+    asaas_api_url: str = Field(
+        default="https://sandbox.asaas.com/api/v3",
+        alias="ASAAS_API_URL",
+    )
+    asaas_webhook_token: str = Field(default="", alias="ASAAS_WEBHOOK_TOKEN")
+    asaas_environment: str = Field(default="sandbox", alias="ASAAS_ENVIRONMENT")
+    billing_grace_period_days: int = Field(default=3, alias="BILLING_GRACE_PERIOD_DAYS")
+    billing_default_amount_cents: int = Field(default=2990, alias="BILLING_DEFAULT_AMOUNT_CENTS")
+    billing_enabled: bool = Field(default=True, alias="BILLING_ENABLED")
+    billing_checkout_enabled: bool = Field(default=True, alias="BILLING_CHECKOUT_ENABLED")
+    billing_card_enabled: bool = Field(default=False, alias="BILLING_CARD_ENABLED")
+    billing_sandbox_allowlist_org_ids: str = Field(
+        default="",
+        alias="BILLING_SANDBOX_ALLOWLIST_ORG_IDS",
+    )
+    billing_checkout_minutes_to_expire: int = Field(
+        default=60,
+        alias="BILLING_CHECKOUT_MINUTES_TO_EXPIRE",
+    )
+    billing_checkout_rate_limit_max: int = Field(
+        default=5,
+        alias="BILLING_CHECKOUT_RATE_LIMIT_MAX",
+    )
+    billing_checkout_rate_limit_window_seconds: int = Field(
+        default=300,
+        alias="BILLING_CHECKOUT_RATE_LIMIT_WINDOW_SECONDS",
+    )
+
     @field_validator("secret_key")
     @classmethod
     def secret_key_min_length(cls, value: str) -> str:

@@ -28,6 +28,10 @@ from app.models import (  # noqa: F401
     AgentAuditLog,
     AgentPendingAction,
     Appointment,
+    BillingCheckout,
+    BillingPlan,
+    BillingPrice,
+    BillingWebhookEvent,
     Client,
     ClientEvaluation,
     ClientEvaluationCriterion,
@@ -47,6 +51,7 @@ from app.models import (  # noqa: F401
     RenewalRequest,
     Service,
     Session,
+    Subscription,
     User,
 )
 
@@ -73,11 +78,23 @@ def _ensure_test_database() -> None:
     admin_engine.dispose()
 
 
+def _seed_billing_catalog() -> None:
+    from app.billing.service import ensure_billing_catalog
+
+    db = TestingSessionLocal()
+    try:
+        ensure_billing_catalog(db)
+        db.commit()
+    finally:
+        db.close()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def prepare_database():
     _ensure_test_database()
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    _seed_billing_catalog()
     yield
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
@@ -88,7 +105,8 @@ def clean_tables():
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE TABLE agent_audit_logs, agent_pending_actions, "
+                "TRUNCATE TABLE billing_webhook_events, billing_checkouts, subscriptions, "
+                "agent_audit_logs, agent_pending_actions, "
                 "client_evaluation_criteria, client_evaluations, "
                 "payment_proofs, payment_reports, renewal_requests, "
                 "organization_payment_settings, client_public_accesses, "
@@ -99,6 +117,8 @@ def clean_tables():
                 "RESTART IDENTITY CASCADE"
             )
         )
+    # Keep billing_plans / billing_prices; re-seed if cascade wiped them
+    _seed_billing_catalog()
     yield
 
 

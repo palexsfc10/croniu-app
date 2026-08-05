@@ -80,6 +80,12 @@ def register_owner(
 
     membership = Membership(user_id=user.id, organization_id=organization.id, role="owner")
     db.add(membership)
+    db.flush()
+
+    from app.billing.service import BillingService
+
+    BillingService(db).create_trial(organization_id=organization.id)
+
     db.commit()
     db.refresh(user)
     db.refresh(organization)
