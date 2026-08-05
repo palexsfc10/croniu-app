@@ -35,6 +35,13 @@ load_env() {
   : "${NEXT_PUBLIC_APP_URL:?}"
   : "${NEXT_PUBLIC_ADMIN_URL:?}"
   [[ "${#SECRET_KEY}" -ge 32 ]] || die "SECRET_KEY deve ter pelo menos 32 caracteres"
+  # Cartão off por padrão em HML até evidência Asaas sandbox Croniu
+  if [[ "${BILLING_CARD_ENABLED:-false}" == "true" ]]; then
+    log "WARN BILLING_CARD_ENABLED=true — confirme HML Asaas sandbox Croniu antes de liberar cartão"
+  else
+    log "OK BILLING_CARD_ENABLED=${BILLING_CARD_ENABLED:-false} (guard HML)"
+  fi
+  : "${PUBLIC_APP_BASE_URL:=${NEXT_PUBLIC_APP_URL}}"
 }
 
 compose() {
@@ -45,9 +52,11 @@ build_images() {
   log "Construindo imagem da API"
   docker build -t "${CRONIU_API_IMAGE:-croniu-hml-api:local}" -f "${REPO_ROOT}/backend/Dockerfile" "${REPO_ROOT}/backend"
   log "Construindo imagem do web"
+  # Browser uses same-origin /api; rewrite target must be the docker service name.
   docker build \
     --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
     --build-arg "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}" \
+    --build-arg "API_PROXY_TARGET=${API_PROXY_TARGET:-http://croniu-hml-api:8000}" \
     -t "${CRONIU_WEB_IMAGE:-croniu-hml-web:local}" \
     -f "${REPO_ROOT}/apps/web/Dockerfile" \
     "${REPO_ROOT}/apps/web"

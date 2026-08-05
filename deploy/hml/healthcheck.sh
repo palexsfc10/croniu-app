@@ -78,6 +78,39 @@ ORG_B="$(python3 -c "import json,sys;print(json.load(sys.stdin)['organization_id
 [[ "$ORG_A" != "$ORG_B" ]] || die "isolamento falhou: mesmas orgs"
 log "OK tenant isolation"
 
+# Billing entitlement smoke (trial on register; callback ≠ paid)
+curl -s -c /tmp/croniu-hml-bill.txt -H 'Content-Type: application/json' \
+  -d "{\"email\":\"bill_${EMAIL}\",\"password\":\"${PASS}\",\"full_name\":\"Bill\",\"organization_name\":\"OrgBill ${SUFFIX}\"}" \
+  "${API}/api/v1/auth/register" >/tmp/croniu-hml-bill-reg.json
+ENT="$(curl -s -b /tmp/croniu-hml-bill.txt -o /tmp/croniu-hml-ent.json -w '%{http_code}' \
+  "${API}/api/v1/billing/entitlement")"
+[[ "$ENT" == "200" ]] || die "billing entitlement falhou ($ENT)"
+python3 - <<'PY'
+import json
+ent = json.load(open("/tmp/croniu-hml-ent.json"))
+assert ent.get("has_active_access") is True, ent
+assert ent.get("subscription_status") in ("trialing", "trial"), ent
+assert (ent.get("payment_status") in (None, "none", "")), ent
+assert ent.get("billing_setup_status"), ent
+print("entitlement ok", ent.get("subscription_status"), ent.get("billing_setup_status"))
+PY
+log "OK billing entitlement (trial)"
+
+STATUS="$(curl -s -b /tmp/croniu-hml-bill.txt -o /tmp/croniu-hml-bill-status.json -w '%{http_code}' \
+  "${API}/api/v1/billing/status")"
+[[ "$STATUS" == "200" ]] || die "billing status falhou ($STATUS)"
+python3 - <<'PY'
+import json, os
+st = json.load(open("/tmp/croniu-hml-bill-status.json"))
+card = st.get("card_enabled")
+# Prefer env guard; status should reflect card=false until homologation
+env_card = os.environ.get("BILLING_CARD_ENABLED", "false").lower()
+if env_card in ("0", "false", "no", ""):
+    assert card is False, st
+print("billing status ok card_enabled=", card)
+PY
+log "OK billing status (card guard)"
+
 # Shared services must remain up (read-only checks)
 if command -v systemctl >/dev/null 2>&1; then
   systemctl is-active smbd >/dev/null 2>&1 && log "OK samba active" || log "WARN samba status unknown"

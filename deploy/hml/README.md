@@ -43,6 +43,22 @@ Sugestões (confirmar antes de DNS/túnel):
 
 Sem confirmação, usar acesso por IP/porta local documentada no `.env.hml`.
 
+## Billing Asaas (sandbox Croniu)
+
+Credenciais **exclusivas Croniu** — nunca reutilizar API key / webhook token / IDs do Kyvora.
+
+| Variável | HML padrão |
+|----------|------------|
+| `ASAAS_ENVIRONMENT` | `sandbox` |
+| `ASAAS_API_URL` | `https://sandbox.asaas.com/api/v3` |
+| `BILLING_CARD_ENABLED` | **`false`** até evidência sandbox própria |
+| `PUBLIC_APP_BASE_URL` | mesma origem do web HML (callbacks `/app/billing/return/*`) |
+| Webhook URL | `https://<api-hml>/api/v1/billing/webhooks/asaas` (token no header Asaas) |
+
+Checklist de evidências: `docs/sprints/EVIDENCE_BILLING_HML.md`.
+
+`./healthcheck.sh` inclui smoke de entitlement (trial no register) e guard de cartão.
+
 ## Rollback
 
 - Primeira versão: `./rollback.sh stop` (remove containers/rede Croniu; **preserva** volume do banco).
