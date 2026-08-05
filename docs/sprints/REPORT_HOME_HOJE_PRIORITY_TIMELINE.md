@@ -3,6 +3,7 @@
 **Branch:** `feature/home-hoje-priority-timeline`  
 **Worktree:** `c:\projetos\croniu-home-hoje`  
 **SHA-base:** `bfa3a8959b56079c703ffacfd4b723d5a7a9e6a6`  
+**SHA-final:** `ac276d93772b6b2c42ee71464e23d61b57ace069`  
 **Data:** 2026-08-05  
 **Migration:** nenhuma (head inalterado)
 
