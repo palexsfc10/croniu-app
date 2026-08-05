@@ -1,9 +1,9 @@
 # Evidências HML — Billing Asaas Croniu
 
-**Homologação UTC:** 2026-08-05T18:06Z → 2026-08-05T20:30Z  
+**Homologação UTC:** 2026-08-05T18:06Z → 2026-08-05T21:45Z  
 **Branch:** `feature/billing-asaas-hosted`  
 **SHA base:** `6d7d2c7`  
-**SHA tip (commits billing):** `34fdb39`  
+**SHA tip (commits billing):** `2681245`  
 
 ## Hostnames
 
@@ -20,109 +20,127 @@
 | Webhook nome `croniu` | cadastrado · `enabled=true` · `interrupted=false` |
 | URL | aponta para API HML Croniu |
 | authToken | o mesmo de `ASAAS_WEBHOOK_TOKEN` no `.env.hml` (não alterado / não impresso) |
-| Eventos | PAYMENT_* + **CHECKOUT_*** + **SUBSCRIPTION_*** (lista completada em 2026-08-05) |
+| Eventos | PAYMENT_* + **CHECKOUT_*** + **SUBSCRIPTION_*** |
 | Webhook `kyvora` na mesma conta | presente · **interrupted=true** · **não alterado** |
 
 ### Eventos reais recebidos (IDs mascarados)
 
-| evt (prefixo) | tipo | status | org |
-|---------------|------|--------|-----|
-| `evt_37260be8159d4472` | `CHECKOUT_CREATED` | processed | `2346b5d7…` / `7ada96a9…` |
-| `evt_884a48b028bcb7db` | `CHECKOUT_EXPIRED` | processed | `7ada96a9…` |
-| `evt_05b708f961d739…` | `PAYMENT_CREATED` | processed | `2346b5d7…` |
-| `evt_6561b631fa5580…` | `SUBSCRIPTION_CREATED` | processed | `2346b5d7…` |
-| `evt_20f793f686aa47…` | `CHECKOUT_PAID` | processed | `2346b5d7…` |
+| evt (prefixo) | tipo | status | org | quando (UTC) |
+|---------------|------|--------|-----|--------------|
+| `evt_37260be8159d…` | `CHECKOUT_CREATED` | processed | `2346b5d7…` / `7ada96a9…` | 21:29 / anteriores |
+| `evt_884a48b028bc…` | `CHECKOUT_EXPIRED` | processed | `7ada96a9…` | anteriores |
+| `evt_05b708f961d7…` | `PAYMENT_CREATED` | processed | `2346b5d7…` | 21:29:32 |
+| `evt_6561b631fa55…` | `SUBSCRIPTION_CREATED` | processed | `2346b5d7…` | 21:29:32 |
+| `evt_20f793f686aa…` | `CHECKOUT_PAID` | processed | `2346b5d7…` | 21:29:32 |
+| `evt_15e444ff9b9a…` | **`PAYMENT_CONFIRMED`** | processed | `2346b5d7…` | **21:41:56** |
 
 Todos com `attempts=1`, `last_error` vazio, HTTP **200** devolvido ao Asaas.
 
-Autenticação por header `asaas-access-token` comprovada em 2026-08-05T21:3xZ:
-token inválido → **403**, ausência de token → **403**, e nenhuma das tentativas gravou evento.
+Autenticação `asaas-access-token`:
+- token inválido → **403**
+- ausência de token → **403**
+- token válido (eventos reais + reenvio) → **200**
+- tentativas inválidas não gravaram evento
 
-Idempotência: retries de eventos sintéticos e reentregas → `duplicate` / sem efeito duplicado em checkout.
-Nenhum `external_event_id` duplicado por provider (constraint `uq_billing_webhook_provider_event`).
+## Pagamento UI hospedada (org `2346b5d7…345a`)
 
-## Pagamento UI hospedada — executado pelo operador
-
-Org de teste: `2346b5d7…345a` (adicionada à allowlist HML em 2026-08-05T21:16Z;
-allowlist passou de 2 para 3 entradas, `.env.hml` com backup e `chmod 600`,
-somente `croniu-hml-api` recriado).
+Org adicionada à allowlist HML em 21:16Z (3 entradas). Somente `croniu-hml-api` recriado.
 
 | Item | Status |
 |------|--------|
-| Checkout criado pela UI do Croniu | OK · host `sandbox.asaas.com` |
+| Checkout pela UI Croniu | OK · `sandbox.asaas.com` |
 | Checkout mascarado | `2bc48615…445f` (local `e8b94806…`) |
-| Retry reutiliza mesmo checkout | comprovado (tentativas anteriores, org `7ada96a9…`) |
-| Automação Playwright | bloqueada por reCAPTCHA — pagamento feito **manualmente** pelo operador |
-| Cartão de teste oficial Sandbox | usado na UI hospedada Asaas |
-| Retorno ao Croniu | `/app/billing/return/success` |
-| `CHECKOUT_PAID` real | recebido · checkout local → **`PAID`** · `paid_at=2026-08-05T21:29:32Z` |
+| Retry reutiliza mesmo checkout | comprovado (orgs anteriores) |
+| Cartão teste oficial Sandbox | pago manualmente (reCAPTCHA) |
+| Retorno navegador | `/app/billing/return/success` |
+| `CHECKOUT_PAID` | checkout local → **`PAID`** · `paid_at=21:29:32Z` |
 
-### Estado financeiro real no Asaas (consulta ao vivo)
+### Cadeia financeira (prova de liberação só após evidência)
 
-| Objeto | Valor |
-|--------|-------|
-| Assinatura `sub_mwoa…8s` | `ACTIVE` · `MONTHLY` · `CREDIT_CARD` |
-| Primeira cobrança `pay_cmoj4o…` | **`PENDING`** · R$ 29,90 · vencimento **2026-08-12** |
-| `confirmedDate` / `paymentDate` | `null` / `null` |
+| Momento UTC | Evidência | `payment_status` | `billing_setup_status` |
+|-------------|-----------|------------------|------------------------|
+| 21:29:32 | `CHECKOUT_PAID` real | `pending` | `subscription_prepared` |
+| 21:41:56 | **`PAYMENT_CONFIRMED` real** (confirmação manual no painel) | **`confirmed`** | **`paid`** |
 
-O cartão foi autorizado e a assinatura criada, mas **nenhum valor foi capturado**:
-a primeira cobrança vence ao fim do trial de 7 dias.
+Consulta Asaas ao vivo após confirmação: cobrança `pay_cmoj4o…` → `CONFIRMED`, `confirmedDate=2026-08-05`.
 
-### Entitlement resultante (org `2346b5d7…`)
+**Conclusão:** callback do navegador e `CHECKOUT_PAID` **não** liberaram entitlement pago.
+Somente `PAYMENT_CONFIRMED` elevou `billing_setup_status` para `paid`.
+
+### Entitlement final (org `2346b5d7…`)
 
 | Campo | Valor |
 |-------|-------|
-| `billing_setup_status` | `subscription_prepared` |
-| `payment_prepared` | `true` |
-| `payment_status` | `pending` |
-| `subscription_status` | `trial` (6 dias restantes) |
-| `can_start_checkout` / `can_resume_checkout` | `false` / `false` |
+| `billing_setup_status` | `paid` |
+| `payment_status` | `confirmed` |
+| `subscription_status` | `trial` (6 dias restantes · trial Asaas ativo) |
+| `has_active_access` / `can_write` | `true` / `true` |
+| `payment_prepared` | `false` |
+| `can_start_checkout` | `false` |
 | `can_cancel_subscription` | `true` |
 
-**Conclusão:** o comportamento está correto. `PAID` de entitlement exige evidência
-financeira (`PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED`), que ainda não existe.
-Checkout `PAID` ≠ pagamento capturado — a distinção foi preservada pelo código.
+### Idempotência do evento financeiro
+
+Reenvio do mesmo `PAYMENT_CONFIRMED` real (`evt_15e444ff9b9a…`) com token válido:
+
+| Item | Resultado |
+|------|-----------|
+| HTTP | **200** |
+| Body | `{"status":"duplicate",…}` |
+| Linhas do evento | permanece **1** |
+| `attempts` | permanece **1** |
+| `subscriptions.updated_at` | **inalterado** (21:41:56Z) |
+| Orgs vizinhas | `7ada96a9…` / `b68db812…` intactas |
+
+### Restart e persistência
+
+Reiniciados somente `croniu-hml-api` e `croniu-hml-web` (db preservado).
+
+Pós-restart:
+- checkout `e8b94806…` → `PAID` com `paid_at`
+- subscription → `payment_status=confirmed`
+- entitlement → `billing_setup_status=paid`, `has_active_access=true`
+- API `healthy` · `BILLING_CARD_ENABLED` / allowlist ativos
+- Kyvora containers presentes · Samba/UniFi não tocados
+
+### Healthcheck HML
+
+`healthcheck.sh`: web/admin/api-health/openapi/manifest/register/me/anonymous/logout/session → **OK**.
+Falhou no final com `KeyError: 'organization'` (script de health, não regressão de billing).
+HTTP público: api=`200`, web=`200`.
 
 ### Isolamento e logs
 
-- Somente a org `2346b5d7…` mudou em 21:29:32Z; `7ada96a9…`, `b68db812…` e demais intactas.
-- Log com `502` anterior ao checkout bem-sucedido, causa sanitizada e legítima:
-  `"O CPF/CNPJ informado é inválido."` (primeira tentativa do operador).
-- `payload_sanitized` grava `customerData: "[redacted]"`; nenhum dado de cartão persistido.
+- Somente org `2346b5d7…` afetada pelos eventos de pagamento
+- Payload com `customerData: "[redacted]"`; sem dados de cartão
+- Warning sanitizado pré-checkout: CPF/CNPJ inválido na 1ª tentativa → `502`
 
-### Pendência aberta
+### Lacunas residuais (não bloqueiam GO de preparação)
 
-Confirmar a cobrança `pay_cmoj4o…` no painel Asaas Sandbox para observar
-`PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED` real → `payment_status=paid`.
-Sem isso, a cadeia só fecha naturalmente em 2026-08-12.
+1. Conta Asaas Sandbox ainda lista webhook `kyvora` interrompido — separar conta antes de produção.
+2. `next_billing_at` pode ficar `null` no entitlement apesar de `nextDueDate` no Asaas.
+3. Árvore Git local ainda tem arquivos **não-billing** dirty (fora do escopo desta sprint).
 
-Lacuna menor: `next_billing_at` fica `null` no entitlement enquanto o Asaas
-informa `nextDueDate=2026-09-12` (sincronização a partir de `SUBSCRIPTION_CREATED`).
+## Já comprovado (infra)
 
-## Já comprovado (card-off / infra)
-
-- Trial 7d, gate `/app/trial-expired`, portal `/c/{token}` fora do gate  
-- Multi-tenant, restart/persistência, Kyvora/Samba/UniFi preservados  
+- Trial 7d, BillingGate, portal `/c/{token}` fora do gate  
+- Multi-tenant, Alembic `0012_billing_asaas`  
 - Backup `croniu_hml_20260805T185611Z.sql.gz`  
-- Alembic `0012_billing_asaas`  
-- `BILLING_CARD_ENABLED=true` em HML + allowlist  
+- `BILLING_CARD_ENABLED=true` **somente HML** + allowlist obrigatória  
 
-## Suítes locais (pós-commits)
+## Suítes locais (pós-commits billing)
 
 | Check | Resultado |
 |-------|-----------|
 | Pytest backend completo | **131 passed** |
 | Vitest web | **34 passed** |
 | ESLint | 0 errors (1 warning pré-existente brand-mark) |
-| `tsc --noEmit` + `next build` | OK · rotas `/app/billing*` e `/app/trial-expired` presentes |
+| `tsc --noEmit` + `next build` | OK |
 
-## Recomendação (neste momento)
+## Recomendação final
 
-**NO-GO para preparar produção** até:
-1. ~~pagamento Sandbox UI com cartão teste + reCAPTCHA~~ — **concluído** pelo operador em 2026-08-05T21:29Z;
-2. ~~webhook real `CHECKOUT_PAID` → checkout `PAID`~~ — **concluído**;
-3. **pendente:** evidência financeira real (`PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED`) → `payment_status=paid`;
-4. **pendente:** revalidação de idempotência sobre o evento de pagamento confirmado;
-5. idealmente separar conta Asaas Croniu da que ainda lista webhook Kyvora interrompido.
+**GO para preparar produção** (não autoriza deploy/prod ainda).
 
-**HML card on** permanece aceitável para continuar testes com allowlist.
+Critérios atendidos: webhook real autenticado, pagamento UI hospedada, `PAID` de entitlement só após evidência financeira, entitlement coerente, idempotência do `PAYMENT_CONFIRMED`, isolamento multi-tenant, sem credenciais expostas, suítes verdes, billing versionado.
+
+Antes do deploy de produção: conta Asaas dedicada, `BILLING_CARD_ENABLED` off até cutover, secrets novos, e autorização explícita de sprint/deploy.
