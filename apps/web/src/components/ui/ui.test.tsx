@@ -157,13 +157,116 @@ describe("UI fundamentals", () => {
     expect(screen.getByRole("heading", { name: "Ciclo chegando ao fim" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Ver ciclo/i })).toBeInTheDocument();
     expect(screen.getByText(/Precisa de atenção/)).toBeInTheDocument();
-    expect(screen.getByText("Próximos compromissos")).toBeInTheDocument();
+    expect(screen.getByText("Agenda de hoje")).toBeInTheDocument();
   });
 
   it("shows calm empty day when nothing needs attention", () => {
     render(<TodayBoard summary={emptySummary} />);
     expect(screen.getByText("Tudo organizado")).toBeInTheDocument();
     expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
+  });
+
+  it("shows discrete calm line when agenda exists but no priority", () => {
+    render(
+      <TodayBoard
+        summary={{
+          ...emptySummary,
+          message: "Veja o que precisa da sua atenção hoje.",
+          upcoming_appointments: [
+            {
+              id: "a1",
+              client_id: "c1",
+              cycle_id: null,
+              service_id: null,
+              location_id: null,
+              title: null,
+              starts_at: "2026-07-24T20:00:00+00:00",
+              ends_at: "2026-07-24T21:00:00+00:00",
+              status: "scheduled",
+              notes: null,
+              created_at: "",
+              updated_at: "",
+              client_name: "Lia",
+              service_name: "Personal",
+              location_name: null,
+              cycle_service_name: null,
+            },
+          ],
+          priority_action: null,
+          attention_items: [],
+        }}
+      />,
+    );
+    expect(screen.getByLabelText("Sem prioridade operacional")).toBeInTheDocument();
+    expect(screen.getByText("Tudo em dia")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Ação prioritária")).not.toBeInTheDocument();
+    expect(screen.getByText("Lia")).toBeInTheDocument();
+    expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
+  });
+
+  it("shows in-progress badge and does not treat past as upcoming", () => {
+    render(
+      <TodayBoard
+        summary={{
+          ...emptySummary,
+          in_progress_appointments: [
+            {
+              id: "ip1",
+              client_id: "c1",
+              cycle_id: null,
+              service_id: null,
+              location_id: null,
+              title: null,
+              starts_at: "2026-07-24T15:00:00+00:00",
+              ends_at: "2026-07-24T16:00:00+00:00",
+              status: "scheduled",
+              notes: null,
+              created_at: "",
+              updated_at: "",
+              client_name: "Bruno",
+              service_name: "Personal",
+              location_name: null,
+              cycle_service_name: null,
+            },
+          ],
+          upcoming_appointments: [],
+          appointments_needing_outcome: [
+            {
+              id: "past1",
+              client_id: "c1",
+              cycle_id: null,
+              service_id: null,
+              location_id: null,
+              title: null,
+              starts_at: "2026-07-24T10:00:00+00:00",
+              ends_at: "2026-07-24T11:00:00+00:00",
+              status: "scheduled",
+              notes: null,
+              created_at: "",
+              updated_at: "",
+              client_name: "PastClient",
+              service_name: "Personal",
+              location_name: null,
+              cycle_service_name: null,
+            },
+          ],
+          priority_action: null,
+          attention_items: [
+            {
+              kind: "appointment_needs_outcome",
+              title: "PastClient",
+              subtitle: "Compromisso de hoje às 07:00 · aguardando atualização",
+              href: "/app/appointments/past1",
+              entity_id: "past1",
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("Em andamento")).toBeInTheDocument();
+    expect(screen.getByText("Bruno")).toBeInTheDocument();
+    expect(screen.getByText("PastClient")).toBeInTheDocument();
+    expect(screen.queryByText("OrganizadoCard")).not.toBeInTheDocument();
   });
 
   it("does not show contradictory empty attention when items exist", () => {

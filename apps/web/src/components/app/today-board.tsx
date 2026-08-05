@@ -23,7 +23,7 @@ type Props = {
   summary: HomeSummary;
 };
 
-const UPCOMING_LIMIT = 4;
+const UPCOMING_LIMIT = 5;
 
 function priorityCta(action: PriorityAction) {
   return action.cta_label || "Abrir";
@@ -33,29 +33,30 @@ function PriorityCard({ action }: { action: PriorityAction }) {
   return (
     <section
       aria-label="Ação prioritária"
-      className="rounded-[var(--radius-lg)] border border-[var(--color-primary)]/20 bg-[var(--color-primary-subtle)]/35 p-4 shadow-[var(--shadow-sm)]"
+      className="rounded-[var(--radius-md)] border border-[var(--color-primary)]/25 bg-[var(--color-primary-subtle)]/30 px-3.5 py-3"
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-        Ação prioritária
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+        Prioridade
       </p>
-      <h2 className="mt-1 text-lg font-semibold text-[var(--color-ink)]">{action.title}</h2>
-      <p className="mt-1 text-sm text-[var(--color-ink-muted)]">{action.subtitle}</p>
-      <Link href={action.href} className="mt-3 inline-block">
-        <Button>{priorityCta(action)}</Button>
+      <h2 className="mt-0.5 text-base font-semibold text-[var(--color-ink)]">{action.title}</h2>
+      <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">{action.subtitle}</p>
+      <Link href={action.href} className="mt-2.5 inline-block">
+        <Button className="min-h-10 px-3 text-sm">{priorityCta(action)}</Button>
       </Link>
     </section>
   );
 }
 
-function OrganizedCard({ message }: { message: string }) {
+function CalmPriorityLine({ message }: { message: string }) {
   return (
-    <section
-      aria-label="Dia organizado"
-      className="rounded-[var(--radius-lg)] border border-[var(--color-success)]/25 bg-[var(--color-success-subtle)]/40 p-4"
+    <p
+      aria-label="Sem prioridade operacional"
+      className="text-sm text-[var(--color-ink-muted)]"
     >
-      <h2 className="text-lg font-semibold text-[var(--color-ink)]">Seu dia está organizado</h2>
-      <p className="mt-1 text-sm text-[var(--color-ink-muted)]">{message}</p>
-    </section>
+      <span className="font-medium text-[var(--color-success)]">Tudo em dia</span>
+      {" · "}
+      {message}
+    </p>
   );
 }
 
@@ -67,71 +68,99 @@ function appointmentTime(item: Appointment, timeZone: string) {
   });
 }
 
-function UpcomingAppointments({
-  items,
+function TimelineRow({
+  item,
   timeZone,
-  priorityEntityId,
+  phase,
 }: {
-  items: Appointment[];
+  item: Appointment;
   timeZone: string;
-  priorityEntityId?: string | null;
+  phase: "in_progress" | "upcoming";
 }) {
-  const visible = items.slice(0, UPCOMING_LIMIT);
-  const hasMore = items.length > UPCOMING_LIMIT;
-
-  if (!visible.length) {
-    return (
-      <section aria-label="Próximos compromissos" className="space-y-2">
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Próximos compromissos</h2>
-        <p className="text-sm text-[var(--color-ink-muted)]">
-          Nenhum outro compromisso hoje. Sua agenda está livre pelo restante do dia.
-        </p>
-        <Link href="/app/agenda" className="text-sm font-semibold text-[var(--color-link)]">
-          Ver agenda completa
-        </Link>
-      </section>
-    );
-  }
+  const detail = [item.service_name || item.cycle_service_name, item.location_name]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <section aria-label="Próximos compromissos" className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Próximos compromissos</h2>
-        <Link href="/app/agenda" className="text-sm font-semibold text-[var(--color-link)]">
-          Ver agenda completa
+    <li className="relative flex gap-3">
+      <div className="flex w-12 shrink-0 flex-col items-end pt-3">
+        <time className="text-sm font-semibold tabular-nums text-[var(--color-ink)]">
+          {appointmentTime(item, timeZone)}
+        </time>
+      </div>
+      <div className="relative flex flex-col items-center">
+        <span
+          className={[
+            "mt-3.5 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-[var(--color-surface)]",
+            phase === "in_progress"
+              ? "bg-[var(--color-progress)]"
+              : "bg-[var(--color-border-strong)]",
+          ].join(" ")}
+          aria-hidden
+        />
+        <span className="w-px flex-1 bg-[var(--color-border)]" aria-hidden />
+      </div>
+      <Link
+        href={`/app/appointments/${item.id}`}
+        className="min-h-11 min-w-0 flex-1 rounded-[var(--radius-sm)] py-2.5 pr-1 transition-colors hover:bg-[var(--color-surface-subtle)]/80"
+      >
+        <p className="font-semibold text-[var(--color-ink)]">{item.client_name}</p>
+        <p className="text-sm text-[var(--color-ink-muted)]">{detail || "Compromisso"}</p>
+        {phase === "in_progress" ? (
+          <span className="mt-1 inline-block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-progress)]">
+            Em andamento
+          </span>
+        ) : null}
+      </Link>
+    </li>
+  );
+}
+
+function DayTimeline({
+  inProgress,
+  upcoming,
+  timeZone,
+}: {
+  inProgress: Appointment[];
+  upcoming: Appointment[];
+  timeZone: string;
+}) {
+  const future = upcoming.slice(0, UPCOMING_LIMIT);
+  const hasMore = upcoming.length > UPCOMING_LIMIT;
+  const empty = inProgress.length === 0 && future.length === 0;
+
+  return (
+    <section aria-label="Agenda de hoje" className="space-y-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+          Agenda de hoje
+        </h2>
+        <Link
+          href="/app/agenda"
+          className="text-sm font-medium text-[var(--color-link)] hover:underline"
+        >
+          Completa
         </Link>
       </div>
-      <ul className="space-y-2">
-        {visible.map((item) => {
-          const isPriority = priorityEntityId === item.id;
-          return (
-            <li key={item.id}>
-              <Link
-                href={`/app/appointments/${item.id}`}
-                className={[
-                  "block rounded-[var(--radius-md)] border px-3 py-3 transition-colors",
-                  isPriority
-                    ? "border-[var(--color-border)] bg-[var(--color-surface-subtle)]/80"
-                    : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-primary-subtle)]/40",
-                ].join(" ")}
-              >
-                <p className="font-semibold text-[var(--color-ink)]">
-                  {appointmentTime(item, timeZone)} · {item.client_name}
-                </p>
-                <p className="text-sm text-[var(--color-ink-muted)]">
-                  {[item.service_name || item.cycle_service_name, item.location_name]
-                    .filter(Boolean)
-                    .join(" · ") || "Compromisso"}
-                  {isPriority ? " · em foco acima" : ""}
-                </p>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+
+      {empty ? (
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          Nenhum compromisso futuro hoje. Sua agenda está livre pelo restante do dia.
+        </p>
+      ) : (
+        <ul className="space-y-0">
+          {inProgress.map((item) => (
+            <TimelineRow key={item.id} item={item} timeZone={timeZone} phase="in_progress" />
+          ))}
+          {future.map((item) => (
+            <TimelineRow key={item.id} item={item} timeZone={timeZone} phase="upcoming" />
+          ))}
+        </ul>
+      )}
+
       {hasMore ? (
-        <Link href="/app/agenda" className="text-sm font-semibold text-[var(--color-link)]">
-          Ver agenda completa
+        <Link href="/app/agenda" className="text-sm font-medium text-[var(--color-link)]">
+          Ver mais na agenda
         </Link>
       ) : null}
     </section>
@@ -142,49 +171,68 @@ function attentionIcon(kind: string) {
   if (kind === "pending_payment" || kind === "payment_report_pending") {
     return <IconBanknote className="h-4 w-4" aria-hidden />;
   }
-  if (kind === "cycle_nearing_end" || kind === "renewal_requested" || kind === "renewal_awaiting") {
+  if (
+    kind === "cycle_nearing_end" ||
+    kind === "cycle_ended_unrenewed" ||
+    kind === "renewal_requested" ||
+    kind === "renewal_awaiting"
+  ) {
     return <IconRefreshCw className="h-4 w-4" aria-hidden />;
   }
-  if (kind === "appointment_needs_outcome") {
+  if (kind === "appointment_needs_outcome" || kind === "appointment_awaiting_confirmation") {
     return <IconCalendarDays className="h-4 w-4" aria-hidden />;
   }
   return <IconAlertCircle className="h-4 w-4" aria-hidden />;
 }
 
-function AttentionSection({
-  items,
-  priorityEntityId,
-}: {
-  items: AttentionItem[];
-  priorityEntityId?: string | null;
-}) {
+/** Visual slot for future AI confirmation — never fed with mocks in this release. */
+function AwaitingConfirmationSlot({ item }: { item: AttentionItem }) {
+  return (
+    <li>
+      <div className="flex min-h-11 items-start gap-3 px-3 py-3">
+        <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-ai-subtle)] text-[var(--color-ai)]">
+          {attentionIcon(item.kind)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-[var(--color-ink)]">{item.title}</span>
+          <span className="block text-sm text-[var(--color-ink-muted)]">{item.subtitle}</span>
+          <span className="mt-2 flex flex-wrap gap-2 opacity-40" aria-hidden>
+            <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs">
+              Realizada
+            </span>
+            <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs">
+              Cancelada
+            </span>
+            <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs">
+              Remarcar
+            </span>
+          </span>
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function AttentionSection({ items }: { items: AttentionItem[] }) {
   if (!items.length) {
-    return (
-      <section aria-label="Precisa de atenção" className="space-y-2">
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Precisa de atenção</h2>
-        <p className="text-sm text-[var(--color-ink-muted)]">
-          Tudo certo por aqui. Não há ciclos, renovações ou outras situações aguardando sua ação.
-        </p>
-      </section>
-    );
+    return null;
   }
 
   return (
     <section aria-label="Precisa de atenção" className="space-y-2">
-      <h2 className="text-base font-semibold text-[var(--color-ink)]">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
         Precisa de atenção · {items.length}
       </h2>
-      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]/80 bg-[var(--color-surface)]">
         {items.map((item) => {
-          const compact = priorityEntityId === item.entity_id;
+          if (item.kind === "appointment_awaiting_confirmation") {
+            return <AwaitingConfirmationSlot key={`${item.kind}-${item.entity_id}`} item={item} />;
+          }
           return (
             <li key={`${item.kind}-${item.entity_id}`}>
               <Link
                 href={item.href}
-                className={[
-                  "flex min-h-11 items-start gap-3 px-3 py-3 transition-colors hover:bg-[var(--color-surface-subtle)]",
-                  compact ? "opacity-80" : "",
-                ].join(" ")}
+                className="flex min-h-11 items-start gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--color-surface-subtle)]"
               >
                 <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-warning-subtle)] text-[var(--color-warning)]">
                   {attentionIcon(item.kind)}
@@ -218,20 +266,37 @@ export function TodayBoard({ summary }: Props) {
 
   const upcoming =
     summary.upcoming_appointments ??
-    summary.today_appointments.filter((a) => new Date(a.ends_at).getTime() > now.getTime());
+    summary.today_appointments.filter((a) => new Date(a.starts_at).getTime() > now.getTime());
+  const inProgress =
+    summary.in_progress_appointments ??
+    summary.today_appointments.filter((a) => {
+      const start = new Date(a.starts_at).getTime();
+      const end = new Date(a.ends_at).getTime();
+      const t = now.getTime();
+      return start <= t && t < end;
+    });
 
   const attention = summary.attention_items ?? [];
   const hasAttention = attention.length > 0;
   const priority = summary.priority_action;
-  const fullyClear = !priority && !hasAttention && upcoming.length === 0;
+  const hasAgenda = upcoming.length > 0 || inProgress.length > 0;
+  const fullyClear = !priority && !hasAttention && !hasAgenda;
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    <div className="space-y-4 animate-fade-up md:space-y-5">
       <header className="space-y-1">
         <h1 className="h-display text-3xl text-[var(--color-ink)] md:text-[2rem]">{headline}</h1>
-        <p className="text-sm text-[var(--color-ink-muted)]">
-          {summary.message || "Veja o que precisa da sua atenção hoje."}
-        </p>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            {summary.message || "Veja o que precisa da sua atenção hoje."}
+          </p>
+          <Link
+            href="/app/assistant"
+            className="text-sm font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
+          >
+            Assistente
+          </Link>
+        </div>
       </header>
 
       {fullyClear ? (
@@ -241,30 +306,34 @@ export function TodayBoard({ summary }: Props) {
           description="Você não possui nenhuma pendência para revisar agora."
           action={
             <Link href="/app/agenda">
-              <Button variant="secondary">Abrir Agenda</Button>
+              <Button variant="secondary" className="min-h-10 px-3 text-sm">
+                Abrir Agenda
+              </Button>
             </Link>
           }
         />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
-          <div className="space-y-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-8">
+          <div className="space-y-4">
             {priority ? (
               <PriorityCard action={priority} />
-            ) : !hasAttention ? (
-              <OrganizedCard
+            ) : (
+              <CalmPriorityLine
                 message={
-                  summary.message ||
-                  "Você não possui nenhuma pendência importante neste momento."
+                  hasAttention
+                    ? "Revise a lista ao lado quando puder."
+                    : summary.message ||
+                      "Nenhuma pendência operacional no momento."
                 }
               />
-            ) : null}
-            <UpcomingAppointments
-              items={upcoming}
+            )}
+            <DayTimeline
+              inProgress={inProgress}
+              upcoming={upcoming}
               timeZone={summary.timezone}
-              priorityEntityId={priority?.entity_id}
             />
           </div>
-          <AttentionSection items={attention} priorityEntityId={priority?.entity_id} />
+          <AttentionSection items={attention} />
         </div>
       )}
     </div>

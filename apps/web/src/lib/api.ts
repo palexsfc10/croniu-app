@@ -205,8 +205,10 @@ export type HomeSummary = {
   local_today: string;
   today_appointments: Appointment[];
   upcoming_appointments?: Appointment[];
+  in_progress_appointments?: Appointment[];
   appointments_needing_outcome?: Appointment[];
   cycles_nearing_end: Cycle[];
+  cycles_ended_unrenewed?: Cycle[];
   renewals: Cycle[];
   pending_payments: Receivable[];
   renewal_requests?: Array<{
