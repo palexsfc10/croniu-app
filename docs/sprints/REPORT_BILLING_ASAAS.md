@@ -5,7 +5,8 @@
 **Commits billing:**
 - `6b1f19f` — backend Asaas (migration 0012, entitlement, webhooks, tests)
 - `d55a529` — Next billing UI, return poll, BillingGate
-- `5eea824` — HML ops docs + evidências (**tip**)
+- `5eea824` — HML ops docs + evidências
+- `34fdb39` — tip SHAs no relatório (**tip**)
 
 ## Entregue
 
