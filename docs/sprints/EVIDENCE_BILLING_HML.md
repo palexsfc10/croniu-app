@@ -3,7 +3,7 @@
 **Homologação UTC:** 2026-08-05T18:06Z → 2026-08-05T21:45Z  
 **Branch:** `feature/billing-asaas-hosted`  
 **SHA base:** `6d7d2c7`  
-**SHA tip (commits billing):** `50e1781`  
+**SHA tip (commits billing):** `55c71c2`  
 
 ## Hostnames
 
