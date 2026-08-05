@@ -758,19 +758,141 @@ def mark_receivable_paid(
 # --- Home --------------------------------------------------------------------
 
 
-def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummaryOut:
-    """Daily focus summary for Hoje.
+def classify_today_appointments(
+    today_appts: list,
+    *,
+    now: datetime,
+) -> tuple[list, list, list]:
+    """Split today's scheduled appointments into future / in_progress / needs_outcome.
 
-    Priority (deterministic):
-      1. appointment in progress
-      2. appointment starting within 2h
-      3. agenda conflict today
-      4. renewal requested (client portal)
-      5. payment report awaiting review
-      6. overdue receivable
-      7. cycle nearing end without an open renewal for the same cycle
-      8. next upcoming appointment (rest of day / later)
+    See docs/HOME_PRIORITY.md. Past ended slots stay in history; only leave the home
+    timeline when ends_at <= now.
     """
+    upcoming = [a for a in today_appts if a.starts_at > now]
+    in_progress = [a for a in today_appts if a.starts_at <= now < a.ends_at]
+    needing_outcome = [a for a in today_appts if a.ends_at <= now]
+    return upcoming, in_progress, needing_outcome
+
+
+def select_home_priority(
+    *,
+    overdue: list[ReceivableOut],
+    due_today: list[ReceivableOut],
+    due_later: list[ReceivableOut],
+    pay_reports: list,
+    ended_unrenewed: list[CycleOut],
+    renewal_reqs: list,
+    nearing: list[CycleOut],
+    has_conflict: bool,
+    conflict_entity_id: uuid.UUID | None,
+    appointments_needing_outcome: list,
+) -> PriorityActionOut | None:
+    """Canonical priority selection — docs/HOME_PRIORITY.md. No appointments as priority."""
+
+    if overdue:
+        first = overdue[0]
+        return PriorityActionOut(
+            kind="pending_payment",
+            title="Recebimento atrasado",
+            subtitle=f"{first.client_name} · venceu em {first.due_on.isoformat()}",
+            href=f"/app/receivables/{first.id}",
+            entity_id=first.id,
+            cta_label="Revisar recebimento",
+        )
+    if pay_reports:
+        first_pr = pay_reports[0]
+        return PriorityActionOut(
+            kind="payment_report_pending",
+            title="Pagamento aguardando conferência",
+            subtitle=f"{first_pr.client_name} informou um pagamento.",
+            href="/app/payment-reports",
+            entity_id=first_pr.id,
+            cta_label="Revisar pagamento",
+        )
+    if due_today:
+        first = due_today[0]
+        return PriorityActionOut(
+            kind="pending_payment",
+            title="Recebimento vence hoje",
+            subtitle=f"{first.client_name} · vence em {first.due_on.isoformat()}",
+            href=f"/app/receivables/{first.id}",
+            entity_id=first.id,
+            cta_label="Revisar recebimento",
+        )
+    if ended_unrenewed:
+        first = ended_unrenewed[0]
+        return PriorityActionOut(
+            kind="cycle_ended_unrenewed",
+            title="Ciclo encerrado sem renovação",
+            subtitle=f"{first.client_name} · encerrou em {first.ends_on.isoformat()}",
+            href=f"/app/cycles/{first.id}",
+            entity_id=first.id,
+            cta_label="Ver ciclo",
+        )
+    if renewal_reqs:
+        first_rr = renewal_reqs[0]
+        return PriorityActionOut(
+            kind="renewal_requested",
+            title="Cliente quer continuar",
+            subtitle=f"{first_rr.client_name} enviou uma solicitação de renovação.",
+            href="/app/renewals",
+            entity_id=first_rr.id,
+            cta_label="Revisar solicitação",
+        )
+    if nearing:
+        first = nearing[0]
+        title, subtitle = _cycle_nearing_copy(first)
+        return PriorityActionOut(
+            kind="cycle_nearing_end",
+            title=title,
+            subtitle=subtitle,
+            href=f"/app/cycles/{first.id}",
+            entity_id=first.id,
+            cta_label="Ver ciclo",
+        )
+    if has_conflict and conflict_entity_id is not None:
+        return PriorityActionOut(
+            kind="agenda_conflict",
+            title="Conflito na agenda de hoje",
+            subtitle="Há compromissos sobrepostos. Revise os horários.",
+            href="/app/agenda",
+            entity_id=conflict_entity_id,
+            cta_label="Abrir agenda",
+        )
+    if appointments_needing_outcome:
+        appt = appointments_needing_outcome[0]
+        return PriorityActionOut(
+            kind="appointment_needs_outcome",
+            title="Atualizar compromisso",
+            subtitle=f"{appt.client_name} · horário já passou",
+            href=f"/app/appointments/{appt.id}",
+            entity_id=appt.id,
+            cta_label="Atualizar",
+        )
+    if due_later:
+        first = due_later[0]
+        return PriorityActionOut(
+            kind="pending_payment",
+            title="Recebimento próximo",
+            subtitle=f"{first.client_name} · vence em {first.due_on.isoformat()}",
+            href=f"/app/receivables/{first.id}",
+            entity_id=first.id,
+            cta_label="Revisar recebimento",
+        )
+    return None
+
+
+def dedupe_attention_against_priority(
+    attention: list[AttentionItemOut],
+    priority: PriorityActionOut | None,
+) -> list[AttentionItemOut]:
+    if priority is None:
+        return attention
+    return [item for item in attention if item.entity_id != priority.entity_id]
+
+
+def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummaryOut:
+    """Daily focus summary for Hoje. Rule: docs/HOME_PRIORITY.md."""
     from zoneinfo import ZoneInfo
 
     from app.services import agenda as agenda_svc
@@ -783,14 +905,8 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     now = datetime.now(UTC)
 
     today_appts = agenda_svc.list_today_appointments(db, organization_id=organization_id)
-    upcoming_appointments = [
-        a for a in today_appts if a.ends_at > now
-    ]
-    appointments_needing_outcome = [
-        a for a in today_appts if a.ends_at <= now
-    ]
-    next_appt = agenda_svc.next_upcoming_appointment(
-        db, organization_id=organization_id, now=now
+    upcoming_appointments, in_progress_appointments, appointments_needing_outcome = (
+        classify_today_appointments(today_appts, now=now)
     )
 
     active_rows = list(
@@ -804,8 +920,26 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             .order_by(Cycle.ends_on.asc())
         ).all()
     )
+    ended_rows = list(
+        db.scalars(
+            select(Cycle)
+            .where(
+                Cycle.organization_id == organization_id,
+                Cycle.status == "ended",
+            )
+            .options(selectinload(Cycle.client), selectinload(Cycle.service))
+            .order_by(Cycle.ends_on.desc())
+            .limit(50)
+        ).all()
+    )
+    # Active rows past ends_on also count as ended-without-renewal candidates.
+    past_due_active = [row for row in active_rows if row.ends_on < today]
+    ended_candidates = ended_rows + past_due_active
+
     progress = map_lesson_progress(
-        db, organization_id=organization_id, cycle_ids=[row.id for row in active_rows]
+        db,
+        organization_id=organization_id,
+        cycle_ids=[row.id for row in active_rows] + [row.id for row in ended_rows],
     )
     nearing_all: list[CycleOut] = []
     for row in active_rows:
@@ -823,6 +957,18 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             c.ends_on,
         )
     )
+
+    ended_all: list[CycleOut] = []
+    for row in ended_candidates:
+        out = _cycle_out(
+            row,
+            today,
+            lessons_completed=progress.get(row.id, (0, 0))[0],
+            lessons_no_show=progress.get(row.id, (0, 0))[1],
+        )
+        ended_all.append(out)
+    # Prefer most recently ended first.
+    ended_all.sort(key=lambda c: c.ends_on, reverse=True)
 
     renewal_reqs = my_cycle_svc.list_renewal_requests(db, organization_id=organization_id)
     pay_reports = my_cycle_svc.list_payment_reports(
@@ -842,15 +988,23 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         ).all()
     )
 
-    suppressed = cycles_suppressed_from_home_attention(
+    all_for_successor = active_rows  # successor check uses active cycles
+    suppressed_nearing = cycles_suppressed_from_home_attention(
         nearing=nearing_all,
-        active_cycles=active_rows,
+        active_cycles=all_for_successor,
         open_renewal_source_ids=open_renewal_source_ids,
         completed_renewal_source_ids=completed_renewal_source_ids,
     )
-    # Dedup / suppress: never nag for cycles already forwarded, renewed, or superseded.
-    nearing = [c for c in nearing_all if c.id not in suppressed]
+    nearing = [c for c in nearing_all if c.id not in suppressed_nearing]
     renewals = [item for item in nearing if item.contact_confirmed_at is None]
+
+    suppressed_ended = cycles_suppressed_from_home_attention(
+        nearing=ended_all,
+        active_cycles=all_for_successor,
+        open_renewal_source_ids=open_renewal_source_ids,
+        completed_renewal_source_ids=completed_renewal_source_ids,
+    )
+    ended_unrenewed = [c for c in ended_all if c.id not in suppressed_ended]
 
     pending_rows = db.scalars(
         select(Receivable)
@@ -866,120 +1020,30 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     ).all()
     pending = [_receivable_out(row) for row in pending_rows]
     overdue = [item for item in pending if item.due_on < today]
-    due_soon = [item for item in pending if item.due_on >= today]
+    due_today = [item for item in pending if item.due_on == today]
+    due_later = [item for item in pending if item.due_on > today]
 
     day_agenda = agenda_svc.list_day_agenda(db, organization_id=organization_id, day=today)
     has_conflict = day_agenda.conflict_count > 0
-
-    in_progress = next(
-        (a for a in today_appts if a.starts_at <= now < a.ends_at),
-        None,
-    )
-    soon_cutoff = now + timedelta(hours=2)
-    starting_soon = next(
-        (a for a in today_appts if now < a.starts_at <= soon_cutoff),
-        None,
+    conflict_entity_id = (
+        day_agenda.appointments[0].id if day_agenda.appointments else None
     )
 
     def _local_time(appt) -> str:
         return appt.starts_at.astimezone(tz).strftime("%H:%M")
 
-    def _appt_service(appt) -> str | None:
-        return getattr(appt, "service_name", None) or getattr(appt, "title", None)
-
-    def _appt_priority(kind: str, appt) -> PriorityActionOut:
-        service = _appt_service(appt)
-        time_label = _local_time(appt)
-        bits = [f"{appt.client_name} às {time_label}"]
-        if service:
-            bits.append(str(service))
-        if appt.location_name:
-            bits.append(appt.location_name)
-        subtitle = " · ".join(bits)
-        if kind == "appointment_in_progress":
-            title = "Compromisso em andamento"
-        else:
-            title = "Seu próximo compromisso"
-        return PriorityActionOut(
-            kind=kind,
-            title=title,
-            subtitle=subtitle,
-            href=f"/app/appointments/{appt.id}",
-            entity_id=appt.id,
-            cta_label="Ver compromisso",
-        )
-
-    priority: PriorityActionOut | None = None
-
-    if in_progress is not None:
-        priority = _appt_priority("appointment_in_progress", in_progress)
-    elif starting_soon is not None:
-        priority = _appt_priority("appointment_upcoming", starting_soon)
-    elif has_conflict:
-        first = day_agenda.appointments[0] if day_agenda.appointments else None
-        if first:
-            priority = PriorityActionOut(
-                kind="agenda_conflict",
-                title="Conflito na agenda de hoje",
-                subtitle="Há compromissos sobrepostos. Revise os horários.",
-                href="/app/agenda",
-                entity_id=first.id,
-                cta_label="Abrir agenda",
-            )
-    elif renewal_reqs:
-        first_rr = renewal_reqs[0]
-        priority = PriorityActionOut(
-            kind="renewal_requested",
-            title="Cliente quer continuar",
-            subtitle=f"{first_rr.client_name} enviou uma solicitação de renovação.",
-            href="/app/renewals",
-            entity_id=first_rr.id,
-            cta_label="Revisar solicitação",
-        )
-    elif pay_reports:
-        first_pr = pay_reports[0]
-        priority = PriorityActionOut(
-            kind="payment_report_pending",
-            title="Pagamento aguardando conferência",
-            subtitle=f"{first_pr.client_name} informou um pagamento.",
-            href="/app/payment-reports",
-            entity_id=first_pr.id,
-            cta_label="Revisar pagamento",
-        )
-    elif overdue:
-        first_pay = overdue[0]
-        priority = PriorityActionOut(
-            kind="pending_payment",
-            title="Recebimento atrasado",
-            subtitle=f"{first_pay.client_name} · venceu em {first_pay.due_on.isoformat()}",
-            href=f"/app/receivables/{first_pay.id}",
-            entity_id=first_pay.id,
-            cta_label="Revisar recebimento",
-        )
-    elif nearing:
-        first = nearing[0]
-        title, subtitle = _cycle_nearing_copy(first)
-        priority = PriorityActionOut(
-            kind="cycle_nearing_end",
-            title=title,
-            subtitle=subtitle,
-            href=f"/app/cycles/{first.id}",
-            entity_id=first.id,
-            cta_label="Ver ciclo",
-        )
-    elif next_appt is not None:
-        out = agenda_svc.appointment_to_out(next_appt)
-        priority = _appt_priority("appointment_upcoming", out)
-    elif due_soon:
-        first_pay = due_soon[0]
-        priority = PriorityActionOut(
-            kind="pending_payment",
-            title="Recebimento próximo",
-            subtitle=f"{first_pay.client_name} · vence em {first_pay.due_on.isoformat()}",
-            href=f"/app/receivables/{first_pay.id}",
-            entity_id=first_pay.id,
-            cta_label="Revisar recebimento",
-        )
+    priority = select_home_priority(
+        overdue=overdue,
+        due_today=due_today,
+        due_later=due_later,
+        pay_reports=pay_reports,
+        ended_unrenewed=ended_unrenewed,
+        renewal_reqs=renewal_reqs,
+        nearing=nearing,
+        has_conflict=has_conflict,
+        conflict_entity_id=conflict_entity_id,
+        appointments_needing_outcome=appointments_needing_outcome,
+    )
 
     attention: list[AttentionItemOut] = []
     for rr in renewal_reqs:
@@ -1023,6 +1087,18 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 tone="warning",
             )
         )
+    for cycle in ended_unrenewed:
+        attention.append(
+            AttentionItemOut(
+                kind="cycle_ended_unrenewed",
+                title=cycle.client_name or "Cliente",
+                subtitle=f"Ciclo encerrado em {cycle.ends_on.isoformat()} · sem renovação",
+                href=f"/app/cycles/{cycle.id}",
+                entity_id=cycle.id,
+                client_name=cycle.client_name,
+                tone="warning",
+            )
+        )
     for cycle in nearing:
         attention.append(
             AttentionItemOut(
@@ -1048,6 +1124,8 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             )
         )
 
+    attention = dedupe_attention_against_priority(attention, priority)
+
     has_attention = bool(attention) or priority is not None
     if not has_attention:
         message = "Você não possui nenhuma pendência importante neste momento."
@@ -1060,8 +1138,10 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         local_today=today,
         today_appointments=today_appts,
         upcoming_appointments=upcoming_appointments,
+        in_progress_appointments=in_progress_appointments,
         appointments_needing_outcome=appointments_needing_outcome,
         cycles_nearing_end=nearing,
+        cycles_ended_unrenewed=ended_unrenewed,
         renewals=renewals,
         pending_payments=pending,
         renewal_requests=[r.model_dump(mode="json") for r in renewal_reqs],

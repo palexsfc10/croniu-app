@@ -170,14 +170,14 @@ Prescritor de treino · biblioteca de exercícios · dietas · marketplace · ch
 |--|--|
 | Objetivo | Painel do dia com dados reais e ação prioritária |
 | Estado | `IMPLEMENTADO` |
-| Evidências | `/home/summary`, `TodayBoard`, E2E |
+| Evidências | `/home/summary`, `TodayBoard`, regra [`HOME_PRIORITY.md`](./HOME_PRIORITY.md) |
 
 ### M-CTX — Barra contextual
 
 | | |
 |--|--|
 | Objetivo | Uma ação/contexto prioritário; sem carrossel |
-| Estado | `PARCIAL` (componente em detalhes + hint no Hoje; não global no shell; sem “próximo atendimento”) |
+| Estado | `PARCIAL` (componente em detalhes; **não** na home; prioridade única via `priority_action`) |
 
 ### M-AGENDA — Agenda interna
 
@@ -281,7 +281,7 @@ Menor escopo · consentimento · tokens criptografados · revogação · descone
 | FR-RECEIVABLE-01 | Recebimento + mark-paid | `IMPLEMENTADO` | receivables | domain + E2E | 2A | Alvo vocab: `paid` (hoje `received`); `expected` divergente |
 | FR-RECEIVABLE-02 | Pagamento parcial | `FUTURO` | — | — | — | — |
 | FR-RECEIVABLE-03 | Vocabulário pending/paid/cancelled + overdue calc | `PLANEJADO` | docs ADR-021 | — | autorizada | Normalizar código |
-| FR-ALERT-01 | Prioridades no Hoje | `PARCIAL` | home summary | domain home | 2A | persistência |
+| FR-ALERT-01 | Prioridades no Hoje | `IMPLEMENTADO` | home summary + HOME_PRIORITY.md | domain home | home-hoje | entidade Alert persistida |
 | FR-MYCYCLE-01 | Portal público por token opaco | `IMPLEMENTADO` | `/c/{token}` + public API | 2D | — |
 | FR-MYCYCLE-02 | Solicitação renovação idempotente | `IMPLEMENTADO` | renewal_requests | 2D | — |
 | FR-MYCYCLE-03 | Informe pagamento + confirmação pro | `IMPLEMENTADO` | payment_reports | 2D | gateway fora |

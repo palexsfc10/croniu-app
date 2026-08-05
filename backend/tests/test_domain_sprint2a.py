@@ -57,7 +57,8 @@ def test_client_service_cycle_receivable_flow(client, register_payload):
     summary = home.json()
     assert len(summary["cycles_nearing_end"]) == 1
     assert len(summary["pending_payments"]) == 1
-    assert summary["priority_action"]["kind"] == "cycle_nearing_end"
+    # Cobrança do dia outranks ciclo encerrando (docs/HOME_PRIORITY.md)
+    assert summary["priority_action"]["kind"] == "pending_payment"
 
     prep = client.post(f"/api/v1/cycles/{cycle_id}/whatsapp-prep")
     assert prep.status_code == 200

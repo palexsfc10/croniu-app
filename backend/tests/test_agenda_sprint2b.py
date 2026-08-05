@@ -229,7 +229,7 @@ def test_home_summary_includes_appointments(client, register_payload):
     _auth_client(client, register_payload)
     person = _create_client(client)
     day = client.get("/api/v1/organization/preferences").json()["local_today"]
-    # Priority: in-progress or starting within 2h — avoid fixed 22:00 (fails after 23h).
+    # Appointment on home timeline — must NOT become priority_action.
     tz = ZoneInfo("America/Sao_Paulo")
     now_local = datetime.now(tz)
     start = now_local + timedelta(minutes=30)
@@ -245,18 +245,22 @@ def test_home_summary_includes_appointments(client, register_payload):
         },
     )
     assert created.status_code == 201
+    appt_id = created.json()["id"]
     home = client.get("/api/v1/home/summary")
     assert home.status_code == 200
     body = home.json()
     assert body["timezone"] == "America/Sao_Paulo"
     assert len(body["today_appointments"]) >= 1
-    assert body["priority_action"] is not None
-    assert body["priority_action"]["kind"] in {
-        "appointment_upcoming",
-        "appointment_in_progress",
+    timeline_ids = {a["id"] for a in body.get("upcoming_appointments") or []} | {
+        a["id"] for a in body.get("in_progress_appointments") or []
     }
-    assert body["priority_action"]["cta_label"] == "Ver compromisso"
-    assert body["priority_action"]["subtitle"]
+    needing_ids = {a["id"] for a in body.get("appointments_needing_outcome") or []}
+    assert appt_id in timeline_ids or appt_id in needing_ids
+    if body["priority_action"] is not None:
+        assert body["priority_action"]["kind"] not in {
+            "appointment_upcoming",
+            "appointment_in_progress",
+        }
 
 
 def test_tenant_isolation_location_and_appointment(client, register_payload):

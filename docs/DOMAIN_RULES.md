@@ -163,10 +163,12 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 
 | Regra | Status |
 |-------|--------|
-| Prioridades no `/home/summary` | `PARCIAL` |
+| Prioridades no `/home/summary` | `IMPLEMENTADO` — regra canônica em [`HOME_PRIORITY.md`](./HOME_PRIORITY.md) |
 | Cálculo de ciclos encerrando / recebíveis | `IMPLEMENTADO` (serviço) |
 | Entidade Alert persistida + dedupe formal | `PLANEJADO` |
 | Timezone explícito da org | `IMPLEMENTADO` (Sprint 2B) |
+
+Seleção de prioridade e split temporal da home: **somente backend**. Frontend não duplica a regra.
 
 ---
 

@@ -209,8 +209,10 @@ class HomeSummaryOut(BaseModel):
     local_today: date
     today_appointments: list[AppointmentOut] = Field(default_factory=list)
     upcoming_appointments: list[AppointmentOut] = Field(default_factory=list)
+    in_progress_appointments: list[AppointmentOut] = Field(default_factory=list)
     appointments_needing_outcome: list[AppointmentOut] = Field(default_factory=list)
     cycles_nearing_end: list[CycleOut]
+    cycles_ended_unrenewed: list[CycleOut] = Field(default_factory=list)
     renewals: list[CycleOut]
     pending_payments: list[ReceivableOut]
     renewal_requests: list[dict] = Field(default_factory=list)

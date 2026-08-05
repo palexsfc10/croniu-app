@@ -46,16 +46,18 @@ Logout permanece em Mais. Wordmark homologado preservado.
 
 ## Home “Hoje”
 
-Estrutura operacional (Sprint home-daily-focus):
+Estrutura operacional (`HOME_HOJE_PRIORITY_TIMELINE`; regra em [`HOME_PRIORITY.md`](./HOME_PRIORITY.md)):
 
-1. Saudação + contexto curto (timezone da organização)
-2. Uma ação prioritária (regra determinística no backend)
-3. Próximos compromissos (futuros / em andamento; passados sem desfecho vão para atenção)
-4. Seção **Precisa de atenção** (renovações, pagamentos, ciclos, desfechos)
+1. Saudação serifada + contexto curto (timezone da organização) + acesso discreto ao Assistente
+2. Uma ação prioritária **somente se existir** (backend); senão estado positivo discreto — sem card grande artificial
+3. Timeline do dia: em andamento (badge) + próximos futuros; passados sem desfecho **não** ficam na timeline
+4. Seção **Precisa de atenção** (itens deduplicados vs prioridade)
 
-Removidos da home: faixa “Próximo” redundante e resumo quantitativo azul (`contextual_hint`).
+Removidos da home: faixa “Próximo” redundante, resumo quantitativo azul (`contextual_hint`), prioridade = próximo compromisso.
 
 `ContextualBar` permanece em telas de detalhe (cliente/ciclo/recebível/compromisso), não na home.
+
+Tipografia: Fraunces (`h-display`) sobretudo na saudação; títulos operacionais e dados em Manrope/sans.
 
 Não é dashboard decorativo. Agenda não substitui dores comerciais.
 
