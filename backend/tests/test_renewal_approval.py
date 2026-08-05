@@ -88,3 +88,9 @@ def test_renewal_approve_creates_one_cycle_and_is_idempotent(client, register_pa
     assert again.status_code == 201, again.text
     assert again.json()["id"] == created.json()["id"]
     assert len(client.get("/api/v1/cycles").json()) == before + 1
+    source = client.get(f"/api/v1/cycles/{ids['cycle_id']}").json()
+    assert source["status"] == "ended"
+    home = client.get("/api/v1/home/summary").json()
+    assert not any(
+        item["entity_id"] == ids["cycle_id"] for item in home["attention_items"]
+    )

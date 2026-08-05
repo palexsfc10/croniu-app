@@ -48,9 +48,18 @@ Ordem determinística em `build_home_summary`:
 8. próximo compromisso restante do dia  
 9. recebimento a vencer / ciclo aguardando contato (fallback)
 
-## 7. Deduplicação
+## 7. Deduplicação / supressão (revisão PO+QA)
 
-Se existe `renewal_request` para `source_cycle_id`, o ciclo **não** entra em `cycles_nearing_end` nem em `attention_items` como `cycle_nearing_end`. A renovação prevalece.
+Um ciclo **não** aparece como “encerrando” na home quando:
+
+1. existe renovação portal aberta (`requested` / `acknowledged` / `payment_reported`);
+2. renovação foi `resolved` com `created_cycle_id` (aprovada);
+3. profissional registrou contato (`contact_confirmed_at`) — renovação já encaminhada;
+4. existe ciclo sucessor ativo (mesmo cliente + mesmo serviço, início mais recente).
+
+Ao aprovar renovação via `renewal_request_id`, o ciclo origem passa a `ended` e aulas futuras `scheduled` são canceladas.
+
+Copy da prioridade/atenção usa o **motivo real**: aulas esgotadas / última aula / data ≤7 dias — nunca “termina em 31 dias” quando o gatilho for saldo de aulas.
 
 ## 8. Compromissos passados
 

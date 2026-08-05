@@ -471,6 +471,30 @@ def create_intelligent_cycle(
         renewal_row.resolved_at = datetime.now(UTC)
         renewal_row.created_cycle_id = cycle.id
         db.add(renewal_row)
+        # Source cycle leaves the operational "active nearing" surface once renewed.
+        source = db.scalar(
+            select(Cycle).where(
+                Cycle.organization_id == organization_id,
+                Cycle.id == renewal_row.source_cycle_id,
+            )
+        )
+        if source is not None and source.status == "active":
+            source.status = "ended"
+            db.add(source)
+            now_utc = datetime.now(UTC)
+            future_open = list(
+                db.scalars(
+                    select(Appointment).where(
+                        Appointment.organization_id == organization_id,
+                        Appointment.cycle_id == source.id,
+                        Appointment.status == "scheduled",
+                        Appointment.starts_at > now_utc,
+                    )
+                ).all()
+            )
+            for appt in future_open:
+                appt.status = "cancelled"
+                db.add(appt)
 
     db.commit()
     return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)

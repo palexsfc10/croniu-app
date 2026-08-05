@@ -28,6 +28,117 @@ NEARING_END_DAYS = 7
 LESSONS_NEARING_REMAINING = 1
 
 
+def cycle_nearing_reason(cycle: CycleOut) -> str | None:
+    """Why a cycle is flagged for home attention. None if not nearing."""
+    if not cycle.is_nearing_end:
+        return None
+    if cycle.lessons_remaining is not None and cycle.lessons_remaining == 0:
+        return "lessons_exhausted"
+    if (
+        cycle.lessons_remaining is not None
+        and 0 < cycle.lessons_remaining <= LESSONS_NEARING_REMAINING
+    ):
+        return "lessons_low"
+    if cycle.days_remaining is not None and 0 <= cycle.days_remaining <= NEARING_END_DAYS:
+        return "date"
+    return "nearing"
+
+
+def _cycle_nearing_copy(cycle: CycleOut) -> tuple[str, str]:
+    """Title + subtitle for priority/attention when the cycle still needs renewal action."""
+    name = cycle.client_name or "Cliente"
+    reason = cycle_nearing_reason(cycle)
+    if reason == "lessons_exhausted":
+        return (
+            "Aulas do ciclo esgotadas",
+            f"O ciclo de {name} não tem mais aulas e ainda não possui renovação encaminhada.",
+        )
+    if reason == "lessons_low":
+        return (
+            "Última aula do ciclo",
+            f"O ciclo de {name} está na última aula e ainda não possui renovação encaminhada.",
+        )
+    days = cycle.days_remaining
+    if days is not None and days >= 0:
+        when = (
+            "hoje"
+            if days == 0
+            else ("amanhã" if days == 1 else f"em {days} dias")
+        )
+        return (
+            "Ciclo chegando ao fim",
+            f"O ciclo de {name} termina {when} e ainda não possui renovação encaminhada.",
+        )
+    return (
+        "Ciclo chegando ao fim",
+        f"O ciclo de {name} está encerrando e ainda não possui renovação encaminhada.",
+    )
+
+
+def _attention_cycle_subtitle(cycle: CycleOut) -> str:
+    reason = cycle_nearing_reason(cycle)
+    if reason == "lessons_exhausted":
+        return "Aulas esgotadas · sem renovação encaminhada"
+    if reason == "lessons_low":
+        return "1 aula restante · sem renovação encaminhada"
+    if cycle.days_remaining is not None:
+        when = (
+            "hoje"
+            if cycle.days_remaining == 0
+            else (
+                "amanhã"
+                if cycle.days_remaining == 1
+                else f"em {cycle.days_remaining} dias"
+            )
+        )
+        return f"Ciclo termina {when} · sem renovação encaminhada"
+    return f"Ciclo encerra em {cycle.ends_on.isoformat()} · sem renovação encaminhada"
+
+
+def cycles_suppressed_from_home_attention(
+    *,
+    nearing: list[CycleOut],
+    active_cycles: list[Cycle],
+    open_renewal_source_ids: set[uuid.UUID],
+    completed_renewal_source_ids: set[uuid.UUID],
+) -> set[uuid.UUID]:
+    """Cycles that must not appear as generic 'cycle ending' on Hoje.
+
+    Product rules (no nagging after renewal is already in motion or done):
+    1. Open portal renewal for that cycle (requested / acknowledged / payment_reported)
+    2. Renewal already resolved with a created successor cycle
+    3. Professional already registered renewal contact (contact_confirmed_at)
+    4. Same client + same service already has a newer active cycle (manual renewal)
+    """
+    suppressed = set(open_renewal_source_ids) | set(completed_renewal_source_ids)
+
+    for cycle in nearing:
+        if cycle.contact_confirmed_at is not None:
+            suppressed.add(cycle.id)
+
+    # Newer active successor for same client+service suppresses the older nearing cycle.
+    by_client_service: dict[tuple[uuid.UUID, uuid.UUID], list[Cycle]] = {}
+    for row in active_cycles:
+        if row.service_id is None:
+            continue
+        key = (row.client_id, row.service_id)
+        by_client_service.setdefault(key, []).append(row)
+
+    for group in by_client_service.values():
+        if len(group) < 2:
+            continue
+        ordered = sorted(
+            group,
+            key=lambda c: (c.starts_on, c.created_at or datetime.min.replace(tzinfo=UTC)),
+        )
+        newest = ordered[-1]
+        for older in ordered[:-1]:
+            if older.id != newest.id:
+                suppressed.add(older.id)
+
+    return suppressed
+
+
 def _normalize_optional_str(value: str | None) -> str | None:
     if value is None:
         return None
@@ -717,9 +828,28 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     pay_reports = my_cycle_svc.list_payment_reports(
         db, organization_id=organization_id, status="pending_review"
     )
-    renewal_cycle_ids = {r.source_cycle_id for r in renewal_reqs}
-    # Dedup: open renewal request supersedes generic "cycle ending" for the same cycle.
-    nearing = [c for c in nearing_all if c.id not in renewal_cycle_ids]
+    open_renewal_source_ids = {r.source_cycle_id for r in renewal_reqs}
+
+    from app.models.renewal_request import RenewalRequest
+
+    completed_renewal_source_ids = set(
+        db.scalars(
+            select(RenewalRequest.source_cycle_id).where(
+                RenewalRequest.organization_id == organization_id,
+                RenewalRequest.status == "resolved",
+                RenewalRequest.created_cycle_id.is_not(None),
+            )
+        ).all()
+    )
+
+    suppressed = cycles_suppressed_from_home_attention(
+        nearing=nearing_all,
+        active_cycles=active_rows,
+        open_renewal_source_ids=open_renewal_source_ids,
+        completed_renewal_source_ids=completed_renewal_source_ids,
+    )
+    # Dedup / suppress: never nag for cycles already forwarded, renewed, or superseded.
+    nearing = [c for c in nearing_all if c.id not in suppressed]
     renewals = [item for item in nearing if item.contact_confirmed_at is None]
 
     pending_rows = db.scalars(
@@ -828,28 +958,10 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         )
     elif nearing:
         first = nearing[0]
-        if first.days_remaining is not None and first.days_remaining >= 0:
-            when = (
-                "hoje"
-                if first.days_remaining == 0
-                else (
-                    "amanhã"
-                    if first.days_remaining == 1
-                    else f"em {first.days_remaining} dias"
-                )
-            )
-            subtitle = (
-                f"O ciclo de {first.client_name} termina {when}"
-                f" e ainda não possui renovação encaminhada."
-            )
-        else:
-            subtitle = (
-                f"O ciclo de {first.client_name} está encerrando"
-                f" e ainda não possui renovação encaminhada."
-            )
+        title, subtitle = _cycle_nearing_copy(first)
         priority = PriorityActionOut(
             kind="cycle_nearing_end",
-            title="Ciclo chegando ao fim",
+            title=title,
             subtitle=subtitle,
             href=f"/app/cycles/{first.id}",
             entity_id=first.id,
@@ -867,16 +979,6 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             href=f"/app/receivables/{first_pay.id}",
             entity_id=first_pay.id,
             cta_label="Revisar recebimento",
-        )
-    elif renewals:
-        first = renewals[0]
-        priority = PriorityActionOut(
-            kind="renewal_awaiting",
-            title="Ciclo aguardando contato",
-            subtitle=f"{first.client_name} · ainda sem contato de renovação registrado.",
-            href=f"/app/cycles/{first.id}",
-            entity_id=first.id,
-            cta_label="Ver ciclo",
         )
 
     attention: list[AttentionItemOut] = []
@@ -922,30 +1024,11 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             )
         )
     for cycle in nearing:
-        if cycle.days_remaining is not None:
-            when = (
-                "hoje"
-                if cycle.days_remaining == 0
-                else (
-                    "amanhã"
-                    if cycle.days_remaining == 1
-                    else f"em {cycle.days_remaining} dias"
-                )
-            )
-            sub = f"Ciclo termina {when}"
-        else:
-            sub = f"Ciclo encerra em {cycle.ends_on.isoformat()}"
-        if cycle.lessons_remaining is not None and cycle.lessons_remaining <= 1:
-            sub = (
-                "Aulas esgotadas"
-                if cycle.lessons_remaining == 0
-                else "1 aula restante"
-            )
         attention.append(
             AttentionItemOut(
                 kind="cycle_nearing_end",
                 title=cycle.client_name or "Cliente",
-                subtitle=sub,
+                subtitle=_attention_cycle_subtitle(cycle),
                 href=f"/app/cycles/{cycle.id}",
                 entity_id=cycle.id,
                 client_name=cycle.client_name,
