@@ -14,6 +14,8 @@ import {
   IconUser,
   IconUsersRound,
 } from "@/components/ui/icons";
+import { BillingGate } from "@/components/billing/billing-gate";
+import { SUPPORT_EMAIL, supportMailto } from "@/lib/support";
 
 const navItems: {
   href: string;
@@ -132,6 +134,14 @@ function ProfileMenu({
           >
             Manual
           </Link>
+          <a
+            role="menuitem"
+            href={supportMailto()}
+            className="block min-h-11 px-3 py-2.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]"
+            onClick={() => setOpen(false)}
+          >
+            Feedback / ajuda
+          </a>
         </div>
       ) : null}
     </div>
@@ -208,7 +218,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Badge tone="ai">IA</Badge>
             </Link>
           </nav>
-          <div className="space-y-2 border-t border-[var(--color-border)] px-4 py-3">
+          <div className="space-y-1 border-t border-[var(--color-border)] px-4 py-3">
             <p className="truncate text-sm font-medium">{me.user.full_name}</p>
             <p className="truncate text-xs text-[var(--color-ink-muted)]">{me.role}</p>
             <Link
@@ -217,6 +227,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               Manual
             </Link>
+            <a
+              href={supportMailto()}
+              className="block text-xs text-[var(--color-ink-muted)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
+            >
+              Feedback / ajuda · {SUPPORT_EMAIL}
+            </a>
           </div>
         </div>
       </aside>
@@ -244,7 +260,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-5 pb-28 md:px-6 md:pb-5">{children}</main>
+        <main className="flex-1 px-4 py-5 pb-28 md:px-6 md:pb-5">
+          <BillingGate>{children}</BillingGate>
+        </main>
 
         <nav
           aria-label="Navegação principal"

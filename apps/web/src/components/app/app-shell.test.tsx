@@ -4,6 +4,14 @@ import { AppShell } from "@/components/app/app-shell";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/app",
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+}));
+
+vi.mock("@/lib/api", () => ({
+  apiFetch: vi.fn(async () => ({
+    data: { has_active_access: true, can_write: true, billing_setup_status: "available" },
+    status: 200,
+  })),
 }));
 
 vi.mock("next/link", () => ({

@@ -4,6 +4,7 @@ import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
+import { SUPPORT_EMAIL, supportMailto } from "@/lib/support";
 
 export default function ProfilePage() {
   const { me, logout } = useAuth();
@@ -37,6 +38,12 @@ export default function ProfilePage() {
       </dl>
       <div className="space-y-2">
         <Link
+          href="/app/billing"
+          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
+        >
+          Assinatura
+        </Link>
+        <Link
           href="/app/manual"
           className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
         >
@@ -67,6 +74,15 @@ export default function ProfilePage() {
           Preferências (fuso horário)
         </Link>
       </div>
+      <p className="text-center text-xs text-[var(--color-ink-muted)]">
+        Dúvidas ou sugestões?{" "}
+        <a
+          href={supportMailto()}
+          className="font-medium text-[var(--color-link)] underline-offset-2 hover:underline"
+        >
+          {SUPPORT_EMAIL}
+        </a>
+      </p>
       <Button variant="secondary" fullWidth onClick={() => void logout()}>
         Sair
       </Button>
