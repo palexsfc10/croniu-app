@@ -10,6 +10,7 @@ const nav = [
   { href: "/dashboard", label: "Visão geral" },
   { href: "/organizations", label: "Organizações" },
   { href: "/users", label: "Usuários" },
+  { href: "/ai", label: "Assistente IA" },
 ] as const;
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

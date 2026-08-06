@@ -178,6 +178,17 @@ def platform_users(
     return list_users(db, settings=settings, page=page, page_size=page_size, search=search)
 
 
+@router.get("/ai-ops")
+def platform_ai_ops(
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> dict:
+    """Sanitized AI usage overview — no conversation bodies, no API keys."""
+    from app.services.platform_ai_ops import get_ai_ops_overview
+
+    return get_ai_ops_overview(db)
+
+
 @router.post("/self-elevate", include_in_schema=False)
 def refuse_self_elevate() -> None:
     """Explicitly refuse role elevation attempts if ever exposed."""
