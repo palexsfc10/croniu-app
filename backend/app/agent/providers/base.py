@@ -26,6 +26,8 @@ class ToolSpec:
 class LLMUsage:
     input_tokens: int = 0
     output_tokens: int = 0
+    cached_input_tokens: int = 0
+    reasoning_tokens: int = 0
     model: str | None = None
 
 
@@ -34,6 +36,7 @@ class LLMResponse:
     content: str | None = None
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     usage: LLMUsage = field(default_factory=LLMUsage)
+    provider_request_id: str | None = None
 
 
 class LLMProvider(Protocol):

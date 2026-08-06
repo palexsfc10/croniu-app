@@ -1,6 +1,14 @@
 from app.db import Base
 from app.models.admin_audit_log import AdminAuditLog
-from app.models.agent import AgentAuditLog, AgentPendingAction
+from app.models.agent import (
+    AgentAuditLog,
+    AgentMessage,
+    AgentPendingAction,
+    AgentRun,
+    AgentThread,
+    AgentToolCall,
+    AgentUsageDaily,
+)
 from app.models.appointment import Appointment
 from app.models.billing import (
     BillingCheckout,
@@ -40,6 +48,11 @@ __all__ = [
     "AdminAuditLog",
     "AgentAuditLog",
     "AgentPendingAction",
+    "AgentThread",
+    "AgentMessage",
+    "AgentRun",
+    "AgentToolCall",
+    "AgentUsageDaily",
     "Client",
     "ClientEvaluation",
     "ClientEvaluationCriterion",

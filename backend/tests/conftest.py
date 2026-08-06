@@ -26,7 +26,12 @@ from app.main import create_app
 from app.models import (  # noqa: F401
     AdminAuditLog,
     AgentAuditLog,
+    AgentMessage,
     AgentPendingAction,
+    AgentRun,
+    AgentThread,
+    AgentToolCall,
+    AgentUsageDaily,
     Appointment,
     BillingCheckout,
     BillingPlan,
@@ -106,7 +111,8 @@ def clean_tables():
         conn.execute(
             text(
                 "TRUNCATE TABLE billing_webhook_events, billing_checkouts, subscriptions, "
-                "agent_audit_logs, agent_pending_actions, "
+                "agent_audit_logs, agent_pending_actions, agent_tool_calls, agent_runs, "
+                "agent_messages, agent_threads, agent_usage_daily, "
                 "client_evaluation_criteria, client_evaluations, "
                 "payment_proofs, payment_reports, renewal_requests, "
                 "organization_payment_settings, client_public_accesses, "

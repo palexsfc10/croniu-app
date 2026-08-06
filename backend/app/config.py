@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,15 +53,29 @@ class Settings(BaseSettings):
     llm_provider: str = Field(default="fake", alias="LLM_PROVIDER")
     llm_model: str = Field(default="gpt-4.1-mini", alias="LLM_MODEL")
     llm_api_key: str | None = Field(default=None, alias="LLM_API_KEY")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-5.6-terra", alias="OPENAI_MODEL")
     llm_api_base: str = Field(
         default="https://api.openai.com/v1",
         alias="LLM_API_BASE",
     )
     llm_timeout_seconds: float = Field(default=30.0, alias="LLM_TIMEOUT_SECONDS")
-    llm_max_tool_steps: int = Field(default=4, alias="LLM_MAX_TOOL_STEPS")
+    llm_max_tool_steps: int = Field(
+        default=6,
+        validation_alias=AliasChoices(
+            "llm_max_tool_steps", "AI_MAX_TOOL_ROUNDS", "LLM_MAX_TOOL_STEPS"
+        ),
+    )
     llm_max_input_chars: int = Field(default=4000, alias="LLM_MAX_INPUT_CHARS")
     ai_rate_limit_per_hour: int = Field(default=60, alias="AI_RATE_LIMIT_PER_HOUR")
     ai_pending_action_ttl_minutes: int = Field(default=15, alias="AI_PENDING_ACTION_TTL_MINUTES")
+    ai_confirmation_ttl_seconds: int = Field(default=600, alias="AI_CONFIRMATION_TTL_SECONDS")
+    ai_store_responses: bool = Field(default=False, alias="AI_STORE_RESPONSES")
+    ai_user_requests_per_minute: int = Field(default=6, alias="AI_USER_REQUESTS_PER_MINUTE")
+    ai_org_daily_request_limit: int = Field(default=200, alias="AI_ORG_DAILY_REQUEST_LIMIT")
+    ai_org_monthly_token_limit: int | None = Field(
+        default=None, alias="AI_ORG_MONTHLY_TOKEN_LIMIT"
+    )
     llm_input_token_cost_per_1k: float = Field(default=0.0, alias="LLM_INPUT_TOKEN_COST_PER_1K")
     llm_output_token_cost_per_1k: float = Field(default=0.0, alias="LLM_OUTPUT_TOKEN_COST_PER_1K")
 
@@ -106,6 +120,21 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def resolved_llm_api_key(self) -> str | None:
+        """LLM_API_KEY takes precedence; OPENAI_API_KEY is an accepted alias."""
+        return self.llm_api_key or self.openai_api_key or None
+
+    @property
+    def resolved_llm_model(self) -> str:
+        """OPENAI_MODEL wins for OpenAI-family providers unless LLM_MODEL was set explicitly."""
+        provider = (self.llm_provider or "").strip().lower()
+        if self.llm_model and self.llm_model != "gpt-4.1-mini":
+            return self.llm_model
+        if provider in {"openai", "openai_responses", "responses"}:
+            return self.openai_model
+        return self.llm_model
 
     @property
     def is_production_like(self) -> bool:
