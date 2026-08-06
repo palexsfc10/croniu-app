@@ -67,11 +67,11 @@ log "OK session revoked"
 # Tenant isolation smoke
 EMAIL_B="smoke_b_${SUFFIX}@example.com"
 curl -s -c /tmp/croniu-hml-a.txt -H 'Content-Type: application/json' \
-  -d "{\"email\":\"a_${EMAIL}\",\"password\":\"${PASS}\",\"full_name\":\"A\",\"organization_name\":\"OrgA ${SUFFIX}\"}" \
+  -d "{\"email\":\"a_${EMAIL}\",\"password\":\"${PASS}\",\"full_name\":\"Alice\",\"organization_name\":\"OrgA ${SUFFIX}\"}" \
   "${API}/api/v1/auth/register" >/tmp/croniu-hml-a.json
 ORG_A="$(python3 -c "import json;print(json.load(open('/tmp/croniu-hml-a.json'))['organization']['id'])")"
 curl -s -c /tmp/croniu-hml-b.txt -H 'Content-Type: application/json' \
-  -d "{\"email\":\"${EMAIL_B}\",\"password\":\"${PASS}\",\"full_name\":\"B\",\"organization_name\":\"OrgB ${SUFFIX}\"}" \
+  -d "{\"email\":\"${EMAIL_B}\",\"password\":\"${PASS}\",\"full_name\":\"Bruno\",\"organization_name\":\"OrgB ${SUFFIX}\"}" \
   "${API}/api/v1/auth/register" >/tmp/croniu-hml-b.json
 SUMMARY_B="$(curl -s -b /tmp/croniu-hml-b.txt "${API}/api/v1/home/summary")"
 ORG_B="$(python3 -c "import json,sys;print(json.load(sys.stdin)['organization_id'])" <<<"$SUMMARY_B")"
