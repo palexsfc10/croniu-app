@@ -141,7 +141,10 @@ export default function AssistantPage() {
   const [pending, setPending] = useState<PendingAction | null>(null);
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const node = bottomRef.current;
+    if (node && typeof node.scrollIntoView === "function") {
+      node.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
   }, []);
 
   useEffect(() => {
@@ -390,7 +393,7 @@ export default function AssistantPage() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <BackLink href="/app" />
+          <BackLink href="/app" label="Voltar" />
           <Button
             type="button"
             variant="secondary"
