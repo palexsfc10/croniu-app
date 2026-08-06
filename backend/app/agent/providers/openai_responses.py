@@ -63,7 +63,14 @@ class OpenAIResponsesProvider:
         if response.status_code >= 500:
             raise ProviderUnavailableError()
         if response.status_code >= 400:
-            logger.warning("llm_http_error status=%s", response.status_code)
+            err_code, err_type, err_param = _sanitize_error_fields(response)
+            logger.warning(
+                "llm_http_error status=%s code=%s type=%s param=%s",
+                response.status_code,
+                err_code,
+                err_type,
+                err_param,
+            )
             raise ProviderUnavailableError("Falha ao consultar o provedor de IA.")
 
         data = response.json()
@@ -110,17 +117,63 @@ def _build_input(messages: list[LLMMessage]) -> list[dict[str, Any]]:
     return items
 
 
+def _sanitize_error_fields(response: httpx.Response) -> tuple[str | None, str | None, str | None]:
+    """Extract non-secret OpenAI error metadata for logs."""
+    try:
+        payload = response.json()
+    except Exception:
+        return None, None, None
+    err = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(err, dict):
+        return None, None, None
+    code = err.get("code")
+    typ = err.get("type")
+    param = err.get("param")
+    return (
+        str(code) if code is not None else None,
+        str(typ) if typ is not None else None,
+        str(param) if param is not None else None,
+    )
+
+
+def _nullable_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """OpenAI strict mode requires optional fields as union with null and listed in required."""
+    if "anyOf" in schema:
+        return schema
+    return {"anyOf": [schema, {"type": "null"}]}
+
+
+def _strict_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
+    """Normalize JSON Schema for Responses API strict function tools."""
+    props_in = parameters.get("properties") or {}
+    if not isinstance(props_in, dict):
+        props_in = {}
+    original_required = {
+        key for key in (parameters.get("required") or []) if isinstance(key, str)
+    }
+    props: dict[str, Any] = {}
+    for key, raw in props_in.items():
+        schema = dict(raw) if isinstance(raw, dict) else {"type": "string"}
+        if key not in original_required:
+            schema = _nullable_schema(schema)
+        props[key] = schema
+    return {
+        "type": "object",
+        "properties": props,
+        "required": list(props.keys()),
+        "additionalProperties": False,
+    }
+
+
 def _tool_to_responses_schema(tool: ToolSpec) -> dict[str, Any]:
-    strict = tool.parameters.get("additionalProperties") is False
-    schema: dict[str, Any] = {
+    """Build a Responses API function tool with strict:true and valid required[]."""
+    return {
         "type": "function",
         "name": tool.name,
         "description": tool.description,
-        "parameters": tool.parameters,
+        "parameters": _strict_parameters(tool.parameters if isinstance(tool.parameters, dict) else {}),
+        "strict": True,
     }
-    if strict:
-        schema["strict"] = True
-    return schema
 
 
 def _parse_response(data: dict[str, Any], *, model: str) -> LLMResponse:
