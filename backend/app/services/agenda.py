@@ -583,6 +583,42 @@ def list_today_appointments(
     return [item for item in agenda.appointments if item.status == "scheduled"]
 
 
+def list_upcoming_appointments(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    within_days: int = 3,
+    limit: int = 20,
+) -> list[AppointmentOut]:
+    """Scheduled appointments from now through the end of the local day horizon."""
+    org = get_organization(db, organization_id)
+    tz_name = get_org_timezone(org)
+    today = org_local_today(org)
+    now = datetime.now(UTC)
+    horizon_day = today + timedelta(days=max(0, within_days))
+    _start_utc, end_utc = day_bounds_utc(horizon_day, tz_name)
+    rows = list(
+        db.scalars(
+            select(Appointment)
+            .where(
+                Appointment.organization_id == organization_id,
+                Appointment.status == "scheduled",
+                Appointment.starts_at >= now,
+                Appointment.starts_at < end_utc,
+            )
+            .options(
+                selectinload(Appointment.client),
+                selectinload(Appointment.service),
+                selectinload(Appointment.location),
+                selectinload(Appointment.cycle).selectinload(Cycle.service),
+            )
+            .order_by(Appointment.starts_at.asc())
+            .limit(limit)
+        ).all()
+    )
+    return [_appointment_out(row) for row in rows]
+
+
 def next_upcoming_appointment(
     db: Session, *, organization_id: uuid.UUID, now: datetime | None = None
 ) -> Appointment | None:

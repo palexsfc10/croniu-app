@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -9,18 +11,33 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agent.tools import (
+    WRITE_EXECUTORS,
     ToolContext,
-    execute_create_evaluation_draft,
+    executor_name_for_tool,
     get_tool,
 )
 from app.config import get_settings
 from app.models.agent import AgentAuditLog, AgentPendingAction
 from app.services.auth import AuthError
 
-WRITE_EXECUTORS = {
-    "create_evaluation_draft": execute_create_evaluation_draft,
-    "propose_create_evaluation_draft": execute_create_evaluation_draft,
+_CONFIRM_REPLY_TEMPLATES: dict[str, str] = {
+    "create_client": "Pronto. Cliente “{full_name}” cadastrado.",
+    "create_appointment": "Pronto. Compromisso agendado.",
+    "reschedule_appointment": "Pronto. Compromisso remarcado.",
+    "mark_appointment_outcome": "Pronto. Compromisso atualizado.",
+    "create_cycle": "Pronto. Ciclo criado.",
+    "record_payment": "Pronto. Recebimento marcado como pago.",
+    "create_evaluation_draft": "Pronto. Rascunho de avaliação criado ({title}).",
+    "add_milestone": "Pronto. Marco registrado ({title}).",
 }
+
+
+def confirm_reply_text(executor_name: str, result: dict) -> str:
+    template = _CONFIRM_REPLY_TEMPLATES.get(executor_name, "Ação executada com sucesso.")
+    try:
+        return template.format(**result)
+    except (KeyError, IndexError):
+        return "Ação executada com sucesso."
 
 
 def write_audit(
@@ -54,6 +71,28 @@ def write_audit(
     db.commit()
 
 
+def _compute_idempotency_key(
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    executor_name: str,
+    arguments: dict,
+    thread_id: uuid.UUID | None,
+) -> str:
+    payload = json.dumps(
+        {
+            "org": str(organization_id),
+            "user": str(user_id),
+            "tool": executor_name,
+            "thread": str(thread_id) if thread_id else None,
+            "args": arguments,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def create_pending_action(
     db: Session,
     *,
@@ -62,28 +101,54 @@ def create_pending_action(
     tool_name: str,
     arguments: dict,
     summary_text: str,
+    thread_id: uuid.UUID | None = None,
+    risk_class: str = "write_common",
+    summary_fields: dict | None = None,
     request_id: str | None = None,
 ) -> AgentPendingAction:
     settings = get_settings()
-    # Normalize write tool name to executor key
-    executor_name = (
-        "create_evaluation_draft"
-        if tool_name.startswith("propose_")
-        else tool_name
-    )
+    executor_name = executor_name_for_tool(tool_name)
     if executor_name not in WRITE_EXECUTORS:
         raise AuthError("tool_not_allowed", "Ferramenta de escrita não suportada.", 400)
-    get_tool("propose_create_evaluation_draft")  # allowlist check for current write set
+    propose_tool_name = (
+        tool_name if tool_name.startswith("propose_") else f"propose_{executor_name}"
+    )
+    get_tool(propose_tool_name)  # allowlist check
+
+    idempotency_key = _compute_idempotency_key(
+        organization_id=organization_id,
+        user_id=user_id,
+        executor_name=executor_name,
+        arguments=arguments,
+        thread_id=thread_id,
+    )
+    existing = db.scalar(
+        select(AgentPendingAction).where(
+            AgentPendingAction.organization_id == organization_id,
+            AgentPendingAction.idempotency_key == idempotency_key,
+            AgentPendingAction.status == "pending",
+        )
+    )
+    now = datetime.now(UTC)
+    if existing is not None:
+        expires_at = existing.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at > now:
+            return existing
 
     row = AgentPendingAction(
         organization_id=organization_id,
         user_id=user_id,
+        thread_id=thread_id,
         tool_name=executor_name,
+        risk_class=risk_class,
         arguments=arguments,
         summary_text=summary_text,
+        summary_fields=summary_fields,
+        idempotency_key=idempotency_key,
         status="pending",
-        expires_at=datetime.now(UTC)
-        + timedelta(minutes=settings.ai_pending_action_ttl_minutes),
+        expires_at=now + timedelta(seconds=settings.ai_confirmation_ttl_seconds),
         request_id=request_id,
     )
     db.add(row)
@@ -229,7 +294,7 @@ def confirm_pending_action(
 
     row.status = "executed"
     row.executed_at = datetime.now(UTC)
-    entity_id = result.get("evaluation_id") or result.get("id")
+    entity_id = result.get("id") or result.get("evaluation_id")
     row.result_entity_id = str(entity_id) if entity_id else None
     db.add(row)
     db.commit()
@@ -245,7 +310,7 @@ def confirm_pending_action(
         request_id=request_id,
         metadata_safe={"pending_id": str(row.id)},
     )
-    return {"pending_action_id": str(row.id), "result": result}
+    return {"pending_action_id": str(row.id), "thread_id": row.thread_id, "result": result}
 
 
 def _get_owned_pending(

@@ -690,6 +690,29 @@ def list_receivables(
     return [_receivable_out(row) for row in rows]
 
 
+def list_receivables_for_client(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    client_id: uuid.UUID,
+    limit: int = 20,
+) -> list[ReceivableOut]:
+    rows = db.scalars(
+        select(Receivable)
+        .where(
+            Receivable.organization_id == organization_id,
+            Receivable.client_id == client_id,
+        )
+        .options(
+            selectinload(Receivable.client),
+            selectinload(Receivable.cycle).selectinload(Cycle.service),
+        )
+        .order_by(Receivable.due_on.desc())
+        .limit(limit)
+    ).all()
+    return [_receivable_out(row) for row in rows]
+
+
 def get_receivable(
     db: Session, *, organization_id: uuid.UUID, receivable_id: uuid.UUID
 ) -> Receivable:
