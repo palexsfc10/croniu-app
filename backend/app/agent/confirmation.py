@@ -47,6 +47,99 @@ def confirm_reply_text(executor_name: str, result: dict) -> str:
         return "Ação executada com sucesso."
 
 
+def pending_action_to_public_dict(row: AgentPendingAction) -> dict[str, Any]:
+    """Canonical public representation — always from the live pending_actions row."""
+    return {
+        "id": str(row.id),
+        "thread_id": str(row.thread_id) if row.thread_id else None,
+        "tool_name": row.tool_name,
+        "risk_class": row.risk_class,
+        "summary": row.summary_text,
+        "summary_fields": row.summary_fields,
+        "arguments": row.arguments,
+        "expires_at": row.expires_at.isoformat(),
+        "status": row.status,
+        "result": row.result_safe,
+        "error_code": row.error_sanitized,
+    }
+
+
+def hydrate_pending_card_metadata(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    metadata_safe: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Replace any card snapshot with the live AgentPendingAction status.
+
+    Message metadata may store only pending_action_id (or a stale pending_action
+    blob). The live row in agent_pending_actions is the source of truth.
+    """
+    if not metadata_safe:
+        return metadata_safe
+    meta = dict(metadata_safe)
+    pending_id_raw = meta.get("pending_action_id")
+    nested = meta.get("pending_action")
+    if pending_id_raw is None and isinstance(nested, dict):
+        pending_id_raw = nested.get("id")
+    if pending_id_raw is None:
+        return metadata_safe
+    try:
+        pending_id = uuid.UUID(str(pending_id_raw))
+    except (TypeError, ValueError):
+        return metadata_safe
+
+    row = db.scalar(
+        select(AgentPendingAction).where(
+            AgentPendingAction.id == pending_id,
+            AgentPendingAction.organization_id == organization_id,
+            AgentPendingAction.user_id == user_id,
+        )
+    )
+    if row is None:
+        return metadata_safe
+
+    live = pending_action_to_public_dict(row)
+    meta["pending_action_id"] = live["id"]
+    meta["pending_action"] = live
+    meta["tool_name"] = live["tool_name"]
+    meta["summary_fields"] = live.get("summary_fields")
+    return meta
+
+
+def hydrate_messages_pending_cards(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    messages: list[Any],
+) -> list[dict[str, Any]]:
+    """Build message payloads with live pending-action status for thread reload."""
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        meta = message.metadata_safe
+        if getattr(message, "message_type", None) == "pending_card":
+            meta = hydrate_pending_card_metadata(
+                db,
+                organization_id=organization_id,
+                user_id=user_id,
+                metadata_safe=meta,
+            )
+        out.append(
+            {
+                "id": message.id,
+                "role": message.role,
+                "content": message.content,
+                "message_type": message.message_type,
+                "status": message.status,
+                "created_at": message.created_at,
+                "metadata_safe": meta,
+            }
+        )
+    return out
+
+
 def write_audit(
     db: Session,
     *,

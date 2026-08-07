@@ -128,17 +128,7 @@ def _replay_client_message(
                 and pending_row.organization_id == organization_id
                 and pending_row.user_id == user_id
             ):
-                pending_out = {
-                    "id": str(pending_row.id),
-                    "thread_id": str(pending_row.thread_id) if pending_row.thread_id else None,
-                    "tool_name": pending_row.tool_name,
-                    "risk_class": pending_row.risk_class,
-                    "summary": pending_row.summary_text,
-                    "summary_fields": pending_row.summary_fields,
-                    "arguments": pending_row.arguments,
-                    "expires_at": pending_row.expires_at.isoformat(),
-                    "status": pending_row.status,
-                }
+                pending_out = conf_svc.pending_action_to_public_dict(pending_row)
     reply = (assistant.content if assistant else "") or "Mensagem já processada."
     status = "awaiting_confirmation" if pending_out and pending_out.get("status") == "pending" else "ok"
     return AgentTurnResult(

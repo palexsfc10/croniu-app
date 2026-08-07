@@ -412,6 +412,135 @@ describe("AssistantPage premium shell", () => {
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
   });
 
+  it("keeps executed proposal without buttons after reopening the conversation", async () => {
+    const pending = {
+      id: "pending-executed-1",
+      tool_name: "propose_create_client",
+      risk_class: "write_common",
+      summary: "Criar cliente Ana.",
+      summary_fields: { Nome: "Ana" },
+      arguments: { full_name: "Ana" },
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+      status: "pending",
+    };
+    let detailLoads = 0;
+
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (String(path).includes("/agent/status")) {
+        return {
+          data: {
+            enabled: true,
+            provider: "fake",
+            model: "fake",
+            tools: [],
+            entitlement_ok: true,
+          },
+        };
+      }
+      if (String(path).endsWith("/agent/threads") && init?.method === "POST") {
+        return {
+          status: 201,
+          data: {
+            id: "thread-reload",
+            title: "Criar",
+            status: "active",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        };
+      }
+      if (String(path).endsWith("/agent/threads") && !String(path).includes("messages")) {
+        return {
+          data: {
+            items: [
+              {
+                id: "thread-reload",
+                title: "Criar",
+                status: "active",
+                created_at: "2026-08-07T10:00:00Z",
+                updated_at: "2026-08-07T10:05:00Z",
+              },
+            ],
+          },
+        };
+      }
+      if (String(path).includes("/messages")) {
+        return {
+          data: {
+            reply: "Preciso da sua confirmação.",
+            status: "awaiting_confirmation",
+            thread_id: "thread-reload",
+            pending_action: pending,
+          },
+        };
+      }
+      if (String(path).includes("/pending/") && String(path).includes("/confirm")) {
+        return {
+          data: {
+            reply: "Pronto.",
+            status: "executed",
+            action_status: "executed",
+            pending_action: { ...pending, status: "executed" },
+            thread_id: "thread-reload",
+          },
+        };
+      }
+      if (String(path).includes("/agent/threads/thread-reload")) {
+        detailLoads += 1;
+        const status = detailLoads === 1 ? "pending" : "executed";
+        return {
+          data: {
+            thread: {
+              id: "thread-reload",
+              title: "Criar",
+              status: "active",
+              created_at: "2026-08-07T10:00:00Z",
+              updated_at: "2026-08-07T10:05:00Z",
+            },
+            messages: [
+              {
+                id: "m-card",
+                role: "assistant",
+                content: "Criar cliente Ana.",
+                message_type: "pending_card",
+                metadata_safe: {
+                  pending_action_id: pending.id,
+                  tool_name: pending.tool_name,
+                  summary_fields: pending.summary_fields,
+                  // Stale snapshot on purpose for reload #2 — live pending_action wins.
+                  pending_action: {
+                    ...pending,
+                    status,
+                  },
+                },
+              },
+            ],
+          },
+        };
+      }
+      return { data: null };
+    });
+
+    render(<AssistantPage />);
+    // Mount auto-opens latest thread (pending)
+    expect(await screen.findByText("Aguardando sua confirmação")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+    expect(await screen.findByText("Ação concluída")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
+
+    // Simulate leave/reopen via Conversas → same thread
+    fireEvent.click(screen.getByLabelText("Conversas"));
+    const dialog = await screen.findByRole("dialog", { name: /Conversas recentes/i });
+    fireEvent.click(within(dialog).getByText(/Criar/i));
+
+    expect(await screen.findByText("Ação concluída")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    expect(detailLoads).toBeGreaterThanOrEqual(2);
+  });
+
   it("exposes voice auto-send only via mic context menu", async () => {
     Object.defineProperty(window, "isSecureContext", {
       configurable: true,

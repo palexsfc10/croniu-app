@@ -347,7 +347,7 @@ export default function AssistantPage() {
     const mapped: ChatMessage[] = (detail.data?.messages || [])
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => {
-        const pendingCard =
+        const snapshot =
           m.message_type === "pending_card"
             ? m.metadata_safe?.pending_action ||
               (m.metadata_safe?.pending_action_id
@@ -363,19 +363,31 @@ export default function AssistantPage() {
                   }
                 : null)
             : null;
+        // Live status from API hydration wins; never force "pending" on reload.
+        const pendingCard = snapshot
+          ? {
+              ...snapshot,
+              status: String(
+                m.metadata_safe?.pending_action?.status || snapshot.status || "pending",
+              ),
+            }
+          : null;
+        const liveStatus = pendingCard
+          ? mapActionStatus(pendingCard.status)
+          : undefined;
         return {
           id: m.id,
           role: m.role as "user" | "assistant",
           content: m.content,
           pending: pendingCard,
-          actionStatus: pendingCard ? ("pending" as ActionUiStatus) : undefined,
-          statusLabel: pendingCard ? "Aguardando confirmação" : undefined,
+          actionStatus: liveStatus,
+          statusLabel: liveStatus ? actionHeadline(liveStatus) : undefined,
         };
       });
     setMessages(mapped);
     const lastPending = [...mapped]
       .reverse()
-      .find((m) => m.pending && (m.actionStatus === "pending" || !m.actionStatus))?.pending;
+      .find((m) => m.pending && m.actionStatus === "pending")?.pending;
     setPending(lastPending || null);
   }
 

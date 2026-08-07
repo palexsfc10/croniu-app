@@ -241,9 +241,15 @@ def get_thread_detail(
     except AuthError as exc:
         raise _http(exc) from exc
     messages = threads_svc.list_recent_messages(db, thread_id=thread.id, limit=100)
+    hydrated = conf_svc.hydrate_messages_pending_cards(
+        db,
+        organization_id=auth.organization.id,
+        user_id=auth.user.id,
+        messages=messages,
+    )
     return ThreadDetailOut(
         thread=ThreadOut.model_validate(thread),
-        messages=[AgentMessageOut.model_validate(m) for m in messages],
+        messages=[AgentMessageOut.model_validate(m) for m in hydrated],
     )
 
 
