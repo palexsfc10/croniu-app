@@ -3,6 +3,7 @@
 import { BackLink } from "@/components/app/back-link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type OrgPreferences, type PaymentSettings } from "@/lib/api";
+import { readVoiceAutoSend, writeVoiceAutoSend } from "@/lib/assistant-prefs";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 
@@ -45,8 +46,10 @@ export default function PreferencesPage() {
     institution: null,
   });
   const [paySaved, setPaySaved] = useState(false);
+  const [voiceAutoSend, setVoiceAutoSend] = useState(true);
 
   useEffect(() => {
+    setVoiceAutoSend(readVoiceAutoSend());
     void (async () => {
       const result = await apiFetch<OrgPreferences>("/api/v1/organization/preferences");
       if (result.data) {
@@ -132,6 +135,30 @@ export default function PreferencesPage() {
       <Button fullWidth onClick={() => void save()} disabled={saving}>
         {saving ? "Salvando…" : "Salvar fuso"}
       </Button>
+
+      <section className="space-y-3 border-t border-[var(--color-border)] pt-6">
+        <h2 className="text-lg font-semibold">Assistente</h2>
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          Preferências locais deste dispositivo para o assistente de IA.
+        </p>
+        <label className="flex min-h-11 items-center gap-3 text-sm text-[var(--color-ink)]">
+          <input
+            type="checkbox"
+            checked={voiceAutoSend}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setVoiceAutoSend(next);
+              writeVoiceAutoSend(next);
+            }}
+            aria-describedby="voice-auto-send-help"
+          />
+          Enviar voz automaticamente após a transcrição
+        </label>
+        <p id="voice-auto-send-help" className="text-xs text-[var(--color-ink-subtle)]">
+          Quando ligado, o áudio transcrito é enviado ao assistente sem passo extra. Também
+          disponível no menu do microfone (toque prolongado / botão direito).
+        </p>
+      </section>
 
       <section className="space-y-3 border-t border-[var(--color-border)] pt-6">
         <h2 className="text-lg font-semibold">Recebimentos</h2>

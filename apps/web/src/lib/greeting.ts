@@ -45,3 +45,20 @@ export function firstName(fullName: string | null | undefined): string | null {
   const part = fullName?.trim().split(/\s+/)[0];
   return part || null;
 }
+
+const FALLBACK_TZ = "America/Sao_Paulo";
+
+/** Personalized greeting using org timezone (fallback America/Sao_Paulo). */
+export function personalGreeting(
+  fullName: string | null | undefined,
+  timeZone?: string | null,
+  now: Date = new Date(),
+): { headline: string; first: string | null } {
+  const tz = (timeZone || "").trim() || FALLBACK_TZ;
+  const greet = greetingForHour(hourInTimeZone(now, tz));
+  const name = firstName(fullName);
+  if (name) {
+    return { headline: `${greet}, ${name}`, first: name };
+  }
+  return { headline: "Olá", first: null };
+}

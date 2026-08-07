@@ -149,6 +149,23 @@ export function IconChevronDown({ className = "", ...props }: IconProps) {
   );
 }
 
+export function IconChevronLeft({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+export function IconShieldCheck({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M12 3 4.5 6.5v5.2c0 4.4 3 8.3 7.5 9.3 4.5-1 7.5-4.9 7.5-9.3V6.5L12 3Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
 export function IconChevronRight({ className = "", ...props }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>

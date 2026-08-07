@@ -75,12 +75,43 @@ export type VoicePhase =
   | "cancelled"
   | "error";
 
-export const SUGGESTIONS = [
-  "Como está meu dia?",
-  "Quem precisa de atenção?",
-  "Quais ciclos estão terminando?",
-  "Criar um compromisso",
+export type AssistantSuggestion = {
+  id: string;
+  title: string;
+  prompt: string;
+  icon: "day" | "attention" | "cycles" | "appointment";
+};
+
+/** Compact starter shortcuts — same chat pipeline via `prompt`. */
+export const ASSISTANT_SUGGESTIONS: AssistantSuggestion[] = [
+  {
+    id: "my-day",
+    title: "Meu dia",
+    prompt: "Como está meu dia?",
+    icon: "day",
+  },
+  {
+    id: "attention",
+    title: "Clientes em atenção",
+    prompt: "Quem precisa de atenção?",
+    icon: "attention",
+  },
+  {
+    id: "ending-cycles",
+    title: "Ciclos terminando",
+    prompt: "Quais ciclos estão terminando?",
+    icon: "cycles",
+  },
+  {
+    id: "new-appointment",
+    title: "Novo compromisso",
+    prompt: "Quero criar um compromisso",
+    icon: "appointment",
+  },
 ];
+
+/** @deprecated use ASSISTANT_SUGGESTIONS */
+export const SUGGESTIONS = ASSISTANT_SUGGESTIONS.map((s) => s.prompt);
 
 export function riskLabel(risk?: string) {
   if (risk === "write_sensitive") return "Ação sensível";
@@ -106,4 +137,19 @@ export function proposalTitle(toolName: string, summary: string) {
     propose_cancel_appointment: "Cancelar compromisso",
   };
   return map[toolName] || summary.split("·")[0]?.trim() || "Proposta de ação";
+}
+
+export function formatThreadWhen(iso: string | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
+  } catch {
+    return "";
+  }
 }

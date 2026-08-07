@@ -4,28 +4,39 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
 import Link from "next/link";
-import { BrandMark } from "@/components/brand";
+import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
   IconChevronDown,
+  IconChevronLeft,
   IconMic,
   IconPlus,
   IconSend,
+  IconShieldCheck,
   IconStop,
   IconX,
 } from "@/components/ui/icons";
 import { apiFetch } from "@/lib/api";
+import {
+  readVoiceAutoSend,
+  writeVoiceAutoSend,
+  VOICE_PRIVACY_KEY,
+} from "@/lib/assistant-prefs";
+import { personalGreeting } from "@/lib/greeting";
 import { ProposalCard } from "@/components/app/assistant/proposal-card";
 import { SafeChatMarkdown } from "@/components/app/assistant/safe-chat-markdown";
+import { SuggestionGrid } from "@/components/app/assistant/suggestion-grid";
 import {
-  SUGGESTIONS,
+  ASSISTANT_SUGGESTIONS,
   actionHeadline,
+  formatThreadWhen,
   type ActionUiStatus,
   type AgentChatResponse,
   type AgentStatus,
@@ -38,9 +49,6 @@ import {
   formatElapsed,
   useVoiceRecorder,
 } from "@/components/app/assistant/use-voice-recorder";
-
-const VOICE_PRIVACY_KEY = "croniu.assistant.voicePrivacyAck";
-const VOICE_AUTO_SEND_KEY = "croniu.assistant.voiceAutoSend";
 
 function newClientMessageId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -83,14 +91,6 @@ function MessageBubble({
         isUser ? "justify-end" : "justify-start",
       ].join(" ")}
     >
-      {!isUser ? (
-        <div
-          className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-ai-subtle)] ring-1 ring-[var(--color-ai-border)]"
-          aria-hidden
-        >
-          <BrandMark size="xs" decorative />
-        </div>
-      ) : null}
       <div
         className={[
           "flex min-w-0 flex-col",
@@ -135,12 +135,16 @@ function MessageBubble({
 }
 
 export default function AssistantPage() {
+  const { me } = useAuth();
   const liveId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottomRef = useRef(true);
   const actionLockRef = useRef(false);
+  const threadsPanelRef = useRef<HTMLDivElement>(null);
+  const threadsTriggerRef = useRef<HTMLButtonElement>(null);
+  const micMenuRef = useRef<HTMLDivElement>(null);
 
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [statusLoaded, setStatusLoaded] = useState(false);
@@ -157,11 +161,18 @@ export default function AssistantPage() {
   const [threadsOpen, setThreadsOpen] = useState(false);
   const [voicePrivacyAck, setVoicePrivacyAck] = useState(true);
   const [voiceAutoSend, setVoiceAutoSend] = useState(true);
+  const [micMenuOpen, setMicMenuOpen] = useState(false);
   const [voiceUiPhase, setVoiceUiPhase] = useState<VoicePhase>("idle");
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const sendLockRef = useRef(false);
   const voicePipelineAbortRef = useRef(false);
   const mountedRef = useRef(true);
+  const micLongPressRef = useRef<number | null>(null);
+
+  const greeting = useMemo(
+    () => personalGreeting(me?.user.full_name, me?.organization.timezone),
+    [me?.user.full_name, me?.organization.timezone],
+  );
 
   const maxSeconds = status?.voice?.max_seconds ?? 60;
   const voice = useVoiceRecorder(maxSeconds);
@@ -172,9 +183,7 @@ export default function AssistantPage() {
     mountedRef.current = true;
     try {
       setVoicePrivacyAck(localStorage.getItem(VOICE_PRIVACY_KEY) === "1");
-      const auto = localStorage.getItem(VOICE_AUTO_SEND_KEY);
-      // Default ON when unset
-      setVoiceAutoSend(auto !== "0");
+      setVoiceAutoSend(readVoiceAutoSend());
     } catch {
       setVoicePrivacyAck(false);
       setVoiceAutoSend(true);
@@ -184,6 +193,40 @@ export default function AssistantPage() {
       voicePipelineAbortRef.current = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!threadsOpen && !micMenuOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      const t = event.target as Node;
+      if (
+        threadsPanelRef.current?.contains(t) ||
+        threadsTriggerRef.current?.contains(t) ||
+        micMenuRef.current?.contains(t)
+      ) {
+        return;
+      }
+      setThreadsOpen(false);
+      setMicMenuOpen(false);
+    }
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setThreadsOpen(false);
+        setMicMenuOpen(false);
+        threadsTriggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [threadsOpen, micMenuOpen]);
+
+  function setAutoSendPreference(enabled: boolean) {
+    setVoiceAutoSend(enabled);
+    writeVoiceAutoSend(enabled);
+  }
 
   function patchPendingMessage(pendingId: string, patch: Partial<ChatMessage>) {
     setMessages((prev) =>
@@ -579,15 +622,6 @@ export default function AssistantPage() {
     await voice.start();
   }
 
-  function setAutoSendPreference(enabled: boolean) {
-    setVoiceAutoSend(enabled);
-    try {
-      localStorage.setItem(VOICE_AUTO_SEND_KEY, enabled ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  }
-
   async function finishRecording() {
     voicePipelineAbortRef.current = false;
     setVoiceUiPhase("stopping");
@@ -677,8 +711,8 @@ export default function AssistantPage() {
   const empty = messages.length === 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,#f7f8fc_0%,#eef2ff22_40%,#f8f9fc_100%)] md:flex-row">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 md:flex">
+    <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,#f8f9fc_0%,#f4f6fb_55%,#f8f9fc_100%)] md:flex-row">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-[var(--color-border)]/70 bg-[var(--color-surface)]/80 md:flex">
         <div className="flex items-center justify-between gap-2 px-3 py-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
             Conversas
@@ -700,13 +734,25 @@ export default function AssistantPage() {
                 type="button"
                 onClick={() => void openThread(t.id)}
                 className={[
-                  "w-full rounded-[var(--radius-sm)] px-2.5 py-2 text-left text-sm",
+                  "w-full rounded-[var(--radius-md)] px-2.5 py-2 text-left",
                   t.id === threadId
-                    ? "bg-[var(--color-primary-subtle)] font-semibold text-[var(--color-ink)]"
-                    : "text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)]",
+                    ? "bg-[var(--color-primary-subtle)]"
+                    : "hover:bg-[var(--color-surface-subtle)]",
                 ].join(" ")}
               >
-                {t.title || "Conversa"}
+                <span
+                  className={[
+                    "block truncate text-sm",
+                    t.id === threadId
+                      ? "font-semibold text-[var(--color-ink)]"
+                      : "text-[var(--color-ink-muted)]",
+                  ].join(" ")}
+                >
+                  {t.title || "Conversa"}
+                </span>
+                <span className="mt-0.5 block text-[11px] text-[var(--color-ink-subtle)]">
+                  {formatThreadWhen(t.updated_at)}
+                </span>
               </button>
             </li>
           ))}
@@ -714,43 +760,37 @@ export default function AssistantPage() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)]/70 bg-[var(--color-surface)]/90 px-3 py-2.5 backdrop-blur">
+        <header className="relative z-20 flex shrink-0 items-center gap-1 border-b border-[var(--color-border)]/60 bg-[var(--color-surface)]/95 px-2 py-1.5 sm:px-3">
           <Link
             href="/app"
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-md)] text-sm font-semibold text-[var(--color-link)] hover:bg-[var(--color-surface-subtle)]"
+            aria-label="Voltar"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-md)] text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
           >
-            Voltar
+            <IconChevronLeft className="h-5 w-5" aria-hidden />
           </Link>
-          <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-ai-subtle)] ring-1 ring-[var(--color-ai-border)]"
-            aria-hidden
-          >
-            <BrandMark size="xs" decorative />
+          <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight text-[var(--color-ink)]">
+            Assistente
+          </h1>
+          <div className="relative md:hidden">
+            <button
+              ref={threadsTriggerRef}
+              type="button"
+              className="btn-ghost inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-md)] px-2"
+              aria-label="Conversas"
+              aria-expanded={threadsOpen}
+              aria-haspopup="dialog"
+              onClick={() => {
+                setMicMenuOpen(false);
+                setThreadsOpen((v) => !v);
+              }}
+            >
+              <IconChevronDown
+                className={["h-5 w-5 transition-transform", threadsOpen ? "rotate-180" : ""].join(
+                  " ",
+                )}
+              />
+            </button>
           </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-semibold text-[var(--color-ink)]">
-              Assistente Croniu
-            </h1>
-            <p className="truncate text-xs text-[var(--color-ink-muted)]">
-              {!statusLoaded
-                ? "Carregando…"
-                : !status?.enabled
-                  ? "Indisponível neste ambiente"
-                  : status.entitlement_ok === false
-                    ? "Assinatura necessária"
-                    : "Organize sua rotina com IA"}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            className="min-h-11 min-w-11 px-2 md:hidden"
-            aria-label="Conversas"
-            aria-expanded={threadsOpen}
-            onClick={() => setThreadsOpen((v) => !v)}
-          >
-            <IconChevronDown className={threadsOpen ? "rotate-180" : ""} />
-          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -758,27 +798,54 @@ export default function AssistantPage() {
             aria-label="Nova conversa"
             onClick={() => void startNewThread()}
           >
-            <IconPlus />
+            <IconPlus className="h-5 w-5" />
           </Button>
-        </header>
 
-        {threadsOpen ? (
-          <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 md:hidden">
-            <ul className="max-h-40 space-y-1 overflow-y-auto">
-              {threads.map((t) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    className="w-full rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
-                    onClick={() => void openThread(t.id)}
-                  >
-                    {t.title || "Conversa"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+          {threadsOpen ? (
+            <div
+              ref={threadsPanelRef}
+              role="dialog"
+              aria-label="Conversas recentes"
+              className="absolute left-2 right-2 top-full z-30 mt-1 max-h-[min(20rem,55vh)] overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-[var(--shadow-md)] md:hidden"
+            >
+              <button
+                type="button"
+                className="mb-1 flex w-full min-h-11 items-center gap-2 rounded-[var(--radius-md)] px-2.5 py-2 text-left text-sm font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-subtle)]"
+                onClick={() => {
+                  setThreadsOpen(false);
+                  void startNewThread();
+                }}
+              >
+                <IconPlus className="h-4 w-4" aria-hidden />
+                Nova conversa
+              </button>
+              <ul className="space-y-0.5">
+                {threads.length === 0 ? (
+                  <li className="px-2.5 py-3 text-sm text-[var(--color-ink-muted)]">
+                    Nenhuma conversa ainda
+                  </li>
+                ) : (
+                  threads.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        className="w-full rounded-[var(--radius-md)] px-2.5 py-2 text-left hover:bg-[var(--color-surface-subtle)]"
+                        onClick={() => void openThread(t.id)}
+                      >
+                        <span className="block truncate text-sm font-medium text-[var(--color-ink)]">
+                          {t.title || "Conversa"}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-[var(--color-ink-subtle)]">
+                          {formatThreadWhen(t.updated_at)}
+                        </span>
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          ) : null}
+        </header>
 
         <div
           id={liveId}
@@ -787,40 +854,37 @@ export default function AssistantPage() {
         >
           <div
             ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4"
+            className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4"
             onScroll={() => {
               const near = isNearBottom();
               stickToBottomRef.current = near;
               setShowJump(!near);
             }}
           >
-            <div className="mx-auto flex w-full max-w-[860px] flex-col gap-3">
+            <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
               {empty ? (
-                <div className="assistant-msg-enter mx-auto max-w-md px-2 py-8 text-center">
-                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-ai-subtle)] ring-1 ring-[var(--color-ai-border)]">
-                    <BrandMark size="sm" decorative />
+                <div className="assistant-msg-enter mx-auto flex w-full max-w-md flex-col justify-center gap-4 px-1 py-6 sm:py-10">
+                  <div className="space-y-1.5 text-center sm:text-left">
+                    <p className="text-[1.65rem] font-semibold leading-tight tracking-tight text-[var(--color-ink)] sm:text-3xl">
+                      {greeting.headline}
+                      {greeting.first ? " 👋" : ""}
+                    </p>
+                    <p className="text-sm text-[var(--color-ink-muted)] sm:text-base">
+                      O que vamos organizar hoje?
+                    </p>
+                    <p className="inline-flex items-center justify-center gap-1.5 text-xs text-[var(--color-ink-subtle)] sm:justify-start">
+                      <IconShieldCheck className="h-3.5 w-3.5 shrink-0 text-[var(--color-success)]" aria-hidden />
+                      Nada é alterado sem sua confirmação.
+                    </p>
                   </div>
-                  <p className="text-lg font-semibold text-[var(--color-ink)]">Olá</p>
-                  <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                    Pergunte ou peça algo ao Croniu. Alterações só acontecem depois da sua
-                    confirmação.
-                  </p>
-                  <div className="mt-5 flex flex-wrap justify-center gap-2">
-                    {SUGGESTIONS.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        disabled={disabled || busy}
-                        onClick={() => {
-                          setInput(s);
-                          void send(s);
-                        }}
-                        className="min-h-11 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-left text-sm text-[var(--color-ink)] shadow-[var(--shadow-sm)] hover:bg-[var(--color-primary-subtle)]/50 disabled:opacity-50"
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
+                  <SuggestionGrid
+                    items={ASSISTANT_SUGGESTIONS}
+                    disabled={disabled || busy}
+                    onPick={(prompt) => {
+                      setInput(prompt);
+                      void send(prompt);
+                    }}
+                  />
                 </div>
               ) : null}
 
@@ -862,8 +926,8 @@ export default function AssistantPage() {
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-[var(--color-border)]/80 bg-[var(--color-surface)]/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
-          <div className="mx-auto w-full max-w-[860px]">
+        <div className="shrink-0 border-t border-[var(--color-border)]/70 bg-[var(--color-surface)]/98 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur supports-[padding:max(0px)]:pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto w-full max-w-[720px]">
             {voiceNotice ? (
               <div className="mb-2 flex items-start gap-2 rounded-[var(--radius-md)] bg-[var(--color-ai-subtle)] px-3 py-2 text-xs text-[var(--color-ink)]">
                 <p className="flex-1">{voiceNotice}</p>
@@ -894,43 +958,47 @@ export default function AssistantPage() {
 
             {recording ? (
               <div
-                className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--color-danger)]/25 bg-[var(--color-surface)] px-3 py-3 shadow-[var(--shadow-sm)]"
+                className="flex flex-col gap-2 rounded-[var(--radius-lg)] border border-[var(--color-danger)]/20 bg-[var(--color-surface)] px-3 py-2.5 shadow-[var(--shadow-sm)] sm:flex-row sm:items-center sm:gap-3"
                 role="status"
                 aria-live="polite"
               >
-                <span
-                  className="assistant-rec-pulse h-3 w-3 rounded-full bg-[var(--color-danger)]"
-                  aria-hidden
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-[var(--color-ink)]">
-                    {voiceUiPhase === "transcribing" || voiceUiPhase === "uploading"
-                      ? "Transcrevendo…"
-                      : voice.phase === "requesting_permission"
-                        ? "Solicitando microfone…"
-                        : "Gravando"}
-                  </p>
-                  <p className="text-xs text-[var(--color-ink-muted)]">
-                    {voiceUiPhase === "transcribing"
-                      ? "Aguarde um momento"
-                      : `Duração ${formatElapsed(voice.elapsedSeconds)} · máx. ${maxSeconds}s`}
-                  </p>
-                  <div className="mt-2 flex h-6 items-end gap-1" aria-hidden>
-                    {voice.levels.map((level, i) => (
-                      <span
-                        key={i}
-                        className="w-1.5 rounded-full bg-[var(--color-danger)]/70"
-                        style={{ height: `${Math.round(level * 100)}%` }}
-                      />
-                    ))}
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <span
+                    className="assistant-rec-pulse h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--color-danger)] motion-reduce:animate-none"
+                    aria-hidden
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[var(--color-ink)]">
+                      {voiceUiPhase === "transcribing" || voiceUiPhase === "uploading"
+                        ? "Transcrevendo…"
+                        : voice.phase === "requesting_permission"
+                          ? "Solicitando microfone…"
+                          : "Gravando"}
+                    </p>
+                    <p className="text-xs text-[var(--color-ink-muted)]">
+                      {voiceUiPhase === "transcribing" || voiceUiPhase === "uploading"
+                        ? "Aguarde um momento"
+                        : formatElapsed(voice.elapsedSeconds)}
+                    </p>
                   </div>
+                  {voiceUiPhase !== "transcribing" && voiceUiPhase !== "uploading" ? (
+                    <div className="flex h-5 items-end gap-0.5" aria-hidden>
+                      {voice.levels.map((level, i) => (
+                        <span
+                          key={i}
+                          className="w-1 rounded-full bg-[var(--color-danger)]/70 motion-reduce:transition-none"
+                          style={{ height: `${Math.max(20, Math.round(level * 100))}%` }}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 {voiceUiPhase === "transcribing" || voiceUiPhase === "uploading" ? null : (
-                  <>
+                  <div className="flex gap-2">
                     <Button
                       type="button"
                       variant="secondary"
-                      className="min-h-11 min-w-11 px-2"
+                      className="min-h-11 flex-1 px-3 sm:flex-none"
                       aria-label="Cancelar gravação"
                       onClick={() => {
                         voicePipelineAbortRef.current = true;
@@ -939,23 +1007,24 @@ export default function AssistantPage() {
                         setPhase(null);
                       }}
                     >
-                      <IconX />
+                      Cancelar
                     </Button>
                     <Button
                       type="button"
-                      className="min-h-11 min-w-11 px-2"
+                      className="min-h-11 flex-1 px-3 sm:flex-none"
                       aria-label="Finalizar gravação"
                       onClick={() => void finishRecording()}
                     >
-                      <IconStop />
+                      <IconStop className="mr-1.5 h-4 w-4" aria-hidden />
+                      Finalizar
                     </Button>
-                  </>
+                  </div>
                 )}
               </div>
             ) : (
               <form onSubmit={onSubmit} className="flex items-end gap-2">
                 <label className="sr-only" htmlFor="assistant-input">
-                  Mensagem para o assistente
+                  Pergunte ou peça algo
                 </label>
                 <div className="relative min-w-0 flex-1">
                   <textarea
@@ -971,7 +1040,7 @@ export default function AssistantPage() {
                       if (fromVoice && e.target.value !== input) setFromVoice(true);
                     }}
                     onKeyDown={onComposerKeyDown}
-                    className="max-h-[9rem] min-h-11 w-full resize-none rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 text-sm text-[var(--color-ink)] shadow-[var(--shadow-sm)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] disabled:opacity-60"
+                    className="max-h-[7.5rem] min-h-11 w-full resize-none rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 pr-11 text-sm text-[var(--color-ink)] shadow-[var(--shadow-sm)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] disabled:opacity-60"
                   />
                   {fromVoice ? (
                     <span className="pointer-events-none absolute -top-2 right-3 rounded-full bg-[var(--color-ai-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-ai-hover)]">
@@ -989,26 +1058,86 @@ export default function AssistantPage() {
                     <IconSend />
                   </Button>
                 ) : voiceAvailable ? (
-                  <Button
-                    type="button"
-                    variant="ai"
-                    disabled={
-                      disabled ||
-                      busy ||
-                      voice.phase === "requesting_permission" ||
-                      voice.phase === "stopping"
-                    }
-                    className="min-h-11 min-w-11 shrink-0 px-2"
-                    aria-label={
-                      voice.phase === "requesting_permission"
-                        ? "Solicitando acesso ao microfone"
-                        : "Gravar mensagem de voz"
-                    }
-                    aria-busy={voice.phase === "requesting_permission"}
-                    onClick={() => void handleMicClick()}
-                  >
-                    <IconMic />
-                  </Button>
+                  <div className="relative shrink-0" ref={micMenuRef}>
+                    <Button
+                      type="button"
+                      variant="ai"
+                      disabled={
+                        disabled ||
+                        busy ||
+                        voice.phase === "requesting_permission" ||
+                        voice.phase === "stopping"
+                      }
+                      className="min-h-11 min-w-11 px-2"
+                      aria-label={
+                        voice.phase === "requesting_permission"
+                          ? "Solicitando acesso ao microfone"
+                          : "Gravar mensagem de voz"
+                      }
+                      aria-busy={voice.phase === "requesting_permission"}
+                      aria-haspopup="menu"
+                      onClick={() => void handleMicClick()}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setThreadsOpen(false);
+                        setMicMenuOpen((v) => !v);
+                      }}
+                      onTouchStart={() => {
+                        if (micLongPressRef.current) {
+                          window.clearTimeout(micLongPressRef.current);
+                        }
+                        micLongPressRef.current = window.setTimeout(() => {
+                          setThreadsOpen(false);
+                          setMicMenuOpen(true);
+                        }, 550);
+                      }}
+                      onTouchEnd={() => {
+                        if (micLongPressRef.current) {
+                          window.clearTimeout(micLongPressRef.current);
+                          micLongPressRef.current = null;
+                        }
+                      }}
+                      onTouchCancel={() => {
+                        if (micLongPressRef.current) {
+                          window.clearTimeout(micLongPressRef.current);
+                          micLongPressRef.current = null;
+                        }
+                      }}
+                    >
+                      <IconMic />
+                    </Button>
+                    {micMenuOpen ? (
+                      <div
+                        role="menu"
+                        aria-label="Opções de voz"
+                        className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-[var(--shadow-md)]"
+                      >
+                        <button
+                          type="button"
+                          role="menuitemcheckbox"
+                          aria-checked={voiceAutoSend}
+                          className="flex w-full min-h-11 items-center rounded-[var(--radius-md)] px-2.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+                          onClick={() => {
+                            setAutoSendPreference(!voiceAutoSend);
+                            setMicMenuOpen(false);
+                          }}
+                        >
+                          Enviar voz automaticamente
+                          <span className="ml-auto text-xs text-[var(--color-ink-muted)]">
+                            {voiceAutoSend ? "Ligado" : "Desligado"}
+                          </span>
+                        </button>
+                        <Link
+                          href="/app/preferences"
+                          role="menuitem"
+                          className="flex min-h-11 items-center rounded-[var(--radius-md)] px-2.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)]"
+                          onClick={() => setMicMenuOpen(false)}
+                        >
+                          Preferências
+                        </Link>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : (
                   <Button
                     type="submit"
@@ -1035,14 +1164,10 @@ export default function AssistantPage() {
                     : "Gravação de voz não disponível neste navegador."}
               </p>
             ) : null}
-            {voiceAvailable ? (
-              <button
-                type="button"
-                className="mt-2 text-left text-[11px] font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
-                onClick={() => setAutoSendPreference(!voiceAutoSend)}
-              >
-                Enviar voz automaticamente: {voiceAutoSend ? "ligado" : "desligado"}
-              </button>
+            {phase && busy ? (
+              <p className="sr-only" role="status">
+                {phase}
+              </p>
             ) : null}
           </div>
         </div>
