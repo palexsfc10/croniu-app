@@ -21,15 +21,34 @@ type AiOps = {
   actions_executed_30d: number;
   actions_cancelled_30d: number;
   actions_expired_30d: number;
+  voice?: {
+    enabled: boolean;
+    transcription_model: string;
+    transcriptions_today: number;
+    audio_seconds_today: number;
+    errors_today: number;
+    avg_latency_ms_today: number | null;
+    estimated_cost_cents_today: number;
+    rate_limit_blocks_today: number;
+    transcriptions_month: number;
+    audio_seconds_month: number;
+    estimated_cost_cents_month: number;
+    errors_month: number;
+    rate_limit_blocks_month: number;
+  };
   limits: {
     user_requests_per_minute: number;
     org_daily_request_limit: number;
     confirmation_ttl_seconds: number;
+    voice_user_requests_per_minute?: number;
+    voice_org_daily_request_limit?: number;
   };
   top_organizations_month: Array<{
     organization_id: string;
     requests: number;
     tokens: number;
+    voice_transcriptions?: number;
+    voice_audio_seconds?: number;
   }>;
   note?: string;
 };
@@ -109,16 +128,67 @@ export default function AiOpsPage() {
         <Metric label="Expiradas 30d" value={data.actions_expired_30d} />
       </section>
 
+      {data.voice ? (
+        <section className="space-y-3">
+          <h2 className="font-semibold text-[var(--color-ink)]">Voz (transcrição)</h2>
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric label="Voz habilitada" value={data.voice.enabled ? "Sim" : "Não"} />
+            <Metric label="Modelo STT" value={data.voice.transcription_model} />
+            <Metric label="Transcrições hoje" value={data.voice.transcriptions_today} />
+            <Metric
+              label="Minutos áudio hoje"
+              value={(data.voice.audio_seconds_today / 60).toFixed(1)}
+            />
+            <Metric label="Erros voz hoje" value={data.voice.errors_today} />
+            <Metric
+              label="Latência média voz (ms)"
+              value={
+                data.voice.avg_latency_ms_today != null
+                  ? Math.round(data.voice.avg_latency_ms_today)
+                  : "—"
+              }
+            />
+            <Metric
+              label="Custo est. voz hoje (¢)"
+              value={data.voice.estimated_cost_cents_today}
+            />
+            <Metric
+              label="Bloqueios rate limit hoje"
+              value={data.voice.rate_limit_blocks_today}
+            />
+            <Metric label="Transcrições mês" value={data.voice.transcriptions_month} />
+            <Metric
+              label="Minutos áudio mês"
+              value={(data.voice.audio_seconds_month / 60).toFixed(1)}
+            />
+            <Metric
+              label="Custo est. voz mês (¢)"
+              value={data.voice.estimated_cost_cents_month}
+            />
+            <Metric label="Erros voz mês" value={data.voice.errors_month} />
+          </section>
+          <p className="text-xs text-[var(--color-ink-muted)]">
+            Conteúdo transcrito nunca aparece neste painel. Kill switch: `VOICE_ENABLED=false`.
+          </p>
+        </section>
+      ) : null}
+
       <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-3 text-sm">
         <h2 className="font-semibold text-[var(--color-ink)]">Limites</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--color-ink-muted)]">
           <li>{data.limits.user_requests_per_minute} req/min por usuário</li>
           <li>{data.limits.org_daily_request_limit} req/dia por organização</li>
           <li>TTL de confirmação: {data.limits.confirmation_ttl_seconds}s</li>
+          {data.limits.voice_user_requests_per_minute != null ? (
+            <li>{data.limits.voice_user_requests_per_minute} transcrições/min por usuário</li>
+          ) : null}
+          {data.limits.voice_org_daily_request_limit != null ? (
+            <li>{data.limits.voice_org_daily_request_limit} transcrições/dia por organização</li>
+          ) : null}
         </ul>
         <p className="mt-3 text-[var(--color-ink-muted)]">
-          Kill switch global: `AI_ENABLED=false` no `.env` da API (sem edição de segredo pelo
-          navegador).
+          Kill switch global: `AI_ENABLED=false` / `VOICE_ENABLED=false` no `.env` da API (sem
+          edição de segredo pelo navegador).
         </p>
       </section>
 
@@ -136,6 +206,9 @@ export default function AiOpsPage() {
                 </span>
                 <span className="tabular-nums text-[var(--color-ink)]">
                   {row.requests} req · {row.tokens} tok
+                  {row.voice_transcriptions != null
+                    ? ` · ${row.voice_transcriptions} voz`
+                    : ""}
                 </span>
               </li>
             ))}

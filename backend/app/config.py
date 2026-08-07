@@ -79,6 +79,29 @@ class Settings(BaseSettings):
     llm_input_token_cost_per_1k: float = Field(default=0.0, alias="LLM_INPUT_TOKEN_COST_PER_1K")
     llm_output_token_cost_per_1k: float = Field(default=0.0, alias="LLM_OUTPUT_TOKEN_COST_PER_1K")
 
+    # Voice transcription (STT) — off by default; never store raw audio permanently
+    voice_enabled: bool = Field(default=False, alias="VOICE_ENABLED")
+    openai_transcription_model: str = Field(
+        default="whisper-1",
+        alias="OPENAI_TRANSCRIPTION_MODEL",
+    )
+    voice_max_seconds: int = Field(default=60, alias="VOICE_MAX_SECONDS")
+    voice_max_bytes: int = Field(default=4_194_304, alias="VOICE_MAX_BYTES")  # 4 MiB
+    voice_allowed_mime_types: str = Field(
+        default=(
+            "audio/webm,audio/webm;codecs=opus,audio/mp4,audio/mpeg,audio/wav,"
+            "audio/x-wav,audio/ogg,audio/ogg;codecs=opus,video/webm"
+        ),
+        alias="VOICE_ALLOWED_MIME_TYPES",
+    )
+    voice_timeout_seconds: float = Field(default=45.0, alias="VOICE_TIMEOUT_SECONDS")
+    voice_user_requests_per_minute: int = Field(default=4, alias="VOICE_USER_REQUESTS_PER_MINUTE")
+    voice_org_daily_request_limit: int = Field(default=80, alias="VOICE_ORG_DAILY_REQUEST_LIMIT")
+    voice_cost_per_minute_cents: float = Field(
+        default=0.6,
+        alias="VOICE_COST_PER_MINUTE_CENTS",
+    )
+
     # SaaS billing / Asaas (separate from OrganizationPaymentSettings client Pix)
     trial_days: int = Field(default=7, alias="TRIAL_DAYS")
     asaas_api_key: str = Field(default="", alias="ASAAS_API_KEY")
@@ -139,6 +162,14 @@ class Settings(BaseSettings):
     @property
     def is_production_like(self) -> bool:
         return self.croniu_env.lower() in {"production", "hml", "staging"}
+
+    @property
+    def voice_mime_allowlist(self) -> set[str]:
+        return {
+            part.strip().lower()
+            for part in self.voice_allowed_mime_types.split(",")
+            if part.strip()
+        }
 
 
 @lru_cache

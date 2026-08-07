@@ -406,14 +406,20 @@ export async function apiFetch<T>(
   init?: RequestInit,
 ): Promise<{ data?: T; error?: ApiError; status: number }> {
   try {
+    const isFormData =
+      typeof FormData !== "undefined" && init?.body instanceof FormData;
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      ...(init?.headers as Record<string, string> | undefined),
+    };
+    // Let the browser set multipart boundary for FormData uploads.
+    if (!isFormData && !headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
     const response = await fetch(`${getApiBaseUrl()}${path}`, {
       ...init,
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...(init?.headers ?? {}),
-      },
+      headers,
     });
 
     if (response.status === 204) {

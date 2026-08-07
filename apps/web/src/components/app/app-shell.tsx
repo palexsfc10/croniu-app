@@ -179,7 +179,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const assistantActive = isAssistantActive(pathname);
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col md:flex-row">
+    <div
+      className={[
+        "mx-auto flex w-full max-w-6xl flex-col md:flex-row",
+        assistantActive ? "h-dvh overflow-hidden" : "min-h-dvh",
+      ].join(" ")}
+    >
       <aside className="app-sidebar hidden border-[var(--color-border)] md:flex md:w-56 md:shrink-0 md:flex-col md:border-r">
         <div className="sticky top-0 flex min-h-dvh flex-col">
           <div className="px-4 py-4">
@@ -237,8 +242,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 border-b border-[var(--color-border)]/80 bg-[var(--color-bg)]/90 px-4 py-2.5 backdrop-blur md:hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-10 shrink-0 border-b border-[var(--color-border)]/80 bg-[var(--color-bg)]/90 px-4 py-2.5 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-2">
             <BrandWordmark size="sm" surface="light" compact />
             <div className="flex items-center gap-1.5">
@@ -260,7 +265,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-5 pb-28 md:px-6 md:pb-5">
+        <main
+          className={
+            assistantActive
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
+              : "flex-1 px-4 py-5 pb-28 md:px-6 md:pb-5"
+          }
+        >
           <BillingGate>{children}</BillingGate>
         </main>
 

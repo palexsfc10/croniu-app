@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,8 +25,11 @@ from app.schemas.agent import (
     ThreadDetailOut,
     ThreadListOut,
     ThreadOut,
+    VoiceLimitsOut,
+    VoiceTranscribeOut,
 )
 from app.services import agent_threads as threads_svc
+from app.services import voice_transcription as voice_svc
 from app.services.auth import AuthContext, AuthError, get_current_auth
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -92,7 +95,64 @@ def get_agent_status(
     if settings.ai_enabled:
         snap = SubscriptionEntitlementService(db).get_for_organization(auth.organization.id)
         entitlement_ok = bool(snap.has_active_access)
-    return AgentStatusOut(**base, entitlement_ok=entitlement_ok, limits=rate_limit_info(settings))
+    voice_meta = voice_svc.voice_status(settings)
+    voice_limits = VoiceLimitsOut(
+        max_seconds=voice_meta["max_seconds"],
+        max_bytes=voice_meta["max_bytes"],
+        user_requests_per_minute=settings.voice_user_requests_per_minute,
+        org_daily_request_limit=settings.voice_org_daily_request_limit,
+        allowed_mime_types=voice_meta["allowed_mime_types"],
+    )
+    return AgentStatusOut(
+        **base,
+        entitlement_ok=entitlement_ok,
+        limits=rate_limit_info(settings),
+        voice_enabled=bool(settings.voice_enabled and settings.ai_enabled),
+        voice=voice_limits,
+    )
+
+
+@router.post("/transcribe", response_model=VoiceTranscribeOut)
+async def transcribe_voice(
+    request: Request,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+    duration_seconds: float | None = Form(default=None),
+) -> VoiceTranscribeOut:
+    settings = get_settings()
+    raw = await file.read()
+    # Cap read defensively even if client lies about size
+    if len(raw) > settings.voice_max_bytes + 1024:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "voice_too_large",
+                "message": "O áudio ultrapassou o tamanho máximo permitido. Grave um trecho mais curto.",
+            },
+        )
+    try:
+        result = voice_svc.transcribe_audio(
+            db,
+            organization_id=auth.organization.id,
+            user_id=auth.user.id,
+            audio_bytes=raw,
+            content_type=file.content_type,
+            duration_hint_seconds=duration_seconds,
+            request_id=request.headers.get("x-request-id"),
+            settings=settings,
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return VoiceTranscribeOut(
+        text=result.text,
+        model=result.model,
+        duration_seconds=result.duration_seconds,
+        latency_ms=result.latency_ms,
+        bytes_received=result.bytes_received,
+        mime_type=result.mime_type,
+        request_id=result.request_id,
+    )
 
 
 @router.get("/health", response_model=AgentHealthOut)

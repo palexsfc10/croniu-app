@@ -56,6 +56,14 @@ class AgentLimitsOut(BaseModel):
     confirmation_ttl_seconds: int
 
 
+class VoiceLimitsOut(BaseModel):
+    max_seconds: int
+    max_bytes: int
+    user_requests_per_minute: int
+    org_daily_request_limit: int
+    allowed_mime_types: list[str] = Field(default_factory=list)
+
+
 class AgentStatusOut(BaseModel):
     enabled: bool
     provider: str
@@ -65,6 +73,19 @@ class AgentStatusOut(BaseModel):
     tools: list[str]
     entitlement_ok: bool = True
     limits: AgentLimitsOut | None = None
+    voice_enabled: bool = False
+    voice: VoiceLimitsOut | None = None
+
+
+class VoiceTranscribeOut(BaseModel):
+    text: str
+    model: str
+    duration_seconds: float | None = None
+    latency_ms: int
+    bytes_received: int
+    mime_type: str
+    request_id: str
+    input_modality: str = "voice_transcript"
 
 
 class AgentHealthOut(BaseModel):

@@ -171,6 +171,12 @@ class AgentUsageDaily(Base):
     output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     estimated_cost_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     errors: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    voice_transcriptions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    voice_audio_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    voice_errors: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    voice_latency_ms_sum: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    voice_estimated_cost_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    voice_rate_limit_blocks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class AgentPendingAction(Base):
