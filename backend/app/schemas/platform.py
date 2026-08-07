@@ -23,12 +23,29 @@ class PlatformMeResponse(BaseModel):
 class OverviewMetrics(BaseModel):
     organizations_total: int
     professionals_total: int
+    registrations_last_24_hours: int = 0
     registrations_last_7_days: int
     organizations_active: int
     organizations_evaluating: int
     organizations_suspended: int
+    organizations_in_trial: int = 0
+    trials_ending_soon: int = 0
+    subscriptions_active: int = 0
+    subscriptions_past_due_or_expired: int = 0
+    subscriptions_suspended_or_blocked: int = 0
     clients_active_total: int
+    cycles_total: int = 0
     appointments_scheduled_total: int = 0
+    receivables_total: int = 0
+    assistant_threads_total: int = 0
+    ai_proposals_generated: int = 0
+    ai_proposals_confirmed: int = 0
+    ai_failures_recent: int = 0
+    feedbacks_new: int = 0
+    errors_recent: int = 0
+    cycle_agenda_critical: int = 0
+    cycle_agenda_divergent: int = 0
+    environment: str = "hml"
     generated_at: datetime
 
 
@@ -41,8 +58,13 @@ class OrganizationListItem(BaseModel):
     owner_email_masked: str | None
     created_at: datetime
     last_activity_at: datetime | None
+    last_login_at: datetime | None = None
     clients_count: int
     cycles_count: int
+    appointments_count: int = 0
+    assistant_threads_count: int = 0
+    subscription_status: str | None = None
+    operational_status: str | None = None
 
 
 class OrganizationDetail(OrganizationListItem):

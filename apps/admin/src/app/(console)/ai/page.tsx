@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 type AiOps = {
   configured: boolean;
@@ -21,35 +22,40 @@ type AiOps = {
   actions_executed_30d: number;
   actions_cancelled_30d: number;
   actions_expired_30d: number;
-  voice?: {
-    enabled: boolean;
-    transcription_model: string;
-    transcriptions_today: number;
-    audio_seconds_today: number;
-    errors_today: number;
-    avg_latency_ms_today: number | null;
-    estimated_cost_cents_today: number;
-    rate_limit_blocks_today: number;
-    transcriptions_month: number;
-    audio_seconds_month: number;
-    estimated_cost_cents_month: number;
-    errors_month: number;
-    rate_limit_blocks_month: number;
-  };
-  limits: {
-    user_requests_per_minute: number;
-    org_daily_request_limit: number;
-    confirmation_ttl_seconds: number;
-    voice_user_requests_per_minute?: number;
-    voice_org_daily_request_limit?: number;
-  };
-  top_organizations_month: Array<{
-    organization_id: string;
-    requests: number;
-    tokens: number;
-    voice_transcriptions?: number;
-    voice_audio_seconds?: number;
-  }>;
+  note?: string;
+};
+
+type AiRun = {
+  run_id: string;
+  organization_id: string;
+  organization_name?: string | null;
+  professional_name?: string | null;
+  thread_id: string;
+  started_at: string | null;
+  provider: string;
+  model: string;
+  status: string;
+  latency_ms: number | null;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_cents: number;
+  provider_request_id: string | null;
+  error_code: string | null;
+  tools_requested: string[];
+  tools_executed: Array<{ name: string; status: string; latency_ms: number | null }>;
+  proposal: {
+    action_id: string;
+    tool_name: string;
+    status: string;
+    error_sanitized: string | null;
+    request_id: string | null;
+  } | null;
+  sensitive_content_hidden: boolean;
+};
+
+type AiRunsResponse = {
+  items: AiRun[];
+  total: number;
   note?: string;
 };
 
@@ -66,7 +72,26 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 
 export default function AiOpsPage() {
   const [data, setData] = useState<AiOps | null>(null);
+  const [runs, setRuns] = useState<AiRunsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
+  const [proposalStatus, setProposalStatus] = useState("");
+  const [messageType, setMessageType] = useState("");
+  const [orgId, setOrgId] = useState("");
+
+  async function loadRuns() {
+    const params = new URLSearchParams({ page: "1", page_size: "30" });
+    if (status) params.set("status", status);
+    if (proposalStatus) params.set("proposal_status", proposalStatus);
+    if (messageType) params.set("message_type", messageType);
+    if (orgId.trim()) params.set("organization_id", orgId.trim());
+    const result = await apiFetch<AiRunsResponse>(`/api/v1/platform/ai-runs?${params}`);
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    setRuns(result.data ?? null);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -78,13 +103,15 @@ export default function AiOpsPage() {
         return;
       }
       setData(result.data || null);
+      await loadRuns();
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (error) {
+  if (error && !data) {
     return <p className="text-sm text-[var(--color-danger)]">{error}</p>;
   }
   if (!data) {
@@ -96,7 +123,7 @@ export default function AiOpsPage() {
       <header>
         <h1 className="text-2xl font-semibold text-[var(--color-ink)]">Assistente IA</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Visão operacional sanitizada. Conversas completas não são listadas aqui.
+          Metadados operacionais. Conversas privadas não são listadas por padrão.
         </p>
       </header>
 
@@ -105,118 +132,127 @@ export default function AiOpsPage() {
         <Metric label="Provedor" value={data.provider} />
         <Metric label="Modelo" value={data.model} />
         <Metric label="Chave configurada" value={data.api_key_configured ? "Sim" : "Não"} />
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Requisições hoje" value={data.requests_today} />
-        <Metric label="Tokens hoje" value={data.tokens_today} />
-        <Metric label="Custo est. hoje (¢)" value={data.estimated_cost_cents_today} />
+        <Metric label="Req hoje" value={data.requests_today} />
         <Metric label="Erros hoje" value={data.errors_today} />
-        <Metric label="Requisições mês" value={data.requests_month} />
-        <Metric label="Tokens mês" value={data.tokens_month} />
-        <Metric label="Custo est. mês (¢)" value={data.estimated_cost_cents_month} />
-        <Metric
-          label="Latência média 7d (ms)"
-          value={data.avg_latency_ms_7d != null ? Math.round(data.avg_latency_ms_7d) : "—"}
-        />
+        <Metric label="Pendentes" value={data.actions_pending} />
+        <Metric label="Confirmadas 30d" value={data.actions_executed_30d} />
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Ações pendentes" value={data.actions_pending} />
-        <Metric label="Executadas 30d" value={data.actions_executed_30d} />
-        <Metric label="Canceladas 30d" value={data.actions_cancelled_30d} />
-        <Metric label="Expiradas 30d" value={data.actions_expired_30d} />
-      </section>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 className="font-semibold text-[var(--color-ink)]">Execuções recentes</h2>
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              <option value="">Status run</option>
+              <option value="ok">sucesso</option>
+              <option value="error">erro</option>
+              <option value="failed">falha</option>
+            </select>
+            <select
+              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              value={proposalStatus}
+              onChange={(e) => setProposalStatus(e.target.value)}
+            >
+              <option value="">Proposta</option>
+              <option value="awaiting_confirmation">aguardando</option>
+              <option value="confirmed">confirmado</option>
+              <option value="cancelled">cancelado</option>
+            </select>
+            <select
+              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              value={messageType}
+              onChange={(e) => setMessageType(e.target.value)}
+            >
+              <option value="">texto/voz</option>
+              <option value="text">texto</option>
+              <option value="voice">voz</option>
+            </select>
+            <input
+              className="min-h-10 min-w-[12rem] rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              placeholder="organization_id"
+              value={orgId}
+              onChange={(e) => setOrgId(e.target.value)}
+            />
+            <Button type="button" variant="secondary" onClick={() => void loadRuns()}>
+              Filtrar
+            </Button>
+          </div>
+        </div>
 
-      {data.voice ? (
-        <section className="space-y-3">
-          <h2 className="font-semibold text-[var(--color-ink)]">Voz (transcrição)</h2>
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric label="Voz habilitada" value={data.voice.enabled ? "Sim" : "Não"} />
-            <Metric label="Modelo STT" value={data.voice.transcription_model} />
-            <Metric label="Transcrições hoje" value={data.voice.transcriptions_today} />
-            <Metric
-              label="Minutos áudio hoje"
-              value={(data.voice.audio_seconds_today / 60).toFixed(1)}
-            />
-            <Metric label="Erros voz hoje" value={data.voice.errors_today} />
-            <Metric
-              label="Latência média voz (ms)"
-              value={
-                data.voice.avg_latency_ms_today != null
-                  ? Math.round(data.voice.avg_latency_ms_today)
-                  : "—"
-              }
-            />
-            <Metric
-              label="Custo est. voz hoje (¢)"
-              value={data.voice.estimated_cost_cents_today}
-            />
-            <Metric
-              label="Bloqueios rate limit hoje"
-              value={data.voice.rate_limit_blocks_today}
-            />
-            <Metric label="Transcrições mês" value={data.voice.transcriptions_month} />
-            <Metric
-              label="Minutos áudio mês"
-              value={(data.voice.audio_seconds_month / 60).toFixed(1)}
-            />
-            <Metric
-              label="Custo est. voz mês (¢)"
-              value={data.voice.estimated_cost_cents_month}
-            />
-            <Metric label="Erros voz mês" value={data.voice.errors_month} />
-          </section>
-          <p className="text-xs text-[var(--color-ink-muted)]">
-            Conteúdo transcrito nunca aparece neste painel. Kill switch: `VOICE_ENABLED=false`.
+        {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
+
+        {!runs ? (
+          <p className="text-sm text-[var(--color-ink-muted)]">Carregando runs…</p>
+        ) : runs.items.length === 0 ? (
+          <p className="rounded border border-dashed border-[var(--color-border)] p-3 text-sm text-[var(--color-ink-muted)]">
+            Nenhuma execução com os filtros atuais.
           </p>
-        </section>
-      ) : null}
-
-      <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-3 text-sm">
-        <h2 className="font-semibold text-[var(--color-ink)]">Limites</h2>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--color-ink-muted)]">
-          <li>{data.limits.user_requests_per_minute} req/min por usuário</li>
-          <li>{data.limits.org_daily_request_limit} req/dia por organização</li>
-          <li>TTL de confirmação: {data.limits.confirmation_ttl_seconds}s</li>
-          {data.limits.voice_user_requests_per_minute != null ? (
-            <li>{data.limits.voice_user_requests_per_minute} transcrições/min por usuário</li>
-          ) : null}
-          {data.limits.voice_org_daily_request_limit != null ? (
-            <li>{data.limits.voice_org_daily_request_limit} transcrições/dia por organização</li>
-          ) : null}
-        </ul>
-        <p className="mt-3 text-[var(--color-ink-muted)]">
-          Kill switch global: `AI_ENABLED=false` / `VOICE_ENABLED=false` no `.env` da API (sem
-          edição de segredo pelo navegador).
-        </p>
+        ) : (
+          <div className="overflow-x-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-muted)]">
+                <tr>
+                  <th className="px-3 py-2">Quando</th>
+                  <th className="px-3 py-2">Org / profissional</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Modelo</th>
+                  <th className="px-3 py-2">Latência / tokens</th>
+                  <th className="px-3 py-2">Tools / proposta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.items.map((run) => (
+                  <tr key={run.run_id} className="border-b border-[var(--color-border)] last:border-0 align-top">
+                    <td className="px-3 py-3">
+                      {run.started_at ? new Date(run.started_at).toLocaleString("pt-BR") : "—"}
+                      <div className="text-[11px] text-[var(--color-ink-muted)]">
+                        {run.provider_request_id || run.run_id.slice(0, 8)}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div>{run.organization_name || run.organization_id.slice(0, 8)}</div>
+                      <div className="text-xs text-[var(--color-ink-muted)]">
+                        {run.professional_name || "—"}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div>{run.status}</div>
+                      {run.error_code ? (
+                        <div className="text-xs text-[var(--color-danger)]">{run.error_code}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3">
+                      {run.provider}/{run.model}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {run.latency_ms ?? "—"} ms
+                      <div className="text-xs text-[var(--color-ink-muted)]">
+                        in {run.input_tokens} / out {run.output_tokens} · {run.estimated_cost_cents}¢
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="text-xs">{run.tools_requested.join(", ") || "—"}</div>
+                      {run.proposal ? (
+                        <div className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                          proposta {run.proposal.tool_name}: {run.proposal.status}
+                          {run.proposal.error_sanitized
+                            ? ` · ${run.proposal.error_sanitized}`
+                            : ""}
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {runs?.note ? <p className="text-xs text-[var(--color-ink-muted)]">{runs.note}</p> : null}
       </section>
-
-      {data.top_organizations_month.length ? (
-        <section>
-          <h2 className="mb-2 font-semibold text-[var(--color-ink)]">Top organizações (mês)</h2>
-          <ul className="divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
-            {data.top_organizations_month.map((row) => (
-              <li
-                key={row.organization_id}
-                className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
-              >
-                <span className="font-mono text-xs text-[var(--color-ink-muted)]">
-                  {row.organization_id.slice(0, 8)}…
-                </span>
-                <span className="tabular-nums text-[var(--color-ink)]">
-                  {row.requests} req · {row.tokens} tok
-                  {row.voice_transcriptions != null
-                    ? ` · ${row.voice_transcriptions} voz`
-                    : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {data.note ? <p className="text-xs text-[var(--color-ink-muted)]">{data.note}</p> : null}
     </div>
   );
 }

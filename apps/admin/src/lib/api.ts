@@ -13,12 +13,29 @@ export type PlatformMe = {
 export type OverviewMetrics = {
   organizations_total: number;
   professionals_total: number;
+  registrations_last_24_hours?: number;
   registrations_last_7_days: number;
   organizations_active: number;
   organizations_evaluating: number;
   organizations_suspended: number;
+  organizations_in_trial?: number;
+  trials_ending_soon?: number;
+  subscriptions_active?: number;
+  subscriptions_past_due_or_expired?: number;
+  subscriptions_suspended_or_blocked?: number;
   clients_active_total: number;
+  cycles_total?: number;
   appointments_scheduled_total?: number;
+  receivables_total?: number;
+  assistant_threads_total?: number;
+  ai_proposals_generated?: number;
+  ai_proposals_confirmed?: number;
+  ai_failures_recent?: number;
+  feedbacks_new?: number;
+  errors_recent?: number;
+  cycle_agenda_critical?: number;
+  cycle_agenda_divergent?: number;
+  environment?: string;
   generated_at: string;
 };
 
@@ -31,8 +48,13 @@ export type OrganizationListItem = {
   owner_email_masked: string | null;
   created_at: string;
   last_activity_at: string | null;
+  last_login_at?: string | null;
   clients_count: number;
   cycles_count: number;
+  appointments_count?: number;
+  assistant_threads_count?: number;
+  subscription_status?: string | null;
+  operational_status?: string | null;
 };
 
 export type OrganizationDetail = OrganizationListItem & {

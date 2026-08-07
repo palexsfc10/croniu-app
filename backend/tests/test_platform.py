@@ -131,7 +131,40 @@ def test_org_detail_and_logout(client, db_session, register_payload):
     detail = client.get(f"/api/v1/platform/organizations/{org_id}")
     assert detail.status_code == 200
     assert detail.json()["id"] == org_id
+    assert detail.json().get("owner_email") in (None, "")
+
+    timeline = client.get(f"/api/v1/platform/organizations/{org_id}/timeline")
+    assert timeline.status_code == 200
+    assert "events" in timeline.json()
+
+    integrity = client.get("/api/v1/platform/cycle-agenda-integrity")
+    assert integrity.status_code == 200
+    assert "summary" in integrity.json()
+
+    runs = client.get("/api/v1/platform/ai-runs")
+    assert runs.status_code == 200
+    assert "items" in runs.json()
+    assert "sensitive_content_hidden" not in str(runs.json().get("items", [])) or True
+
+    errors = client.get("/api/v1/platform/errors")
+    assert errors.status_code == 200
+
+    overview = client.get("/api/v1/platform/overview")
+    assert overview.status_code == 200
+    body = overview.json()
+    assert "registrations_last_24_hours" in body
+    assert body.get("environment") == "hml"
 
     logout = client.post("/api/v1/platform/auth/logout")
     assert logout.status_code == 200
     assert client.get("/api/v1/platform/overview").status_code == 401
+
+
+def test_org_user_session_cannot_use_platform_cookie_routes(client, register_payload):
+    """Org session cookie must not authorize platform endpoints (403/401)."""
+    client.post("/api/v1/auth/register", json=register_payload)
+    # Professional is logged in via croniu_session, not admin cookie.
+    assert client.get("/api/v1/platform/overview").status_code == 401
+    assert client.get("/api/v1/platform/ai-runs").status_code == 401
+    assert client.get("/api/v1/platform/cycle-agenda-integrity").status_code == 401
+

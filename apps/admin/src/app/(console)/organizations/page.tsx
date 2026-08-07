@@ -86,10 +86,11 @@ export default function OrganizationsPage() {
             <thead className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-muted)]">
               <tr>
                 <th className="px-3 py-2">Nome</th>
+                <th className="px-3 py-2">Profissional</th>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Plano</th>
-                <th className="px-3 py-2">Proprietário</th>
-                <th className="px-3 py-2">Criada</th>
+                <th className="px-3 py-2">Clientes / Ciclos / Agenda</th>
+                <th className="px-3 py-2">IA</th>
+                <th className="px-3 py-2">Último acesso</th>
               </tr>
             </thead>
             <tbody>
@@ -100,13 +101,27 @@ export default function OrganizationsPage() {
                       {org.name}
                     </Link>
                   </td>
-                  <td className="px-3 py-3">{org.status}</td>
-                  <td className="px-3 py-3">{org.plan_code}</td>
                   <td className="px-3 py-3">
                     <div>{org.owner_name ?? "—"}</div>
                     <div className="text-xs text-[var(--color-ink-muted)]">{org.owner_email_masked}</div>
                   </td>
-                  <td className="px-3 py-3">{new Date(org.created_at).toLocaleDateString("pt-BR")}</td>
+                  <td className="px-3 py-3">
+                    <div>{org.operational_status ?? org.status}</div>
+                    <div className="text-xs text-[var(--color-ink-muted)]">
+                      {org.subscription_status ?? org.plan_code}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 tabular-nums">
+                    {org.clients_count} / {org.cycles_count} / {org.appointments_count ?? 0}
+                  </td>
+                  <td className="px-3 py-3 tabular-nums">{org.assistant_threads_count ?? 0}</td>
+                  <td className="px-3 py-3">
+                    {org.last_login_at
+                      ? new Date(org.last_login_at).toLocaleString("pt-BR")
+                      : org.last_activity_at
+                        ? new Date(org.last_activity_at).toLocaleDateString("pt-BR")
+                        : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

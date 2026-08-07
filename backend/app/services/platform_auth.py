@@ -186,6 +186,24 @@ def get_current_platform_auth(
     try:
         return resolve_platform_session(db, token)
     except AuthError as exc:
+        ip, ua = client_meta(request)
+        # Audit suspicious denials (invalid/forbidden session). Skip quiet anonymous probes.
+        if token or exc.code in {"platform_forbidden", "account_disabled", "invalid_session"}:
+            write_admin_audit(
+                db,
+                actor_user_id=None,
+                action="platform.access_denied",
+                resource_type="platform_api",
+                metadata_safe={
+                    "result": "denied",
+                    "code": exc.code,
+                    "path": str(request.url.path)[:200],
+                    "method": request.method,
+                    "had_cookie": bool(token),
+                },
+                ip_address=ip,
+                user_agent=ua,
+            )
         raise HTTPException(
             status_code=exc.status_code,
             detail={"code": exc.code, "message": exc.message},

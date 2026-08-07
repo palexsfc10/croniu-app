@@ -59,7 +59,7 @@ class FeedbackAdminOut(BaseModel):
     organization_name: str | None = None
     user_id: UUID
     user_name: str | None = None
-    user_email: str | None = None
+    user_email_masked: str | None = None
     category: FeedbackCategory
     subject: str | None
     message: str
@@ -67,6 +67,8 @@ class FeedbackAdminOut(BaseModel):
     technical_context: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
+    status_changed_at: datetime | None = None
+    status_changed_by_name: str | None = None
 
 
 class FeedbackAdminListOut(BaseModel):

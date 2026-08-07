@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings
+from app.models.agent import AgentPendingAction, AgentRun, AgentThread
+from app.models.billing import Subscription, SubscriptionStatus
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.platform_membership import PlatformMembership
+from app.models.receivable import Receivable
 from app.models.user import User
+from app.models.user_feedback import UserFeedback
 from app.schemas.platform import (
     OrganizationDetail,
     OrganizationListItem,
@@ -22,14 +26,21 @@ from app.schemas.platform import (
     mask_email,
 )
 from app.services import domain as domain_svc
+from app.services.platform_pilot_ops import list_cycle_agenda_integrity
 
 
 def get_overview_metrics(db: Session) -> OverviewMetrics:
+    from app.services import agenda as agenda_svc
+
     organizations_total = db.scalar(select(func.count()).select_from(Organization)) or 0
     professionals_total = db.scalar(select(func.count()).select_from(User)) or 0
-    since = days_ago(7)
+    since_7d = days_ago(7)
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
     registrations_last_7_days = (
-        db.scalar(select(func.count()).select_from(User).where(User.created_at >= since)) or 0
+        db.scalar(select(func.count()).select_from(User).where(User.created_at >= since_7d)) or 0
+    )
+    registrations_last_24_hours = (
+        db.scalar(select(func.count()).select_from(User).where(User.created_at >= since_24h)) or 0
     )
     organizations_active = (
         db.scalar(
@@ -51,20 +62,134 @@ def get_overview_metrics(db: Session) -> OverviewMetrics:
         )
         or 0
     )
-    clients_active_total = domain_svc.count_active_clients(db)
-    from app.services import agenda as agenda_svc
 
+    trial_ends_soon = datetime.now(UTC) + timedelta(days=3)
+    organizations_in_trial = (
+        db.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(Subscription.status == SubscriptionStatus.TRIAL.value)
+        )
+        or 0
+    )
+    trials_ending_soon = (
+        db.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(
+                Subscription.status == SubscriptionStatus.TRIAL.value,
+                Subscription.trial_ends_at.is_not(None),
+                Subscription.trial_ends_at <= trial_ends_soon,
+                Subscription.trial_ends_at >= datetime.now(UTC),
+            )
+        )
+        or 0
+    )
+    subscriptions_active = (
+        db.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(Subscription.status == SubscriptionStatus.ACTIVE.value)
+        )
+        or 0
+    )
+    subscriptions_past_due_or_expired = (
+        db.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(
+                Subscription.status.in_(
+                    (
+                        SubscriptionStatus.PAST_DUE.value,
+                        SubscriptionStatus.EXPIRED.value,
+                        SubscriptionStatus.GRACE_PERIOD.value,
+                        SubscriptionStatus.PAYMENT_PENDING.value,
+                    )
+                )
+            )
+        )
+        or 0
+    )
+    subscriptions_suspended_or_blocked = (
+        db.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(
+                Subscription.status.in_(
+                    (
+                        SubscriptionStatus.SUSPENDED.value,
+                        SubscriptionStatus.CANCELLED.value,
+                    )
+                )
+            )
+        )
+        or 0
+    )
+
+    clients_active_total = domain_svc.count_active_clients(db)
+    cycles_total = domain_svc.count_cycles(db)
     appointments_scheduled_total = agenda_svc.count_appointments(db)
+    receivables_total = db.scalar(select(func.count()).select_from(Receivable)) or 0
+    assistant_threads_total = db.scalar(select(func.count()).select_from(AgentThread)) or 0
+    ai_proposals_generated = db.scalar(select(func.count()).select_from(AgentPendingAction)) or 0
+    ai_proposals_confirmed = (
+        db.scalar(
+            select(func.count())
+            .select_from(AgentPendingAction)
+            .where(AgentPendingAction.status == "executed")
+        )
+        or 0
+    )
+    ai_failures_recent = (
+        db.scalar(
+            select(func.count())
+            .select_from(AgentRun)
+            .where(
+                AgentRun.started_at >= since_7d,
+                or_(
+                    AgentRun.status.in_(("error", "failed")),
+                    AgentRun.error_code.is_not(None),
+                ),
+            )
+        )
+        or 0
+    )
+    feedbacks_new = (
+        db.scalar(
+            select(func.count()).select_from(UserFeedback).where(UserFeedback.status == "new")
+        )
+        or 0
+    )
+    errors_recent = ai_failures_recent
+    integrity = list_cycle_agenda_integrity(db, page=1, page_size=1)
+    summary = integrity.get("summary") or {}
 
     return OverviewMetrics(
         organizations_total=organizations_total,
         professionals_total=professionals_total,
+        registrations_last_24_hours=registrations_last_24_hours,
         registrations_last_7_days=registrations_last_7_days,
         organizations_active=organizations_active,
         organizations_evaluating=organizations_evaluating,
         organizations_suspended=organizations_suspended,
+        organizations_in_trial=organizations_in_trial,
+        trials_ending_soon=trials_ending_soon,
+        subscriptions_active=subscriptions_active,
+        subscriptions_past_due_or_expired=subscriptions_past_due_or_expired,
+        subscriptions_suspended_or_blocked=subscriptions_suspended_or_blocked,
         clients_active_total=clients_active_total,
+        cycles_total=cycles_total,
         appointments_scheduled_total=appointments_scheduled_total,
+        receivables_total=receivables_total,
+        assistant_threads_total=assistant_threads_total,
+        ai_proposals_generated=ai_proposals_generated,
+        ai_proposals_confirmed=ai_proposals_confirmed,
+        ai_failures_recent=ai_failures_recent,
+        feedbacks_new=feedbacks_new,
+        errors_recent=errors_recent,
+        cycle_agenda_critical=int(summary.get("critical") or 0),
+        cycle_agenda_divergent=int(summary.get("divergent") or 0),
+        environment="hml",
         generated_at=datetime.now(UTC),
     )
 
@@ -83,6 +208,30 @@ def _owner_for_org(db: Session, organization_id: uuid.UUID) -> User | None:
     return db.get(User, membership.user_id)
 
 
+def _subscription_status(db: Session, organization_id: uuid.UUID) -> str | None:
+    sub = db.scalar(select(Subscription).where(Subscription.organization_id == organization_id))
+    return sub.status if sub else None
+
+
+def _operational_status(org_status: str, subscription_status: str | None) -> str:
+    if org_status == "suspended" or subscription_status in {
+        SubscriptionStatus.SUSPENDED.value,
+        SubscriptionStatus.CANCELLED.value,
+    }:
+        return "blocked"
+    if subscription_status == SubscriptionStatus.TRIAL.value:
+        return "trial"
+    if subscription_status == SubscriptionStatus.ACTIVE.value:
+        return "active"
+    if subscription_status in {
+        SubscriptionStatus.PAST_DUE.value,
+        SubscriptionStatus.EXPIRED.value,
+        SubscriptionStatus.GRACE_PERIOD.value,
+    }:
+        return "billing_attention"
+    return org_status or "unknown"
+
+
 def list_organizations(
     db: Session,
     *,
@@ -91,6 +240,8 @@ def list_organizations(
     page_size: int,
     search: str | None,
 ) -> PaginatedOrganizations:
+    from app.services import agenda as agenda_svc
+
     page = max(page, 1)
     page_size = min(max(page_size, 1), settings.platform_list_max_limit)
     query = select(Organization)
@@ -122,6 +273,15 @@ def list_organizations(
     items: list[OrganizationListItem] = []
     for org in rows:
         owner = _owner_for_org(db, org.id)
+        sub_status = _subscription_status(db, org.id)
+        threads = (
+            db.scalar(
+                select(func.count())
+                .select_from(AgentThread)
+                .where(AgentThread.organization_id == org.id)
+            )
+            or 0
+        )
         items.append(
             OrganizationListItem(
                 id=org.id,
@@ -132,8 +292,13 @@ def list_organizations(
                 owner_email_masked=mask_email(owner.email) if owner else None,
                 created_at=org.created_at,
                 last_activity_at=org.last_activity_at,
+                last_login_at=owner.last_login_at if owner else None,
                 clients_count=domain_svc.count_active_clients(db, organization_id=org.id),
                 cycles_count=domain_svc.count_cycles(db, organization_id=org.id),
+                appointments_count=agenda_svc.count_appointments(db, organization_id=org.id),
+                assistant_threads_count=int(threads),
+                subscription_status=sub_status,
+                operational_status=_operational_status(org.status, sub_status),
             )
         )
 
@@ -147,6 +312,15 @@ def get_organization_detail(db: Session, organization_id: uuid.UUID) -> Organiza
     if org is None:
         return None
     owner = _owner_for_org(db, org.id)
+    sub_status = _subscription_status(db, org.id)
+    threads = (
+        db.scalar(
+            select(func.count())
+            .select_from(AgentThread)
+            .where(AgentThread.organization_id == org.id)
+        )
+        or 0
+    )
     return OrganizationDetail(
         id=org.id,
         name=org.name,
@@ -154,13 +328,17 @@ def get_organization_detail(db: Session, organization_id: uuid.UUID) -> Organiza
         plan_code=org.plan_code,
         owner_name=owner.full_name if owner else None,
         owner_email_masked=mask_email(owner.email) if owner else None,
-        owner_email=owner.email if owner else None,
+        owner_email=None,  # never expose full email in detail by default
         created_at=org.created_at,
         last_activity_at=org.last_activity_at,
+        last_login_at=owner.last_login_at if owner else None,
         clients_count=domain_svc.count_active_clients(db, organization_id=org.id),
         cycles_count=domain_svc.count_cycles(db, organization_id=org.id),
         timezone=org.timezone or "America/Sao_Paulo",
         appointments_count=agenda_svc.count_appointments(db, organization_id=org.id),
+        assistant_threads_count=int(threads),
+        subscription_status=sub_status,
+        operational_status=_operational_status(org.status, sub_status),
     )
 
 

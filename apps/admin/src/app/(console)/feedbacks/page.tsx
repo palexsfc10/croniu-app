@@ -10,7 +10,7 @@ type FeedbackItem = {
   organization_name: string | null;
   user_id: string;
   user_name: string | null;
-  user_email: string | null;
+  user_email_masked: string | null;
   category: string;
   subject: string | null;
   message: string;
@@ -18,6 +18,8 @@ type FeedbackItem = {
   technical_context: Record<string, string> | null;
   created_at: string;
   updated_at: string;
+  status_changed_at?: string | null;
+  status_changed_by_name?: string | null;
 };
 
 type FeedbackList = {
@@ -39,7 +41,7 @@ const STATUS_LABEL: Record<string, string> = {
   new: "Novo",
   reviewing: "Em análise",
   resolved: "Resolvido",
-  archived: "Arquivado",
+  archived: "Descartado",
 };
 
 const STATUSES = ["new", "reviewing", "resolved", "archived"] as const;
@@ -153,11 +155,19 @@ export default function AdminFeedbacksPage() {
                     {item.subject ? ` · ${item.subject}` : ""}
                   </p>
                   <p className="text-xs text-[var(--color-ink-muted)]">
-                    {item.user_name} · {item.organization_name} ·{" "}
+                    {item.user_name}
+                    {item.user_email_masked ? ` · ${item.user_email_masked}` : ""} ·{" "}
+                    {item.organization_name} ·{" "}
                     {new Date(item.created_at).toLocaleString("pt-BR")}
                   </p>
                   <p className="text-xs font-medium text-[var(--color-ink-muted)]">
                     {STATUS_LABEL[item.status] || item.status}
+                    {item.status_changed_by_name
+                      ? ` · alterado por ${item.status_changed_by_name}`
+                      : ""}
+                    {item.status_changed_at
+                      ? ` em ${new Date(item.status_changed_at).toLocaleString("pt-BR")}`
+                      : ""}
                   </p>
                 </div>
                 <Button

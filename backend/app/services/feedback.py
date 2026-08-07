@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.models.admin_audit_log import AdminAuditLog
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.user_feedback import UserFeedback
@@ -21,6 +22,7 @@ from app.schemas.feedback import (
     FeedbackCreateOut,
     FeedbackStatus,
 )
+from app.schemas.platform import mask_email
 from app.services.auth import AuthError
 
 ALLOWED_TECH_KEYS = {
@@ -96,14 +98,34 @@ def create_feedback(
     return FeedbackCreateOut(id=row.id, status=row.status, created_at=row.created_at)  # type: ignore[arg-type]
 
 
-def _to_admin_out(row: UserFeedback) -> FeedbackAdminOut:
+def _latest_status_audit(db: Session, feedback_id: uuid.UUID) -> tuple[datetime | None, str | None]:
+    entry = db.scalar(
+        select(AdminAuditLog)
+        .where(
+            AdminAuditLog.action == "platform.feedback_status",
+            AdminAuditLog.resource_id == str(feedback_id),
+        )
+        .order_by(AdminAuditLog.created_at.desc())
+        .limit(1)
+    )
+    if entry is None:
+        return None, None
+    actor_name = None
+    if entry.actor_user_id:
+        actor = db.get(User, entry.actor_user_id)
+        actor_name = actor.full_name if actor else None
+    return entry.created_at, actor_name
+
+
+def _to_admin_out(db: Session, row: UserFeedback) -> FeedbackAdminOut:
+    changed_at, changed_by = _latest_status_audit(db, row.id)
     return FeedbackAdminOut(
         id=row.id,
         organization_id=row.organization_id,
         organization_name=row.organization.name if row.organization else None,
         user_id=row.user_id,
         user_name=row.user.full_name if row.user else None,
-        user_email=row.user.email if row.user else None,
+        user_email_masked=mask_email(row.user.email) if row.user else None,
         category=row.category,  # type: ignore[arg-type]
         subject=row.subject,
         message=row.message,
@@ -111,6 +133,8 @@ def _to_admin_out(row: UserFeedback) -> FeedbackAdminOut:
         technical_context=row.technical_context,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        status_changed_at=changed_at,
+        status_changed_by_name=changed_by,
     )
 
 
@@ -153,7 +177,7 @@ def list_feedbacks_admin(
         ).all()
     )
     return FeedbackAdminListOut(
-        items=[_to_admin_out(r) for r in rows],
+        items=[_to_admin_out(db, r) for r in rows],
         total=total,
         page=page,
         page_size=page_size,
@@ -161,7 +185,11 @@ def list_feedbacks_admin(
 
 
 def update_feedback_status(
-    db: Session, *, feedback_id: uuid.UUID, status: FeedbackStatus
+    db: Session,
+    *,
+    feedback_id: uuid.UUID,
+    status: FeedbackStatus,
+    actor_user_id: uuid.UUID | None = None,
 ) -> FeedbackAdminOut:
     row = db.scalar(
         select(UserFeedback)
@@ -170,8 +198,23 @@ def update_feedback_status(
     )
     if row is None:
         raise AuthError("not_found", "Feedback não encontrado.", 404)
+    before = row.status
     row.status = status
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _to_admin_out(row)
+
+    from app.services.platform_auth import write_admin_audit
+
+    write_admin_audit(
+        db,
+        actor_user_id=actor_user_id,
+        action="platform.feedback_status",
+        resource_type="user_feedback",
+        resource_id=str(row.id),
+        organization_id=row.organization_id,
+        before_state={"status": before},
+        after_state={"status": status},
+        metadata_safe={"result": "success"},
+    )
+    return _to_admin_out(db, row)

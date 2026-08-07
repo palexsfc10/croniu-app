@@ -223,21 +223,109 @@ def platform_feedbacks(
 def platform_feedback_status(
     feedback_id: uuid.UUID,
     payload: FeedbackStatusUpdateIn,
+    request: Request,
     db: Session = Depends(get_db),
-    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
 ) -> FeedbackAdminOut:
     from app.services import feedback as feedback_svc
     from app.services.auth import AuthError
 
     try:
         return feedback_svc.update_feedback_status(
-            db, feedback_id=feedback_id, status=payload.status
+            db,
+            feedback_id=feedback_id,
+            status=payload.status,
+            actor_user_id=auth.user.id,
         )
     except AuthError as exc:
+        ip, ua = client_meta(request)
+        write_admin_audit(
+            db,
+            actor_user_id=auth.user.id,
+            action="platform.feedback_status_denied",
+            resource_type="user_feedback",
+            resource_id=str(feedback_id),
+            metadata_safe={"result": "denied", "code": exc.code},
+            ip_address=ip,
+            user_agent=ua,
+        )
         raise HTTPException(
             status_code=exc.status_code,
             detail={"code": exc.code, "message": exc.message},
         ) from exc
+
+
+@router.get("/cycle-agenda-integrity")
+def platform_cycle_agenda_integrity(
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+    organization_id: uuid.UUID | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status", max_length=32),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=30, ge=1, le=50),
+) -> dict:
+    from app.services.platform_pilot_ops import list_cycle_agenda_integrity
+
+    return list_cycle_agenda_integrity(
+        db,
+        organization_id=organization_id,
+        status_filter=status_filter,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/organizations/{organization_id}/timeline")
+def platform_organization_timeline(
+    organization_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> dict:
+    from app.services.platform_pilot_ops import get_organization_timeline
+
+    timeline = get_organization_timeline(db, organization_id)
+    if timeline is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Organização não encontrada."},
+        )
+    return timeline
+
+
+@router.get("/ai-runs")
+def platform_ai_runs(
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+    organization_id: uuid.UUID | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status", max_length=32),
+    proposal_status: str | None = Query(default=None, max_length=32),
+    message_type: str | None = Query(default=None, max_length=16),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=30, ge=1, le=50),
+) -> dict:
+    from app.services.platform_pilot_ops import list_ai_runs
+
+    return list_ai_runs(
+        db,
+        organization_id=organization_id,
+        status=status_filter,
+        proposal_status=proposal_status,
+        message_type=message_type,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/errors")
+def platform_errors(
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+    organization_id: uuid.UUID | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> dict:
+    from app.services.platform_pilot_ops import list_sanitized_errors
+
+    return list_sanitized_errors(db, organization_id=organization_id, limit=limit)
 
 
 @router.post("/self-elevate", include_in_schema=False)
