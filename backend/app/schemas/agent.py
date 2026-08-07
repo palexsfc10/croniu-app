@@ -11,8 +11,9 @@ class AgentChatIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(min_length=1, max_length=8000)
-    # Future voice transcription can populate the same field
     input_modality: str = Field(default="text", pattern="^(text|voice_transcript)$")
+    # Client-generated key for voice auto-send / network retries (idempotent).
+    client_message_id: str | None = Field(default=None, max_length=128)
 
 
 class PendingActionOut(BaseModel):

@@ -81,6 +81,7 @@ def _chat_out_from_result(result) -> AgentChatOut:
         pending_action=pending,
         tool_trace=result.tool_trace,
         usage=result.usage,
+        idempotent_replay=bool(getattr(result, "idempotent_replay", False)),
     )
 
 
@@ -191,6 +192,8 @@ def agent_chat(
             message=payload.message,
             thread_id=existing_thread.id if existing_thread else None,
             request_id=request_id,
+            client_message_id=payload.client_message_id,
+            input_modality=payload.input_modality,
         )
     except AuthError as exc:
         raise _http(exc) from exc
@@ -275,6 +278,8 @@ def post_thread_message(
             message=payload.message,
             thread_id=thread_id,
             request_id=request_id,
+            client_message_id=payload.client_message_id,
+            input_modality=payload.input_modality,
         )
     except AuthError as exc:
         raise _http(exc) from exc

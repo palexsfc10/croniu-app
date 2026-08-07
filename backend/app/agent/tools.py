@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agent.providers.base import ToolSpec
+from app.agent.temporal import format_human_datetime_range, resolve_org_timezone
 from app.models.client import Client
 from app.models.client_evaluation import ClientEvaluation
 from app.models.cycle import Cycle
@@ -38,6 +39,7 @@ class ToolContext(BaseModel):
     user_id: uuid.UUID
     db: Session
     request_id: str | None = None
+    timezone: str = "America/Sao_Paulo"
 
 
 @dataclass
@@ -602,18 +604,31 @@ def _propose_create_appointment(ctx: ToolContext, args: dict[str, Any]) -> dict[
     client = domain_svc.get_client(
         ctx.db, organization_id=ctx.organization_id, client_id=parsed.client_id
     )
+    tz_name = resolve_org_timezone(ctx.timezone)
+    now = datetime.now(UTC)
+    starts = parsed.starts_at if parsed.starts_at.tzinfo else parsed.starts_at.replace(tzinfo=UTC)
+    if starts < now - timedelta(minutes=2):
+        return {
+            "needs_confirmation": False,
+            "status": "blocked",
+            "message": (
+                "Esse horário já passou no fuso do profissional. "
+                "Confirme outro horário ou a próxima ocorrência — não criei a proposta."
+            ),
+        }
+    when = format_human_datetime_range(
+        parsed.starts_at, parsed.ends_at, timezone=tz_name
+    )
     return {
         "needs_confirmation": True,
         "tool_name": "propose_create_appointment",
         "arguments": parsed.model_dump(mode="json"),
-        "summary": (
-            f"Agendar {client.full_name} em "
-            f"{parsed.starts_at.strftime('%d/%m/%Y %H:%M')}."
-        ),
+        "summary": f"Agendar {client.full_name}: {when}.",
         "summary_fields": {
-            "client_name": client.full_name,
-            "starts_at": parsed.starts_at.isoformat(),
-            "ends_at": parsed.ends_at.isoformat(),
+            "Cliente": client.full_name,
+            "Quando": when,
+            "Início": parsed.starts_at.isoformat(),
+            "Fim": parsed.ends_at.isoformat(),
         },
         "risk_class": "write_common",
     }
@@ -642,18 +657,18 @@ def _propose_reschedule_appointment(ctx: ToolContext, args: dict[str, Any]) -> d
         ctx.db, organization_id=ctx.organization_id, appointment_id=parsed.appointment_id
     )
     client_name = appointment.client.full_name if appointment.client else "cliente"
+    tz_name = resolve_org_timezone(ctx.timezone)
+    when = format_human_datetime_range(parsed.starts_at, parsed.ends_at, timezone=tz_name)
     return {
         "needs_confirmation": True,
         "tool_name": "propose_reschedule_appointment",
         "arguments": parsed.model_dump(mode="json"),
-        "summary": (
-            f"Remarcar compromisso de {client_name} para "
-            f"{parsed.starts_at.strftime('%d/%m/%Y %H:%M')}."
-        ),
+        "summary": f"Remarcar compromisso de {client_name}: {when}.",
         "summary_fields": {
-            "client_name": client_name,
-            "starts_at": parsed.starts_at.isoformat(),
-            "ends_at": parsed.ends_at.isoformat(),
+            "Cliente": client_name,
+            "Quando": when,
+            "Início": parsed.starts_at.isoformat(),
+            "Fim": parsed.ends_at.isoformat(),
         },
         "risk_class": "write_common",
     }

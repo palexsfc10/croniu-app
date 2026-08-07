@@ -23,12 +23,15 @@ from app.agent.providers.base import (
     ProviderError,
     ProviderTimeoutError,
 )
+from app.agent.temporal import build_temporal_context
 from app.agent.tools import TOOLS, ToolContext, get_tool, tool_specs
 from app.billing.entitlement import SubscriptionEntitlementService
 from app.config import Settings, get_settings
-from app.models.agent import AgentRun, AgentToolCall, AgentUsageDaily
+from app.models.agent import AgentMessage, AgentPendingAction, AgentRun, AgentToolCall, AgentUsageDaily
+from app.models.organization import Organization
 from app.services import agent_threads as threads_svc
 from app.services.auth import AuthError
+from sqlalchemy import select
 
 logger = logging.getLogger("croniu.agent")
 
@@ -62,6 +65,84 @@ class AgentTurnResult:
     usage: dict[str, Any] = field(default_factory=dict)
     status: str = "ok"
     thread_id: str | None = None
+    idempotent_replay: bool = False
+
+
+def _replay_client_message(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    thread_id: uuid.UUID,
+    client_message_id: str,
+) -> AgentTurnResult | None:
+    """Return prior turn result when the same client_message_id was already processed."""
+    rows = list(
+        db.scalars(
+            select(AgentMessage)
+            .where(
+                AgentMessage.thread_id == thread_id,
+                AgentMessage.organization_id == organization_id,
+                AgentMessage.role == "user",
+            )
+            .order_by(AgentMessage.created_at.desc())
+            .limit(40)
+        ).all()
+    )
+    match: AgentMessage | None = None
+    for row in rows:
+        meta = row.metadata_safe or {}
+        if meta.get("client_message_id") == client_message_id:
+            match = row
+            break
+    if match is None:
+        return None
+
+    followups = list(
+        db.scalars(
+            select(AgentMessage)
+            .where(
+                AgentMessage.thread_id == thread_id,
+                AgentMessage.organization_id == organization_id,
+                AgentMessage.created_at >= match.created_at,
+                AgentMessage.id != match.id,
+            )
+            .order_by(AgentMessage.created_at.asc())
+            .limit(10)
+        ).all()
+    )
+    assistant = next((m for m in followups if m.role == "assistant"), None)
+    pending_out: dict[str, Any] | None = None
+    if assistant and assistant.message_type == "pending_card":
+        meta = assistant.metadata_safe or {}
+        pending_id = meta.get("pending_action_id")
+        if pending_id:
+            pending_row = db.get(AgentPendingAction, uuid.UUID(str(pending_id)))
+            if (
+                pending_row
+                and pending_row.organization_id == organization_id
+                and pending_row.user_id == user_id
+            ):
+                pending_out = {
+                    "id": str(pending_row.id),
+                    "thread_id": str(pending_row.thread_id) if pending_row.thread_id else None,
+                    "tool_name": pending_row.tool_name,
+                    "risk_class": pending_row.risk_class,
+                    "summary": pending_row.summary_text,
+                    "summary_fields": pending_row.summary_fields,
+                    "arguments": pending_row.arguments,
+                    "expires_at": pending_row.expires_at.isoformat(),
+                    "status": pending_row.status,
+                }
+    reply = (assistant.content if assistant else "") or "Mensagem já processada."
+    status = "awaiting_confirmation" if pending_out and pending_out.get("status") == "pending" else "ok"
+    return AgentTurnResult(
+        reply=reply,
+        pending_action=pending_out,
+        status=status,
+        thread_id=str(thread_id),
+        idempotent_replay=True,
+    )
 
 
 def agent_status(settings: Settings | None = None) -> dict[str, Any]:
@@ -206,12 +287,15 @@ def run_turn(
     message: str,
     thread_id: uuid.UUID | None = None,
     request_id: str | None = None,
+    client_message_id: str | None = None,
+    input_modality: str = "text",
     provider: LLMProvider | None = None,
     settings: Settings | None = None,
 ) -> AgentTurnResult:
     settings = settings or get_settings()
     started = time.perf_counter()
     req_id = request_id or uuid.uuid4().hex[:16]
+    client_key = (client_message_id or "").strip()[:128] or None
 
     if not settings.ai_enabled:
         conf_svc.write_audit(
@@ -248,6 +332,18 @@ def run_turn(
             403,
         )
 
+    # Idempotent replay for voice/auto-send retries (same client_message_id).
+    if client_key and thread_id is not None:
+        replay = _replay_client_message(
+            db,
+            organization_id=organization_id,
+            user_id=user_id,
+            thread_id=thread_id,
+            client_message_id=client_key,
+        )
+        if replay is not None:
+            return replay
+
     _check_minute_rate_limit(settings, user_id=user_id)
     _check_org_daily_limit(db, settings, organization_id=organization_id)
     _check_hourly_rate_limit(settings, org_id=organization_id, user_id=user_id)
@@ -266,6 +362,9 @@ def run_turn(
         )
         return AgentTurnResult(reply=exc.message, status="error")
 
+    org = db.get(Organization, organization_id)
+    temporal = build_temporal_context(org_timezone=org.timezone if org else None)
+
     thread = threads_svc.get_or_create_thread(
         db,
         organization_id=organization_id,
@@ -273,8 +372,36 @@ def run_turn(
         thread_id=thread_id,
         title_hint=text,
     )
+
+    # Second chance idempotency after thread resolution
+    if client_key:
+        replay = _replay_client_message(
+            db,
+            organization_id=organization_id,
+            user_id=user_id,
+            thread_id=thread.id,
+            client_message_id=client_key,
+        )
+        if replay is not None:
+            return replay
+
+    meta: dict[str, Any] = {"input_modality": input_modality}
+    if client_key:
+        meta["client_message_id"] = client_key
+    meta["temporal_ref"] = {
+        "timezone": temporal.timezone,
+        "local_date": temporal.current_local_date.isoformat(),
+        "local_time": temporal.current_local_time.strftime("%H:%M:%S"),
+    }
+
     user_message = threads_svc.append_message(
-        db, thread=thread, role="user", content=text, message_type="text", user_id=user_id
+        db,
+        thread=thread,
+        role="user",
+        content=text,
+        message_type="text",
+        user_id=user_id,
+        metadata_safe=meta,
     )
     history = threads_svc.list_recent_messages(db, thread_id=thread.id, limit=HISTORY_LIMIT)
 
@@ -294,7 +421,9 @@ def run_turn(
 
     _increment_usage_daily(db, organization_id=organization_id, requests=1)
 
-    messages: list[LLMMessage] = [LLMMessage(role="system", content=get_system_prompt())]
+    messages: list[LLMMessage] = [
+        LLMMessage(role="system", content=get_system_prompt(temporal=temporal))
+    ]
     for row in history:
         if row.role in {"user", "assistant"}:
             messages.append(LLMMessage(role=row.role, content=row.content))
@@ -305,6 +434,7 @@ def run_turn(
         user_id=user_id,
         db=db,
         request_id=req_id,
+        timezone=temporal.timezone,
     )
     tool_trace: list[str] = []
     usage_total = {

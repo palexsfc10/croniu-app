@@ -39,6 +39,14 @@ import {
 } from "@/components/app/assistant/use-voice-recorder";
 
 const VOICE_PRIVACY_KEY = "croniu.assistant.voicePrivacyAck";
+const VOICE_AUTO_SEND_KEY = "croniu.assistant.voiceAutoSend";
+
+function newClientMessageId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function TypingIndicator() {
   return (
@@ -147,8 +155,12 @@ export default function AssistantPage() {
   const [showJump, setShowJump] = useState(false);
   const [threadsOpen, setThreadsOpen] = useState(false);
   const [voicePrivacyAck, setVoicePrivacyAck] = useState(true);
+  const [voiceAutoSend, setVoiceAutoSend] = useState(true);
   const [voiceUiPhase, setVoiceUiPhase] = useState<VoicePhase>("idle");
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const sendLockRef = useRef(false);
+  const voicePipelineAbortRef = useRef(false);
+  const mountedRef = useRef(true);
 
   const maxSeconds = status?.voice?.max_seconds ?? 60;
   const voice = useVoiceRecorder(maxSeconds);
@@ -156,11 +168,20 @@ export default function AssistantPage() {
     Boolean(status?.voice_enabled) && voice.supported && status?.enabled !== false;
 
   useEffect(() => {
+    mountedRef.current = true;
     try {
       setVoicePrivacyAck(localStorage.getItem(VOICE_PRIVACY_KEY) === "1");
+      const auto = localStorage.getItem(VOICE_AUTO_SEND_KEY);
+      // Default ON when unset
+      setVoiceAutoSend(auto !== "0");
     } catch {
       setVoicePrivacyAck(false);
+      setVoiceAutoSend(true);
     }
+    return () => {
+      mountedRef.current = false;
+      voicePipelineAbortRef.current = true;
+    };
   }, []);
 
   function patchPendingMessage(pendingId: string, patch: Partial<ChatMessage>) {
@@ -310,11 +331,17 @@ export default function AssistantPage() {
     stickToBottomRef.current = true;
   }
 
-  async function send(text: string, modality: "text" | "voice_transcript" = "text") {
+  async function send(
+    text: string,
+    modality: "text" | "voice_transcript" = "text",
+    options?: { clientMessageId?: string },
+  ) {
     const trimmed = text.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || busy || sendLockRef.current) return;
+    sendLockRef.current = true;
+    const clientMessageId = options?.clientMessageId || newClientMessageId();
     setBusy(true);
-    setPhase("Consultando");
+    setPhase(modality === "voice_transcript" ? "Enviando…" : "Consultando");
     setError(null);
     setFromVoice(false);
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
@@ -328,14 +355,23 @@ export default function AssistantPage() {
         body: JSON.stringify({ title: trimmed.slice(0, 80) }),
       });
       if (created.error || !created.data) {
+        sendLockRef.current = false;
+        if (!mountedRef.current) return;
         setBusy(false);
         setPhase(null);
         setError(created.error?.message || "Não foi possível criar a conversa.");
         return;
       }
       activeThread = created.data.id;
-      setThreadId(activeThread);
-      await loadThreads();
+      if (mountedRef.current) {
+        setThreadId(activeThread);
+        await loadThreads();
+      }
+    }
+
+    if (!mountedRef.current || voicePipelineAbortRef.current) {
+      sendLockRef.current = false;
+      return;
     }
 
     setPhase("Preparando resposta");
@@ -343,9 +379,16 @@ export default function AssistantPage() {
       `/api/v1/agent/threads/${activeThread}/messages`,
       {
         method: "POST",
-        body: JSON.stringify({ message: trimmed, input_modality: modality }),
+        headers: { "X-Request-Id": clientMessageId },
+        body: JSON.stringify({
+          message: trimmed,
+          input_modality: modality,
+          client_message_id: clientMessageId,
+        }),
       },
     );
+    sendLockRef.current = false;
+    if (!mountedRef.current) return;
     setBusy(false);
     setPhase(null);
 
@@ -535,7 +578,17 @@ export default function AssistantPage() {
     await voice.start();
   }
 
+  function setAutoSendPreference(enabled: boolean) {
+    setVoiceAutoSend(enabled);
+    try {
+      localStorage.setItem(VOICE_AUTO_SEND_KEY, enabled ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function finishRecording() {
+    voicePipelineAbortRef.current = false;
     setVoiceUiPhase("stopping");
     const blob = await voice.stop();
     if (!blob || blob.size < 64) {
@@ -552,30 +605,48 @@ export default function AssistantPage() {
     form.append("file", blob, `voice.${ext}`);
     form.append("duration_seconds", String(voice.elapsedSeconds || 1));
     setVoiceUiPhase("transcribing");
+    const clientMessageId = newClientMessageId();
     const result = await apiFetch<{ text: string }>("/api/v1/agent/transcribe", {
       method: "POST",
+      headers: { "X-Request-Id": `tx-${clientMessageId}` },
       body: form,
     });
-    setPhase(null);
     voice.reset();
+    if (!mountedRef.current || voicePipelineAbortRef.current) {
+      setVoiceUiPhase("idle");
+      setPhase(null);
+      return;
+    }
     if (result.error) {
       setVoiceUiPhase("error");
       setError(result.error.message);
+      setPhase(null);
       setVoiceUiPhase("idle");
       return;
     }
     const text = result.data?.text?.trim() || "";
     if (!text) {
       setError("Não identificamos fala nesse áudio. Tente novamente.");
+      setPhase(null);
       setVoiceUiPhase("idle");
       return;
     }
-    setInput(text);
-    setFromVoice(true);
-    setVoiceUiPhase("ready");
-    setVoiceNotice("Texto da voz pronto para revisão. Edite se quiser e toque em enviar.");
-    textareaRef.current?.focus();
-    window.setTimeout(() => setVoiceUiPhase("idle"), 400);
+
+    if (!voiceAutoSend) {
+      setInput(text);
+      setFromVoice(true);
+      setVoiceUiPhase("ready");
+      setPhase(null);
+      setVoiceNotice("Texto da voz pronto para revisão. Edite se quiser e toque em enviar.");
+      textareaRef.current?.focus();
+      window.setTimeout(() => setVoiceUiPhase("idle"), 400);
+      return;
+    }
+
+    // Default fluid path: transcribe → auto-send through the same textual pipeline.
+    setVoiceUiPhase("idle");
+    setPhase("Enviando…");
+    await send(text, "voice_transcript", { clientMessageId });
   }
 
   function onComposerKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -861,8 +932,10 @@ export default function AssistantPage() {
                       className="min-h-11 min-w-11 px-2"
                       aria-label="Cancelar gravação"
                       onClick={() => {
+                        voicePipelineAbortRef.current = true;
                         voice.cancel();
                         setVoiceUiPhase("idle");
+                        setPhase(null);
                       }}
                     >
                       <IconX />
@@ -960,6 +1033,15 @@ export default function AssistantPage() {
                     ? null
                     : "Gravação de voz não disponível neste navegador."}
               </p>
+            ) : null}
+            {voiceAvailable ? (
+              <button
+                type="button"
+                className="mt-2 text-left text-[11px] font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
+                onClick={() => setAutoSendPreference(!voiceAutoSend)}
+              >
+                Enviar voz automaticamente: {voiceAutoSend ? "ligado" : "desligado"}
+              </button>
             ) : null}
           </div>
         </div>
