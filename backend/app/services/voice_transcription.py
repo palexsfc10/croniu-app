@@ -261,6 +261,12 @@ def transcribe_audio(
 
         with httpx.Client(timeout=settings.voice_timeout_seconds) as client:
             with tmp_path.open("rb") as audio_file:
+                # whisper-1 supports verbose_json (duration); newer STT models prefer json
+                response_format = (
+                    "verbose_json"
+                    if settings.openai_transcription_model.startswith("whisper")
+                    else "json"
+                )
                 response = client.post(
                     f"{settings.llm_api_base.rstrip('/')}/audio/transcriptions",
                     headers={"Authorization": f"Bearer {api_key}"},
@@ -273,7 +279,7 @@ def transcribe_audio(
                     },
                     data={
                         "model": settings.openai_transcription_model,
-                        "response_format": "verbose_json",
+                        "response_format": response_format,
                     },
                 )
     except httpx.TimeoutException as exc:
