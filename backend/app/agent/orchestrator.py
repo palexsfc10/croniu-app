@@ -529,6 +529,7 @@ def run_turn(
                         "summary_fields": row.summary_fields,
                         "arguments": row.arguments,
                         "expires_at": row.expires_at.isoformat(),
+                        "status": row.status,
                     }
                     messages.append(
                         LLMMessage(

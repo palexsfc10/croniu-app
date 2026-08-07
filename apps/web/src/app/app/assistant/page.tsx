@@ -24,13 +24,25 @@ type PendingAction = {
   summary_fields?: Record<string, unknown> | null;
   arguments: Record<string, unknown>;
   expires_at: string;
+  status?: string;
+  result?: Record<string, unknown> | null;
+  error_code?: string | null;
 };
+
+type ActionUiStatus =
+  | "pending"
+  | "executing"
+  | "executed"
+  | "cancelled"
+  | "expired"
+  | "failed";
 
 type ChatMessage = {
   id?: string;
   role: "user" | "assistant" | "system";
   content: string;
   pending?: PendingAction | null;
+  actionStatus?: ActionUiStatus;
   statusLabel?: string;
 };
 
@@ -48,6 +60,9 @@ type AgentChatResponse = {
   pending_action?: PendingAction | null;
   tool_trace?: string[];
   usage?: Record<string, unknown>;
+  action_status?: string | null;
+  result?: Record<string, unknown> | null;
+  idempotent_replay?: boolean;
 };
 
 const SUGGESTIONS = [
@@ -64,13 +79,24 @@ function riskLabel(risk?: string) {
   return "Confirmação";
 }
 
+function actionHeadline(status: ActionUiStatus, risk?: string) {
+  if (status === "executing") return "Executando…";
+  if (status === "executed") return "Ação concluída";
+  if (status === "cancelled") return "Ação cancelada";
+  if (status === "expired") return "Proposta expirada";
+  if (status === "failed") return "Ação não concluída";
+  return `${riskLabel(risk)} · aguardando confirmação`;
+}
+
 function ConfirmationCard({
   pending,
+  actionStatus,
   busy,
   onConfirm,
   onCancel,
 }: {
   pending: PendingAction;
+  actionStatus: ActionUiStatus;
   busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -78,19 +104,24 @@ function ConfirmationCard({
   const fields = pending.summary_fields
     ? Object.entries(pending.summary_fields)
     : [];
+  const interactive = actionStatus === "pending" && !busy;
   return (
     <div
       role="region"
       aria-label="Confirmação de ação"
       className={[
         "mt-3 rounded-[var(--radius-md)] border px-3 py-3",
-        pending.risk_class === "write_sensitive"
-          ? "border-[var(--color-warning)]/40 bg-[var(--color-warning-subtle)]/50"
-          : "border-[var(--color-primary)]/25 bg-[var(--color-primary-subtle)]/35",
+        actionStatus === "failed" || actionStatus === "expired"
+          ? "border-[var(--color-danger)]/30 bg-[var(--color-surface-subtle)]"
+          : actionStatus === "executed"
+            ? "border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/35"
+            : pending.risk_class === "write_sensitive"
+              ? "border-[var(--color-warning)]/40 bg-[var(--color-warning-subtle)]/50"
+              : "border-[var(--color-primary)]/25 bg-[var(--color-primary-subtle)]/35",
       ].join(" ")}
     >
       <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-        {riskLabel(pending.risk_class)} · aguardando confirmação
+        {actionHeadline(actionStatus, pending.risk_class)}
       </p>
       <p className="mt-1 text-sm font-semibold text-[var(--color-ink)]">{pending.summary}</p>
       {fields.length ? (
@@ -103,25 +134,32 @@ function ConfirmationCard({
           ))}
         </dl>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button
-          type="button"
-          disabled={busy}
-          onClick={onConfirm}
-          className="min-h-11"
-        >
-          Confirmar
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={busy}
-          onClick={onCancel}
-          className="min-h-11"
-        >
-          Cancelar
-        </Button>
-      </div>
+      {actionStatus === "pending" ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            disabled={!interactive}
+            onClick={onConfirm}
+            className="min-h-11"
+          >
+            {busy ? "Confirmando…" : "Confirmar"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!interactive}
+            onClick={onCancel}
+            className="min-h-11"
+          >
+            Cancelar
+          </Button>
+        </div>
+      ) : null}
+      {actionStatus === "failed" || actionStatus === "expired" || actionStatus === "cancelled" ? (
+        <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
+          Se ainda precisar, peça uma nova proposta na conversa.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -139,6 +177,30 @@ export default function AssistantPage() {
   const [phase, setPhase] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const actionLockRef = useRef(false);
+
+  function patchPendingMessage(pendingId: string, patch: Partial<ChatMessage>) {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.pending?.id === pendingId
+          ? {
+              ...m,
+              ...patch,
+              pending: patch.pending === undefined ? m.pending : patch.pending,
+              actionStatus: patch.actionStatus ?? m.actionStatus,
+            }
+          : m,
+      ),
+    );
+  }
+
+  function mapActionStatus(raw?: string | null): ActionUiStatus {
+    if (raw === "executed" || raw === "cancelled" || raw === "expired" || raw === "failed" || raw === "executing") {
+      return raw;
+    }
+    if (raw === "confirmed") return "failed";
+    return "pending";
+  }
 
   const scrollToBottom = useCallback(() => {
     const node = bottomRef.current;
@@ -180,7 +242,12 @@ export default function AssistantPage() {
         role: string;
         content: string;
         message_type: string;
-        metadata_safe?: { pending_action?: PendingAction } | null;
+        metadata_safe?: {
+          pending_action?: PendingAction;
+          pending_action_id?: string;
+          tool_name?: string;
+          summary_fields?: Record<string, unknown>;
+        } | null;
       }>;
     }>(`/api/v1/agent/threads/${id}`);
     if (detail.error) {
@@ -190,17 +257,36 @@ export default function AssistantPage() {
     setThreadId(id);
     const mapped: ChatMessage[] = (detail.data?.messages || [])
       .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({
-        id: m.id,
-        role: m.role as "user" | "assistant",
-        content: m.content,
-        pending:
+      .map((m) => {
+        const pendingCard =
           m.message_type === "pending_card"
-            ? m.metadata_safe?.pending_action || null
-            : null,
-      }));
+            ? m.metadata_safe?.pending_action ||
+              (m.metadata_safe?.pending_action_id
+                ? {
+                    id: String(m.metadata_safe.pending_action_id),
+                    tool_name: String(m.metadata_safe.tool_name || ""),
+                    summary: m.content,
+                    summary_fields:
+                      (m.metadata_safe.summary_fields as Record<string, unknown>) || null,
+                    arguments: {},
+                    expires_at: "",
+                    status: "pending",
+                  }
+                : null)
+            : null;
+        return {
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          pending: pendingCard,
+          actionStatus: pendingCard ? ("pending" as ActionUiStatus) : undefined,
+          statusLabel: pendingCard ? "Aguardando confirmação" : undefined,
+        };
+      });
     setMessages(mapped);
-    const lastPending = [...mapped].reverse().find((m) => m.pending)?.pending;
+    const lastPending = [...mapped]
+      .reverse()
+      .find((m) => m.pending && (m.actionStatus === "pending" || !m.actionStatus))?.pending;
     setPending(lastPending || null);
   }
 
@@ -286,13 +372,14 @@ export default function AssistantPage() {
     const data = result.data!;
     if (data.pending_action) {
       setPhase("Aguardando confirmação");
-      setPending(data.pending_action);
+      setPending({ ...data.pending_action, status: data.pending_action.status || "pending" });
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           content: data.reply,
           pending: data.pending_action,
+          actionStatus: "pending",
           statusLabel: "Preparando ação",
         },
       ]);
@@ -310,49 +397,97 @@ export default function AssistantPage() {
     await loadThreads();
   }
 
-  async function confirmPending() {
-    if (!pending || busy) return;
+  async function confirmPending(target?: PendingAction) {
+    const action = target || pending;
+    if (!action || actionLockRef.current) return;
+    actionLockRef.current = true;
     setBusy(true);
     setPhase("Executando");
-    const result = await apiFetch<{ status: string; result?: unknown; message?: string }>(
-      `/api/v1/agent/pending/${pending.id}/confirm`,
+    setError(null);
+    patchPendingMessage(action.id, { actionStatus: "executing", statusLabel: "Executando" });
+
+    const confirmationKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `confirm-${action.id}-${Date.now()}`;
+
+    const result = await apiFetch<AgentChatResponse>(
+      `/api/v1/agent/pending/${action.id}/confirm`,
       {
         method: "POST",
-        body: JSON.stringify({ arguments: pending.arguments }),
+        headers: { "X-Request-Id": confirmationKey },
+        body: JSON.stringify({
+          arguments: action.arguments,
+          confirmation_key: confirmationKey,
+        }),
       },
     );
+
+    actionLockRef.current = false;
+    setBusy(false);
+    setPhase(null);
+
+    if (result.error) {
+      const details = result.error.details as { action_status?: string } | undefined;
+      const nextStatus = mapActionStatus(details?.action_status || result.error.code);
+      const human = result.error.message;
+      setError(human);
+      setPending(null);
+      patchPendingMessage(action.id, {
+        actionStatus: nextStatus === "pending" ? "failed" : nextStatus,
+        statusLabel: actionHeadline(nextStatus === "pending" ? "failed" : nextStatus),
+        content: human,
+      });
+      return;
+    }
+
+    const data = result.data!;
+    const nextStatus = mapActionStatus(data.action_status || data.status || "executed");
+    setPending(null);
+    setError(null);
+    patchPendingMessage(action.id, {
+      actionStatus: nextStatus,
+      statusLabel: "Ação concluída",
+      content: data.reply,
+      pending: data.pending_action
+        ? { ...data.pending_action, status: nextStatus }
+        : { ...action, status: nextStatus, result: data.result },
+    });
+  }
+
+  async function cancelPending(target?: PendingAction) {
+    const action = target || pending;
+    if (!action || actionLockRef.current) return;
+    actionLockRef.current = true;
+    setBusy(true);
+    setPhase("Cancelando");
+    setError(null);
+    const result = await apiFetch<AgentChatResponse>(
+      `/api/v1/agent/pending/${action.id}/cancel`,
+      { method: "POST" },
+    );
+    actionLockRef.current = false;
     setBusy(false);
     setPhase(null);
     if (result.error) {
+      const details = result.error.details as { action_status?: string } | undefined;
+      const nextStatus = mapActionStatus(details?.action_status || "cancelled");
       setError(result.error.message);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: result.error!.message, statusLabel: "Erro" },
-      ]);
+      setPending(null);
+      patchPendingMessage(action.id, {
+        actionStatus: nextStatus,
+        statusLabel: actionHeadline(nextStatus),
+        content: result.error.message,
+      });
       return;
     }
     setPending(null);
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: "Ação confirmada e registrada com sucesso.",
-        statusLabel: "Concluído",
-      },
-    ]);
-  }
-
-  async function cancelPending() {
-    if (!pending || busy) return;
-    setBusy(true);
-    await apiFetch(`/api/v1/agent/pending/${pending.id}/cancel`, { method: "POST" });
-    setBusy(false);
-    setPending(null);
-    setPhase(null);
-    setMessages((prev) => [
-      ...prev,
-      { role: "assistant", content: "Ação cancelada.", statusLabel: "Cancelado" },
-    ]);
+    setError(null);
+    patchPendingMessage(action.id, {
+      actionStatus: "cancelled",
+      statusLabel: "Cancelado",
+      content: result.data?.reply || "Ação cancelada.",
+    });
   }
 
   const disabled =
@@ -468,9 +603,10 @@ export default function AssistantPage() {
                 {m.pending ? (
                   <ConfirmationCard
                     pending={m.pending}
-                    busy={busy}
-                    onConfirm={() => void confirmPending()}
-                    onCancel={() => void cancelPending()}
+                    actionStatus={m.actionStatus || "pending"}
+                    busy={busy && pending?.id === m.pending.id}
+                    onConfirm={() => void confirmPending(m.pending!)}
+                    onCancel={() => void cancelPending(m.pending!)}
                   />
                 ) : null}
               </div>

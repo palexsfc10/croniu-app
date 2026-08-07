@@ -33,10 +33,10 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 
 
 def _http(exc: AuthError) -> HTTPException:
-    return HTTPException(
-        status_code=exc.status_code,
-        detail={"code": exc.code, "message": exc.message},
-    )
+    detail: dict = {"code": exc.code, "message": exc.message}
+    if exc.details is not None:
+        detail["details"] = exc.details
+    return HTTPException(status_code=exc.status_code, detail=detail)
 
 
 def _pending_action_out(row: AgentPendingAction) -> PendingActionOut:
@@ -49,6 +49,9 @@ def _pending_action_out(row: AgentPendingAction) -> PendingActionOut:
         summary_fields=row.summary_fields,
         arguments=row.arguments,
         expires_at=row.expires_at.isoformat(),
+        status=row.status,
+        result=row.result_safe,
+        error_code=row.error_sanitized,
     )
 
 
@@ -66,6 +69,7 @@ def _chat_out_from_result(result) -> AgentChatOut:
             summary_fields=result.pending_action.get("summary_fields"),
             arguments=result.pending_action["arguments"],
             expires_at=result.pending_action["expires_at"],
+            status=result.pending_action.get("status") or "pending",
         )
     return AgentChatOut(
         reply=result.reply,
@@ -256,7 +260,8 @@ def confirm_pending(
             user_id=auth.user.id,
             pending_id=pending_id,
             expected_arguments=payload.arguments,
-            request_id=request.headers.get("x-request-id"),
+            request_id=request.headers.get("x-request-id")
+            or payload.confirmation_key,
         )
     except AuthError as exc:
         raise _http(exc) from exc
@@ -264,13 +269,20 @@ def confirm_pending(
     tool_row = db.get(AgentPendingAction, pending_id)
     executor_key = tool_row.tool_name if tool_row else ""
     reply = conf_svc.confirm_reply_text(executor_key, result)
+    if data.get("idempotent_replay"):
+        reply = f"{reply} (já estava concluída — sem nova alteração.)"
     thread_id = data.get("thread_id")
+    pending_out = _pending_action_out(tool_row) if tool_row else None
     return AgentChatOut(
         reply=reply,
         status="executed",
         thread_id=thread_id,
         usage={},
         tool_trace=[data.get("pending_action_id", "")],
+        action_status=data.get("action_status") or "executed",
+        result=result if isinstance(result, dict) else None,
+        pending_action=pending_out,
+        idempotent_replay=bool(data.get("idempotent_replay")),
     )
 
 
@@ -282,7 +294,7 @@ def cancel_pending(
     db: Session = Depends(get_db),
 ) -> AgentChatOut:
     try:
-        conf_svc.cancel_pending_action(
+        row = conf_svc.cancel_pending_action(
             db,
             organization_id=auth.organization.id,
             user_id=auth.user.id,
@@ -291,4 +303,10 @@ def cancel_pending(
         )
     except AuthError as exc:
         raise _http(exc) from exc
-    return AgentChatOut(reply="Ação cancelada.", status="cancelled")
+    return AgentChatOut(
+        reply="Ação cancelada.",
+        status="cancelled",
+        action_status="cancelled",
+        pending_action=_pending_action_out(row),
+        thread_id=row.thread_id,
+    )

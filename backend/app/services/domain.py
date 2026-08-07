@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from urllib.parse import quote
 
 from sqlalchemy import Select, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.appointment import Appointment
@@ -188,18 +189,57 @@ def create_client(
     email: str | None,
     notes: str | None,
 ) -> Client:
+    normalized_email = _normalize_email(email)
+    if normalized_email:
+        existing = db.scalar(
+            select(Client).where(
+                Client.organization_id == organization_id,
+                Client.email == normalized_email,
+            )
+        )
+        if existing is not None:
+            raise AuthError(
+                "client_email_exists",
+                "Já existe um cliente com este e-mail nesta organização.",
+                409,
+            )
     client = Client(
         organization_id=organization_id,
         full_name=full_name.strip(),
         phone=_normalize_optional_str(phone),
-        email=_normalize_email(email),
+        email=normalized_email,
         notes=_normalize_optional_str(notes),
         status="active",
     )
     db.add(client)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        msg = str(getattr(exc, "orig", exc)).lower()
+        if "email" in msg:
+            raise AuthError(
+                "client_email_exists",
+                "Já existe um cliente com este e-mail nesta organização.",
+                409,
+            ) from exc
+        raise AuthError("conflict", "Não foi possível criar o cliente.", 409) from exc
     db.refresh(client)
     return client
+
+
+def find_client_by_email(
+    db: Session, *, organization_id: uuid.UUID, email: str
+) -> Client | None:
+    normalized = _normalize_email(email)
+    if not normalized:
+        return None
+    return db.scalar(
+        select(Client).where(
+            Client.organization_id == organization_id,
+            Client.email == normalized,
+        )
+    )
 
 
 def update_client(

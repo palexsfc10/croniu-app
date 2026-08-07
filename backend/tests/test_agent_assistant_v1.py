@@ -11,6 +11,7 @@ from app.agent.providers.fake import FakeLLMProvider
 from app.agent.tools import ToolContext, get_tool
 from app.config import Settings
 from app.db import SessionLocal
+from app.models.agent import AgentPendingAction
 from app.models.billing import Subscription, SubscriptionStatus
 from app.services import agent_threads as threads_svc
 from app.services.auth import AuthError
@@ -437,5 +438,115 @@ def test_prompt_injection_org_id_stripped_from_write_proposal(client, register_p
         # Confirm the client landed in the caller's own org, not the injected one.
         clients = client.get("/api/v1/clients").json()
         assert any(c["full_name"] == "Cliente Injetado" for c in clients)
+    finally:
+        db.close()
+
+
+def test_confirm_create_client_email_conflict_marks_failed(client, register_payload):
+    _auth(client, register_payload)
+    client.post(
+        "/api/v1/clients",
+        json={"full_name": "Existente", "email": "mesmo@teste.com"},
+    )
+    org_id, user_id = _me(client)
+    from app.agent import confirmation as conf_svc
+
+    db = SessionLocal()
+    try:
+        pending = conf_svc.create_pending_action(
+            db,
+            organization_id=org_id,
+            user_id=user_id,
+            tool_name="create_client",
+            arguments={
+                "full_name": "Novo Nome",
+                "phone": None,
+                "email": "mesmo@teste.com",
+                "notes": None,
+            },
+            summary_text="Criar cliente",
+        )
+        res = client.post(
+            f"/api/v1/agent/pending/{pending.id}/confirm",
+            json={
+                "arguments": {
+                    "full_name": "Novo Nome",
+                    "phone": None,
+                    "email": "mesmo@teste.com",
+                    "notes": None,
+                }
+            },
+        )
+        assert res.status_code == 409
+        body = res.json()
+        assert body["code"] == "client_email_exists"
+        assert body["details"]["action_status"] == "failed"
+        row = db.get(AgentPendingAction, pending.id)
+        db.refresh(row)
+        assert row.status == "failed"
+        assert row.error_sanitized == "client_email_exists"
+        # no duplicate client
+        clients = client.get("/api/v1/clients").json()
+        assert sum(1 for c in clients if c.get("email") == "mesmo@teste.com") == 1
+    finally:
+        db.close()
+
+
+def test_confirm_idempotent_after_success(client, register_payload):
+    _auth(client, register_payload)
+    org_id, user_id = _me(client)
+    from app.agent import confirmation as conf_svc
+
+    db = SessionLocal()
+    try:
+        pending = conf_svc.create_pending_action(
+            db,
+            organization_id=org_id,
+            user_id=user_id,
+            tool_name="create_client",
+            arguments={
+                "full_name": "Idempotente OK",
+                "phone": None,
+                "email": None,
+                "notes": None,
+            },
+            summary_text="Criar",
+        )
+        first = client.post(
+            f"/api/v1/agent/pending/{pending.id}/confirm",
+            json={"arguments": pending.arguments},
+        )
+        assert first.status_code == 200
+        second = client.post(
+            f"/api/v1/agent/pending/{pending.id}/confirm",
+            json={"arguments": pending.arguments},
+        )
+        assert second.status_code == 200
+        assert second.json()["idempotent_replay"] is True
+        clients = client.get("/api/v1/clients").json()
+        assert sum(1 for c in clients if c["full_name"] == "Idempotente OK") == 1
+    finally:
+        db.close()
+
+
+def test_cancel_then_confirm_rejected(client, register_payload):
+    _auth(client, register_payload)
+    org_id, user_id = _me(client)
+    from app.agent import confirmation as conf_svc
+
+    db = SessionLocal()
+    try:
+        pending = conf_svc.create_pending_action(
+            db,
+            organization_id=org_id,
+            user_id=user_id,
+            tool_name="create_client",
+            arguments={"full_name": "Cancelado", "phone": None, "email": None, "notes": None},
+            summary_text="Criar",
+        )
+        assert client.post(f"/api/v1/agent/pending/{pending.id}/cancel").status_code == 200
+        again = client.post(f"/api/v1/agent/pending/{pending.id}/confirm", json={})
+        assert again.status_code == 409
+        assert again.json()["code"] == "cancelled"
     finally:
         db.close()

@@ -24,6 +24,9 @@ class PendingActionOut(BaseModel):
     summary_fields: dict[str, Any] | None = None
     arguments: dict[str, Any]
     expires_at: datetime | str
+    status: str = "pending"
+    result: dict[str, Any] | None = None
+    error_code: str | None = None
 
 
 class AgentChatOut(BaseModel):
@@ -33,6 +36,9 @@ class AgentChatOut(BaseModel):
     pending_action: PendingActionOut | None = None
     tool_trace: list[str] = Field(default_factory=list)
     usage: dict[str, Any] = Field(default_factory=dict)
+    action_status: str | None = None
+    result: dict[str, Any] | None = None
+    idempotent_replay: bool = False
 
 
 class AgentConfirmIn(BaseModel):
@@ -40,6 +46,8 @@ class AgentConfirmIn(BaseModel):
 
     # Optional echo of arguments to prevent silent mutation
     arguments: dict[str, Any] | None = None
+    # Client-generated key to correlate retries of the same user intent
+    confirmation_key: str | None = Field(default=None, max_length=128)
 
 
 class AgentLimitsOut(BaseModel):

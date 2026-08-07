@@ -550,6 +550,20 @@ class ProposeAddMilestoneArgs(BaseModel):
 
 def _propose_create_client(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ProposeCreateClientArgs.model_validate(args)
+    if parsed.email:
+        existing = domain_svc.find_client_by_email(
+            ctx.db, organization_id=ctx.organization_id, email=parsed.email
+        )
+        if existing is not None:
+            return {
+                "needs_confirmation": False,
+                "status": "blocked",
+                "message": (
+                    f"Já existe um cliente com o e-mail informado "
+                    f"(“{existing.full_name}”). Use outro e-mail ou o cadastro existente."
+                ),
+                "existing_client_id": str(existing.id),
+            }
     details = []
     if parsed.phone:
         details.append(f"telefone {parsed.phone}")
@@ -561,7 +575,11 @@ def _propose_create_client(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
         "tool_name": "propose_create_client",
         "arguments": parsed.model_dump(mode="json"),
         "summary": f"Criar cliente “{parsed.full_name}”{extra}.",
-        "summary_fields": {"full_name": parsed.full_name, "phone": parsed.phone},
+        "summary_fields": {
+            "Cliente": parsed.full_name,
+            "Telefone": parsed.phone or "—",
+            "E-mail": parsed.email or "—",
+        },
         "risk_class": "write_common",
     }
 

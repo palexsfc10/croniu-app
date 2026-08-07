@@ -144,7 +144,9 @@ def test_pending_confirm_cancel_expire_and_double(client, register_payload):
         assert ok["result"]["status"] == "draft"
 
         again = client.post(f"/api/v1/agent/pending/{pending.id}/confirm", json={})
-        assert again.status_code == 409
+        assert again.status_code == 200
+        assert again.json()["status"] == "executed"
+        assert again.json()["idempotent_replay"] is True
 
         # expire
         pending3 = create_pending_action(
