@@ -36,7 +36,7 @@ docker exec \
   -e PYTHONPATH=/app \
   croniu-hml-api python /tmp/smoke_cycle_agenda_inner.py
 
-curl -sS -b "$COOKIE" "${API}/api/v1/agenda/day?on=2026-08-11" -o /tmp/ca_day.json -w 'day=%{http_code}\n'
+curl -sS -b "$COOKIE" "${API}/api/v1/agenda/day?day=2026-08-11" -o /tmp/ca_day.json -w 'day=%{http_code}\n'
 python3 - <<'PY'
 import json
 d=json.load(open("/tmp/ca_day.json"))
