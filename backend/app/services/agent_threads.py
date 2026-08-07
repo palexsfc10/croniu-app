@@ -73,10 +73,6 @@ def create_thread(
         db.add(existing_empty)
         db.commit()
         db.refresh(existing_empty)
-        enforce_organization_thread_limit(
-            db, organization_id=organization_id, protect_thread_id=existing_empty.id
-        )
-        db.refresh(existing_empty)
         return existing_empty
 
     row = AgentThread(
@@ -87,10 +83,6 @@ def create_thread(
     )
     db.add(row)
     db.commit()
-    db.refresh(row)
-    enforce_organization_thread_limit(
-        db, organization_id=organization_id, protect_thread_id=row.id
-    )
     db.refresh(row)
     return row
 
@@ -238,6 +230,11 @@ def append_message(
     db.add(thread)
     db.commit()
     db.refresh(row)
+    # Retention applies when a conversation becomes (or stays) non-empty — never on
+    # empty draft creation alone, which would risk deleting a real thread.
+    enforce_organization_thread_limit(
+        db, organization_id=thread.organization_id, protect_thread_id=thread.id
+    )
     return row
 
 

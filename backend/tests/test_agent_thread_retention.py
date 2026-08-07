@@ -295,6 +295,14 @@ def test_org_isolation_on_retention(client, register_payload):
         threads_svc.create_thread(
             db, organization_id=org_a, user_id=user_a, title="a-sixth"
         )
+        # Retention runs on first message of the new conversation.
+        sixth = threads_svc.get_latest_active_thread(
+            db, organization_id=org_a, user_id=user_a
+        )
+        assert sixth is not None
+        threads_svc.append_message(
+            db, thread=sixth, role="user", content="bump", user_id=user_a
+        )
         assert _count_threads(db, org_a) == 5
         assert _count_threads(db, org_b) == 5
     finally:
