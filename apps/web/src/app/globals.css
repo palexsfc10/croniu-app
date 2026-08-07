@@ -394,6 +394,9 @@ h2,
     animation: none;
   }
 }
+
+/* Bottom nav */
+.app-bottom-nav {
   background-color: color-mix(in srgb, var(--color-surface) 88%, var(--brand-50));
   background-image: linear-gradient(
     100deg,
