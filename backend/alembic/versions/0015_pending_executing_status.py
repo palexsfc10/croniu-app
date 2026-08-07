@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0015_agent_pending_executing_status"
+revision: str = "0015_pending_executing_status"
 down_revision: str | None = "0014_agent_pending_result_safe"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
