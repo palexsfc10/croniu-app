@@ -15,7 +15,19 @@ export type VoiceRecorderControls = {
   reset: () => void;
 };
 
-function pickMimeType(): string | undefined {
+const PREFERRED_AUDIO_CONSTRAINTS: MediaStreamConstraints = {
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
+};
+
+const FALLBACK_AUDIO_CONSTRAINTS: MediaStreamConstraints = {
+  audio: true,
+};
+
+export function pickMimeType(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;
   const candidates = [
     "audio/webm;codecs=opus",
@@ -28,6 +40,130 @@ function pickMimeType(): string | undefined {
     if (MediaRecorder.isTypeSupported(type)) return type;
   }
   return undefined;
+}
+
+function isDomException(err: unknown): err is DOMException {
+  return typeof DOMException !== "undefined" && err instanceof DOMException;
+}
+
+function sanitizeMessage(message: string | undefined): string {
+  if (!message) return "";
+  return message.replace(/[^\w\s.:,()\-]/g, "").slice(0, 120);
+}
+
+/** Map getUserMedia / MediaRecorder failures to human copy (no technical details). */
+export function mapMediaError(
+  err: unknown,
+  options: { insecureContext?: boolean } = {},
+): string {
+  if (options.insecureContext) {
+    return "A gravação de voz exige uma conexão segura HTTPS.";
+  }
+  const name = isDomException(err) ? err.name : "";
+  switch (name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "O acesso ao microfone foi bloqueado pelo navegador ou pelo sistema.";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "Nenhum microfone foi encontrado neste dispositivo.";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "O microfone está ocupado ou não pôde ser iniciado. Feche outros aplicativos e tente novamente.";
+    case "OverconstrainedError":
+    case "ConstraintNotSatisfiedError":
+      return "Este microfone não é compatível com a configuração solicitada.";
+    case "AbortError":
+      return "A inicialização do microfone foi interrompida. Tente novamente.";
+    case "SecurityError":
+      return "O navegador bloqueou o microfone por uma política de segurança.";
+    case "TypeError":
+      return "A gravação de voz exige uma conexão segura HTTPS.";
+    default:
+      return "Não foi possível iniciar o microfone. Verifique o dispositivo e tente novamente.";
+  }
+}
+
+type SanitizedDeviceSummary = {
+  count: number;
+  kinds: string[];
+  labeledCount: number;
+};
+
+async function summarizeAudioInputs(): Promise<SanitizedDeviceSummary | null> {
+  try {
+    if (!navigator.mediaDevices?.enumerateDevices) return null;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audio = devices.filter((d) => d.kind === "audioinput");
+    return {
+      count: audio.length,
+      kinds: ["audioinput"],
+      labeledCount: audio.filter((d) => Boolean(d.label)).length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function queryMicPermission(): Promise<string | null> {
+  try {
+    if (!navigator.permissions?.query) return null;
+    // Some browsers reject microphone in Permissions API — ignore.
+    const status = await navigator.permissions.query({
+      name: "microphone" as PermissionName,
+    });
+    return status.state;
+  } catch {
+    return null;
+  }
+}
+
+/** Sanitized one-shot diagnostics for ops (never deviceId/groupId/full labels/keys). */
+export async function collectVoiceEnvironmentDiag(): Promise<Record<string, unknown>> {
+  if (typeof window === "undefined") return { runtime: "ssr" };
+  const mimeSupported = pickMimeType() || null;
+  const mediaDevices = Boolean(navigator.mediaDevices);
+  const getUserMedia = Boolean(navigator.mediaDevices?.getUserMedia);
+  const devices = mediaDevices ? await summarizeAudioInputs() : null;
+  const permission = mediaDevices ? await queryMicPermission() : null;
+  return {
+    secureContext: window.isSecureContext,
+    protocol: window.location.protocol,
+    hostname: window.location.hostname,
+    mediaDevices,
+    getUserMedia,
+    mediaRecorder: typeof MediaRecorder !== "undefined",
+    permissionState: permission,
+    audioInputs: devices,
+    preferredMime: mimeSupported,
+    inIframe: window.self !== window.top,
+  };
+}
+
+function logVoiceDiag(event: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") {
+    // Keep production console sparse and sanitized
+    console.info(`[croniu.voice] ${event}`, payload);
+    return;
+  }
+  console.info(`[croniu.voice] ${event}`, payload);
+}
+
+async function acquireStream(): Promise<{
+  stream: MediaStream;
+  constraintsUsed: "preferred" | "fallback";
+}> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(PREFERRED_AUDIO_CONSTRAINTS);
+    return { stream, constraintsUsed: "preferred" };
+  } catch (err) {
+    const name = isDomException(err) ? err.name : "";
+    if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
+      const stream = await navigator.mediaDevices.getUserMedia(FALLBACK_AUDIO_CONSTRAINTS);
+      return { stream, constraintsUsed: "fallback" };
+    }
+    throw err;
+  }
 }
 
 export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
@@ -47,15 +183,36 @@ export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
   const stopResolverRef = useRef<((blob: Blob | null) => void) | null>(null);
   const mimeRef = useRef<string | undefined>(undefined);
   const startedAtRef = useRef<number>(0);
+  const startingRef = useRef(false);
+  const phaseRef = useRef<VoicePhase>("idle");
 
   useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    const secure = typeof window !== "undefined" && window.isSecureContext;
     const ok =
       typeof window !== "undefined" &&
       typeof navigator !== "undefined" &&
+      secure &&
       !!navigator.mediaDevices?.getUserMedia &&
       typeof MediaRecorder !== "undefined";
     setSupported(ok);
     mimeRef.current = pickMimeType();
+  }, []);
+
+  const stopAllTracks = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    for (const track of stream.getTracks()) {
+      try {
+        track.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    streamRef.current = null;
   }, []);
 
   const cleanupMedia = useCallback(() => {
@@ -72,12 +229,21 @@ export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
       void audioCtxRef.current.close().catch(() => undefined);
       audioCtxRef.current = null;
     }
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+    try {
+      if (mediaRef.current && mediaRef.current.state !== "inactive") {
+        mediaRef.current.ondataavailable = null;
+        mediaRef.current.onstop = null;
+        mediaRef.current.stop();
+      }
+    } catch {
+      /* ignore */
+    }
     mediaRef.current = null;
-  }, []);
+    stopAllTracks();
+  }, [stopAllTracks]);
 
   const reset = useCallback(() => {
+    startingRef.current = false;
     cleanupMedia();
     chunksRef.current = [];
     setElapsedSeconds(0);
@@ -87,6 +253,7 @@ export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
   }, [cleanupMedia]);
 
   const cancel = useCallback(() => {
+    startingRef.current = false;
     try {
       if (mediaRef.current && mediaRef.current.state !== "inactive") {
         mediaRef.current.ondataavailable = null;
@@ -104,39 +271,102 @@ export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
   }, [cleanupMedia]);
 
   const start = useCallback(async () => {
-    setError(null);
-    if (!supported) {
-      setPhase("error");
-      setError("Seu navegador não permite gravação de áudio neste dispositivo.");
+    if (startingRef.current) return;
+    if (phaseRef.current === "recording" || phaseRef.current === "requesting_permission") {
       return;
     }
+
+    setError(null);
+    const insecure =
+      typeof window !== "undefined" && window.isSecureContext === false;
+
+    if (insecure || typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setPhase("error");
+      setError(mapMediaError(new DOMException("", "SecurityError"), { insecureContext: true }));
+      window.setTimeout(() => setPhase("idle"), 0);
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      setPhase("error");
+      setError("Não foi possível iniciar o microfone. Verifique o dispositivo e tente novamente.");
+      window.setTimeout(() => setPhase("idle"), 0);
+      return;
+    }
+
+    startingRef.current = true;
     setPhase("requesting_permission");
+
+    const env = await collectVoiceEnvironmentDiag();
+    logVoiceDiag("start_attempt", env);
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Permissions API is advisory only — getUserMedia is the source of truth.
+      const { stream, constraintsUsed } = await acquireStream();
+      if (!startingRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      const liveTracks = stream.getAudioTracks().filter((t) => t.readyState === "live");
+      logVoiceDiag("getUserMedia_ok", {
+        constraintsUsed,
+        trackCount: stream.getTracks().length,
+        liveAudioTracks: liveTracks.length,
+        permissionState: env.permissionState,
+        audioInputCount: (env.audioInputs as SanitizedDeviceSummary | null)?.count ?? null,
+      });
+
+      if (liveTracks.length === 0) {
+        stream.getTracks().forEach((t) => t.stop());
+        throw new DOMException("No live audio track", "NotReadableError");
+      }
+
       streamRef.current = stream;
       chunksRef.current = [];
-      const mime = mimeRef.current;
-      const recorder = mime
-        ? new MediaRecorder(stream, { mimeType: mime })
-        : new MediaRecorder(stream);
+      const mime = mimeRef.current || pickMimeType();
+      mimeRef.current = mime;
+
+      let recorder: MediaRecorder;
+      try {
+        recorder = mime
+          ? new MediaRecorder(stream, { mimeType: mime })
+          : new MediaRecorder(stream);
+      } catch (recorderErr) {
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        logVoiceDiag("mediarecorder_failed", {
+          name: isDomException(recorderErr) ? recorderErr.name : "unknown",
+          message: sanitizeMessage(
+            isDomException(recorderErr) ? recorderErr.message : String(recorderErr),
+          ),
+          mime: mime || null,
+        });
+        throw recorderErr;
+      }
+
       mediaRef.current = recorder;
 
       try {
-        const ctx = new AudioContext();
-        audioCtxRef.current = ctx;
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 32;
-        source.connect(analyser);
-        analyserRef.current = analyser;
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        const tick = () => {
-          analyser.getByteFrequencyData(data);
-          const sample = Array.from(data.slice(0, 5)).map((v) => Math.max(0.12, v / 255));
-          setLevels(sample);
+        const Ctx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (Ctx) {
+          const ctx = new Ctx();
+          audioCtxRef.current = ctx;
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 32;
+          source.connect(analyser);
+          analyserRef.current = analyser;
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          const tick = () => {
+            analyser.getByteFrequencyData(data);
+            const sample = Array.from(data.slice(0, 5)).map((v) => Math.max(0.12, v / 255));
+            setLevels(sample);
+            rafRef.current = requestAnimationFrame(tick);
+          };
           rafRef.current = requestAnimationFrame(tick);
-        };
-        rafRef.current = requestAnimationFrame(tick);
+        }
       } catch {
         /* waveform optional */
       }
@@ -158,16 +388,20 @@ export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
       startedAtRef.current = Date.now();
       setElapsedSeconds(0);
       setPhase("recording");
+      startingRef.current = false;
+
       timerRef.current = window.setInterval(() => {
         const elapsed = Math.floor((Date.now() - startedAtRef.current) / 1000);
         setElapsedSeconds(elapsed);
         if (elapsed >= maxSeconds) {
-          void (async () => {
-            setPhase("stopping");
-            if (mediaRef.current && mediaRef.current.state !== "inactive") {
+          setPhase("stopping");
+          if (mediaRef.current && mediaRef.current.state !== "inactive") {
+            try {
               mediaRef.current.stop();
+            } catch {
+              /* ignore */
             }
-          })();
+          }
         }
       }, 250);
 
@@ -179,22 +413,25 @@ export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
         }
       }
     } catch (err) {
+      startingRef.current = false;
       cleanupMedia();
+      const insecureNow =
+        typeof window !== "undefined" && window.isSecureContext === false;
+      logVoiceDiag("getUserMedia_failed", {
+        name: isDomException(err) ? err.name : typeof err,
+        message: sanitizeMessage(isDomException(err) ? err.message : String(err)),
+        permissionState: env.permissionState,
+        secureContext: !insecureNow,
+        audioInputCount: (env.audioInputs as SanitizedDeviceSummary | null)?.count ?? null,
+      });
       setPhase("error");
-      const name = err instanceof DOMException ? err.name : "";
-      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-        setError(
-          "Não conseguimos acessar o microfone. Libere a permissão nas configurações do navegador.",
-        );
-      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-        setError("Nenhum microfone foi encontrado neste dispositivo.");
-      } else {
-        setError("Não foi possível iniciar a gravação. Tente novamente.");
-      }
+      setError(mapMediaError(err, { insecureContext: insecureNow }));
+      window.setTimeout(() => setPhase("idle"), 0);
     }
-  }, [cleanupMedia, maxSeconds, supported]);
+  }, [cleanupMedia, maxSeconds]);
 
   const stop = useCallback(async () => {
+    startingRef.current = false;
     setPhase("stopping");
     return new Promise<Blob | null>((resolve) => {
       const recorder = mediaRef.current;
@@ -213,12 +450,16 @@ export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
         cleanupMedia();
         setPhase("error");
         setError("A gravação foi interrompida. Tente novamente.");
+        window.setTimeout(() => setPhase("idle"), 0);
         resolve(null);
       }
     });
   }, [cleanupMedia]);
 
-  useEffect(() => () => cleanupMedia(), [cleanupMedia]);
+  useEffect(() => () => {
+    startingRef.current = false;
+    cleanupMedia();
+  }, [cleanupMedia]);
 
   return {
     phase,

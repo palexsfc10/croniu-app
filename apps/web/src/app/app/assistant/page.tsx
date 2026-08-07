@@ -514,7 +514,18 @@ export default function AssistantPage() {
   }
 
   async function handleMicClick() {
+    if (
+      voice.phase === "requesting_permission" ||
+      voice.phase === "recording" ||
+      voice.phase === "stopping" ||
+      voice.phase === "uploading" ||
+      voiceUiPhase === "uploading" ||
+      voiceUiPhase === "transcribing"
+    ) {
+      return;
+    }
     setVoiceNotice(null);
+    setError(null);
     if (!voicePrivacyAck) {
       setVoiceNotice(
         "O áudio será enviado com segurança para transcrição e descartado após o processamento.",
@@ -907,9 +918,19 @@ export default function AssistantPage() {
                   <Button
                     type="button"
                     variant="ai"
-                    disabled={disabled || busy}
+                    disabled={
+                      disabled ||
+                      busy ||
+                      voice.phase === "requesting_permission" ||
+                      voice.phase === "stopping"
+                    }
                     className="min-h-11 min-w-11 shrink-0 px-2"
-                    aria-label="Gravar mensagem de voz"
+                    aria-label={
+                      voice.phase === "requesting_permission"
+                        ? "Solicitando acesso ao microfone"
+                        : "Gravar mensagem de voz"
+                    }
+                    aria-busy={voice.phase === "requesting_permission"}
                     onClick={() => void handleMicClick()}
                   >
                     <IconMic />
