@@ -148,6 +148,89 @@ describe("AssistantPage premium shell", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: /Conversas recentes/i })).not.toBeInTheDocument();
     });
+
+    const createCalls = apiFetch.mock.calls.filter(
+      (c) => String(c[0]).endsWith("/agent/threads") && (c[1] as RequestInit | undefined)?.method === "POST",
+    );
+    expect(createCalls).toHaveLength(0);
+  });
+
+  it("does not create a thread on mount or listing", async () => {
+    mockStatus();
+    render(<AssistantPage />);
+    await screen.findByRole("heading", { name: "Assistente" });
+    await waitFor(() => {
+      expect(apiFetch.mock.calls.some((c) => String(c[0]).includes("/agent/status"))).toBe(true);
+    });
+    await waitFor(() => {
+      expect(
+        apiFetch.mock.calls.some(
+          (c) =>
+            String(c[0]).endsWith("/agent/threads") &&
+            (c[1] as RequestInit | undefined)?.method !== "POST",
+        ),
+      ).toBe(true);
+    });
+    const createCalls = apiFetch.mock.calls.filter(
+      (c) => String(c[0]).endsWith("/agent/threads") && (c[1] as RequestInit | undefined)?.method === "POST",
+    );
+    expect(createCalls).toHaveLength(0);
+  });
+
+  it("resumes the latest existing thread on mount without creating", async () => {
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (String(path).includes("/agent/status")) {
+        return {
+          data: {
+            enabled: true,
+            provider: "fake",
+            model: "fake",
+            tools: [],
+            entitlement_ok: true,
+          },
+        };
+      }
+      if (String(path).endsWith("/agent/threads") && init?.method === "POST") {
+        throw new Error("must not create thread on mount");
+      }
+      if (String(path).endsWith("/agent/threads")) {
+        return {
+          data: {
+            items: [
+              {
+                id: "thread-latest",
+                title: "Dia",
+                status: "active",
+                created_at: "2026-08-01T10:00:00Z",
+                updated_at: "2026-08-07T10:00:00Z",
+              },
+            ],
+          },
+        };
+      }
+      if (String(path).includes("/agent/threads/thread-latest")) {
+        return {
+          data: {
+            thread: {
+              id: "thread-latest",
+              title: "Dia",
+              status: "active",
+              created_at: "2026-08-01T10:00:00Z",
+              updated_at: "2026-08-07T10:00:00Z",
+            },
+            messages: [
+              { id: "m1", role: "user", content: "Como está meu dia?", message_type: "text" },
+              { id: "m2", role: "assistant", content: "Seu dia está livre.", message_type: "text" },
+            ],
+          },
+        };
+      }
+      return { data: null };
+    });
+
+    render(<AssistantPage />);
+    expect(await screen.findByText(/Seu dia está livre/i)).toBeInTheDocument();
+    expect(screen.queryByText("O que vamos organizar hoje?")).not.toBeInTheDocument();
   });
 
   it("sends suggestion through the chat pipeline and hides empty-state after start", async () => {

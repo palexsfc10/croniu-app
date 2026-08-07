@@ -168,6 +168,10 @@ export default function AssistantPage() {
   const voicePipelineAbortRef = useRef(false);
   const mountedRef = useRef(true);
   const micLongPressRef = useRef<number | null>(null);
+  /** After "Nova conversa", next send may create a thread; otherwise resume latest. */
+  const wantsNewThreadRef = useRef(false);
+  const autoOpenedRef = useRef(false);
+  const createThreadPromiseRef = useRef<Promise<string | null> | null>(null);
 
   const greeting = useMemo(
     () => personalGreeting(me?.user.full_name, me?.organization.timezone),
@@ -278,7 +282,11 @@ export default function AssistantPage() {
 
   const loadThreads = useCallback(async () => {
     const result = await apiFetch<{ items: Thread[] }>("/api/v1/agent/threads");
-    if (result.data?.items) setThreads(result.data.items);
+    if (result.data?.items) {
+      setThreads(result.data.items);
+      return result.data.items;
+    }
+    return [] as Thread[];
   }, []);
 
   useEffect(() => {
@@ -288,11 +296,18 @@ export default function AssistantPage() {
       if (cancelled) return;
       if (result.data) setStatus(result.data);
       setStatusLoaded(true);
-      await loadThreads();
+      const items = await loadThreads();
+      if (cancelled || autoOpenedRef.current || wantsNewThreadRef.current) return;
+      if (items.length > 0) {
+        autoOpenedRef.current = true;
+        await openThread(items[0].id);
+      }
     })();
     return () => {
       cancelled = true;
     };
+    // openThread is stable enough for mount bootstrap; intentional omit from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadThreads]);
 
   useEffect(() => {
@@ -304,6 +319,7 @@ export default function AssistantPage() {
   }, [input]);
 
   async function openThread(id: string) {
+    wantsNewThreadRef.current = false;
     setError(null);
     setPending(null);
     setThreadsOpen(false);
@@ -364,6 +380,7 @@ export default function AssistantPage() {
   }
 
   async function startNewThread() {
+    wantsNewThreadRef.current = true;
     setMessages([]);
     setPending(null);
     setThreadId(null);
@@ -373,6 +390,30 @@ export default function AssistantPage() {
     setInput("");
     setThreadsOpen(false);
     stickToBottomRef.current = true;
+  }
+
+  async function ensureThreadForSend(titleHint: string): Promise<string | null> {
+    if (createThreadPromiseRef.current) {
+      return createThreadPromiseRef.current;
+    }
+    const promise = (async () => {
+      const created = await apiFetch<Thread>("/api/v1/agent/threads", {
+        method: "POST",
+        body: JSON.stringify({ title: titleHint.slice(0, 80) }),
+      });
+      if (created.error || !created.data) {
+        setError(created.error?.message || "Não foi possível criar a conversa.");
+        return null;
+      }
+      wantsNewThreadRef.current = false;
+      return created.data.id;
+    })();
+    createThreadPromiseRef.current = promise;
+    try {
+      return await promise;
+    } finally {
+      createThreadPromiseRef.current = null;
+    }
   }
 
   async function send(
@@ -393,20 +434,22 @@ export default function AssistantPage() {
     stickToBottomRef.current = true;
 
     let activeThread = threadId;
+    if (!activeThread && !wantsNewThreadRef.current) {
+      const listed = threads.length > 0 ? threads : await loadThreads();
+      if (listed[0]?.id) {
+        activeThread = listed[0].id;
+        if (mountedRef.current) setThreadId(activeThread);
+      }
+    }
     if (!activeThread) {
-      const created = await apiFetch<Thread>("/api/v1/agent/threads", {
-        method: "POST",
-        body: JSON.stringify({ title: trimmed.slice(0, 80) }),
-      });
-      if (created.error || !created.data) {
+      activeThread = await ensureThreadForSend(trimmed);
+      if (!activeThread) {
         sendLockRef.current = false;
         if (!mountedRef.current) return;
         setBusy(false);
         setPhase(null);
-        setError(created.error?.message || "Não foi possível criar a conversa.");
         return;
       }
-      activeThread = created.data.id;
       if (mountedRef.current) {
         setThreadId(activeThread);
         await loadThreads();
