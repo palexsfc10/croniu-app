@@ -33,6 +33,7 @@ curl -sS -b "$COOKIE" -H 'Content-Type: application/json' \
 docker cp /tmp/_ops_smoke_cycle_agenda_inner.py croniu-hml-api:/tmp/smoke_cycle_agenda_inner.py
 docker exec \
   -e CA_ORG="$ORG" -e CA_USER="$USER" -e CA_CID="$CID" -e CA_SID="$SID" -e CA_TID="$TID" \
+  -e PYTHONPATH=/app \
   croniu-hml-api python /tmp/smoke_cycle_agenda_inner.py
 
 curl -sS -b "$COOKIE" "${API}/api/v1/agenda/day?on=2026-08-11" -o /tmp/ca_day.json -w 'day=%{http_code}\n'
