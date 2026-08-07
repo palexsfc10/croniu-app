@@ -36,6 +36,7 @@ from app.models.renewal_request import RenewalRequest
 from app.models.service import Service
 from app.models.session import Session
 from app.models.user import User
+from app.models.user_feedback import UserFeedback
 
 __all__ = [
     "Base",
@@ -73,4 +74,5 @@ __all__ = [
     "BillingPrice",
     "BillingCheckout",
     "BillingWebhookEvent",
+    "UserFeedback",
 ]

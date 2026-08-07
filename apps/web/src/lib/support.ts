@@ -1,7 +1,10 @@
-/** Central support inbox for feedback and help. */
-export const SUPPORT_EMAIL = "appcroniu@gmail.com";
+/**
+ * Legacy support helpers — do not surface e-mail or mailto in the product UI.
+ * Feedback is submitted via POST /api/v1/feedback.
+ */
+export const SUPPORT_EMAIL = "";
 
-export function supportMailto(subject = "Croniu — feedback / ajuda") {
-  const params = new URLSearchParams({ subject });
-  return `mailto:${SUPPORT_EMAIL}?${params.toString()}`;
+/** @deprecated Prefer in-app /app/help. Kept only to avoid broken imports during migration. */
+export function supportMailto(_subject = "Croniu — feedback / ajuda") {
+  return "/app/help";
 }

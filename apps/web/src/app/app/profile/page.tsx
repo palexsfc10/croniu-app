@@ -1,91 +1,64 @@
 "use client";
 
-import { BackLink } from "@/components/app/back-link";
-import Link from "next/link";
-import { useAuth } from "@/components/auth/auth-provider";
-import { Button } from "@/components/ui/button";
-import { SUPPORT_EMAIL, supportMailto } from "@/lib/support";
+import { SettingsGroup, SettingsRow } from "@/components/app/settings-list";
+import {
+  IconBriefcase,
+  IconLayers,
+  IconLifeBuoy,
+  IconMapPin,
+  IconSliders,
+} from "@/components/ui/icons";
 
-export default function ProfilePage() {
-  const { me, logout } = useAuth();
-
-  if (!me) return null;
-
+export default function MorePage() {
   return (
-    <div className="space-y-4 animate-fade-up">
-      <BackLink href="/app" label="Hoje" />
-      <div>
+    <div className="mx-auto max-w-2xl space-y-6 animate-fade-up md:max-w-3xl">
+      <header className="space-y-1">
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Mais</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Conta, preferências e cadastros.</p>
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          Configure como o Croniu funciona para você.
+        </p>
+      </header>
+
+      <div className="grid gap-6 md:grid-cols-2 md:gap-5">
+        <SettingsGroup title="Seu trabalho">
+          <SettingsRow
+            href="/app/services"
+            title="Serviços"
+            description="Atividades, duração e valores."
+            Icon={IconBriefcase}
+          />
+          <SettingsRow
+            href="/app/cycle-templates"
+            title="Modelos de ciclo"
+            description="Frequência e duração dos ciclos."
+            Icon={IconLayers}
+          />
+          <SettingsRow
+            href="/app/locations"
+            title="Locais de atendimento"
+            description="Onde você atende seus clientes."
+            Icon={IconMapPin}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup title="Preferências">
+          <SettingsRow
+            href="/app/preferences"
+            title="Preferências gerais"
+            description="Fuso horário e pagamentos no portal."
+            Icon={IconSliders}
+          />
+        </SettingsGroup>
       </div>
-      <dl className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">Nome</dt>
-          <dd className="text-base font-medium">{me.user.full_name}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">E-mail</dt>
-          <dd className="text-base font-medium">{me.user.email}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">Organização</dt>
-          <dd className="text-base font-medium">{me.organization.name}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">Papel</dt>
-          <dd className="text-base font-medium">{me.role}</dd>
-        </div>
-      </dl>
-      <div className="space-y-2">
-        <Link
-          href="/app/billing"
-          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
-        >
-          Assinatura
-        </Link>
-        <Link
-          href="/app/manual"
-          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
-        >
-          Manual
-        </Link>
-        <Link
-          href="/app/services"
-          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
-        >
-          Serviços
-        </Link>
-        <Link
-          href="/app/cycle-templates"
-          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
-        >
-          Modelos de ciclo
-        </Link>
-        <Link
-          href="/app/locations"
-          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
-        >
-          Locais
-        </Link>
-        <Link
-          href="/app/preferences"
-          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 font-semibold text-[var(--color-primary)]"
-        >
-          Preferências (fuso horário)
-        </Link>
-      </div>
-      <p className="text-center text-xs text-[var(--color-ink-muted)]">
-        Dúvidas ou sugestões?{" "}
-        <a
-          href={supportMailto()}
-          className="font-medium text-[var(--color-link)] underline-offset-2 hover:underline"
-        >
-          {SUPPORT_EMAIL}
-        </a>
-      </p>
-      <Button variant="secondary" fullWidth onClick={() => void logout()}>
-        Sair
-      </Button>
+
+      <SettingsGroup title="Suporte">
+        <SettingsRow
+          href="/app/help"
+          title="Ajuda e feedback"
+          description="Manual rápido e envio de sugestões."
+          Icon={IconLifeBuoy}
+        />
+      </SettingsGroup>
     </div>
   );
 }

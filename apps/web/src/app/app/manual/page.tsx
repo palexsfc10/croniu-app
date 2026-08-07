@@ -52,7 +52,7 @@ const sections = [
 export default function ManualPage() {
   return (
     <div className="space-y-5 animate-fade-up">
-      <BackLink href="/app" label="Hoje" />
+      <BackLink href="/app/help" label="Ajuda e feedback" />
       <div>
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Manual</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">

@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(agenda_routes.router, prefix="/api/v1")
     from app.api import agent as agent_routes
     from app.api import evaluations as evaluations_routes
+    from app.api import feedback as feedback_routes
     from app.api import my_cycle as my_cycle_routes
     from app.api import public_my_cycle as public_my_cycle_routes
 
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(public_my_cycle_routes.router, prefix="/api/v1")
     app.include_router(evaluations_routes.router, prefix="/api/v1")
     app.include_router(agent_routes.router, prefix="/api/v1")
+    app.include_router(feedback_routes.router, prefix="/api/v1")
     from app.api import billing as billing_routes
     from app.api import billing_webhooks as billing_webhooks_routes
 

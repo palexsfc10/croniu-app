@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
+from app.schemas.feedback import (
+    FeedbackAdminListOut,
+    FeedbackAdminOut,
+    FeedbackStatusUpdateIn,
+)
 from app.schemas.platform import (
     OrganizationDetail,
     OverviewMetrics,
@@ -187,6 +193,51 @@ def platform_ai_ops(
     from app.services.platform_ai_ops import get_ai_ops_overview
 
     return get_ai_ops_overview(db)
+
+
+@router.get("/feedbacks", response_model=FeedbackAdminListOut)
+def platform_feedbacks(
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=50),
+    category: str | None = Query(default=None, max_length=32),
+    status_filter: str | None = Query(default=None, alias="status", max_length=32),
+    created_from: date | None = Query(default=None),
+    created_to: date | None = Query(default=None),
+) -> FeedbackAdminListOut:
+    from app.services import feedback as feedback_svc
+
+    return feedback_svc.list_feedbacks_admin(
+        db,
+        page=page,
+        page_size=page_size,
+        category=category,
+        status=status_filter,
+        created_from=created_from,
+        created_to=created_to,
+    )
+
+
+@router.patch("/feedbacks/{feedback_id}", response_model=FeedbackAdminOut)
+def platform_feedback_status(
+    feedback_id: uuid.UUID,
+    payload: FeedbackStatusUpdateIn,
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> FeedbackAdminOut:
+    from app.services import feedback as feedback_svc
+    from app.services.auth import AuthError
+
+    try:
+        return feedback_svc.update_feedback_status(
+            db, feedback_id=feedback_id, status=payload.status
+        )
+    except AuthError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
 
 
 @router.post("/self-elevate", include_in_schema=False)

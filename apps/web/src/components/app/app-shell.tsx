@@ -2,20 +2,29 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState, type ComponentType, type SVGProps } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ComponentType,
+  type SVGProps,
+} from "react";
 import { BrandMark, BrandWordmark } from "@/components/brand";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import {
   IconCalendarDays,
+  IconCreditCard,
   IconHome,
   IconLayoutGrid,
+  IconLifeBuoy,
+  IconLogOut,
   IconRefreshCw,
   IconUser,
   IconUsersRound,
 } from "@/components/ui/icons";
 import { BillingGate } from "@/components/billing/billing-gate";
-import { SUPPORT_EMAIL, supportMailto } from "@/lib/support";
 
 const navItems: {
   href: string;
@@ -56,17 +65,28 @@ function assistantLinkClass(active: boolean) {
   ].join(" ");
 }
 
+function menuItemClass(danger = false) {
+  return [
+    "flex min-h-11 w-full items-center gap-2.5 px-3 py-2.5 text-sm font-semibold transition-colors",
+    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--color-focus)]",
+    danger
+      ? "text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)]"
+      : "text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]",
+  ].join(" ");
+}
+
 function ProfileMenu({
   fullName,
   orgName,
-  role,
+  onLogout,
 }: {
   fullName: string;
   orgName: string;
-  role: string;
+  onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   const initials = fullName
     .split(/\s+/)
@@ -80,10 +100,14 @@ function ProfileMenu({
     function onPointerDown(event: MouseEvent) {
       if (!rootRef.current?.contains(event.target as Node)) {
         setOpen(false);
+        triggerRef.current?.focus();
       }
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     }
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -93,9 +117,15 @@ function ProfileMenu({
     };
   }, [open]);
 
+  function close() {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
   return (
     <div className="relative" ref={rootRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-sm font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
         aria-label="Abrir menu da conta"
@@ -111,46 +141,109 @@ function ProfileMenu({
           id={menuId}
           role="menu"
           aria-label="Conta"
-          className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-[var(--shadow-md)]"
+          className="absolute right-0 z-30 mt-2 w-[min(17.5rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-[var(--shadow-md)]"
         >
-          <div className="border-b border-[var(--color-border)] px-3 py-2">
+          <div className="border-b border-[var(--color-border)] px-3 py-2.5">
             <p className="truncate text-sm font-semibold text-[var(--color-ink)]">{fullName}</p>
             <p className="truncate text-xs text-[var(--color-ink-muted)]">{orgName}</p>
-            <p className="truncate text-xs text-[var(--color-ink-muted)]">{role}</p>
           </div>
           <Link
             role="menuitem"
-            href="/app/profile"
-            className="block min-h-11 px-3 py-2.5 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
-            onClick={() => setOpen(false)}
+            href="/app/account"
+            className={menuItemClass()}
+            onClick={close}
           >
-            Conta e preferências
+            <IconUser className="h-4 w-4 opacity-80" aria-hidden />
+            Minha conta
           </Link>
           <Link
             role="menuitem"
-            href="/app/manual"
-            className="block min-h-11 px-3 py-2.5 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
-            onClick={() => setOpen(false)}
+            href="/app/billing"
+            className={menuItemClass()}
+            onClick={close}
           >
-            Manual
+            <IconCreditCard className="h-4 w-4 opacity-80" aria-hidden />
+            Assinatura
           </Link>
-          <a
+          <Link
             role="menuitem"
-            href={supportMailto()}
-            className="block min-h-11 px-3 py-2.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]"
-            onClick={() => setOpen(false)}
+            href="/app/help"
+            className={menuItemClass()}
+            onClick={close}
           >
-            Feedback / ajuda
-          </a>
+            <IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />
+            Ajuda e feedback
+          </Link>
+          <div className="my-1 border-t border-[var(--color-border)]" />
+          <button
+            type="button"
+            role="menuitem"
+            className={menuItemClass(true)}
+            onClick={() => {
+              close();
+              onLogout();
+            }}
+          >
+            <IconLogOut className="h-4 w-4 opacity-80" aria-hidden />
+            Sair
+          </button>
         </div>
       ) : null}
     </div>
   );
 }
 
+function AccountSidebarLinks({
+  fullName,
+  orgName,
+  onLogout,
+}: {
+  fullName: string;
+  orgName: string;
+  onLogout: () => void;
+}) {
+  return (
+    <div className="space-y-0.5 border-t border-[var(--color-border)] px-2 py-3">
+      <div className="px-2 pb-2">
+        <p className="truncate text-sm font-semibold text-[var(--color-ink)]">{fullName}</p>
+        <p className="truncate text-xs text-[var(--color-ink-muted)]">{orgName}</p>
+      </div>
+      <Link
+        href="/app/account"
+        className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+      >
+        <IconUser className="h-4 w-4 opacity-80" aria-hidden />
+        Minha conta
+      </Link>
+      <Link
+        href="/app/billing"
+        className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+      >
+        <IconCreditCard className="h-4 w-4 opacity-80" aria-hidden />
+        Assinatura
+      </Link>
+      <Link
+        href="/app/help"
+        className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+      >
+        <IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />
+        Ajuda e feedback
+      </Link>
+      <button
+        type="button"
+        onClick={onLogout}
+        className="flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)]"
+      >
+        <IconLogOut className="h-4 w-4 opacity-80" aria-hidden />
+        Sair
+      </button>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { me, loading } = useAuth();
+  const { me, loading, logout } = useAuth();
 
   if (loading) {
     return (
@@ -177,6 +270,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const assistantActive = isAssistantActive(pathname);
+  const doLogout = () => {
+    void logout();
+  };
 
   return (
     <div
@@ -223,22 +319,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Badge tone="ai">IA</Badge>
             </Link>
           </nav>
-          <div className="space-y-1 border-t border-[var(--color-border)] px-4 py-3">
-            <p className="truncate text-sm font-medium">{me.user.full_name}</p>
-            <p className="truncate text-xs text-[var(--color-ink-muted)]">{me.role}</p>
-            <Link
-              href="/app/manual"
-              className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--color-link)]"
-            >
-              Manual
-            </Link>
-            <a
-              href={supportMailto()}
-              className="block text-xs text-[var(--color-ink-muted)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
-            >
-              Feedback / ajuda · {SUPPORT_EMAIL}
-            </a>
-          </div>
+          <AccountSidebarLinks
+            fullName={me.user.full_name}
+            orgName={me.organization.name}
+            onLogout={doLogout}
+          />
         </div>
       </aside>
 
@@ -259,7 +344,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <ProfileMenu
                 fullName={me.user.full_name}
                 orgName={me.organization.name}
-                role={me.role}
+                onLogout={doLogout}
               />
             </div>
           </div>

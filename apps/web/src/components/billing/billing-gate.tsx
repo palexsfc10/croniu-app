@@ -9,6 +9,8 @@ const ALLOW_WITHOUT_ACCESS = [
   "/app/billing",
   "/app/trial-expired",
   "/app/profile",
+  "/app/account",
+  "/app/help",
   "/app/manual",
 ];
 
