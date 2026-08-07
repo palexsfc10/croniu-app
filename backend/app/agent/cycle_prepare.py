@@ -16,7 +16,9 @@ from app.models.cycle_template import CycleTemplate
 from app.models.service import Service
 from app.services import cycle_calc
 from app.services import cycle_intelligence as ci_svc
+from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
+from app.services.auth import AuthError
 
 
 def _norm(text: str) -> str:
@@ -135,6 +137,10 @@ def prepare_cycle_proposal(
     value_cents: int | None = None,
     adjustment_cents: int | None = None,
     today: date | None = None,
+    weekdays: list[int] | None = None,
+    starts_time: str | None = None,
+    schedule_slots: list[dict[str, Any]] | None = None,
+    skip_schedule: bool = False,
 ) -> CyclePrepResult:
     today = today or date.today()
 
@@ -307,6 +313,10 @@ def prepare_cycle_proposal(
     if price is None:
         missing.append("value_cents")
 
+    cleaned_weekdays = sorted({int(d) for d in (weekdays or []) if 0 <= int(d) <= 6})
+    slots_payload = schedule_slots
+    has_times = bool(slots_payload) or bool(starts_time)
+
     defaults_human = {
         "service_name": service.name,
         "weekly_frequency": freq,
@@ -319,6 +329,57 @@ def prepare_cycle_proposal(
         "template_name": template.name if template else None,
     }
 
+    # Active cycle conflict as soon as starts_on is known
+    if starts_on is not None:
+        for c in active:
+            active_last = c.ends_on
+            if not c.is_legacy:
+                active_last = c.ends_on - timedelta(days=1)
+            if active_last >= starts_on:
+                renew_start = active_last + timedelta(days=1)
+                return CyclePrepResult(
+                    status="conflict",
+                    payload={
+                        "message": (
+                            f"{client.full_name} possui um ciclo ativo até "
+                            f"{_fmt_date(active_last)}. O novo ciclo deve começar em "
+                            f"{_fmt_date(renew_start)} como renovação?"
+                        ),
+                        "active_cycles": active_payload,
+                        "suggested_starts_on": renew_start.isoformat(),
+                        "defaults": defaults_human,
+                        "client": {"id": str(client.id), "full_name": client.full_name},
+                        "service": {"id": str(service.id), "name": service.name},
+                    },
+                )
+
+    if (
+        not skip_schedule
+        and starts_on is not None
+        and freq is not None
+        and price is not None
+    ):
+        if not cleaned_weekdays:
+            missing.append("weekdays")
+        elif freq is not None and len(cleaned_weekdays) != freq:
+            return CyclePrepResult(
+                status="need_input",
+                payload={
+                    "missing": ["weekdays"],
+                    "message": (
+                        f"Para {freq} aulas por semana, informe exatamente {freq} dia(s). "
+                        f"Em quais dias e horários o {client.full_name} terá aula?"
+                    ),
+                    "defaults": defaults_human,
+                    "client": {"id": str(client.id), "full_name": client.full_name},
+                    "service": {"id": str(service.id), "name": service.name},
+                    "suggested_starts_on": today.isoformat(),
+                    "active_cycles": active_payload,
+                },
+            )
+        elif not has_times:
+            missing.append("starts_time")
+
     if missing:
         ask_bits = []
         if "starts_on" in missing:
@@ -330,8 +391,17 @@ def prepare_cycle_proposal(
             ask_bits.append("Quantas aulas por semana?")
         if "value_cents" in missing:
             ask_bits.append("Qual o valor do ciclo?")
+        if "weekdays" in missing:
+            ask_bits.append(
+                f"Em quais dias e horários o {client.full_name} terá aula?"
+            )
+        if "starts_time" in missing:
+            days_txt = ", ".join(
+                schedule_svc.WEEKDAY_LABELS_PT[d] for d in cleaned_weekdays
+            )
+            ask_bits.append(f"Qual será o horário das aulas de {days_txt}?")
         msg = " ".join(ask_bits)
-        if active_payload:
+        if active_payload and "starts_on" in missing:
             last = active_payload[0]
             msg = (
                 f"{client.full_name} possui ciclo ativo até "
@@ -347,10 +417,10 @@ def prepare_cycle_proposal(
             known.append(f"{duration_value} mês(es)")
         if price is not None:
             known.append(format_brl(price))
-        if known:
-            msg = (
-                f"Encontrei {service.name}: {', '.join(known)}. " + msg
-            )
+        if known and "weekdays" not in missing and "starts_time" not in missing:
+            msg = f"Encontrei {service.name}: {', '.join(known)}. " + msg
+        elif known and ("weekdays" in missing or "starts_time" in missing):
+            msg = f"Encontrei {service.name}: {', '.join(known)}. " + msg
         return CyclePrepResult(
             status="need_input",
             payload={
@@ -370,6 +440,7 @@ def prepare_cycle_proposal(
                 ),
                 "active_cycles": active_payload,
                 "suggested_starts_on": today.isoformat(),
+                "weekdays": cleaned_weekdays or None,
             },
         )
 
@@ -377,44 +448,140 @@ def prepare_cycle_proposal(
     ends_on = compute_ends_on(
         starts_on=starts_on, duration_type=duration_type, duration_value=duration_value
     )
-    # Exclusive ends_on: period length in days == (ends - starts).days (fixed_days).
-    duration_days = max(1, (ends_on - starts_on).days)
-    planned = estimate_planned_sessions(
-        weekly_frequency=freq, duration_days=duration_days
-    )
     last_inclusive = ends_on - timedelta(days=1)
+    duration_minutes = service.default_duration_minutes or 60
+    tz = schedule_svc.org_timezone(db, organization_id)
 
-    conflict = None
-    for c in active:
-        # Intelligent cycles store exclusive ends_on; legacy may store inclusive.
-        active_last = c.ends_on
-        if not c.is_legacy:
-            active_last = c.ends_on - timedelta(days=1)
-        if active_last >= starts_on:
-            renew_start = active_last + timedelta(days=1)
-            conflict = {
-                "id": str(c.id),
-                "ends_on": c.ends_on.isoformat(),
-                "active_last_day": active_last.isoformat(),
-                "message": (
-                    f"{client.full_name} possui um ciclo ativo até "
-                    f"{_fmt_date(active_last)}. O novo ciclo deve começar em "
-                    f"{_fmt_date(renew_start)} como renovação?"
-                ),
-                "suggested_starts_on": renew_start.isoformat(),
-            }
-            break
+    # Schedule required for session-based cycles (default path)
+    if skip_schedule:
+        duration_days = max(1, (ends_on - starts_on).days)
+        planned = estimate_planned_sessions(
+            weekly_frequency=freq, duration_days=duration_days
+        )
+        valor_label = format_brl(final_cents if final_cents is not None else price)
+        draft = {
+            "client_id": str(client.id),
+            "client_name": client.full_name,
+            "service_id": str(service.id),
+            "service_name": service.name,
+            "cycle_template_id": str(template.id) if template else None,
+            "template_name": template.name if template else None,
+            "starts_on": starts_on.isoformat(),
+            "ends_on": ends_on.isoformat(),
+            "weekly_frequency": freq,
+            "planned_sessions": planned,
+            "lesson_count": planned,
+            "duration_type": duration_type,
+            "duration_value": duration_value,
+            "value_cents": final_cents if final_cents is not None else price,
+            "adjustment_cents": adj,
+            "final_cents": final_cents,
+            "receivable_due_on": starts_on.isoformat(),
+            "create_receivable": True,
+            "creates_appointments": False,
+            "lesson_duration_minutes": duration_minutes,
+            "summary_lines": {
+                "Cliente": client.full_name,
+                "Serviço": service.name,
+                "Período": f"{_fmt_date(starts_on)} a {_fmt_date(last_inclusive)}",
+                "Frequência": f"{freq} aulas por semana — {planned} aulas previstas",
+                "Valor": valor_label,
+                "Vencimento": _fmt_date(starts_on),
+                "Agenda": "Sem agenda (exceção explícita).",
+            },
+        }
+        return CyclePrepResult(status="ready", payload={"draft": draft, "message": None})
 
-    if conflict and starts_on <= date.fromisoformat(conflict["active_last_day"]):
+    try:
+        slots = schedule_svc.slots_from_payload(
+            cleaned_weekdays,
+            starts_time=starts_time,
+            schedule_slots=slots_payload,
+        )
+    except (AuthError, ValueError, KeyError, TypeError) as exc:
         return CyclePrepResult(
-            status="conflict",
+            status="need_input",
             payload={
-                "message": conflict["message"],
-                "active_cycles": active_payload,
-                "suggested_starts_on": conflict["suggested_starts_on"],
+                "missing": ["starts_time"],
+                "message": (
+                    str(getattr(exc, "message", None) or exc)
+                    or f"Qual será o horário das aulas do {client.full_name}?"
+                ),
                 "defaults": defaults_human,
                 "client": {"id": str(client.id), "full_name": client.full_name},
                 "service": {"id": str(service.id), "name": service.name},
+                "weekdays": cleaned_weekdays,
+            },
+        )
+
+    occurrences = schedule_svc.build_occurrences(
+        starts_on=starts_on,
+        ends_on=ends_on,
+        slots=slots,
+        duration_minutes=duration_minutes,
+        tz=tz,
+    )
+    planned = len(occurrences)
+    if planned < 1:
+        return CyclePrepResult(
+            status="need_input",
+            payload={
+                "missing": ["weekdays"],
+                "message": (
+                    "Nenhuma aula cai neste período com os dias escolhidos. "
+                    "Ajuste os dias ou o período."
+                ),
+                "defaults": defaults_human,
+                "client": {"id": str(client.id), "full_name": client.full_name},
+                "service": {"id": str(service.id), "name": service.name},
+            },
+        )
+
+    hits = schedule_svc.find_occurrence_conflicts(
+        db, organization_id=organization_id, occurrences=occurrences
+    )
+    schedule_lines = schedule_svc.format_schedule_lines(slots, duration_minutes)
+    occurrence_labels = [
+        schedule_svc.format_occurrence_label(o, tz) for o in occurrences
+    ]
+
+    if hits:
+        conflict_labels = [
+            schedule_svc.format_occurrence_label(h.occurrence, tz) for h in hits
+        ]
+        preferred = slots[0].starts_time
+        alts = schedule_svc.suggest_recurring_times(
+            db,
+            organization_id=organization_id,
+            starts_on=starts_on,
+            ends_on=ends_on,
+            weekdays=cleaned_weekdays,
+            duration_minutes=duration_minutes,
+            tz=tz,
+            preferred=preferred,
+        )
+        free_count = planned - len(hits)
+        first = conflict_labels[0]
+        msg = (
+            f"Encontrei conflito em {first}. "
+            f"{free_count} de {planned} horários estão livres."
+        )
+        if alts:
+            msg += " Alternativas livres em todas as semanas: " + "; ".join(alts[:3]) + "."
+        return CyclePrepResult(
+            status="schedule_conflict",
+            payload={
+                "message": msg,
+                "conflicts": conflict_labels,
+                "conflict_count": len(hits),
+                "occurrence_count": planned,
+                "suggestions": alts,
+                "occurrence_dates": occurrence_labels,
+                "schedule_lines": schedule_lines,
+                "defaults": defaults_human,
+                "client": {"id": str(client.id), "full_name": client.full_name},
+                "service": {"id": str(service.id), "name": service.name},
+                "weekdays": cleaned_weekdays,
             },
         )
 
@@ -424,6 +591,13 @@ def prepare_cycle_proposal(
             f"{format_brl(price)} (desconto {format_brl(abs(adj))}) → {format_brl(final_cents)}"
         )
 
+    slots_json = [
+        {
+            "weekday": s.weekday,
+            "starts_time": s.starts_time.strftime("%H:%M:%S"),
+        }
+        for s in slots
+    ]
     draft = {
         "client_id": str(client.id),
         "client_name": client.full_name,
@@ -434,6 +608,9 @@ def prepare_cycle_proposal(
         "starts_on": starts_on.isoformat(),
         "ends_on": ends_on.isoformat(),
         "weekly_frequency": freq,
+        "weekdays": cleaned_weekdays,
+        "schedule_slots": slots_json,
+        "starts_time": slots[0].starts_time.strftime("%H:%M:%S"),
         "planned_sessions": planned,
         "lesson_count": planned,
         "duration_type": duration_type,
@@ -443,16 +620,22 @@ def prepare_cycle_proposal(
         "final_cents": final_cents,
         "receivable_due_on": starts_on.isoformat(),
         "create_receivable": True,
-        "creates_appointments": False,
-        "lesson_duration_minutes": service.default_duration_minutes,
+        "creates_appointments": True,
+        "generate_appointments": True,
+        "lesson_duration_minutes": duration_minutes,
+        "occurrence_dates": occurrence_labels,
+        "schedule_lines": schedule_lines,
         "summary_lines": {
             "Cliente": client.full_name,
             "Serviço": service.name,
             "Período": f"{_fmt_date(starts_on)} a {_fmt_date(last_inclusive)}",
-            "Frequência": f"{freq} aulas por semana — {planned} aulas previstas",
+            "Frequência": f"{freq} aulas por semana",
+            "Quantidade": f"{planned} aulas previstas",
+            "Programação": "; ".join(schedule_lines),
             "Valor": valor_label,
             "Vencimento": _fmt_date(starts_on),
-            "Agenda": "Sem compromissos (informe dias e horários para gerar agenda).",
+            "Agenda": f"{planned} compromissos serão criados",
+            "Conflitos": "nenhum",
         },
     }
     return CyclePrepResult(status="ready", payload={"draft": draft, "message": None})

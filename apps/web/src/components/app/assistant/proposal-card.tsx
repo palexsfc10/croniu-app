@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { IconCalendarPlus, IconUser, IconSparkles } from "@/components/ui/icons";
 import {
@@ -27,6 +28,23 @@ function statusTone(status: ActionUiStatus) {
   return "bg-[var(--color-ai-subtle)] text-[var(--color-ai-hover)]";
 }
 
+function FieldValue({ label, value }: { label: string; value: string }) {
+  const isConflict = label.toLowerCase() === "conflitos" && value.toLowerCase() !== "nenhum";
+  return (
+    <div className="grid grid-cols-[minmax(0,34%)_1fr] gap-x-2 gap-y-0.5">
+      <dt className="text-xs font-medium text-[var(--color-ink-muted)]">{label}</dt>
+      <dd
+        className={[
+          "text-sm font-medium",
+          isConflict ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]",
+        ].join(" ")}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 export function ProposalCard({
   pending,
   actionStatus,
@@ -40,9 +58,16 @@ export function ProposalCard({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const [datesOpen, setDatesOpen] = useState(false);
   const fields = pending.summary_fields ? Object.entries(pending.summary_fields) : [];
   const interactive = actionStatus === "pending" && !busy;
   const title = proposalTitle(pending.tool_name, pending.summary);
+  const occurrenceDates = Array.isArray(pending.arguments?.occurrence_dates)
+    ? (pending.arguments.occurrence_dates as string[])
+    : [];
+  const hasStructured = fields.length > 0;
+  // Avoid duplicating the multi-line summary when structured fields already tell the story.
+  const showSummaryBlurb = !hasStructured && Boolean(pending.summary?.trim());
 
   return (
     <div
@@ -78,19 +103,38 @@ export function ProposalCard({
               {actionHeadline(actionStatus, pending.risk_class)}
             </span>
           </div>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">{pending.summary}</p>
+          {showSummaryBlurb ? (
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">{pending.summary}</p>
+          ) : null}
         </div>
       </div>
 
-      {fields.length ? (
-        <dl className="space-y-2 px-3.5 py-3 text-sm">
+      {hasStructured ? (
+        <dl className="space-y-2.5 px-3.5 py-3">
           {fields.map(([key, value]) => (
-            <div key={key} className="grid grid-cols-[minmax(0,38%)_1fr] gap-2">
-              <dt className="font-medium text-[var(--color-ink-muted)]">{key}</dt>
-              <dd className="font-medium text-[var(--color-ink)]">{String(value)}</dd>
-            </div>
+            <FieldValue key={key} label={key} value={String(value)} />
           ))}
         </dl>
+      ) : null}
+
+      {occurrenceDates.length > 0 ? (
+        <div className="border-t border-[var(--color-border)]/60 px-3.5 py-2">
+          <button
+            type="button"
+            className="min-h-11 w-full text-left text-sm font-semibold text-[var(--color-primary)] underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+            aria-expanded={datesOpen}
+            onClick={() => setDatesOpen((v) => !v)}
+          >
+            {datesOpen ? "Ocultar datas" : `Ver datas (${occurrenceDates.length})`}
+          </button>
+          {datesOpen ? (
+            <ul className="mt-1 max-h-48 space-y-1 overflow-y-auto pb-2 text-xs text-[var(--color-ink-muted)]">
+              {occurrenceDates.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       ) : null}
 
       {actionStatus === "pending" ? (

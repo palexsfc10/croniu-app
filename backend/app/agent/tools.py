@@ -12,10 +12,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -27,6 +27,7 @@ from app.models.client_evaluation import ClientEvaluation
 from app.models.cycle import Cycle
 from app.schemas.evaluations import EvaluationCreate
 from app.services import agenda as agenda_svc
+from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
 from app.services import evaluations as eval_svc
 from app.services import my_cycle as my_cycle_svc
@@ -100,6 +101,12 @@ class GetServiceDefaultsArgs(BaseModel):
         return self
 
 
+class ScheduleSlotArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    weekday: int = Field(ge=0, le=6)
+    starts_time: str = Field(min_length=4, max_length=8)
+
+
 class PrepareCycleProposalArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     client_id: uuid.UUID | None = None
@@ -110,6 +117,38 @@ class PrepareCycleProposalArgs(BaseModel):
     weekly_frequency: int | None = Field(default=None, ge=1, le=7)
     value_cents: int | None = Field(default=None, ge=0, le=100_000_000)
     adjustment_cents: int | None = Field(default=None, ge=-100_000_000, le=100_000_000)
+    weekdays: list[int] | None = None
+    starts_time: str | None = Field(default=None, min_length=4, max_length=8)
+    schedule_slots: list[ScheduleSlotArgs] | None = None
+    skip_schedule: bool = False
+
+    @field_validator("weekdays")
+    @classmethod
+    def validate_weekdays(cls, value: list[int] | None) -> list[int] | None:
+        if value is None:
+            return None
+        cleaned = sorted({int(v) for v in value})
+        if any(v < 0 or v > 6 for v in cleaned):
+            raise ValueError("weekdays must be 0–6 (Mon–Sun)")
+        return cleaned
+
+
+class GetCalendarAvailabilityArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    starts_on: date
+    ends_on: date
+    weekdays: list[int] = Field(min_length=1, max_length=7)
+    duration_minutes: int = Field(default=60, ge=15, le=480)
+    preferred_time: str = Field(default="19:00", min_length=4, max_length=8)
+    limit: int = Field(default=5, ge=1, le=10)
+
+    @field_validator("weekdays")
+    @classmethod
+    def validate_weekdays(cls, value: list[int]) -> list[int]:
+        cleaned = sorted({int(v) for v in value})
+        if not cleaned or any(v < 0 or v > 6 for v in cleaned):
+            raise ValueError("weekdays must be 0–6 (Mon–Sun)")
+        return cleaned
 
 
 class ListRecentEvaluationsArgs(BaseModel):
@@ -553,6 +592,9 @@ def _get_client_cycle_status(ctx: ToolContext, args: dict[str, Any]) -> dict[str
 
 def _prepare_cycle_proposal(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = PrepareCycleProposalArgs.model_validate(args)
+    slots = None
+    if parsed.schedule_slots:
+        slots = [s.model_dump(mode="json") for s in parsed.schedule_slots]
     result = cycle_prep.prepare_cycle_proposal(
         ctx.db,
         organization_id=ctx.organization_id,
@@ -565,8 +607,36 @@ def _prepare_cycle_proposal(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
         value_cents=parsed.value_cents,
         adjustment_cents=parsed.adjustment_cents,
         today=ctx.today,
+        weekdays=parsed.weekdays,
+        starts_time=parsed.starts_time,
+        schedule_slots=slots,
+        skip_schedule=parsed.skip_schedule,
     )
     return {"status": result.status, **result.payload}
+
+
+def _get_calendar_availability(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = GetCalendarAvailabilityArgs.model_validate(args)
+    tz = schedule_svc.org_timezone(ctx.db, ctx.organization_id)
+    preferred = schedule_svc.parse_hhmm(parsed.preferred_time)
+    suggestions = schedule_svc.suggest_recurring_times(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        starts_on=parsed.starts_on,
+        ends_on=parsed.ends_on,
+        weekdays=parsed.weekdays,
+        duration_minutes=parsed.duration_minutes,
+        tz=tz,
+        preferred=preferred,
+        limit=parsed.limit,
+    )
+    return {
+        "timezone": str(tz),
+        "weekdays": parsed.weekdays,
+        "duration_minutes": parsed.duration_minutes,
+        "suggestions": suggestions,
+        "note": "Horários livres em TODAS as ocorrências do período (não invente outros).",
+    }
 
 
 def _get_client_overview(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -749,11 +819,33 @@ class ProposeCreateCycleArgs(BaseModel):
     cycle_template_id: uuid.UUID | None = None
     adjustment_cents: int | None = Field(default=None, ge=-100_000_000, le=100_000_000)
     lesson_duration_minutes: int | None = Field(default=None, ge=5, le=480)
+    weekdays: list[int] | None = None
+    starts_time: str | None = Field(default=None, min_length=4, max_length=8)
+    schedule_slots: list[ScheduleSlotArgs] | None = None
+    generate_appointments: bool = False
+    idempotency_key: str | None = Field(default=None, min_length=4, max_length=64)
+    occurrence_dates: list[str] | None = None
+    schedule_lines: list[str] | None = None
+
+    @field_validator("weekdays")
+    @classmethod
+    def validate_weekdays(cls, value: list[int] | None) -> list[int] | None:
+        if value is None:
+            return None
+        cleaned = sorted({int(v) for v in value})
+        if any(v < 0 or v > 6 for v in cleaned):
+            raise ValueError("weekdays must be 0–6 (Mon–Sun)")
+        return cleaned
 
     @model_validator(mode="after")
     def ends_after_start(self) -> ProposeCreateCycleArgs:
         if self.ends_on < self.starts_on:
             raise ValueError("A data de fim deve ser igual ou posterior ao início.")
+        if self.generate_appointments:
+            if not self.weekdays:
+                raise ValueError("Informe os dias da semana para gerar a agenda.")
+            if not self.schedule_slots and not self.starts_time:
+                raise ValueError("Informe os horários para gerar a agenda.")
         return self
 
 
@@ -934,48 +1026,129 @@ def _propose_create_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
         ctx.db, organization_id=ctx.organization_id, service_id=parsed.service_id
     )
     last_day = parsed.ends_on - timedelta(days=1)
-    # Prefer human inclusive range when ends looks like exclusive renewal (structured)
     period = (
         f"{parsed.starts_on.isoformat()} → {parsed.ends_on.isoformat()}"
         if parsed.weekly_frequency is None
         else f"{cycle_prep._fmt_date(parsed.starts_on)} a {cycle_prep._fmt_date(last_day)}"
     )
-    freq_line = None
-    if parsed.weekly_frequency is not None:
-        planned = parsed.lesson_count
-        if planned is None:
-            planned = cycle_prep.estimate_planned_sessions(
-                weekly_frequency=parsed.weekly_frequency,
-                duration_days=max(1, (parsed.ends_on - parsed.starts_on).days),
-            )
-        freq_line = f"{parsed.weekly_frequency} aulas por semana — {planned} aulas previstas"
     value = parsed.value_cents
     if value is None:
         value = service.default_price_cents
-    fields = {
+
+    # If schedule present, revalidate conflicts server-side before proposing
+    gen = bool(parsed.generate_appointments and parsed.weekdays)
+    schedule_lines = list(parsed.schedule_lines or [])
+    occurrence_dates = list(parsed.occurrence_dates or [])
+    conflict_line = "nenhum"
+    if gen:
+        slots_raw = (
+            [s.model_dump(mode="json") for s in parsed.schedule_slots]
+            if parsed.schedule_slots
+            else None
+        )
+        tz = schedule_svc.org_timezone(ctx.db, ctx.organization_id)
+        duration = parsed.lesson_duration_minutes or service.default_duration_minutes or 60
+        try:
+            slots = schedule_svc.slots_from_payload(
+                parsed.weekdays or [],
+                starts_time=parsed.starts_time,
+                schedule_slots=slots_raw,
+            )
+            occurrences = schedule_svc.build_occurrences(
+                starts_on=parsed.starts_on,
+                ends_on=parsed.ends_on,
+                slots=slots,
+                duration_minutes=duration,
+                tz=tz,
+            )
+            if not schedule_lines:
+                schedule_lines = schedule_svc.format_schedule_lines(slots, duration)
+            if not occurrence_dates:
+                occurrence_dates = [
+                    schedule_svc.format_occurrence_label(o, tz) for o in occurrences
+                ]
+            hits = schedule_svc.find_occurrence_conflicts(
+                ctx.db, organization_id=ctx.organization_id, occurrences=occurrences
+            )
+            if hits:
+                labels = [
+                    schedule_svc.format_occurrence_label(h.occurrence, tz) for h in hits
+                ]
+                alts = schedule_svc.suggest_recurring_times(
+                    ctx.db,
+                    organization_id=ctx.organization_id,
+                    starts_on=parsed.starts_on,
+                    ends_on=parsed.ends_on,
+                    weekdays=parsed.weekdays or [],
+                    duration_minutes=duration,
+                    tz=tz,
+                    preferred=slots[0].starts_time,
+                )
+                return {
+                    "needs_confirmation": False,
+                    "status": "blocked",
+                    "message": (
+                        f"Encontrei conflito em {labels[0]}. "
+                        f"{len(occurrences) - len(hits)} de {len(occurrences)} livres."
+                        + (
+                            " Alternativas: " + "; ".join(alts[:3]) + "."
+                            if alts
+                            else ""
+                        )
+                    ),
+                    "conflicts": labels,
+                    "suggestions": alts,
+                }
+            lesson_count = len(occurrences)
+        except Exception as exc:  # noqa: BLE001 — surface as blocked propose
+            return {
+                "needs_confirmation": False,
+                "status": "blocked",
+                "message": f"Não foi possível montar a agenda: {exc}",
+            }
+    else:
+        lesson_count = parsed.lesson_count
+        if lesson_count is None and parsed.weekly_frequency is not None:
+            lesson_count = cycle_prep.estimate_planned_sessions(
+                weekly_frequency=parsed.weekly_frequency,
+                duration_days=max(1, (parsed.ends_on - parsed.starts_on).days),
+            )
+
+    fields: dict[str, str] = {
         "Cliente": client.full_name,
         "Serviço": service.name,
         "Período": period,
     }
-    if freq_line:
-        fields["Frequência"] = freq_line
+    if parsed.weekly_frequency is not None:
+        fields["Frequência"] = f"{parsed.weekly_frequency} aulas por semana"
+    if lesson_count is not None:
+        fields["Quantidade"] = f"{lesson_count} aulas previstas"
+    if schedule_lines:
+        fields["Programação"] = "; ".join(schedule_lines)
     fields["Valor"] = cycle_prep.format_brl(value)
     fields["Vencimento"] = cycle_prep._fmt_date(
         parsed.receivable_due_on or parsed.starts_on
     )
-    fields["Agenda"] = "Sem compromissos automáticos"
-    summary = (
-        f"Novo ciclo — {client.full_name}\n"
-        f"{service.name}\n"
-        f"{fields['Período']}\n"
-        + (f"{freq_line}\n" if freq_line else "")
-        + f"Valor: {fields['Valor']}\n"
-        f"Vencimento: {fields['Vencimento']}"
-    )
+    if gen:
+        fields["Agenda"] = f"{lesson_count} compromissos serão criados"
+        fields["Conflitos"] = conflict_line
+    else:
+        fields["Agenda"] = "Sem compromissos automáticos"
+
+    args_out = parsed.model_dump(mode="json")
+    if gen:
+        args_out["generate_appointments"] = True
+        args_out["lesson_count"] = lesson_count
+        args_out["schedule_lines"] = schedule_lines
+        args_out["occurrence_dates"] = occurrence_dates
+        if not args_out.get("idempotency_key"):
+            args_out["idempotency_key"] = str(uuid.uuid4())
+
+    summary = f"Novo ciclo — {client.full_name}"
     return {
         "needs_confirmation": True,
         "tool_name": "propose_create_cycle",
-        "arguments": parsed.model_dump(mode="json"),
+        "arguments": args_out,
         "summary": summary,
         "summary_fields": fields,
         "risk_class": "write_common",
@@ -984,6 +1157,48 @@ def _propose_create_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
 
 def execute_create_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
     parsed = ProposeCreateCycleArgs.model_validate(arguments)
+    if parsed.generate_appointments and parsed.weekdays:
+        slots = (
+            [s.model_dump(mode="json") for s in parsed.schedule_slots]
+            if parsed.schedule_slots
+            else None
+        )
+        cycle, appts = schedule_svc.create_cycle_with_schedule(
+            ctx.db,
+            organization_id=ctx.organization_id,
+            client_id=parsed.client_id,
+            service_id=parsed.service_id,
+            starts_on=parsed.starts_on,
+            weekdays=parsed.weekdays,
+            schedule_slots=slots,
+            starts_time=parsed.starts_time,
+            duration_type=parsed.duration_type or "fixed_days",
+            duration_value=parsed.duration_value or 30,
+            cycle_template_id=parsed.cycle_template_id,
+            value_cents=parsed.value_cents,
+            adjustment_cents=parsed.adjustment_cents,
+            final_cents=parsed.value_cents,
+            lesson_duration_minutes=parsed.lesson_duration_minutes,
+            notes=parsed.notes,
+            create_receivable=parsed.create_receivable,
+            receivable_due_on=parsed.receivable_due_on,
+            idempotency_key=parsed.idempotency_key,
+            generate_appointments=True,
+        )
+        return {
+            "id": str(cycle.id),
+            "kind": "cycle",
+            "status": cycle.status,
+            "weekly_frequency": cycle.weekly_frequency,
+            "lesson_count": cycle.lesson_count,
+            "starts_on": cycle.starts_on.isoformat(),
+            "ends_on": cycle.ends_on.isoformat(),
+            "value_cents": cycle.value_cents,
+            "creates_appointments": True,
+            "appointment_ids": [str(a.id) for a in appts],
+            "appointment_count": len(appts),
+        }
+
     cycle = domain_svc.create_cycle(
         ctx.db,
         organization_id=ctx.organization_id,
@@ -1386,11 +1601,12 @@ TOOLS: dict[str, ToolDefinition] = {
         description=(
             "OBRIGATÓRIO antes de propor ciclo. Resolve cliente e serviço/modelo, "
             "reaproveita defaults, verifica ciclo ativo, calcula fim/aulas/valor e "
-            "indica apenas campos ausentes. Não cria nada. "
-            "Se status=ready, chame propose_create_cycle com o draft. "
-            "Se need_input/conflict, faça UMA pergunta curta com a message retornada. "
-            "weekly_frequency é estruturado (não vá para notes). "
-            "Não invente agenda sem dias e horários."
+            "exige dias+horários da agenda. Não cria nada. "
+            "Status: need_input (pergunte message), schedule_conflict (mostre conflitos "
+            "e suggestions), conflict (ciclo ativo), ready (chame propose_create_cycle "
+            "com o draft completo incluindo weekdays/schedule_slots/generate_appointments). "
+            "weekdays: 0=seg … 6=dom. starts_time HH:MM ou schedule_slots por dia. "
+            "Não invente disponibilidade — use get_calendar_availability se precisar."
         ),
         parameters={
             "type": "object",
@@ -1411,12 +1627,67 @@ TOOLS: dict[str, ToolDefinition] = {
                     "minimum": -100000000,
                     "maximum": 100000000,
                 },
+                "weekdays": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0, "maximum": 6},
+                    "minItems": 1,
+                    "maxItems": 7,
+                },
+                "starts_time": {
+                    "type": "string",
+                    "description": "HH:MM ou HH:MM:SS para todos os dias",
+                },
+                "schedule_slots": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "weekday": {"type": "integer", "minimum": 0, "maximum": 6},
+                            "starts_time": {"type": "string"},
+                        },
+                        "required": ["weekday", "starts_time"],
+                        "additionalProperties": False,
+                    },
+                },
+                "skip_schedule": {
+                    "type": "boolean",
+                    "description": "Somente se o usuário pedir ciclo sem agenda explicitamente",
+                },
             },
             "additionalProperties": False,
         },
         kind="read",
         requires_confirmation=False,
         handler=_prepare_cycle_proposal,
+    ),
+    "get_calendar_availability": ToolDefinition(
+        name="get_calendar_availability",
+        description=(
+            "Consulta disponibilidade recorrente real na agenda do profissional. "
+            "Retorna horários livres em TODAS as ocorrências do período/dias. "
+            "Não invente horários — use só o retorno desta tool."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "starts_on": {"type": "string", "format": "date"},
+                "ends_on": {"type": "string", "format": "date"},
+                "weekdays": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0, "maximum": 6},
+                    "minItems": 1,
+                    "maxItems": 7,
+                },
+                "duration_minutes": {"type": "integer", "minimum": 15, "maximum": 480},
+                "preferred_time": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+            },
+            "required": ["starts_on", "ends_on", "weekdays"],
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_get_calendar_availability,
     ),
     # --- Read: avaliações ----------------------------------------------------
     "list_recent_published_evaluations": ToolDefinition(
@@ -1533,10 +1804,10 @@ TOOLS: dict[str, ToolDefinition] = {
         name="propose_create_cycle",
         description=(
             "Propõe criar um ciclo após prepare_cycle_proposal (status=ready). "
-            "Passe os campos do draft. Frequência e quantidade são estruturados. "
-            "Não cria compromissos. Exige confirmação. "
-            "Se o usuário corrigir antes de confirmar, chame prepare de novo e "
-            "proponha outra vez (a proposta anterior é supersedida)."
+            "Passe o draft completo: weekdays, schedule_slots ou starts_time, "
+            "generate_appointments=true, lesson_count, occurrence_dates. "
+            "Na confirmação cria ciclo + recebível + compromissos atomicamente. "
+            "Exige confirmação. Correções: prepare de novo + nova proposta."
         ),
         parameters={
             "type": "object",
@@ -1566,6 +1837,33 @@ TOOLS: dict[str, ToolDefinition] = {
                     "type": "integer",
                     "minimum": 5,
                     "maximum": 480,
+                },
+                "weekdays": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 0, "maximum": 6},
+                },
+                "starts_time": {"type": "string"},
+                "schedule_slots": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "weekday": {"type": "integer", "minimum": 0, "maximum": 6},
+                            "starts_time": {"type": "string"},
+                        },
+                        "required": ["weekday", "starts_time"],
+                        "additionalProperties": False,
+                    },
+                },
+                "generate_appointments": {"type": "boolean"},
+                "idempotency_key": {"type": "string", "minLength": 4, "maxLength": 64},
+                "occurrence_dates": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "schedule_lines": {
+                    "type": "array",
+                    "items": {"type": "string"},
                 },
             },
             "required": ["client_id", "service_id", "starts_on", "ends_on"],

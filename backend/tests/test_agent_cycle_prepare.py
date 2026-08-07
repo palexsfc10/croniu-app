@@ -104,7 +104,8 @@ def test_prepare_ready_with_structured_frequency(client, register_payload):
     org_id, _ = _me(client)
     db = SessionLocal()
     try:
-        result = prep.prepare_cycle_proposal(
+        # Without schedule → asks for days/times
+        pending = prep.prepare_cycle_proposal(
             db,
             organization_id=org_id,
             client_id=UUID(ids["client_id"]),
@@ -113,16 +114,33 @@ def test_prepare_ready_with_structured_frequency(client, register_payload):
             weekly_frequency=2,
             today=date(2026, 8, 7),
         )
+        assert pending.status == "need_input"
+        assert "weekdays" in pending.payload["missing"]
+        assert "dias" in pending.payload["message"].lower()
+
+        result = prep.prepare_cycle_proposal(
+            db,
+            organization_id=org_id,
+            client_id=UUID(ids["client_id"]),
+            service_or_template_name="Aula padrão",
+            starts_on=date(2026, 8, 7),
+            weekly_frequency=2,
+            weekdays=[1, 3],
+            starts_time="19:00",
+            today=date(2026, 8, 7),
+        )
         assert result.status == "ready"
         draft = result.payload["draft"]
         assert draft["weekly_frequency"] == 2
         assert draft["planned_sessions"] == 8
+        assert draft["lesson_count"] == 8
         assert draft["value_cents"] == 30000
-        assert draft["creates_appointments"] is False
+        assert draft["creates_appointments"] is True
+        assert draft["generate_appointments"] is True
         assert draft["starts_on"] == "2026-08-07"
         assert draft["ends_on"] == "2026-09-06"
-        assert "Agenda" in draft["summary_lines"]
-        assert "não" in draft["summary_lines"]["Agenda"].lower() or "Sem" in draft["summary_lines"]["Agenda"]
+        assert "8 compromissos" in draft["summary_lines"]["Agenda"]
+        assert "Sem compromissos" not in draft["summary_lines"]["Agenda"]
     finally:
         db.close()
 
@@ -300,6 +318,8 @@ def test_prepare_renewal_after_active_end(client, register_payload):
             service_or_template_name="Aula padrão",
             starts_on=date(2026, 8, 21),
             weekly_frequency=2,
+            weekdays=[1, 3],
+            starts_time="19:00",
             today=date(2026, 8, 7),
         )
         assert result.status == "ready"
@@ -335,6 +355,10 @@ def test_propose_create_cycle_card_and_execute_structured(client, register_paylo
                 "cycle_template_id": ids["template_id"],
                 "create_receivable": True,
                 "receivable_due_on": "2026-08-07",
+                "weekdays": [1, 3],
+                "starts_time": "19:00",
+                "generate_appointments": True,
+                "idempotency_key": "propose-exec-sched-1",
             },
         )
         assert propose["needs_confirmation"] is True
@@ -343,7 +367,9 @@ def test_propose_create_cycle_card_and_execute_structured(client, register_paylo
         assert fields["Serviço"] == "Aula padrão"
         assert "Frequência" in fields
         assert "2" in fields["Frequência"]
+        assert "compromissos serão criados" in fields["Agenda"]
         assert propose["arguments"]["weekly_frequency"] == 2
+        assert propose["arguments"]["generate_appointments"] is True
         assert "duas vezes" not in (propose["arguments"].get("notes") or "").lower()
 
         from app.agent.tools import execute_create_cycle
@@ -352,13 +378,28 @@ def test_propose_create_cycle_card_and_execute_structured(client, register_paylo
         assert out["kind"] == "cycle"
         assert out["weekly_frequency"] == 2
         assert out["lesson_count"] == 8
-        assert out["creates_appointments"] is False
+        assert out["creates_appointments"] is True
+        assert out["appointment_count"] == 8
 
         cycle = client.get(f"/api/v1/cycles/{out['id']}").json()
         assert cycle["weekly_frequency"] == 2
         assert cycle["lesson_count"] == 8
         assert cycle["value_cents"] == 30000
         assert cycle["is_legacy"] is False
+
+        # Verify appointments via DB (list endpoints vary)
+        from sqlalchemy import select
+        from app.models.appointment import Appointment
+
+        linked = list(
+            db.scalars(
+                select(Appointment).where(
+                    Appointment.organization_id == org_id,
+                    Appointment.cycle_id == UUID(out["id"]),
+                )
+            ).all()
+        )
+        assert len(linked) == 8
     finally:
         db.close()
 

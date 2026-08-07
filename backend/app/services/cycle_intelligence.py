@@ -362,50 +362,63 @@ def create_intelligent_cycle(
     if payload.generate_appointments:
         assert payload.starts_time is not None
         tz = _org_tz(db, organization_id)
-        duration = timedelta(minutes=preview.lesson_duration_minutes)
-        for lesson_day in preview.lesson_dates:
-            start_at = _local_dt(lesson_day, payload.starts_time, tz)
-            end_at = start_at + duration
-            planned.append((start_at, end_at))
+        from app.services import cycle_schedule as schedule_svc
 
-        all_conflicts: list[dict] = []
-        for start_at, end_at in planned:
-            conflicts = agenda_svc.find_conflicts(
-                db,
-                organization_id=organization_id,
-                starts_at=start_at,
-                ends_at=end_at,
-            )
-            for row in conflicts:
-                all_conflicts.append(
-                    {
-                        "id": str(row.id),
-                        "client_name": row.client.full_name if row.client else None,
-                        "starts_at": row.starts_at.isoformat(),
-                        "ends_at": row.ends_at.isoformat(),
-                        "status": row.status,
-                    }
-                )
-            # also conflict with other planned slots in the same batch
-        for i, (a_start, a_end) in enumerate(planned):
-            for b_start, b_end in planned[i + 1 :]:
-                if a_start < b_end and a_end > b_start:
+        slots = schedule_svc.slots_from_payload(
+            payload.weekdays, starts_time=payload.starts_time
+        )
+        occurrences = schedule_svc.build_occurrences(
+            starts_on=preview.starts_on,
+            ends_on=preview.ends_on,
+            slots=slots,
+            duration_minutes=preview.lesson_duration_minutes,
+            tz=tz,
+        )
+        planned = [(o.starts_at, o.ends_at) for o in occurrences]
+        hits = schedule_svc.find_occurrence_conflicts(
+            db, organization_id=organization_id, occurrences=occurrences
+        )
+        if hits:
+            all_conflicts = []
+            for hit in hits:
+                for row in hit.conflicting:
+                    all_conflicts.append(
+                        {
+                            "id": str(row.id),
+                            "client_name": row.client.full_name if row.client else None,
+                            "starts_at": row.starts_at.isoformat(),
+                            "ends_at": row.ends_at.isoformat(),
+                            "status": row.status,
+                            "occurrence": schedule_svc.format_occurrence_label(
+                                hit.occurrence, tz
+                            ),
+                        }
+                    )
+                if not hit.conflicting:
                     all_conflicts.append(
                         {
                             "id": None,
                             "client_name": client.full_name,
-                            "starts_at": a_start.isoformat(),
-                            "ends_at": a_end.isoformat(),
+                            "starts_at": hit.occurrence.starts_at.isoformat(),
+                            "ends_at": hit.occurrence.ends_at.isoformat(),
                             "status": "planned_batch",
                         }
                     )
-        if all_conflicts:
-            # unique-ish by starts_at
+            alts = schedule_svc.suggest_recurring_times(
+                db,
+                organization_id=organization_id,
+                starts_on=preview.starts_on,
+                ends_on=preview.ends_on,
+                weekdays=payload.weekdays,
+                duration_minutes=preview.lesson_duration_minutes,
+                tz=tz,
+                preferred=payload.starts_time,
+            )
             raise AuthError(
                 "appointment_conflict",
                 "Há conflito de horário. Nenhuma aula foi criada.",
                 status_code=409,
-                details={"conflicts": all_conflicts},
+                details={"conflicts": all_conflicts, "suggestions": alts},
             )
 
     cycle = Cycle(
@@ -460,6 +473,7 @@ def create_intelligent_cycle(
                     service_id=service.id,
                     location_id=location.id if location else None,
                     title=title,
+                    notes="Origem: ciclo",
                     starts_at=start_at,
                     ends_at=end_at,
                     status="scheduled",

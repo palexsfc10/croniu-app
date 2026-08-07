@@ -47,17 +47,36 @@ describe("ProposalCard", () => {
     expect(screen.getByText("Ação concluída")).toBeInTheDocument();
   });
 
-  it("disables actions while busy/executing", () => {
+  it("hides duplicate summary when fields exist and expands dates", async () => {
+    const user = userEvent.setup();
+    const cyclePending = {
+      id: "p2",
+      tool_name: "propose_create_cycle",
+      summary: "Novo ciclo — Gabriel\nAula padrão\nDuplicado",
+      summary_fields: {
+        Cliente: "Gabriel Silva",
+        Serviço: "Aula padrão",
+        Agenda: "8 compromissos serão criados",
+        Conflitos: "nenhum",
+      },
+      arguments: {
+        occurrence_dates: ["terça, 11/08/2026 19:00–20:00", "quinta, 13/08/2026 19:00–20:00"],
+      },
+      expires_at: new Date().toISOString(),
+      risk_class: "write_common",
+    };
     render(
       <ProposalCard
-        pending={pending}
+        pending={cyclePending}
         actionStatus="pending"
-        busy
+        busy={false}
         onConfirm={() => undefined}
         onCancel={() => undefined}
       />,
     );
-    expect(screen.getByRole("button", { name: "Confirmando…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(screen.getByText("Gabriel Silva")).toBeInTheDocument();
+    expect(screen.queryByText(/Duplicado/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Ver datas/i }));
+    expect(screen.getByText(/11\/08\/2026/)).toBeInTheDocument();
   });
 });

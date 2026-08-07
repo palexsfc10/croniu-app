@@ -49,7 +49,7 @@ function NewIntelligentCycleForm() {
   });
   const [discountReais, setDiscountReais] = useState("");
   const [finalReais, setFinalReais] = useState("");
-  const [generate, setGenerate] = useState(false);
+  const [generate, setGenerate] = useState(true);
   const [locationId, setLocationId] = useState("");
   const [startsTime, setStartsTime] = useState("09:00");
   const [preview, setPreview] = useState<CyclePreview | null>(null);
