@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.agent.providers.base import ToolSpec
 from app.agent.temporal import format_human_datetime_range, resolve_org_timezone
+from app.agent import cycle_prepare as cycle_prep
 from app.models.client import Client
 from app.models.client_evaluation import ClientEvaluation
 from app.models.cycle import Cycle
@@ -40,6 +41,8 @@ class ToolContext(BaseModel):
     db: Session
     request_id: str | None = None
     timezone: str = "America/Sao_Paulo"
+    thread_id: uuid.UUID | None = None
+    today: date | None = None
 
 
 @dataclass
@@ -77,7 +80,36 @@ class ListPendingReceivablesArgs(BaseModel):
 
 class FindClientArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    name_query: str = Field(min_length=2, max_length=120)
+    name_query: str = Field(min_length=1, max_length=120)
+
+
+class FindServiceArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name_query: str = Field(min_length=1, max_length=120)
+
+
+class GetServiceDefaultsArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    service_id: uuid.UUID | None = None
+    name_query: str | None = Field(default=None, min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def require_one(self) -> GetServiceDefaultsArgs:
+        if self.service_id is None and not self.name_query:
+            raise ValueError("Informe service_id ou name_query.")
+        return self
+
+
+class PrepareCycleProposalArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    client_id: uuid.UUID | None = None
+    client_name: str | None = Field(default=None, min_length=1, max_length=120)
+    service_id: uuid.UUID | None = None
+    service_or_template_name: str | None = Field(default=None, min_length=1, max_length=120)
+    starts_on: date | None = None
+    weekly_frequency: int | None = Field(default=None, ge=1, le=7)
+    value_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    adjustment_cents: int | None = Field(default=None, ge=-100_000_000, le=100_000_000)
 
 
 class ListRecentEvaluationsArgs(BaseModel):
@@ -304,17 +336,16 @@ def _get_payment_status(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
 
 def _find_client(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = FindClientArgs.model_validate(args)
-    q = parsed.name_query.strip().lower()
-    clients = domain_svc.list_clients(ctx.db, organization_id=ctx.organization_id, status="active")
-    matches = [c for c in clients if q in c.full_name.lower()]
-    if not matches:
-        # also try first name token
-        token = q.split()[0]
-        matches = [c for c in clients if token in c.full_name.lower()]
+    matches = cycle_prep.find_clients_by_name(
+        ctx.db, organization_id=ctx.organization_id, query=parsed.name_query
+    )
     if len(matches) > 1:
         return {
             "ambiguous": True,
             "message": "Encontrei mais de um cliente. Qual deles?",
+            "clients": [
+                {"id": str(c.id), "full_name": c.full_name, "phone": c.phone} for c in matches[:8]
+            ],
             "candidates": [
                 {"id": str(c.id), "full_name": c.full_name, "phone": c.phone} for c in matches[:8]
             ],
@@ -333,7 +364,209 @@ def _find_client(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
             "notes": c.notes,
             "status": c.status,
         },
+        "clients": [{"id": str(c.id), "full_name": c.full_name}],
     }
+
+
+def _find_services(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = FindServiceArgs.model_validate(args)
+    services = cycle_prep.find_services_by_name(
+        ctx.db, organization_id=ctx.organization_id, query=parsed.name_query
+    )
+    templates = cycle_prep.find_templates_by_name(
+        ctx.db, organization_id=ctx.organization_id, query=parsed.name_query
+    )
+    if not services and not templates:
+        return {
+            "found": False,
+            "message": f"Nenhum serviço ou modelo correspondente a “{parsed.name_query}”.",
+            "services": [],
+            "templates": [],
+        }
+    if len(services) > 1:
+        return {
+            "ambiguous": True,
+            "message": "Há mais de um serviço parecido. Qual usar?",
+            "services": [{"id": str(s.id), "name": s.name} for s in services],
+            "templates": [
+                {
+                    "id": str(t.id),
+                    "name": t.name,
+                    "weekly_frequency": t.weekly_frequency,
+                    "duration_type": t.duration_type,
+                    "duration_value": t.duration_value,
+                }
+                for t in templates
+            ],
+        }
+    return {
+        "found": True,
+        "ambiguous": False,
+        "services": [
+            {
+                "id": str(s.id),
+                "name": s.name,
+                "default_price_cents": s.default_price_cents,
+                "default_duration_days": s.default_duration_days,
+                "default_duration_minutes": s.default_duration_minutes,
+            }
+            for s in services
+        ],
+        "templates": [
+            {
+                "id": str(t.id),
+                "name": t.name,
+                "weekly_frequency": t.weekly_frequency,
+                "duration_type": t.duration_type,
+                "duration_value": t.duration_value,
+            }
+            for t in templates
+        ],
+        "service": (
+            {
+                "id": str(services[0].id),
+                "name": services[0].name,
+                "default_price_cents": services[0].default_price_cents,
+                "default_duration_days": services[0].default_duration_days,
+                "default_duration_minutes": services[0].default_duration_minutes,
+            }
+            if len(services) == 1
+            else None
+        ),
+        "template": (
+            {
+                "id": str(templates[0].id),
+                "name": templates[0].name,
+                "weekly_frequency": templates[0].weekly_frequency,
+                "duration_type": templates[0].duration_type,
+                "duration_value": templates[0].duration_value,
+            }
+            if len(templates) == 1
+            else None
+        ),
+    }
+
+
+def _get_service_defaults(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = GetServiceDefaultsArgs.model_validate(args)
+    service = None
+    template = None
+    if parsed.service_id is not None:
+        service = domain_svc.get_service(
+            ctx.db, organization_id=ctx.organization_id, service_id=parsed.service_id
+        )
+    elif parsed.name_query:
+        found = cycle_prep.find_services_by_name(
+            ctx.db, organization_id=ctx.organization_id, query=parsed.name_query
+        )
+        if len(found) > 1:
+            return {
+                "ambiguous": True,
+                "message": "Há mais de um serviço parecido.",
+                "services": [{"id": str(s.id), "name": s.name} for s in found],
+            }
+        if len(found) == 1:
+            service = found[0]
+        tmpls = cycle_prep.find_templates_by_name(
+            ctx.db, organization_id=ctx.organization_id, query=parsed.name_query
+        )
+        if len(tmpls) == 1:
+            template = tmpls[0]
+        if service is None and template is None:
+            return {"found": False, "message": "Serviço/modelo não encontrado."}
+        if service is None and template is not None:
+            same = cycle_prep.find_services_by_name(
+                ctx.db, organization_id=ctx.organization_id, query=template.name
+            )
+            if len(same) == 1:
+                service = same[0]
+    if service is None:
+        return {"found": False, "message": "Serviço não encontrado."}
+    if template is None:
+        tmpls = cycle_prep.find_templates_by_name(
+            ctx.db, organization_id=ctx.organization_id, query=service.name
+        )
+        if len(tmpls) == 1:
+            template = tmpls[0]
+    return {
+        "found": True,
+        "service": {
+            "id": str(service.id),
+            "name": service.name,
+            "default_price_cents": service.default_price_cents,
+            "default_duration_days": service.default_duration_days,
+            "default_duration_minutes": service.default_duration_minutes,
+        },
+        "template": (
+            {
+                "id": str(template.id),
+                "name": template.name,
+                "weekly_frequency": template.weekly_frequency,
+                "duration_type": template.duration_type,
+                "duration_value": template.duration_value,
+            }
+            if template
+            else None
+        ),
+        "defaults": {
+            "weekly_frequency": template.weekly_frequency if template else None,
+            "duration_type": template.duration_type if template else "fixed_days",
+            "duration_value": (
+                template.duration_value
+                if template
+                else int(service.default_duration_days or 30)
+            ),
+            "value_cents": service.default_price_cents,
+            "lesson_duration_minutes": service.default_duration_minutes,
+        },
+    }
+
+
+def _get_client_cycle_status(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ClientIdArgs.model_validate(args)
+    client = domain_svc.get_client(
+        ctx.db, organization_id=ctx.organization_id, client_id=parsed.client_id
+    )
+    active = domain_svc.list_cycles(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        client_id=parsed.client_id,
+        status="active",
+    )
+    return {
+        "client": {"id": str(client.id), "full_name": client.full_name},
+        "active_cycles": [
+            {
+                "id": str(c.id),
+                "service_name": c.service_name,
+                "starts_on": c.starts_on.isoformat(),
+                "ends_on": c.ends_on.isoformat(),
+                "is_legacy": c.is_legacy,
+                "weekly_frequency": c.weekly_frequency,
+                "lesson_count": c.lesson_count,
+            }
+            for c in active
+        ],
+        "has_active_cycle": len(active) > 0,
+    }
+
+
+def _prepare_cycle_proposal(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = PrepareCycleProposalArgs.model_validate(args)
+    result = cycle_prep.prepare_cycle_proposal(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        client_id=parsed.client_id,
+        client_name=parsed.client_name,
+        service_id=parsed.service_id,
+        service_or_template_name=parsed.service_or_template_name,
+        starts_on=parsed.starts_on,
+        weekly_frequency=parsed.weekly_frequency,
+        value_cents=parsed.value_cents,
+        adjustment_cents=parsed.adjustment_cents,
+        today=ctx.today,
+    )
+    return {"status": result.status, **result.payload}
 
 
 def _get_client_overview(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -509,6 +742,13 @@ class ProposeCreateCycleArgs(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
     create_receivable: bool = True
     receivable_due_on: date | None = None
+    weekly_frequency: int | None = Field(default=None, ge=1, le=7)
+    lesson_count: int | None = Field(default=None, ge=0, le=1000)
+    duration_type: str | None = Field(default=None, pattern="^(calendar_months|fixed_days)$")
+    duration_value: int | None = Field(default=None, ge=1, le=3660)
+    cycle_template_id: uuid.UUID | None = None
+    adjustment_cents: int | None = Field(default=None, ge=-100_000_000, le=100_000_000)
+    lesson_duration_minutes: int | None = Field(default=None, ge=5, le=480)
 
     @model_validator(mode="after")
     def ends_after_start(self) -> ProposeCreateCycleArgs:
@@ -693,20 +933,51 @@ def _propose_create_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
     service = domain_svc.get_service(
         ctx.db, organization_id=ctx.organization_id, service_id=parsed.service_id
     )
+    last_day = parsed.ends_on - timedelta(days=1)
+    # Prefer human inclusive range when ends looks like exclusive renewal (structured)
+    period = (
+        f"{parsed.starts_on.isoformat()} → {parsed.ends_on.isoformat()}"
+        if parsed.weekly_frequency is None
+        else f"{cycle_prep._fmt_date(parsed.starts_on)} a {cycle_prep._fmt_date(last_day)}"
+    )
+    freq_line = None
+    if parsed.weekly_frequency is not None:
+        planned = parsed.lesson_count
+        if planned is None:
+            planned = cycle_prep.estimate_planned_sessions(
+                weekly_frequency=parsed.weekly_frequency,
+                duration_days=max(1, (parsed.ends_on - parsed.starts_on).days),
+            )
+        freq_line = f"{parsed.weekly_frequency} aulas por semana — {planned} aulas previstas"
+    value = parsed.value_cents
+    if value is None:
+        value = service.default_price_cents
+    fields = {
+        "Cliente": client.full_name,
+        "Serviço": service.name,
+        "Período": period,
+    }
+    if freq_line:
+        fields["Frequência"] = freq_line
+    fields["Valor"] = cycle_prep.format_brl(value)
+    fields["Vencimento"] = cycle_prep._fmt_date(
+        parsed.receivable_due_on or parsed.starts_on
+    )
+    fields["Agenda"] = "Sem compromissos automáticos"
+    summary = (
+        f"Novo ciclo — {client.full_name}\n"
+        f"{service.name}\n"
+        f"{fields['Período']}\n"
+        + (f"{freq_line}\n" if freq_line else "")
+        + f"Valor: {fields['Valor']}\n"
+        f"Vencimento: {fields['Vencimento']}"
+    )
     return {
         "needs_confirmation": True,
         "tool_name": "propose_create_cycle",
         "arguments": parsed.model_dump(mode="json"),
-        "summary": (
-            f"Criar ciclo de {service.name} para {client.full_name} "
-            f"de {parsed.starts_on.isoformat()} a {parsed.ends_on.isoformat()}."
-        ),
-        "summary_fields": {
-            "client_name": client.full_name,
-            "service_name": service.name,
-            "starts_on": parsed.starts_on.isoformat(),
-            "ends_on": parsed.ends_on.isoformat(),
-        },
+        "summary": summary,
+        "summary_fields": fields,
         "risk_class": "write_common",
     }
 
@@ -724,8 +995,25 @@ def execute_create_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[st
         notes=parsed.notes,
         create_receivable=parsed.create_receivable,
         receivable_due_on=parsed.receivable_due_on,
+        weekly_frequency=parsed.weekly_frequency,
+        lesson_count=parsed.lesson_count,
+        duration_type=parsed.duration_type,
+        duration_value=parsed.duration_value,
+        cycle_template_id=parsed.cycle_template_id,
+        adjustment_cents=parsed.adjustment_cents,
+        lesson_duration_minutes=parsed.lesson_duration_minutes,
     )
-    return {"id": str(cycle.id), "kind": "cycle", "status": cycle.status}
+    return {
+        "id": str(cycle.id),
+        "kind": "cycle",
+        "status": cycle.status,
+        "weekly_frequency": cycle.weekly_frequency,
+        "lesson_count": cycle.lesson_count,
+        "starts_on": cycle.starts_on.isoformat(),
+        "ends_on": cycle.ends_on.isoformat(),
+        "value_cents": cycle.value_cents,
+        "creates_appointments": False,
+    }
 
 
 def _propose_record_payment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -995,11 +1283,15 @@ TOOLS: dict[str, ToolDefinition] = {
     # --- Read: clientes ----------------------------------------------------
     "find_client": ToolDefinition(
         name="find_client",
-        description="Busca cliente por nome. Em ambiguidade, retorna candidatos.",
+        description=(
+            "Busca cliente por nome. Em ambiguidade, retorna candidatos — nunca escolha "
+            "silenciosamente. Use para resolver pronomes como “ele/ela” quando o id "
+            "não estiver nas referências da conversa."
+        ),
         parameters={
             "type": "object",
             "properties": {
-                "name_query": {"type": "string", "minLength": 2, "maxLength": 120},
+                "name_query": {"type": "string", "minLength": 1, "maxLength": 120},
             },
             "required": ["name_query"],
             "additionalProperties": False,
@@ -1016,7 +1308,7 @@ TOOLS: dict[str, ToolDefinition] = {
         parameters={
             "type": "object",
             "properties": {
-                "name_query": {"type": "string", "minLength": 2, "maxLength": 120},
+                "name_query": {"type": "string", "minLength": 1, "maxLength": 120},
             },
             "required": ["name_query"],
             "additionalProperties": False,
@@ -1039,6 +1331,92 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="read",
         requires_confirmation=False,
         handler=_get_client_overview,
+    ),
+    "find_services": ToolDefinition(
+        name="find_services",
+        description=(
+            "Busca serviços e modelos de ciclo por nome (ex.: “Aula padrão”). "
+            "Em ambiguidade, retorna candidatos."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name_query": {"type": "string", "minLength": 1, "maxLength": 120},
+            },
+            "required": ["name_query"],
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_find_services,
+    ),
+    "get_service_defaults": ToolDefinition(
+        name="get_service_defaults",
+        description=(
+            "Carrega defaults de um serviço e o modelo de ciclo associado "
+            "(frequência, duração, valor, minutos da aula)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "service_id": {"type": "string", "format": "uuid"},
+                "name_query": {"type": "string", "minLength": 1, "maxLength": 120},
+            },
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_get_service_defaults,
+    ),
+    "get_client_cycle_status": ToolDefinition(
+        name="get_client_cycle_status",
+        description="Lista ciclos ativos do cliente e indica se há conflito para novo ciclo.",
+        parameters={
+            "type": "object",
+            "properties": {"client_id": {"type": "string", "format": "uuid"}},
+            "required": ["client_id"],
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_get_client_cycle_status,
+    ),
+    "prepare_cycle_proposal": ToolDefinition(
+        name="prepare_cycle_proposal",
+        description=(
+            "OBRIGATÓRIO antes de propor ciclo. Resolve cliente e serviço/modelo, "
+            "reaproveita defaults, verifica ciclo ativo, calcula fim/aulas/valor e "
+            "indica apenas campos ausentes. Não cria nada. "
+            "Se status=ready, chame propose_create_cycle com o draft. "
+            "Se need_input/conflict, faça UMA pergunta curta com a message retornada. "
+            "weekly_frequency é estruturado (não vá para notes). "
+            "Não invente agenda sem dias e horários."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string", "format": "uuid"},
+                "client_name": {"type": "string", "minLength": 1, "maxLength": 120},
+                "service_id": {"type": "string", "format": "uuid"},
+                "service_or_template_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120,
+                },
+                "starts_on": {"type": "string", "format": "date"},
+                "weekly_frequency": {"type": "integer", "minimum": 1, "maximum": 7},
+                "value_cents": {"type": "integer", "minimum": 0, "maximum": 100000000},
+                "adjustment_cents": {
+                    "type": "integer",
+                    "minimum": -100000000,
+                    "maximum": 100000000,
+                },
+            },
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_prepare_cycle_proposal,
     ),
     # --- Read: avaliações ----------------------------------------------------
     "list_recent_published_evaluations": ToolDefinition(
@@ -1154,7 +1532,11 @@ TOOLS: dict[str, ToolDefinition] = {
     "propose_create_cycle": ToolDefinition(
         name="propose_create_cycle",
         description=(
-            "Propõe criar um novo ciclo (pacote de serviço) para um cliente. Exige confirmação."
+            "Propõe criar um ciclo após prepare_cycle_proposal (status=ready). "
+            "Passe os campos do draft. Frequência e quantidade são estruturados. "
+            "Não cria compromissos. Exige confirmação. "
+            "Se o usuário corrigir antes de confirmar, chame prepare de novo e "
+            "proponha outra vez (a proposta anterior é supersedida)."
         ),
         parameters={
             "type": "object",
@@ -1167,6 +1549,24 @@ TOOLS: dict[str, ToolDefinition] = {
                 "notes": {"type": "string", "maxLength": 2000},
                 "create_receivable": {"type": "boolean"},
                 "receivable_due_on": {"type": "string", "format": "date"},
+                "weekly_frequency": {"type": "integer", "minimum": 1, "maximum": 7},
+                "lesson_count": {"type": "integer", "minimum": 0, "maximum": 1000},
+                "duration_type": {
+                    "type": "string",
+                    "enum": ["calendar_months", "fixed_days"],
+                },
+                "duration_value": {"type": "integer", "minimum": 1, "maximum": 3660},
+                "cycle_template_id": {"type": "string", "format": "uuid"},
+                "adjustment_cents": {
+                    "type": "integer",
+                    "minimum": -100000000,
+                    "maximum": 100000000,
+                },
+                "lesson_duration_minutes": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 480,
+                },
             },
             "required": ["client_id", "service_id", "starts_on", "ends_on"],
             "additionalProperties": False,

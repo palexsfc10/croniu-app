@@ -144,6 +144,23 @@ def create_pending_action(
         if expires_at > now:
             return existing
 
+    # Corrections: supersede other pending actions of the same executor on this thread
+    if thread_id is not None:
+        siblings = list(
+            db.scalars(
+                select(AgentPendingAction).where(
+                    AgentPendingAction.organization_id == organization_id,
+                    AgentPendingAction.user_id == user_id,
+                    AgentPendingAction.thread_id == thread_id,
+                    AgentPendingAction.tool_name == executor_name,
+                    AgentPendingAction.status == "pending",
+                )
+            ).all()
+        )
+        for sib in siblings:
+            sib.status = "cancelled"
+            db.add(sib)
+
     row = AgentPendingAction(
         organization_id=organization_id,
         user_id=user_id,

@@ -24,6 +24,11 @@ from app.agent.providers.base import (
     ProviderTimeoutError,
 )
 from app.agent.temporal import build_temporal_context
+from app.agent.thread_entities import (
+    collect_thread_entity_refs,
+    extract_entities_from_tool_result,
+    format_entities_prompt_block,
+)
 from app.agent.tools import TOOLS, ToolContext, get_tool, tool_specs
 from app.billing.entitlement import SubscriptionEntitlementService
 from app.config import Settings, get_settings
@@ -421,8 +426,17 @@ def run_turn(
 
     _increment_usage_daily(db, organization_id=organization_id, requests=1)
 
+    entity_refs = collect_thread_entity_refs(
+        db, thread_id=thread.id, organization_id=organization_id
+    )
+    entities_block = format_entities_prompt_block(entity_refs)
+    turn_entities: list[dict[str, str]] = []
+
     messages: list[LLMMessage] = [
-        LLMMessage(role="system", content=get_system_prompt(temporal=temporal))
+        LLMMessage(
+            role="system",
+            content=get_system_prompt(temporal=temporal, entities_block=entities_block or None),
+        )
     ]
     for row in history:
         if row.role in {"user", "assistant"}:
@@ -435,6 +449,8 @@ def run_turn(
         db=db,
         request_id=req_id,
         timezone=temporal.timezone,
+        thread_id=thread.id,
+        today=temporal.current_local_date,
     )
     tool_trace: list[str] = []
     usage_total = {
@@ -495,12 +511,16 @@ def run_turn(
                 reply = (response.content or "").strip() or (
                     "Não consegui produzir uma resposta útil."
                 )
+                asst_meta: dict[str, Any] = {}
+                if turn_entities:
+                    asst_meta["entities"] = turn_entities
                 threads_svc.append_message(
                     db,
                     thread=thread,
                     role="assistant",
                     content=reply,
                     message_type="text",
+                    metadata_safe=asst_meta or None,
                 )
                 _finish_run(status="ok")
                 _record_metrics(started, ok=True, tools=len(tool_trace), usage=usage_total)
@@ -610,6 +630,10 @@ def run_turn(
                     logger.exception("tool_error name=%s", name)
                     result = {"error": "Falha ao executar a ferramenta.", "code": "tool_error"}
 
+                if isinstance(result, dict) and "error" not in result:
+                    for ref in extract_entities_from_tool_result(tool_name=name, result=result):
+                        turn_entities.append(ref)
+
                 tool_latency_ms = int((time.perf_counter() - tool_started) * 1000)
                 is_error = isinstance(result, dict) and "error" in result
                 conf_svc.write_audit(
@@ -686,17 +710,20 @@ def run_turn(
                     )
 
             if pending_action:
+                card_meta: dict[str, Any] = {
+                    "pending_action_id": pending_action["id"],
+                    "tool_name": pending_action["tool_name"],
+                    "summary_fields": pending_action.get("summary_fields"),
+                }
+                if turn_entities:
+                    card_meta["entities"] = turn_entities
                 threads_svc.append_message(
                     db,
                     thread=thread,
                     role="assistant",
                     content=pending_action["summary"],
                     message_type="pending_card",
-                    metadata_safe={
-                        "pending_action_id": pending_action["id"],
-                        "tool_name": pending_action["tool_name"],
-                        "summary_fields": pending_action.get("summary_fields"),
-                    },
+                    metadata_safe=card_meta,
                 )
                 _finish_run(status="awaiting_confirmation")
                 _record_metrics(started, ok=True, tools=len(tool_trace), usage=usage_total)

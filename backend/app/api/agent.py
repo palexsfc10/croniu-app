@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.agent import confirmation as conf_svc
 from app.agent.orchestrator import agent_status, rate_limit_info, run_turn
+from app.agent.thread_entities import make_entity_ref
 from app.billing.entitlement import SubscriptionEntitlementService
 from app.config import get_settings
 from app.db import check_database, get_db
@@ -338,6 +339,57 @@ def confirm_pending(
         reply = f"{reply} (já estava concluída — sem nova alteração.)"
     thread_id = data.get("thread_id")
     pending_out = _pending_action_out(tool_row) if tool_row else None
+
+    if thread_id and isinstance(result, dict) and result.get("id") and not data.get(
+        "idempotent_replay"
+    ):
+        thread = threads_svc.get_thread(
+            db,
+            organization_id=auth.organization.id,
+            user_id=auth.user.id,
+            thread_id=thread_id,
+        )
+        entities = []
+        if executor_key == "create_client":
+            entities.append(
+                make_entity_ref(
+                    entity_type="client",
+                    entity_id=result["id"],
+                    display_name=str(result.get("full_name") or "cliente"),
+                    operation="create",
+                )
+            )
+        elif executor_key == "create_cycle":
+            entities.append(
+                make_entity_ref(
+                    entity_type="cycle",
+                    entity_id=result["id"],
+                    display_name="ciclo",
+                    operation="create",
+                )
+            )
+            if tool_row and isinstance(tool_row.arguments, dict):
+                cid = tool_row.arguments.get("client_id")
+                fields = tool_row.summary_fields or {}
+                if cid:
+                    entities.append(
+                        make_entity_ref(
+                            entity_type="client",
+                            entity_id=cid,
+                            display_name=str(fields.get("Cliente") or "cliente"),
+                            operation="create_cycle",
+                        )
+                    )
+        if entities:
+            threads_svc.append_message(
+                db,
+                thread=thread,
+                role="assistant",
+                content=reply,
+                message_type="text",
+                metadata_safe={"entities": entities, "confirmed_pending_id": str(pending_id)},
+            )
+
     return AgentChatOut(
         reply=reply,
         status="executed",

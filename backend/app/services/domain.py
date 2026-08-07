@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.appointment import Appointment
 from app.models.client import Client
 from app.models.cycle import Cycle
+from app.models.cycle_template import CycleTemplate
 from app.models.receivable import Receivable
 from app.models.service import Service
 from app.schemas.domain import (
@@ -561,6 +562,13 @@ def create_cycle(
     notes: str | None,
     create_receivable: bool,
     receivable_due_on: date | None,
+    weekly_frequency: int | None = None,
+    lesson_count: int | None = None,
+    duration_type: str | None = None,
+    duration_value: int | None = None,
+    cycle_template_id: uuid.UUID | None = None,
+    adjustment_cents: int | None = None,
+    lesson_duration_minutes: int | None = None,
 ) -> Cycle:
     client = get_client(db, organization_id=organization_id, client_id=client_id)
     if client.status != "active":
@@ -571,18 +579,36 @@ def create_cycle(
     if ends_on < starts_on:
         raise AuthError("invalid_dates", "A data de fim deve ser igual ou posterior ao início.")
 
+    if cycle_template_id is not None:
+        tmpl = db.scalar(
+            select(CycleTemplate).where(
+                CycleTemplate.id == cycle_template_id,
+                CycleTemplate.organization_id == organization_id,
+            )
+        )
+        if tmpl is None:
+            raise AuthError("not_found", "Modelo de ciclo não encontrado.", 404)
+
     amount = value_cents if value_cents is not None else service.default_price_cents
+    structured = weekly_frequency is not None or duration_type is not None
     cycle = Cycle(
         organization_id=organization_id,
         client_id=client.id,
         service_id=service.id,
+        cycle_template_id=cycle_template_id,
         cycle_type="period",
         status="active",
         starts_on=starts_on,
         ends_on=ends_on,
         value_cents=amount,
+        adjustment_cents=adjustment_cents if adjustment_cents is not None else 0,
         notes=_normalize_optional_str(notes),
-        is_legacy=True,
+        weekly_frequency=weekly_frequency,
+        lesson_count=lesson_count,
+        duration_type=duration_type,
+        duration_value=duration_value,
+        lesson_duration_minutes=lesson_duration_minutes or service.default_duration_minutes,
+        is_legacy=not structured,
     )
     db.add(cycle)
     db.flush()

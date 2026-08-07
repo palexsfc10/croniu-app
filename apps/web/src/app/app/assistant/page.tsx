@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/icons";
 import { apiFetch } from "@/lib/api";
 import { ProposalCard } from "@/components/app/assistant/proposal-card";
+import { SafeChatMarkdown } from "@/components/app/assistant/safe-chat-markdown";
 import {
   SUGGESTIONS,
   actionHeadline,
@@ -99,8 +100,8 @@ function MessageBubble({
         {message.pending ? (
           <>
             {message.content ? (
-              <div className="mb-1 whitespace-pre-wrap rounded-2xl rounded-bl-md bg-[var(--color-surface)] px-3.5 py-2.5 text-sm leading-relaxed text-[var(--color-ink)] shadow-[var(--shadow-sm)] ring-1 ring-[var(--color-border)]/70">
-                {message.content}
+              <div className="mb-1 rounded-2xl rounded-bl-md bg-[var(--color-surface)] px-3.5 py-2.5 shadow-[var(--shadow-sm)] ring-1 ring-[var(--color-border)]/70">
+                <SafeChatMarkdown text={message.content} />
               </div>
             ) : null}
             <ProposalCard
@@ -114,13 +115,13 @@ function MessageBubble({
         ) : (
           <div
             className={[
-              "whitespace-pre-wrap px-3.5 py-2.5 text-sm leading-relaxed",
+              "px-3.5 py-2.5 text-sm leading-relaxed",
               isUser
-                ? "rounded-2xl rounded-br-md bg-[var(--color-primary)] text-white shadow-[var(--shadow-sm)]"
+                ? "whitespace-pre-wrap rounded-2xl rounded-br-md bg-[var(--color-primary)] text-white shadow-[var(--shadow-sm)]"
                 : "rounded-2xl rounded-bl-md bg-[var(--color-surface)] text-[var(--color-ink)] shadow-[var(--shadow-sm)] ring-1 ring-[var(--color-border)]/70",
             ].join(" ")}
           >
-            {message.content}
+            {isUser ? message.content : <SafeChatMarkdown text={message.content} />}
           </div>
         )}
         {message.statusLabel && !message.pending && !isUser ? (
