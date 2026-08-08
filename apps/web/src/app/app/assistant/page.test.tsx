@@ -177,7 +177,7 @@ describe("AssistantPage premium shell", () => {
     expect(createCalls).toHaveLength(0);
   });
 
-  it("resumes the latest existing thread on mount without creating", async () => {
+  it("does not auto-open an existing conversation on mount", async () => {
     apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
       if (String(path).includes("/agent/status")) {
         return {
@@ -209,28 +209,14 @@ describe("AssistantPage premium shell", () => {
         };
       }
       if (String(path).includes("/agent/threads/thread-latest")) {
-        return {
-          data: {
-            thread: {
-              id: "thread-latest",
-              title: "Dia",
-              status: "active",
-              created_at: "2026-08-01T10:00:00Z",
-              updated_at: "2026-08-07T10:00:00Z",
-            },
-            messages: [
-              { id: "m1", role: "user", content: "Como está meu dia?", message_type: "text" },
-              { id: "m2", role: "assistant", content: "Seu dia está livre.", message_type: "text" },
-            ],
-          },
-        };
+        throw new Error("must not auto-open latest thread on mount");
       }
       return { data: null };
     });
 
     render(<AssistantPage />);
-    expect(await screen.findByText(/Seu dia está livre/i)).toBeInTheDocument();
-    expect(screen.queryByText("O que vamos organizar hoje?")).not.toBeInTheDocument();
+    expect(await screen.findByText("O que vamos organizar hoje?")).toBeInTheDocument();
+    expect(screen.queryByText(/Seu dia está livre/i)).not.toBeInTheDocument();
   });
 
   it("sends suggestion through the chat pipeline and hides empty-state after start", async () => {
@@ -522,7 +508,12 @@ describe("AssistantPage premium shell", () => {
     });
 
     render(<AssistantPage />);
-    // Mount auto-opens latest thread (pending)
+    expect(await screen.findByText("O que vamos organizar hoje?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Conversas"));
+    const openDialog = await screen.findByRole("dialog", { name: /Conversas recentes/i });
+    fireEvent.click(within(openDialog).getByText(/Criar/i));
+
     expect(await screen.findByText("Aguardando sua confirmação")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirmar" })).toBeInTheDocument();
 

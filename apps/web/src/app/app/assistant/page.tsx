@@ -168,9 +168,8 @@ export default function AssistantPage() {
   const voicePipelineAbortRef = useRef(false);
   const mountedRef = useRef(true);
   const micLongPressRef = useRef<number | null>(null);
-  /** After "Nova conversa", next send may create a thread; otherwise resume latest. */
+  /** After "Nova conversa", next send creates a thread (not resume). */
   const wantsNewThreadRef = useRef(false);
-  const autoOpenedRef = useRef(false);
   const createThreadPromiseRef = useRef<Promise<string | null> | null>(null);
 
   const greeting = useMemo(
@@ -296,18 +295,13 @@ export default function AssistantPage() {
       if (cancelled) return;
       if (result.data) setStatus(result.data);
       setStatusLoaded(true);
-      const items = await loadThreads();
-      if (cancelled || autoOpenedRef.current || wantsNewThreadRef.current) return;
-      if (items.length > 0) {
-        autoOpenedRef.current = true;
-        await openThread(items[0].id);
-      }
+      // List only — never force-open the latest conversation on entry.
+      // Returning to Assistente starts empty; user picks a thread or sends anew.
+      await loadThreads();
     })();
     return () => {
       cancelled = true;
     };
-    // openThread is stable enough for mount bootstrap; intentional omit from deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadThreads]);
 
   useEffect(() => {
@@ -446,13 +440,8 @@ export default function AssistantPage() {
     stickToBottomRef.current = true;
 
     let activeThread = threadId;
-    if (!activeThread && !wantsNewThreadRef.current) {
-      const listed = threads.length > 0 ? threads : await loadThreads();
-      if (listed[0]?.id) {
-        activeThread = listed[0].id;
-        if (mountedRef.current) setThreadId(activeThread);
-      }
-    }
+    // Empty composer (entry or "Nova conversa") always starts a real new thread.
+    // Never silently attach to the latest history conversation.
     if (!activeThread) {
       activeThread = await ensureThreadForSend(trimmed);
       if (!activeThread) {
