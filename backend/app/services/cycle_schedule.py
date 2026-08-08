@@ -305,6 +305,13 @@ def create_cycle_with_schedule(
     generate_appointments: bool = True,
 ) -> tuple[Cycle, list[Appointment]]:
     """Atomically create cycle (+ receivable) and materialize agenda appointments."""
+    if not generate_appointments:
+        raise AuthError(
+            "agenda_required",
+            "Ciclo com programação deve gerar as aulas na agenda. "
+            "Não é permitido criar ciclo ativo sem compromissos.",
+            422,
+        )
     if idempotency_key:
         existing = db.scalar(
             select(Cycle).where(
@@ -495,36 +502,40 @@ def create_cycle_with_schedule(
             )
         )
 
-    if generate_appointments:
-        title = f"{service.name} · {client.full_name}"
-        for occ in occurrences:
-            appt = Appointment(
-                organization_id=organization_id,
-                client_id=client.id,
-                cycle_id=cycle.id,
-                service_id=service.id,
-                location_id=location.id if location else None,
-                title=title,
-                notes="Origem: ciclo",
-                starts_at=occ.starts_at,
-                ends_at=occ.ends_at,
-                status="scheduled",
-            )
-            db.add(appt)
-            planned_appts.append(appt)
+    title = f"{service.name} · {client.full_name}"
+    for occ in occurrences:
+        appt = Appointment(
+            organization_id=organization_id,
+            client_id=client.id,
+            cycle_id=cycle.id,
+            service_id=service.id,
+            location_id=location.id if location else None,
+            title=title,
+            notes="Origem: ciclo",
+            starts_at=occ.starts_at,
+            ends_at=occ.ends_at,
+            status="scheduled",
+        )
+        db.add(appt)
+        planned_appts.append(appt)
+
+    if len(planned_appts) != int(cycle.lesson_count or 0):
+        db.rollback()
+        raise AuthError(
+            "agenda_incomplete",
+            "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
+            500,
+        )
 
     db.commit()
     cycle_out = domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
     appt_ids = [a.id for a in planned_appts]
-    if appt_ids:
-        planned_appts = list(
-            db.scalars(
-                select(Appointment).where(
-                    Appointment.organization_id == organization_id,
-                    Appointment.id.in_(appt_ids),
-                )
-            ).all()
-        )
-    else:
-        planned_appts = []
+    planned_appts = list(
+        db.scalars(
+            select(Appointment).where(
+                Appointment.organization_id == organization_id,
+                Appointment.id.in_(appt_ids),
+            )
+        ).all()
+    )
     return cycle_out, planned_appts

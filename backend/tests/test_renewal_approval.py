@@ -45,6 +45,7 @@ def _seed(client: TestClient, key: str) -> dict:
             "cycle_template_id": template_id,
             "starts_on": "2026-07-01",
             "weekdays": [1, 3],
+            "starts_time": "09:00:00",
             "idempotency_key": key,
         },
     )
@@ -72,9 +73,10 @@ def test_renewal_approve_creates_one_cycle_and_is_idempotent(client, register_pa
         "cycle_template_id": ids["template_id"],
         "starts_on": "2026-09-01",
         "weekdays": [1, 3],
+        "starts_time": "10:00:00",
         "idempotency_key": "approve-once",
         "renewal_request_id": rid,
-        "generate_appointments": False,
+        "generate_appointments": True,
     }
     created = client.post("/api/v1/cycles/intelligent", json=body)
     assert created.status_code == 201, created.text

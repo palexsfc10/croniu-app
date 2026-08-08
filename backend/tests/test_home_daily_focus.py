@@ -306,8 +306,9 @@ def test_home_resolved_renewal_ends_source_and_clears_cards(client, register_pay
             "cycle_template_id": template["id"],
             "starts_on": starts_near_end,
             "weekdays": [0],
+            "starts_time": "09:00:00",
             "idempotency_key": "home-renew-source",
-            "generate_appointments": False,
+            "generate_appointments": True,
         },
     )
     assert source.status_code == 201, source.text
@@ -326,9 +327,10 @@ def test_home_resolved_renewal_ends_source_and_clears_cards(client, register_pay
             "cycle_template_id": template["id"],
             "starts_on": starts,
             "weekdays": [0],
+            "starts_time": "09:00:00",
             "idempotency_key": "home-renew-approve",
             "renewal_request_id": rid,
-            "generate_appointments": False,
+            "generate_appointments": True,
         },
     )
     assert created.status_code == 201, created.text

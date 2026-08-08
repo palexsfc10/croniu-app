@@ -103,7 +103,8 @@ class IntelligentCycleCreate(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
     create_receivable: bool = True
     receivable_due_on: date | None = None
-    generate_appointments: bool = False
+    # Intelligent cycles always materialize the agenda (invariant: active cycle ↔ appointments).
+    generate_appointments: bool = True
     location_id: UUID | None = None
     starts_time: time | None = None
     idempotency_key: str | None = Field(default=None, min_length=4, max_length=64)
@@ -121,7 +122,12 @@ class IntelligentCycleCreate(BaseModel):
     def validate_combo(self) -> IntelligentCycleCreate:
         if self.adjustment_cents is not None and self.final_cents is not None:
             raise ValueError("Informe desconto/ajuste ou valor final, não ambos.")
-        if self.generate_appointments and self.starts_time is None:
+        if not self.generate_appointments:
+            raise ValueError(
+                "Ciclo com programação deve gerar as aulas na agenda. "
+                "Não é permitido criar ciclo ativo sem compromissos."
+            )
+        if self.starts_time is None:
             raise ValueError("Informe o horário para gerar as aulas na agenda.")
         if len(self.weekdays) == 0:
             raise ValueError("Selecione ao menos um dia da semana.")

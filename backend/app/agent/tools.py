@@ -1177,67 +1177,54 @@ def _propose_create_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
 
 def execute_create_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
     parsed = ProposeCreateCycleArgs.model_validate(_sanitize_cycle_propose_args(arguments))
-    if parsed.generate_appointments and parsed.weekdays:
-        slots = (
-            [s.model_dump(mode="json") for s in parsed.schedule_slots]
-            if parsed.schedule_slots
-            else None
+    # Invariant: an active programmed cycle must materialize agenda appointments.
+    # Never fall through to bare create_cycle when a schedule can (or must) be built.
+    if not parsed.weekdays:
+        raise AuthError(
+            "schedule_required",
+            "Informe os dias da semana e o horário para criar o ciclo com a agenda.",
+            422,
         )
-        cycle, appts = schedule_svc.create_cycle_with_schedule(
-            ctx.db,
-            organization_id=ctx.organization_id,
-            client_id=parsed.client_id,
-            service_id=parsed.service_id,
-            starts_on=parsed.starts_on,
-            weekdays=parsed.weekdays,
-            schedule_slots=slots,
-            starts_time=parsed.starts_time,
-            duration_type=parsed.duration_type or "fixed_days",
-            duration_value=parsed.duration_value or 30,
-            cycle_template_id=parsed.cycle_template_id,
-            value_cents=parsed.value_cents,
-            adjustment_cents=parsed.adjustment_cents,
-            final_cents=parsed.value_cents,
-            lesson_duration_minutes=parsed.lesson_duration_minutes,
-            notes=parsed.notes,
-            create_receivable=parsed.create_receivable,
-            receivable_due_on=parsed.receivable_due_on,
-            idempotency_key=parsed.idempotency_key,
-            generate_appointments=True,
+    if not parsed.starts_time and not parsed.schedule_slots:
+        raise AuthError(
+            "schedule_required",
+            "Informe o horário das aulas para gerar os compromissos na agenda.",
+            422,
         )
-        return {
-            "id": str(cycle.id),
-            "kind": "cycle",
-            "status": cycle.status,
-            "weekly_frequency": cycle.weekly_frequency,
-            "lesson_count": cycle.lesson_count,
-            "starts_on": cycle.starts_on.isoformat(),
-            "ends_on": cycle.ends_on.isoformat(),
-            "value_cents": cycle.value_cents,
-            "creates_appointments": True,
-            "appointment_ids": [str(a.id) for a in appts],
-            "appointment_count": len(appts),
-        }
-
-    cycle = domain_svc.create_cycle(
+    slots = (
+        [s.model_dump(mode="json") for s in parsed.schedule_slots]
+        if parsed.schedule_slots
+        else None
+    )
+    cycle, appts = schedule_svc.create_cycle_with_schedule(
         ctx.db,
         organization_id=ctx.organization_id,
         client_id=parsed.client_id,
         service_id=parsed.service_id,
         starts_on=parsed.starts_on,
-        ends_on=parsed.ends_on,
+        weekdays=parsed.weekdays,
+        schedule_slots=slots,
+        starts_time=parsed.starts_time,
+        duration_type=parsed.duration_type or "fixed_days",
+        duration_value=parsed.duration_value or 30,
+        cycle_template_id=parsed.cycle_template_id,
         value_cents=parsed.value_cents,
+        adjustment_cents=parsed.adjustment_cents,
+        final_cents=parsed.value_cents,
+        lesson_duration_minutes=parsed.lesson_duration_minutes,
         notes=parsed.notes,
         create_receivable=parsed.create_receivable,
         receivable_due_on=parsed.receivable_due_on,
-        weekly_frequency=parsed.weekly_frequency,
-        lesson_count=parsed.lesson_count,
-        duration_type=parsed.duration_type,
-        duration_value=parsed.duration_value,
-        cycle_template_id=parsed.cycle_template_id,
-        adjustment_cents=parsed.adjustment_cents,
-        lesson_duration_minutes=parsed.lesson_duration_minutes,
+        idempotency_key=parsed.idempotency_key,
+        generate_appointments=True,
     )
+    if cycle.lesson_count and len(appts) != int(cycle.lesson_count):
+        # Should not happen if create_cycle_with_schedule sets lesson_count from occurrences.
+        raise AuthError(
+            "agenda_incomplete",
+            "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
+            500,
+        )
     return {
         "id": str(cycle.id),
         "kind": "cycle",
@@ -1247,7 +1234,9 @@ def execute_create_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[st
         "starts_on": cycle.starts_on.isoformat(),
         "ends_on": cycle.ends_on.isoformat(),
         "value_cents": cycle.value_cents,
-        "creates_appointments": False,
+        "creates_appointments": True,
+        "appointment_ids": [str(a.id) for a in appts],
+        "appointment_count": len(appts),
     }
 
 

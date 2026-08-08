@@ -49,7 +49,6 @@ function NewIntelligentCycleForm() {
   });
   const [discountReais, setDiscountReais] = useState("");
   const [finalReais, setFinalReais] = useState("");
-  const [generate, setGenerate] = useState(true);
   const [locationId, setLocationId] = useState("");
   const [startsTime, setStartsTime] = useState("09:00");
   const [preview, setPreview] = useState<CyclePreview | null>(null);
@@ -152,7 +151,9 @@ function NewIntelligentCycleForm() {
       starts_on: startsOn,
       weekdays,
       create_receivable: true,
-      generate_appointments: generate,
+      generate_appointments: true,
+      starts_time: `${startsTime}:00`,
+      location_id: locationId || null,
       idempotency_key: `web-${crypto.randomUUID()}`,
     };
     if (finalReais.trim()) {
@@ -160,10 +161,6 @@ function NewIntelligentCycleForm() {
     } else if (discountReais.trim()) {
       const cents = reaisToCents(discountReais);
       body.adjustment_cents = cents == null ? 0 : -Math.abs(cents);
-    }
-    if (generate) {
-      body.starts_time = `${startsTime}:00`;
-      body.location_id = locationId || null;
     }
     if (renewalRequestId) {
       body.renewal_request_id = renewalRequestId;
@@ -398,40 +395,32 @@ function NewIntelligentCycleForm() {
             Recalcular ciclo e valores
           </Button>
 
-          <label className="flex items-start gap-3 text-sm">
-            <input
-              type="checkbox"
-              className="mt-1 min-h-5 min-w-5"
-              checked={generate}
-              onChange={(e) => setGenerate(e.target.checked)}
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            As aulas serão adicionadas automaticamente à Agenda conforme a programação.
+          </p>
+          <div className="space-y-3">
+            <TextField
+              label="Horário"
+              type="time"
+              value={startsTime}
+              onChange={(e) => setStartsTime(e.target.value)}
             />
-            <span>Adicionar estas aulas à Agenda</span>
-          </label>
-          {generate ? (
-            <div className="space-y-3">
-              <TextField
-                label="Horário"
-                type="time"
-                value={startsTime}
-                onChange={(e) => setStartsTime(e.target.value)}
-              />
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium">Local (opcional)</span>
-                <select
-                  className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-                  value={locationId}
-                  onChange={(e) => setLocationId(e.target.value)}
-                >
-                  <option value="">Sem local</option>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          ) : null}
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Local (opcional)</span>
+              <select
+                className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}
+              >
+                <option value="">Sem local</option>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           {error ? (
             <div
@@ -450,7 +439,7 @@ function NewIntelligentCycleForm() {
                     ))}
                   </ul>
                   <p className="text-sm text-[var(--color-ink-muted)]">
-                    Ajuste o horário ou desmarque a opção de adicionar as aulas à agenda.
+                    Ajuste o horário ou os dias da semana e tente novamente.
                   </p>
                 </>
               ) : null}

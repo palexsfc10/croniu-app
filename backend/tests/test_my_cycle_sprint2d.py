@@ -52,6 +52,7 @@ def _seed_cycle(client: TestClient, key: str, *, near_end: bool = True) -> dict:
             "cycle_template_id": template_id,
             "starts_on": starts_on,
             "weekdays": [1, 3],
+            "starts_time": "09:00:00",
             "idempotency_key": key,
         },
     )

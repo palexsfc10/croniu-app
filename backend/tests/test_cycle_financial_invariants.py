@@ -54,6 +54,7 @@ def _cycle_720(client: TestClient, register_payload: dict, *, key: str) -> dict:
             "cycle_template_id": template_id,
             "starts_on": "2026-08-01",
             "weekdays": [1, 3],
+            "starts_time": "09:00:00",
             "idempotency_key": key,
         },
     )

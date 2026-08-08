@@ -359,67 +359,72 @@ def create_intelligent_cycle(
         )
 
     planned: list[tuple[datetime, datetime]] = []
-    if payload.generate_appointments:
-        assert payload.starts_time is not None
-        tz = _org_tz(db, organization_id)
-        from app.services import cycle_schedule as schedule_svc
-
-        slots = schedule_svc.slots_from_payload(
-            payload.weekdays, starts_time=payload.starts_time
+    if not payload.generate_appointments or payload.starts_time is None:
+        raise AuthError(
+            "agenda_required",
+            "Ciclo com programação deve gerar as aulas na agenda.",
+            422,
         )
-        occurrences = schedule_svc.build_occurrences(
+    assert payload.starts_time is not None
+    tz = _org_tz(db, organization_id)
+    from app.services import cycle_schedule as schedule_svc
+
+    slots = schedule_svc.slots_from_payload(
+        payload.weekdays, starts_time=payload.starts_time
+    )
+    occurrences = schedule_svc.build_occurrences(
+        starts_on=preview.starts_on,
+        ends_on=preview.ends_on,
+        slots=slots,
+        duration_minutes=preview.lesson_duration_minutes,
+        tz=tz,
+    )
+    planned = [(o.starts_at, o.ends_at) for o in occurrences]
+    hits = schedule_svc.find_occurrence_conflicts(
+        db, organization_id=organization_id, occurrences=occurrences
+    )
+    if hits:
+        all_conflicts = []
+        for hit in hits:
+            for row in hit.conflicting:
+                all_conflicts.append(
+                    {
+                        "id": str(row.id),
+                        "client_name": row.client.full_name if row.client else None,
+                        "starts_at": row.starts_at.isoformat(),
+                        "ends_at": row.ends_at.isoformat(),
+                        "status": row.status,
+                        "occurrence": schedule_svc.format_occurrence_label(
+                            hit.occurrence, tz
+                        ),
+                    }
+                )
+            if not hit.conflicting:
+                all_conflicts.append(
+                    {
+                        "id": None,
+                        "client_name": client.full_name,
+                        "starts_at": hit.occurrence.starts_at.isoformat(),
+                        "ends_at": hit.occurrence.ends_at.isoformat(),
+                        "status": "planned_batch",
+                    }
+                )
+        alts = schedule_svc.suggest_recurring_times(
+            db,
+            organization_id=organization_id,
             starts_on=preview.starts_on,
             ends_on=preview.ends_on,
-            slots=slots,
+            weekdays=payload.weekdays,
             duration_minutes=preview.lesson_duration_minutes,
             tz=tz,
+            preferred=payload.starts_time,
         )
-        planned = [(o.starts_at, o.ends_at) for o in occurrences]
-        hits = schedule_svc.find_occurrence_conflicts(
-            db, organization_id=organization_id, occurrences=occurrences
+        raise AuthError(
+            "appointment_conflict",
+            "Há conflito de horário. Nenhuma aula foi criada.",
+            status_code=409,
+            details={"conflicts": all_conflicts, "suggestions": alts},
         )
-        if hits:
-            all_conflicts = []
-            for hit in hits:
-                for row in hit.conflicting:
-                    all_conflicts.append(
-                        {
-                            "id": str(row.id),
-                            "client_name": row.client.full_name if row.client else None,
-                            "starts_at": row.starts_at.isoformat(),
-                            "ends_at": row.ends_at.isoformat(),
-                            "status": row.status,
-                            "occurrence": schedule_svc.format_occurrence_label(
-                                hit.occurrence, tz
-                            ),
-                        }
-                    )
-                if not hit.conflicting:
-                    all_conflicts.append(
-                        {
-                            "id": None,
-                            "client_name": client.full_name,
-                            "starts_at": hit.occurrence.starts_at.isoformat(),
-                            "ends_at": hit.occurrence.ends_at.isoformat(),
-                            "status": "planned_batch",
-                        }
-                    )
-            alts = schedule_svc.suggest_recurring_times(
-                db,
-                organization_id=organization_id,
-                starts_on=preview.starts_on,
-                ends_on=preview.ends_on,
-                weekdays=payload.weekdays,
-                duration_minutes=preview.lesson_duration_minutes,
-                tz=tz,
-                preferred=payload.starts_time,
-            )
-            raise AuthError(
-                "appointment_conflict",
-                "Há conflito de horário. Nenhuma aula foi criada.",
-                status_code=409,
-                details={"conflicts": all_conflicts, "suggestions": alts},
-            )
 
     cycle = Cycle(
         organization_id=organization_id,
@@ -462,23 +467,29 @@ def create_intelligent_cycle(
             )
         )
 
-    if payload.generate_appointments:
-        title = f"{service.name} · {client.full_name}"
-        for start_at, end_at in planned:
-            db.add(
-                Appointment(
-                    organization_id=organization_id,
-                    client_id=client.id,
-                    cycle_id=cycle.id,
-                    service_id=service.id,
-                    location_id=location.id if location else None,
-                    title=title,
-                    notes="Origem: ciclo",
-                    starts_at=start_at,
-                    ends_at=end_at,
-                    status="scheduled",
-                )
+    if len(planned) != int(preview.lesson_count):
+        raise AuthError(
+            "agenda_incomplete",
+            "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
+            500,
+        )
+
+    title = f"{service.name} · {client.full_name}"
+    for start_at, end_at in planned:
+        db.add(
+            Appointment(
+                organization_id=organization_id,
+                client_id=client.id,
+                cycle_id=cycle.id,
+                service_id=service.id,
+                location_id=location.id if location else None,
+                title=title,
+                notes="Origem: ciclo",
+                starts_at=start_at,
+                ends_at=end_at,
+                status="scheduled",
             )
+        )
 
     if payload.renewal_request_id is not None and renewal_row is not None:
         renewal_row.status = "resolved"

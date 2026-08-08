@@ -86,6 +86,7 @@ def _seed(client: TestClient, key: str) -> dict:
             "cycle_template_id": template_id,
             "starts_on": "2026-07-01",
             "weekdays": [1, 3],
+            "starts_time": "09:00:00",
             "idempotency_key": key,
         },
     )
