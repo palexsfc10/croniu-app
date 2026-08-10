@@ -26,6 +26,7 @@ from app.models.location import Location
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.organization_payment_settings import OrganizationPaymentSettings
+from app.models.email_verification_token import EmailVerificationToken
 from app.models.password_reset_token import PasswordResetToken
 from app.models.payment_proof import PaymentProof
 from app.models.payment_report import PaymentReport
@@ -62,6 +63,7 @@ __all__ = [
     "Cycle",
     "CycleTemplate",
     "Receivable",
+    "EmailVerificationToken",
     "PasswordResetToken",
     "Location",
     "Appointment",

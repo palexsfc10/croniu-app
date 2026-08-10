@@ -44,6 +44,19 @@ class Settings(BaseSettings):
         default="http://localhost:3000",
         alias="PUBLIC_APP_BASE_URL",
     )
+    # Public URLs for transactional e-mail links (Resend). Prefer APP_PUBLIC_URL.
+    app_public_url: str = Field(default="", alias="APP_PUBLIC_URL")
+    api_public_url: str = Field(default="", alias="API_PUBLIC_URL")
+    admin_public_url: str = Field(default="", alias="ADMIN_PUBLIC_URL")
+    email_provider: str = Field(default="fake", alias="EMAIL_PROVIDER")
+    resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
+    email_from: str = Field(
+        default="Croniu <no-reply@croniu.com.br>",
+        alias="EMAIL_FROM",
+    )
+    email_reply_to: str = Field(default="", alias="EMAIL_REPLY_TO")
+    email_timeout_seconds: float = Field(default=10.0, alias="EMAIL_TIMEOUT_SECONDS")
+    auth_rate_limit_per_minute: int = Field(default=10, alias="AUTH_RATE_LIMIT_PER_MINUTE")
     proof_storage_dir: str = Field(
         default="var/proofs",
         alias="PROOF_STORAGE_DIR",

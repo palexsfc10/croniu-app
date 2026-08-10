@@ -90,6 +90,28 @@ def register_owner(
     db.refresh(user)
     db.refresh(organization)
     db.refresh(membership)
+
+    # Optional transactional mail (fake in tests; Resend in PRD). Never blocks signup.
+    try:
+        from app.config import get_settings
+        from app.services.email_flow import (
+            issue_email_verification_token,
+            send_email_verification,
+            send_welcome_email,
+        )
+
+        settings = get_settings()
+        send_welcome_email(settings=settings, user=user)
+        raw_verify = issue_email_verification_token(db, user=user)
+        db.commit()
+        send_email_verification(settings=settings, user=user, raw_token=raw_verify)
+    except Exception:
+        # Registration must succeed even if outbound e-mail fails.
+        db.rollback()
+        db.refresh(user)
+        db.refresh(organization)
+        db.refresh(membership)
+
     return user, organization, membership
 
 
@@ -224,10 +246,16 @@ def primary_organization_id(db: Session, user: User) -> uuid.UUID:
     return membership.organization_id
 
 
-def request_password_reset(db: Session, *, email: str) -> str | None:
+def request_password_reset(
+    db: Session,
+    *,
+    email: str,
+    settings: Settings | None = None,
+) -> str | None:
     """Create a reset token when the user exists. Always safe to call.
 
     Returns the raw token only for the caller to expose in non-production.
+    When settings are provided, attempts outbound e-mail delivery.
     """
     normalized_email = email.strip().lower()
     user = db.scalar(select(User).where(User.email == normalized_email))
@@ -235,15 +263,25 @@ def request_password_reset(db: Session, *, email: str) -> str | None:
         return None
 
     raw_token = generate_session_token()
+    token_hash = hash_session_token(raw_token)
     token = PasswordResetToken(
         user_id=user.id,
-        token_hash=hash_session_token(raw_token),
+        token_hash=token_hash,
         expires_at=datetime.now(UTC) + timedelta(hours=PASSWORD_RESET_TTL_HOURS),
     )
     db.add(token)
     db.commit()
-    return raw_token
 
+    if settings is not None:
+        from app.services.email_flow import send_password_reset_email
+
+        send_password_reset_email(
+            settings=settings,
+            user=user,
+            raw_token=raw_token,
+            token_hash=token_hash,
+        )
+    return raw_token
 
 def confirm_password_reset(db: Session, *, token: str, new_password: str) -> None:
     token_hash = hash_session_token(token.strip())

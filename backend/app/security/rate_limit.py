@@ -24,5 +24,9 @@ class SlidingWindowRateLimiter:
             bucket.append(now)
             return True
 
+    def reset(self) -> None:
+        with self._lock:
+            self._hits.clear()
+
 
 public_rate_limiter = SlidingWindowRateLimiter()

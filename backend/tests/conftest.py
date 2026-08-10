@@ -19,10 +19,15 @@ os.environ.setdefault(
 os.environ.setdefault("SESSION_COOKIE_SECURE", "false")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:3000")
 os.environ.setdefault("OPENAPI_ENABLED", "true")
+os.environ.setdefault("EMAIL_PROVIDER", "fake")
+os.environ.setdefault("APP_PUBLIC_URL", "http://localhost:3000")
+os.environ.setdefault("AUTH_RATE_LIMIT_PER_MINUTE", "1000")
 
 from app.config import get_settings
 from app.db import Base, get_db
+from app.email.factory import reset_email_provider_cache
 from app.main import create_app
+from app.security.rate_limit import public_rate_limiter
 from app.models import (  # noqa: F401
     AdminAuditLog,
     AgentAuditLog,
@@ -43,6 +48,7 @@ from app.models import (  # noqa: F401
     ClientPublicAccess,
     Cycle,
     CycleTemplate,
+    EmailVerificationToken,
     Location,
     Membership,
     Organization,
@@ -63,6 +69,7 @@ from app.models import (  # noqa: F401
 
 
 get_settings.cache_clear()
+reset_email_provider_cache()
 settings = get_settings()
 engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
@@ -108,6 +115,9 @@ def prepare_database():
 
 @pytest.fixture(autouse=True)
 def clean_tables():
+    public_rate_limiter.reset()
+    reset_email_provider_cache()
+    get_settings.cache_clear()
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -117,7 +127,7 @@ def clean_tables():
                 "client_evaluation_criteria, client_evaluations, "
                 "payment_proofs, payment_reports, renewal_requests, "
                 "organization_payment_settings, client_public_accesses, "
-                "appointments, locations, password_reset_tokens, "
+                "appointments, locations, password_reset_tokens, email_verification_tokens, "
                 "receivables, cycles, cycle_templates, services, clients, "
                 "admin_audit_logs, platform_sessions, platform_memberships, "
                 "sessions, memberships, users, organizations "
