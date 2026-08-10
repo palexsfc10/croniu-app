@@ -12,20 +12,25 @@
 
 Gates obrigatórios ainda abertos (bloqueadores):
 
-1. **GitHub** — repositório estava vazio; push da branch de release / PR para `main` ainda precisa ser concluído e CI verde na plataforma.
-2. **Imagens imutáveis no registry** — build/push GHCR (`build-release.yml`) ainda não executou; HML ainda roda tags `:local` sem labels OCI de revision.
-3. **Rehearsal automatizado HML** — pipeline digest-based ainda não implantou a RC em HML (não rebuild no jarvis feito nesta etapa; rehearsal incompleto).
-4. **Smoke autenticado completo** — não executado nesta etapa (login/ciclo/IA/billing/webhook/admin end-to-end).
-5. **Rollback ensaiado** — script existe; ensaio com troca de digests não executado.
-6. **Environments GitHub (`hml` / `production`) + secrets de deploy** — não configurados (SSH, paths, registry auth no runner se necessário).
-7. **DNS / Asaas Production / Cloudflare PRD** — corretamente **não** alterados; permanecem pendências manuais únicas para cutover futuro.
+1. **CI vermelho** no primeiro push (`https://github.com/palexsfc10/croniu-app/actions/runs/31438875937`):
+   - `migrations-check` ✅
+   - `backend-tests` ❌ `ModuleNotFoundError: app` (faltou `PYTHONPATH`/editable install)
+   - `web` / `admin` lint ❌ erros React Compiler `setState` em effects (pré-existentes)
+   - `secret-scan` ❌ gitleaks em string de teste `SECRET_KEY='test-secret…'` em script HML (falso positivo operacional; precisa allowlist)
+2. **Imagens imutáveis no registry** — `build-release` ainda não produziu digests GHCR; HML segue em `:local`.
+3. **Rehearsal automatizado HML** — não executado com imagens digest-based.
+4. **Smoke autenticado completo** — não executado.
+5. **Rollback ensaiado** — script existe; ensaio não executado.
+6. **Environments GitHub + secrets de deploy** — não configurados.
+7. **DNS / Asaas Production / Cloudflare PRD** — corretamente **não** alterados.
 
 Itens já provados (não bastam para GO):
 
-- Identidade do código em HML = `e6649ba` (hashes de arquivos-chave batem com worktree e com o filesystem/imagem da API).
-- Health público HML OK (API/web/admin).
-- Alembic head único em HML: `0017_user_feedbacks`.
-- Scaffold de CI/CD, version endpoints, deploy por digest, compose PRD isolado, docs ops e evidências HML criados nesta branch.
+- Identidade do código em HML = `e6649ba` (hashes batem worktree ↔ FS HML ↔ container API).
+- Health público HML OK.
+- Alembic head único: `0017_user_feedbacks`.
+- GitHub deixou de estar vazio: branch `release/croniu-prd-v1`, tag `v1.0.0-rc1`, PR `#1`.
+- Scaffold CI/CD + deploy digest + `/version` + compose PRD + docs ops.
 
 ## 2–9. Inventário Git / GitHub / HML
 
@@ -33,10 +38,12 @@ Itens já provados (não bastam para GO):
 |------|--------|
 | Árvore original | `C:\projetos\croniu` em `feature/billing-asaas-hosted` (**intacta**, dirty não-billing preservado) |
 | Remote local original | **nenhum** (`git remote` vazio) — código só local + jarvis |
-| GitHub `palexsfc10/croniu-app` | **vazio** (`isEmpty: true`, size 0) desde 2026-07-25 |
-| Causa do vazio | projeto nunca enviado; não há outro remote ativo |
+| GitHub `palexsfc10/croniu-app` | **populada** nesta etapa (antes: vazia desde 2026-07-25) |
+| Causa do vazio original | projeto nunca enviado; remote local inexistente |
 | Worktree release | `C:\projetos\croniu-release-prd-v1` |
-| Branch release | `release/croniu-prd-v1` |
+| Branch release | `release/croniu-prd-v1` @ `bc1f973…` |
+| Tag RC | `v1.0.0-rc1` |
+| PR | https://github.com/palexsfc10/croniu-app/pull/1 (`integrate/rc1-to-main` → `main`) |
 | SHA HML (SOURCE_SHA / DEPLOY_MARKER) | `e6649ba…` · feature=`cycle-agenda-integrity` · `20260808T003034Z` |
 | Path HML real | `/home/palex/ntws/croniu-hml` (**não** `/srv/docker/croniu`) |
 | Git no servidor HML | **ausente** (deploy por rsync/tarball) |
@@ -84,9 +91,9 @@ Principais:
 | Gate | Resultado |
 |------|-----------|
 | Pytest local Docker | **não executado** (Docker Desktop indisponível nesta máquina) |
-| CI GitHub | **pendente** (repo ainda sem código no remote no momento do relatório) |
-| Lint/typecheck/build web/admin | **pendente CI** (`node_modules` ausente no worktree) |
-| Secret scan local (git grep padrões live) | sem credenciais live; hits apenas scripts que checam `OPENAI_API_KEY=` vazio |
+| CI GitHub | **failure** run `31438875937` (migrations ✅; backend/web/admin/secret-scan ❌) |
+| Lint web/admin | **failure** (React setState-in-effect) |
+| Secret scan | gitleaks **failure** (falso positivo em SECRET_KEY de teste em script ops) |
 | Backup automático digesto pipeline | script pronto; **não** executado no ensaio |
 | Rehearsal HML digest-based | **não** executado |
 | Smoke público HML (estado atual) | API/web/admin **200** / health `ok` |
