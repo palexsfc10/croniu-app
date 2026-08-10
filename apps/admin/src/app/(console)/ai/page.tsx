@@ -1,0 +1,258 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+
+type AiOps = {
+  configured: boolean;
+  ai_enabled: boolean;
+  provider: string;
+  model: string;
+  api_key_configured: boolean;
+  requests_today: number;
+  tokens_today: number;
+  estimated_cost_cents_today: number;
+  errors_today: number;
+  requests_month: number;
+  tokens_month: number;
+  estimated_cost_cents_month: number;
+  avg_latency_ms_7d: number | null;
+  actions_pending: number;
+  actions_executed_30d: number;
+  actions_cancelled_30d: number;
+  actions_expired_30d: number;
+  note?: string;
+};
+
+type AiRun = {
+  run_id: string;
+  organization_id: string;
+  organization_name?: string | null;
+  professional_name?: string | null;
+  thread_id: string;
+  started_at: string | null;
+  provider: string;
+  model: string;
+  status: string;
+  latency_ms: number | null;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_cents: number;
+  provider_request_id: string | null;
+  error_code: string | null;
+  tools_requested: string[];
+  tools_executed: Array<{ name: string; status: string; latency_ms: number | null }>;
+  proposal: {
+    action_id: string;
+    tool_name: string;
+    status: string;
+    error_sanitized: string | null;
+    request_id: string | null;
+  } | null;
+  sensitive_content_hidden: boolean;
+};
+
+type AiRunsResponse = {
+  items: AiRun[];
+  total: number;
+  note?: string;
+};
+
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        {label}
+      </p>
+      <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--color-ink)]">{value}</p>
+    </div>
+  );
+}
+
+export default function AiOpsPage() {
+  const [data, setData] = useState<AiOps | null>(null);
+  const [runs, setRuns] = useState<AiRunsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
+  const [proposalStatus, setProposalStatus] = useState("");
+  const [messageType, setMessageType] = useState("");
+  const [orgId, setOrgId] = useState("");
+
+  async function loadRuns() {
+    const params = new URLSearchParams({ page: "1", page_size: "30" });
+    if (status) params.set("status", status);
+    if (proposalStatus) params.set("proposal_status", proposalStatus);
+    if (messageType) params.set("message_type", messageType);
+    if (orgId.trim()) params.set("organization_id", orgId.trim());
+    const result = await apiFetch<AiRunsResponse>(`/api/v1/platform/ai-runs?${params}`);
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    setRuns(result.data ?? null);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<AiOps>("/api/v1/platform/ai-ops");
+      if (cancelled) return;
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+      setData(result.data || null);
+      await loadRuns();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (error && !data) {
+    return <p className="text-sm text-[var(--color-danger)]">{error}</p>;
+  }
+  if (!data) {
+    return <p className="text-sm text-[var(--color-ink-muted)]">Carregando métricas de IA…</p>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <header>
+        <h1 className="text-2xl font-semibold text-[var(--color-ink)]">Assistente IA</h1>
+        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+          Metadados operacionais. Conversas privadas não são listadas por padrão.
+        </p>
+      </header>
+
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="IA habilitada" value={data.ai_enabled ? "Sim" : "Não"} />
+        <Metric label="Provedor" value={data.provider} />
+        <Metric label="Modelo" value={data.model} />
+        <Metric label="Chave configurada" value={data.api_key_configured ? "Sim" : "Não"} />
+        <Metric label="Req hoje" value={data.requests_today} />
+        <Metric label="Erros hoje" value={data.errors_today} />
+        <Metric label="Pendentes" value={data.actions_pending} />
+        <Metric label="Confirmadas 30d" value={data.actions_executed_30d} />
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 className="font-semibold text-[var(--color-ink)]">Execuções recentes</h2>
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              <option value="">Status run</option>
+              <option value="ok">sucesso</option>
+              <option value="error">erro</option>
+              <option value="failed">falha</option>
+            </select>
+            <select
+              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              value={proposalStatus}
+              onChange={(e) => setProposalStatus(e.target.value)}
+            >
+              <option value="">Proposta</option>
+              <option value="awaiting_confirmation">aguardando</option>
+              <option value="confirmed">confirmado</option>
+              <option value="cancelled">cancelado</option>
+            </select>
+            <select
+              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              value={messageType}
+              onChange={(e) => setMessageType(e.target.value)}
+            >
+              <option value="">texto/voz</option>
+              <option value="text">texto</option>
+              <option value="voice">voz</option>
+            </select>
+            <input
+              className="min-h-10 min-w-[12rem] rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              placeholder="organization_id"
+              value={orgId}
+              onChange={(e) => setOrgId(e.target.value)}
+            />
+            <Button type="button" variant="secondary" onClick={() => void loadRuns()}>
+              Filtrar
+            </Button>
+          </div>
+        </div>
+
+        {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
+
+        {!runs ? (
+          <p className="text-sm text-[var(--color-ink-muted)]">Carregando runs…</p>
+        ) : runs.items.length === 0 ? (
+          <p className="rounded border border-dashed border-[var(--color-border)] p-3 text-sm text-[var(--color-ink-muted)]">
+            Nenhuma execução com os filtros atuais.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-muted)]">
+                <tr>
+                  <th className="px-3 py-2">Quando</th>
+                  <th className="px-3 py-2">Org / profissional</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Modelo</th>
+                  <th className="px-3 py-2">Latência / tokens</th>
+                  <th className="px-3 py-2">Tools / proposta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.items.map((run) => (
+                  <tr key={run.run_id} className="border-b border-[var(--color-border)] last:border-0 align-top">
+                    <td className="px-3 py-3">
+                      {run.started_at ? new Date(run.started_at).toLocaleString("pt-BR") : "—"}
+                      <div className="text-[11px] text-[var(--color-ink-muted)]">
+                        {run.provider_request_id || run.run_id.slice(0, 8)}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div>{run.organization_name || run.organization_id.slice(0, 8)}</div>
+                      <div className="text-xs text-[var(--color-ink-muted)]">
+                        {run.professional_name || "—"}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div>{run.status}</div>
+                      {run.error_code ? (
+                        <div className="text-xs text-[var(--color-danger)]">{run.error_code}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3">
+                      {run.provider}/{run.model}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {run.latency_ms ?? "—"} ms
+                      <div className="text-xs text-[var(--color-ink-muted)]">
+                        in {run.input_tokens} / out {run.output_tokens} · {run.estimated_cost_cents}¢
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="text-xs">{run.tools_requested.join(", ") || "—"}</div>
+                      {run.proposal ? (
+                        <div className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                          proposta {run.proposal.tool_name}: {run.proposal.status}
+                          {run.proposal.error_sanitized
+                            ? ` · ${run.proposal.error_sanitized}`
+                            : ""}
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {runs?.note ? <p className="text-xs text-[var(--color-ink-muted)]">{runs.note}</p> : null}
+      </section>
+    </div>
+  );
+}

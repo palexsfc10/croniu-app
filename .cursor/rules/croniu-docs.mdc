@@ -1,0 +1,19 @@
+---
+description: Croniu — ordem de docs, sprint autorizada e limites
+alwaysApply: true
+---
+
+# Croniu — regra persistente
+
+Antes de implementar ou alterar código de produto:
+
+1. Ler `AGENTS.md` na raiz.
+2. Seguir a ordem em `docs/README.md`.
+3. Tratar `docs/PRODUCT_SPEC.md` como especificação mestre.
+4. Consultar `docs/PROJECT_STATE.md` para o que existe hoje.
+5. Implementar **somente** se existir sprint em `docs/sprints/` com estado **AUTORIZADA**.
+6. `docs/sprints/SPRINT_2B_DRAFT.md` e o roadmap **não** autorizam trabalho.
+
+Proibido sem autorização explícita na tarefa: migrations, mudança de regras de domínio, alteração do wordmark homologado, Jarvis/HML/DNS/Cloudflare/produção, confiar em `organization_id` do cliente, esconder divergências corrigindo código silenciosamente.
+
+Não copiar o PRD aqui — apontar para `docs/PRODUCT_SPEC.md` e `docs/DOMAIN_RULES.md`.

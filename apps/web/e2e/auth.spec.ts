@@ -1,0 +1,54 @@
+import { expect, test } from "@playwright/test";
+
+const apiURL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8010";
+
+test.describe("auth vertical slice", () => {
+  test("anonymous cannot stay on protected app without session", async ({ page }) => {
+    await page.goto("/app");
+    await expect(page.getByRole("heading", { name: "Entrar" })).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/login/);
+  });
+
+  test("register, open panel, logout, login again", async ({ page, request }) => {
+    const suffix = Date.now();
+    const email = `e2e_${suffix}@example.com`;
+    const password = "SenhaForte1!";
+
+    await page.goto("/register");
+    await page.getByLabel("Seu nome").fill("Profissional E2E");
+    await page.getByLabel("Nome do negócio / organização").fill(`Studio ${suffix}`);
+    await page.getByLabel("E-mail").fill(email);
+    await page.getByLabel("Senha").fill(password);
+    await page.getByRole("button", { name: "Criar conta" }).click();
+
+    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page).toHaveURL(/\/app/);
+    await expect(page.getByText("Atendimentos de hoje")).toBeVisible();
+
+    await page.getByRole("button", { name: "Sair" }).click();
+    await expect(page.getByRole("heading", { name: "Entrar", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page).toHaveURL(/login/);
+
+    await page.getByLabel("E-mail").fill(email);
+    await page.getByLabel("Senha").fill(password);
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page).toHaveURL(/\/app/);
+
+    const health = await request.get(`${apiURL}/health`);
+    expect(health.ok()).toBeTruthy();
+  });
+
+  test("manifest is available", async ({ request }) => {
+    const response = await request.get("/manifest.webmanifest");
+    expect(response.ok()).toBeTruthy();
+    const body = await response.json();
+    expect(body.name).toBe("Croniu");
+  });
+});

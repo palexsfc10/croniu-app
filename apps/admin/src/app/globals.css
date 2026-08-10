@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #f4f6fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #e8edf6;
+  --color-ink: #121a2b;
+  --color-ink-muted: #5a6578;
+  --color-border: #d5dce8;
+  --color-primary: #2f3f8f;
+  --color-primary-hover: #253274;
+  --color-accent: #3d7ea6;
+  --color-focus: #4c6ef5;
+  --color-success: #1f7a4c;
+  --color-warning: #9a6700;
+  --color-danger: #b42318;
+  --shadow-sm: 0 1px 2px rgb(18 26 43 / 6%);
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --duration-fast: 150ms;
+  --brand-wordmark-cron-color: var(--color-ink);
+  --brand-wordmark-iu-color: var(--color-primary);
+  --brand-wordmark-cron-weight: 750;
+  --brand-wordmark-iu-weight: 650;
+  --background: var(--color-bg);
+  --foreground: var(--color-ink);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-manrope);
+  --font-display: var(--font-fraunces);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background:
+    linear-gradient(180deg, rgb(47 63 143 / 6%), transparent 240px),
+    var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  min-height: 100dvh;
+}
+
+h1,
+.h-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+  letter-spacing: -0.02em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
