@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     )
 
     croniu_env: str = Field(default="development", alias="CRONIU_ENV")
+    app_version: str = Field(default="0.0.0-dev", alias="APP_VERSION")
+    git_sha: str = Field(default="unknown", alias="GIT_SHA")
+    build_time: str = Field(default="", alias="BUILD_TIME")
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
     database_url: str = Field(

@@ -29,14 +29,26 @@ test-results/
 
 # Env / secrets
 .env
+.env.*
+!.env.example
+!*.example
 .env.local
 .env.*.local
 .env.hml
 deploy/hml/.env.hml
+deploy/**/.env
 *.pem
 *.key
 *.p12
 *.pfx
+*.crt
+*.cer
+id_rsa*
+!id_rsa*.pub
+id_ed25519*
+!id_ed25519*.pub
+secrets/
+credentials/
 
 # Local databases / dumps
 *.dump
@@ -44,6 +56,14 @@ deploy/hml/.env.hml
 *.sqlite3
 *.db
 .docker-data/
+backups/
+*.sql.gz
+*.sql
+uploads/
+var/
+**/cloudflared-runtime/
+docs/releases/**/evidence/*.dump
+docs/releases/**/evidence/*.jsonl
 
 # IDE / OS
 .idea/

@@ -1,0 +1,32 @@
+name: Promote production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag_or_sha:
+        description: Release tag or immutable SHA whose manifest is already staged on the production host
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Configure production SSH key
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+      - name: Deploy staged immutable manifest
+        env:
+          RELEASE: ${{ inputs.release_tag_or_sha }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          # The approved operator stages CI's release-manifest.json at this server-only path.
+          # This workflow never builds, tags, or deploys automatically.
+          ssh -o StrictHostKeyChecking=yes "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
+            "cd /srv/docker/croniu-prd && deploy/release/deploy.sh --environment prd --sha '${RELEASE}' --manifest '/srv/docker/croniu-prd/manifests/${RELEASE}.json'"

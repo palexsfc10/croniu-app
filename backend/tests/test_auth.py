@@ -9,6 +9,24 @@ def test_health_ok(client):
     assert body["database"] is True
 
 
+def test_liveness_readiness_and_version(client):
+    assert client.get("/health/live").json() == {"status": "ok"}
+
+    ready = client.get("/health/ready")
+    assert ready.status_code == 200
+    assert ready.json() == {"status": "ok", "database": True}
+
+    version = client.get("/version")
+    assert version.status_code == 200
+    assert version.json() == {
+        "environment": "development",
+        "version": "0.0.0-dev",
+        "git_sha": "unknown",
+        "build_time": "",
+        "status": "ok",
+    }
+
+
 def test_register_valid(client, register_payload):
     response = client.post("/api/v1/auth/register", json=register_payload)
     assert response.status_code == 201

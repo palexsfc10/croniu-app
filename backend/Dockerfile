@@ -1,9 +1,20 @@
 FROM python:3.12-slim
 
+ARG GIT_SHA=unknown
+ARG APP_VERSION=0.0.0-dev
+ARG BUILD_TIME=
+LABEL org.opencontainers.image.revision=$GIT_SHA
+LABEL org.opencontainers.image.version=$APP_VERSION
+LABEL org.opencontainers.image.created=$BUILD_TIME
+LABEL org.opencontainers.image.source="https://github.com/palexsfc10/croniu-app"
+
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    GIT_SHA=$GIT_SHA \
+    APP_VERSION=$APP_VERSION \
+    BUILD_TIME=$BUILD_TIME
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \

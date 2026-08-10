@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release/**"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: croniu
+          POSTGRES_PASSWORD: croniu_dev_password_change_me
+          POSTGRES_DB: croniu
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U croniu -d croniu"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    defaults:
+      run: {working-directory: backend}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run: {working-directory: apps/web}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: apps/web/package-lock.json}
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run: {working-directory: apps/admin}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: apps/admin/package-lock.json}
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  migrations-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: croniu
+          POSTGRES_PASSWORD: croniu_dev_password_change_me
+          POSTGRES_DB: croniu
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U croniu -d croniu"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    defaults:
+      run: {working-directory: backend}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - run: alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reject obvious live token patterns
+        run: |
+          if git grep -nEI 'sk-[A-Za-z0-9]{20,}|(ASAAS|OPENAI)_[A-Z_]*=(live_|[A-Za-z0-9]{24,})' -- . ':!*.example'; then
+            echo "Potential live credential found"
+            exit 1
+          fi

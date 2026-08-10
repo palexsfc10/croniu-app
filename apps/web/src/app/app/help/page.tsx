@@ -17,6 +17,9 @@ import {
   type FeedbackCategoryValue,
 } from "@/lib/feedback";
 
+const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0-dev";
+const gitSha = process.env.NEXT_PUBLIC_GIT_SHA || "unknown";
+
 export default function HelpFeedbackPage() {
   const pathname = usePathname();
   const formId = useId();
@@ -195,6 +198,9 @@ export default function HelpFeedbackPage() {
           {busy ? "Enviando…" : "Enviar feedback"}
         </Button>
       </form>
+      <p className="text-center text-xs text-[var(--color-ink-muted)]">
+        Versão {appVersion} · {gitSha.slice(0, 12)}
+      </p>
     </div>
   );
 }
