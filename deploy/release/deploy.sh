@@ -37,6 +37,7 @@ export ENVIRONMENT SHA MANIFEST DEPLOY_ROOT COMPOSE_FILE ENV_FILE RELEASE_STATE_
 export API_SERVICE WEB_SERVICE ADMIN_SERVICE DB_SERVICE
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
+load_env_file "$ENV_FILE"
 
 lock_file="$DEPLOY_ROOT/.release-${ENVIRONMENT}.lock"
 exec 9>"$lock_file"
@@ -45,6 +46,7 @@ flock -n 9 || die "Another $ENVIRONMENT release is in progress"
 rollback_on_failure() {
   status=$?
   log "Deployment failed (exit $status); attempting rollback"
+  append_release_log "failed"
   if [[ -f "$DEPLOY_ROOT/RELEASE_MANIFEST.previous.json" ]]; then
     "$SCRIPT_DIR/rollback.sh" || log "Rollback also failed; operator intervention required"
   fi
@@ -64,19 +66,28 @@ export CRONIU_ADMIN_IMAGE="$(manifest_image admin)"
 
 log "Pulling immutable release images for $SHA"
 compose pull "$API_SERVICE" "$WEB_SERVICE" "$ADMIN_SERVICE"
-log "Applying migrations as a one-off job"
-compose run --rm "$API_SERVICE" alembic upgrade head
+log "Applying migrations as a one-off job (timeout ${MIGRATE_TIMEOUT_SECONDS:-300}s)"
+timeout "${MIGRATE_TIMEOUT_SECONDS:-300}" compose run --rm "$API_SERVICE" alembic upgrade head
 log "Recreating API"
 compose up -d --no-deps --force-recreate "$API_SERVICE"
 wait_for_http "http://127.0.0.1:${API_HOST_PORT}/health/ready"
 log "Recreating web and admin"
 compose up -d --no-deps --force-recreate "$WEB_SERVICE" "$ADMIN_SERVICE"
+wait_for_http "http://127.0.0.1:${WEB_HOST_PORT}/"
+wait_for_http "http://127.0.0.1:${ADMIN_HOST_PORT}/"
 "$SCRIPT_DIR/smoke_public.sh"
 
+operator="${RELEASE_OPERATOR:-${GITHUB_ACTOR:-${USER:-unknown}}}"
 tmp_state="$(mktemp)"
-jq --arg environment "$ENVIRONMENT" --arg sha "$SHA" --arg deployed_at "$(date -u +%FT%TZ)" \
-  '. + {environment: $environment, sha: $sha, deployed_at: $deployed_at}' "$MANIFEST" >"$tmp_state"
+jq --arg environment "$ENVIRONMENT" \
+  --arg sha "$SHA" \
+  --arg deployed_at "$(date -u +%FT%TZ)" \
+  --arg operator "$operator" \
+  --arg result "success" \
+  '. + {environment: $environment, sha: $sha, deployed_at: $deployed_at, operator: $operator, result: $result}' \
+  "$MANIFEST" >"$tmp_state"
 install -m 600 "$tmp_state" "$RELEASE_STATE_FILE"
 rm -f "$tmp_state"
+append_release_log "success"
 trap - ERR
 log "Release completed: $SHA"

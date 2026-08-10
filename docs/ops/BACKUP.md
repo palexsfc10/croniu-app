@@ -1,10 +1,25 @@
-# PostgreSQL backups
+# Backup e restore — PRD/HML
 
-Every release creates `backups/<environment>-<timestamp>.sql.gz`, verifies it
-with `gzip -t`, and writes a SHA-256 checksum beside it. To run one manually,
-export the same deployment variables used by `deploy.sh` and execute
-`deploy/release/backup.sh`.
+## Criar
 
-Before restoring, verify the checksum and gzip stream, identify the target
-environment explicitly, and obtain approval for the data-impacting operation.
-Do not place database dumps in Git or CI artifacts.
+```bash
+ENVIRONMENT=prd DEPLOY_ROOT=/srv/docker/croniu-prd \
+  deploy/release/backup.sh
+```
+
+Gera `backups/prd-<UTC>.sql.gz` + `.sha256`. Verifica `gzip -t`.
+Retenção: `BACKUP_RETENTION_DAYS` (padrão 14).
+
+## Restaurar (destrutivo)
+
+```bash
+deploy/release/restore.sh --environment prd --backup backups/prd-....sql.gz --yes
+```
+
+Exige checksum. Não executa sem `--yes`.
+
+## Política
+
+- Backup **obrigatório** antes de `alembic upgrade` no `deploy.sh`.
+- Rollback de imagens **não** desfaz migration irreversível — use restore.
+- Nunca misturar dumps HML ↔ PRD.

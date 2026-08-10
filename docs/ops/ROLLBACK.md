@@ -1,15 +1,16 @@
 # Rollback
 
-For an application-image rollback, use the previous server release state:
+## Imagens (rápido)
 
-```bash
-cd /srv/docker/croniu-prd
-ENVIRONMENT=prd DEPLOY_ROOT="$PWD" COMPOSE_FILE=deploy/prd/compose.prd.yaml \
-  ENV_FILE=deploy/prd/.env.prd API_HOST_PORT=<server-port> \
-  deploy/release/rollback.sh
-```
+`deploy/release/rollback.sh` restaura `api`/`web`/`admin` a partir de `RELEASE_MANIFEST.previous.json`.
 
-The script restores API, web, and admin images from
-`RELEASE_MANIFEST.previous.json` and runs readiness/smoke checks. It does not
-reverse Alembic migrations or restore data. For a data incident, stop and use a
-verified backup under the approved recovery procedure.
+Não altera PostgreSQL.
+
+## Schema / dados
+
+Se a release aplicou migration incompatível com o código anterior:
+
+1. Manter app parado ou em rollback de imagem compatível com o schema atual **ou**
+2. Restaurar o backup pré-deploy (`docs/ops/BACKUP.md`).
+
+Não alegue “rollback automático de migration destrutiva” sem restore comprovado.

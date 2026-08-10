@@ -20,6 +20,16 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
 }
 
+load_env_file() {
+  local env_file="${1:-${ENV_FILE:-}}"
+  [[ -n "$env_file" && -f "$env_file" ]] || return 0
+  # Export keys without printing values.
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
+}
+
 compose() {
   local project="croniu-prd"
   if [[ "${ENVIRONMENT:-}" == "hml" ]]; then
@@ -42,4 +52,19 @@ wait_for_http() {
 manifest_image() {
   local service="$1"
   jq -er --arg service "$service" '.images[$service]' "$MANIFEST"
+}
+
+append_release_log() {
+  local result="$1"
+  local log_file="${DEPLOY_ROOT}/RELEASE_LOG.jsonl"
+  local operator="${RELEASE_OPERATOR:-${GITHUB_ACTOR:-${USER:-unknown}}}"
+  jq -nc \
+    --arg environment "${ENVIRONMENT:-}" \
+    --arg sha "${SHA:-}" \
+    --arg deployed_at "$(date -u +%FT%TZ)" \
+    --arg operator "$operator" \
+    --arg result "$result" \
+    '{environment:$environment,sha:$sha,deployed_at:$deployed_at,operator:$operator,result:$result}' \
+    >>"$log_file"
+  chmod 600 "$log_file" 2>/dev/null || true
 }
