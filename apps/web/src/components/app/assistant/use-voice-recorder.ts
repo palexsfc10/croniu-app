@@ -198,6 +198,7 @@ export function useVoiceRecorder(maxSeconds: number): VoiceRecorderControls {
       secure &&
       !!navigator.mediaDevices?.getUserMedia &&
       typeof MediaRecorder !== "undefined";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount capability probe
     setSupported(ok);
     mimeRef.current = pickMimeType();
   }, []);

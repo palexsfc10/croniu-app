@@ -49,6 +49,7 @@ export default function PreferencesPage() {
   const [voiceAutoSend, setVoiceAutoSend] = useState(true);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate from localStorage on mount
     setVoiceAutoSend(readVoiceAutoSend());
     void (async () => {
       const result = await apiFetch<OrgPreferences>("/api/v1/organization/preferences");

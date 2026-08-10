@@ -185,6 +185,7 @@ export default function AssistantPage() {
   useEffect(() => {
     mountedRef.current = true;
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate voice prefs from localStorage
       setVoicePrivacyAck(localStorage.getItem(VOICE_PRIVACY_KEY) === "1");
       setVoiceAutoSend(readVoiceAutoSend());
     } catch {

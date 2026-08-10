@@ -32,6 +32,11 @@ jobs:
         with: {python-version: "3.12"}
       - run: pip install -r requirements.txt
       - run: pytest -q
+        env:
+          PYTHONPATH: .
+          DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu
+          SECRET_KEY: test-secret-key-with-at-least-32-characters
+          EMAIL_PROVIDER: fake
 
   web:
     runs-on: ubuntu-latest
@@ -83,8 +88,14 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install -r requirements.txt
-      - run: alembic upgrade head
+      - name: Migrate empty database through HML head to current
+        run: |
+          alembic upgrade 0017_user_feedbacks
+          alembic upgrade head
+          alembic heads | tee /tmp/alembic-heads.txt
+          grep -q "0018_email_verification" /tmp/alembic-heads.txt
         env:
+          PYTHONPATH: .
           DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu
 
   secret-scan:
@@ -96,6 +107,7 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
       - name: Reject obvious live token patterns
         run: |
           if git grep -nEI 'sk-[A-Za-z0-9]{20,}|(ASAAS|OPENAI)_[A-Z_]*=(live_|[A-Za-z0-9]{24,})' -- . ':!*.example'; then

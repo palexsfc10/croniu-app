@@ -68,6 +68,7 @@ export default function AdminFeedbacksPage() {
   }, [category, status]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount/filter reload
     void load();
   }, [load]);
 
