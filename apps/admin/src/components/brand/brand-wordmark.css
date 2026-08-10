@@ -1,0 +1,126 @@
+/* Croniu brand wordmark — sole visual source for the mark */
+
+:root {
+  --brand-wordmark-cron-color: var(--color-ink);
+  --brand-wordmark-iu-color: var(--color-primary);
+  --brand-wordmark-cron-weight: 750;
+  --brand-wordmark-iu-weight: 650;
+  --brand-wordmark-tracking: -0.035em;
+  --brand-wordmark-size-sm: 1.125rem;
+  --brand-wordmark-size-md: 1.5rem;
+  --brand-wordmark-size-lg: 2rem;
+  --brand-wordmark-size-xl: 3rem;
+  /* Continuous mark: ink → accent → brand blue (iu) */
+  --brand-wordmark-gradient: linear-gradient(
+    92deg,
+    #152033 0%,
+    #152033 48%,
+    #1a2744 64%,
+    #3d7ea6 82%,
+    #2f3f8f 94%,
+    #2f3f8f 100%
+  );
+}
+
+.brand-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: var(--brand-wordmark-size-md);
+  line-height: 1;
+  letter-spacing: var(--brand-wordmark-tracking);
+  white-space: nowrap;
+  text-decoration: none;
+  user-select: none;
+  color: var(--brand-wordmark-cron-color);
+  background-image: var(--brand-wordmark-gradient);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.brand-wordmark--sm {
+  font-size: var(--brand-wordmark-size-sm);
+}
+
+.brand-wordmark--md {
+  font-size: var(--brand-wordmark-size-md);
+}
+
+.brand-wordmark--lg {
+  font-size: var(--brand-wordmark-size-lg);
+}
+
+.brand-wordmark--xl {
+  font-size: var(--brand-wordmark-size-xl);
+}
+
+.brand-wordmark--compact {
+  letter-spacing: -0.045em;
+}
+
+.brand-wordmark--on-light {
+  --brand-wordmark-cron-color: var(--color-ink);
+  --brand-wordmark-iu-color: var(--color-primary);
+  --brand-wordmark-gradient: linear-gradient(
+    92deg,
+    #152033 0%,
+    #152033 48%,
+    #1a2744 64%,
+    #3d7ea6 82%,
+    #2f3f8f 94%,
+    #2f3f8f 100%
+  );
+}
+
+.brand-wordmark--on-dark {
+  --brand-wordmark-cron-color: #f3f5fb;
+  --brand-wordmark-iu-color: #9aa8e8;
+  --brand-wordmark-gradient: linear-gradient(
+    92deg,
+    #f8f9fc 0%,
+    #f3f5fb 48%,
+    #d0daf3 68%,
+    #a8b6ea 86%,
+    #9aa8e8 100%
+  );
+}
+
+.brand-wordmark__cron {
+  font-weight: var(--brand-wordmark-cron-weight);
+  color: var(--brand-wordmark-cron-color);
+}
+
+.brand-wordmark__iu {
+  font-weight: var(--brand-wordmark-iu-weight);
+  color: var(--brand-wordmark-iu-color);
+}
+
+/* One gradient across the whole word (parent clip) */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .brand-wordmark {
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .brand-wordmark__cron,
+  .brand-wordmark__iu {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .brand-wordmark--xl {
+    transition: filter var(--duration-normal, 280ms) var(--ease-out, ease);
+  }
+
+  .brand-wordmark--xl:hover {
+    filter: brightness(1.08);
+  }
+}

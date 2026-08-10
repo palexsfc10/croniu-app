@@ -1,0 +1,47 @@
+[project]
+name = "croniu-api"
+version = "0.1.0"
+description = "Croniu API — NTWS Labs"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi[standard]>=0.140.0",
+  "sqlalchemy[asyncio]>=2.0.51",
+  "alembic>=1.18.5",
+  "pydantic-settings>=2.14.0",
+  "pwdlib[argon2]>=0.3.0",
+  "psycopg[binary]>=3.3.0",
+  "email-validator>=2.3.0",
+  "python-dotenv>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9.0",
+  "pytest-asyncio>=1.0",
+  "httpx>=0.28",
+  "ruff>=0.16",
+  "black>=26.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/conftest.py" = ["E402", "I001"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+skip-magic-trailing-comma = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]

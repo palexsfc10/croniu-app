@@ -1,0 +1,83 @@
+{
+  "captured_at": "2026-08-10T22:26:00Z",
+  "host": "jarvis",
+  "hml_path": "/home/palex/ntws/croniu-hml",
+  "absent_path": "/srv/docker/croniu",
+  "source": {
+    "git_present": false,
+    "source_sha_file": "e6649bacd3591a432a84e752c3bfe0ad50c3e981",
+    "sync_method": "rsync/tarball",
+    "uncommitted_changes": "N/A (no git)"
+  },
+  "deploy_marker": {
+    "feature": "cycle-agenda-integrity",
+    "deployed_at": "20260808T003034Z"
+  },
+  "containers": {
+    "healthy": [
+      "croniu-hml-web",
+      "croniu-hml-api",
+      "croniu-hml-admin",
+      "croniu-hml-db",
+      "cloudflared"
+    ],
+    "ports": {
+      "web": 13000,
+      "api": 18080,
+      "admin": 13002,
+      "database_published": false
+    }
+  },
+  "images": {
+    "api": "sha256:e0800ce33dc6989bf72c4cdadcd1c318b6c5b54df0311b5f557594c7f6489459",
+    "web": "sha256:e784505823a6cdc5d219b49df2a851ee4b6ad0dc7cdbcdce04d3637f07c4663c",
+    "admin": "sha256:1dcd23203e785f3c76cedd548fc33882f908e0ee845bc5fd03c7dbc5df99b0d9",
+    "database": {
+      "tag": "postgres:16-alpine",
+      "digest": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+    },
+    "oci_revision_version_labels_present": false
+  },
+  "database": {
+    "alembic_current_head": "0017_user_feedbacks",
+    "volume": "croniu-hml-postgres-data",
+    "network": "croniu-hml-network"
+  },
+  "health": {
+    "public": "ok",
+    "local": "ok"
+  },
+  "code_match": {
+    "worktree": "e6649ba",
+    "files": ["cycle_intelligence.py", "cycle_schedule.py"],
+    "hml_filesystem": true,
+    "running_api_container": true
+  },
+  "billing_module_present": {
+    "hml_tree": true,
+    "image": true
+  },
+  "environment_key_names": [
+    "CRONIU_ENV",
+    "POSTGRES_USER",
+    "POSTGRES_PASSWORD",
+    "POSTGRES_DB",
+    "DATABASE_URL",
+    "API_HOST_PORT",
+    "WEB_HOST_PORT",
+    "ADMIN_HOST_PORT",
+    "ASAAS_*",
+    "OPENAI_*",
+    "AI_*",
+    "LLM_*",
+    "BILLING_*",
+    "SESSION_*",
+    "CORS_ORIGINS",
+    "SECRET_KEY",
+    "OPENAPI_ENABLED",
+    "PUBLIC_APP_BASE_URL",
+    "PROOF_STORAGE_DIR",
+    "NEXT_PUBLIC_API_URL",
+    "NEXT_PUBLIC_APP_URL"
+  ]
+}

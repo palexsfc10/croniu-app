@@ -1,0 +1,15 @@
+# Gitleaks allowlist for known non-secret fixtures (tests / local examples).
+title = "croniu"
+[[allowlists]]
+description = "Fixture SECRET_KEY values used only in tests and HML pytest helper scripts"
+paths = [
+  '''backend/tests/.*''',
+  '''deploy/hml/_ops_.*\.sh''',
+  '''\.env\.example''',
+  '''deploy/.*/\.env\..*\.example''',
+]
+regexes = [
+  '''test-secret-key-with-at-least-32-characters''',
+  '''dev-only-change-me-to-a-long-random-string-at-least-32-chars''',
+  '''CHANGE_ME_TO_A_LONG_RANDOM_STRING_AT_LEAST_32_CHARS''',
+]

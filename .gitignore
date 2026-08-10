@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Builds
+.next/
+out/
+dist/
+build/
+*.egg-info/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+playwright-report/
+test-results/
+**/e2e/artifacts/
+**/playwright/.cache/
+.turbo/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+!*.example
+.env.local
+.env.*.local
+.env.hml
+deploy/hml/.env.hml
+deploy/**/.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa*
+!id_rsa*.pub
+id_ed25519*
+!id_ed25519*.pub
+secrets/
+credentials/
+
+# Local databases / dumps
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+.docker-data/
+backups/
+*.sql.gz
+*.sql
+uploads/
+var/
+**/cloudflared-runtime/
+docs/releases/**/evidence/*.dump
+docs/releases/**/evidence/*.jsonl
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Local proof uploads (Sprint 2D) — never commit contents
+var/proofs/
+**/var/proofs/
