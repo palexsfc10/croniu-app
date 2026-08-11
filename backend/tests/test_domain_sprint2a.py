@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 
 def _auth(client, register_payload):
@@ -34,7 +35,10 @@ def test_client_service_cycle_receivable_flow(client, register_payload):
     assert service_res.status_code == 201
     service_id = service_res.json()["id"]
 
-    starts = date.today()
+    # Align cycle/receivable dates with org local calendar (default America/Sao_Paulo),
+    # not the runner's UTC date.today() — otherwise near UTC midnight the due date
+    # is "tomorrow" in org TZ and cycle_nearing_end outranks pending_payment.
+    starts = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
     ends = starts + timedelta(days=5)
     cycle_res = client.post(
         "/api/v1/cycles",
