@@ -1,30 +1,41 @@
 name: Promote production
 
-# Build-once / promote-many: this workflow NEVER rebuilds or retags images.
-# It downloads the immutable release-manifest.json artifact produced by a prior
-# successful "Build release images" run and deploys those exact digests.
+# Build-once / promote-many: NEVER rebuilds or retags images.
+# Downloads:
+#   1) release-manifest.json from Build release images (image digests @ image_sha)
+#   2) release-deploy-bundle from Package deploy bundle (ops scripts @ deploy_sha)
+# Syncs ONLY the validated deploy bundle — never deploy/ from an image_sha checkout.
 
 on:
   workflow_dispatch:
     inputs:
-      sha:
-        description: Immutable Git SHA recorded in the release manifest
+      image_sha:
+        description: Immutable image candidate SHA (release-manifest.sha)
+        required: true
+      deploy_sha:
+        description: Immutable operational SHA packaged in the deploy bundle
         required: true
       version:
-        description: Release version (manifest artifact key suffix)
+        description: Release version (manifest + bundle artifact key suffix)
         required: true
       build_run_id:
         description: Workflow run ID of the successful Build release images job
         required: true
+      deploy_bundle_run_id:
+        description: Workflow run ID of the successful Package deploy bundle job
+        required: true
       manifest_artifact_name:
-        description: Artifact name (default release-manifest-<version>)
+        description: Image manifest artifact name (default release-manifest-<version>)
+        required: false
+        default: ""
+      deploy_bundle_artifact_name:
+        description: Deploy bundle artifact name (default release-deploy-bundle-<version>)
         required: false
         default: ""
 
 permissions:
   contents: read
   actions: read
-  # packages:read is enough for documentation; host pulls from GHCR with its own login.
   packages: read
 
 jobs:
@@ -33,33 +44,36 @@ jobs:
     timeout-minutes: 30
     environment: production
     steps:
-      - name: Resolve artifact name
+      - name: Resolve artifact names
         id: meta
         run: |
           set -euo pipefail
-          name="${{ inputs.manifest_artifact_name }}"
-          if [[ -z "$name" ]]; then
-            name="release-manifest-${{ inputs.version }}"
+          mf="${{ inputs.manifest_artifact_name }}"
+          if [[ -z "$mf" ]]; then
+            mf="release-manifest-${{ inputs.version }}"
           fi
-          echo "artifact_name=$name" >> "$GITHUB_OUTPUT"
+          db="${{ inputs.deploy_bundle_artifact_name }}"
+          if [[ -z "$db" ]]; then
+            db="release-deploy-bundle-${{ inputs.version }}"
+          fi
+          echo "manifest_artifact_name=$mf" >> "$GITHUB_OUTPUT"
+          echo "deploy_bundle_artifact_name=$db" >> "$GITHUB_OUTPUT"
+          echo "image_sha=${{ inputs.image_sha }}"
+          echo "deploy_sha=${{ inputs.deploy_sha }}"
           echo "build_run_id=${{ inputs.build_run_id }}"
-          echo "artifact_name=$name"
+          echo "deploy_bundle_run_id=${{ inputs.deploy_bundle_run_id }}"
       - name: Validate source Build release run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
-          EXPECTED_SHA: ${{ inputs.sha }}
-          EXPECTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           run_json="$(gh api "repos/${{ github.repository }}/actions/runs/${BUILD_RUN_ID}")"
           name="$(jq -er '.name' <<<"$run_json")"
           status="$(jq -er '.status' <<<"$run_json")"
           conclusion="$(jq -er '.conclusion' <<<"$run_json")"
-          path="$(jq -er '.path // empty' <<<"$run_json")"
           head_sha="$(jq -er '.head_sha' <<<"$run_json")"
           echo "build_run_name=$name"
-          echo "build_run_path=$path"
           echo "build_run_status=$status"
           echo "build_run_conclusion=$conclusion"
           echo "build_run_head_sha=$head_sha"
@@ -69,10 +83,41 @@ jobs:
           }
           [[ "$status" == "completed" ]] || { echo "Build run not completed"; exit 1; }
           [[ "$conclusion" == "success" ]] || { echo "Build run not successful"; exit 1; }
+          [[ "$head_sha" == "${{ inputs.image_sha }}" ]] || {
+            echo "Build run head_sha must equal image_sha"
+            exit 1
+          }
+      - name: Validate source Package deploy bundle run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE_RUN_ID: ${{ inputs.deploy_bundle_run_id }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/${{ github.repository }}/actions/runs/${BUNDLE_RUN_ID}")"
+          name="$(jq -er '.name' <<<"$run_json")"
+          status="$(jq -er '.status' <<<"$run_json")"
+          conclusion="$(jq -er '.conclusion' <<<"$run_json")"
+          head_sha="$(jq -er '.head_sha' <<<"$run_json")"
+          echo "bundle_run_name=$name"
+          echo "bundle_run_status=$status"
+          echo "bundle_run_conclusion=$conclusion"
+          echo "bundle_run_head_sha=$head_sha"
+          [[ "$name" == "Package deploy bundle" ]] || {
+            echo "Source run must be Package deploy bundle"
+            exit 1
+          }
+          [[ "$status" == "completed" ]] || { echo "Bundle run not completed"; exit 1; }
+          [[ "$conclusion" == "success" ]] || { echo "Bundle run not successful"; exit 1; }
+          [[ "$head_sha" == "${{ inputs.deploy_sha }}" ]] || {
+            echo "Bundle run head_sha must equal deploy_sha"
+            exit 1
+          }
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha }}
-      - name: Assert promote workflow does not rebuild images
+          # Checkout deploy_sha only for workflow self-guards — NEVER use this tree's
+          # deploy/ for production sync (bundle artifact is authoritative).
+          ref: ${{ inputs.deploy_sha }}
+      - name: Assert promote workflow does not rebuild or sync image_sha deploy/
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -86,51 +131,102 @@ jobs:
               bad.append("uses docker/build-push-action")
           if re.search(r"(?m)^\s+run:.*\bdocker\s+build\b", text):
               bad.append("runs docker build")
-          if "jobs:" in text and re.search(r"(?m)^  build:\s*$", text):
+          if re.search(r"(?m)^  build:\s*$", text):
               bad.append("defines a build job")
+          if "download-artifact" not in text or "build_run_id" not in text:
+              bad.append("missing download-artifact/build_run_id wiring")
+          if "deploy_bundle_run_id" not in text:
+              bad.append("missing deploy_bundle_run_id")
+          if "inputs.image_sha" not in text or "inputs.deploy_sha" not in text:
+              bad.append("missing distinct image_sha/deploy_sha inputs")
+          # Must not rsync a checkout path named simply deploy/ from the workspace root
+          # without the deploy-bundle prefix — production sync must use the artifact.
+          if re.search(r'(?m)rsync\b[^\n]*\sdeploy/\s+"\$remote:', text) and "deploy-bundle/deploy/" not in text:
+              bad.append("rsync appears to sync workspace deploy/ instead of deploy-bundle")
+          if re.search(r"(?m)ref:\s*\$\{\{\s*inputs\.image_sha\s*\}\}", text):
+              bad.append("must not checkout image_sha for promote sync")
+          if "docker tag" in text or "docker push" in text:
+              bad.append("retag/push forbidden")
           if bad:
-              raise SystemExit("promote rebuild forbidden: " + "; ".join(bad))
-          print("promote_no_rebuild_guard=ok")
+              raise SystemExit("promote guard failed: " + "; ".join(bad))
+          print("promote_no_rebuild_and_bundle_guard=ok")
           PY
       - name: Download release manifest artifact from build run
         uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.meta.outputs.artifact_name }}
+          name: ${{ steps.meta.outputs.manifest_artifact_name }}
           path: manifest
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.build_run_id }}
           repository: ${{ github.repository }}
-      - name: Validate manifest identity and digests
+      - name: Download deploy bundle artifact from package run
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.deploy_bundle_artifact_name }}
+          path: deploy-bundle
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.deploy_bundle_run_id }}
+          repository: ${{ github.repository }}
+      - name: Validate image manifest identity and digests
         env:
-          EXPECTED_SHA: ${{ inputs.sha }}
+          EXPECTED_SHA: ${{ inputs.image_sha }}
           EXPECTED_VERSION: ${{ inputs.version }}
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
         run: |
           set -euo pipefail
+          chmod +x deploy/release/validate_manifest.sh
+          bash deploy/release/validate_manifest.sh \
+            --manifest manifest/release-manifest.json \
+            --sha "$EXPECTED_SHA" \
+            --version "$EXPECTED_VERSION" \
+            --build-run-id "$BUILD_RUN_ID"
           mf=manifest/release-manifest.json
-          test -f "$mf"
           checksum="$(sha256sum "$mf" | awk '{print $1}')"
           echo "manifest_sha256=$checksum"
-          jq -e --arg sha "$EXPECTED_SHA" --arg version "$EXPECTED_VERSION" --arg run "$BUILD_RUN_ID" '
-            .sha == $sha
-            and .version == $version
-            and (.build_run_id|tostring) == $run
-            and (.images.api|test("@sha256:[a-f0-9]{64}$"))
-            and (.images.web|test("@sha256:[a-f0-9]{64}$"))
-            and (.images.admin|test("@sha256:[a-f0-9]{64}$"))
-            and (.images.api|startswith("ghcr.io/"))
-            and (.images.web|startswith("ghcr.io/"))
-            and (.images.admin|startswith("ghcr.io/"))
-            and (.images.api|contains(":latest")|not)
-            and (.images.web|contains(":latest")|not)
-            and (.images.admin|contains(":latest")|not)
-          ' "$mf" >/dev/null
-          # Tag-only references are forbidden (must be digest form).
           if jq -r '.images[]' "$mf" | grep -v '@sha256:'; then
             echo "Manifest contains non-digest image reference"
             exit 1
           fi
           jq '{sha,version,build_run_id,ci_run_id,images}' "$mf"
+      - name: Validate deploy bundle identity and checksums
+        env:
+          EXPECTED_DEPLOY: ${{ inputs.deploy_sha }}
+          EXPECTED_IMAGE: ${{ inputs.image_sha }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+          BUNDLE_RUN_ID: ${{ inputs.deploy_bundle_run_id }}
+        run: |
+          set -euo pipefail
+          chmod +x deploy/release/validate_deploy_bundle.sh
+          bash deploy/release/validate_deploy_bundle.sh \
+            --bundle-dir deploy-bundle \
+            --deploy-sha "$EXPECTED_DEPLOY" \
+            --image-sha "$EXPECTED_IMAGE" \
+            --version "$EXPECTED_VERSION" \
+            --repository "${{ github.repository }}" \
+            --package-run-id "$BUNDLE_RUN_ID"
+          # Negative: image_sha must not equal a forged deploy identity silently.
+          if [[ "$EXPECTED_DEPLOY" == "$EXPECTED_IMAGE" ]]; then
+            echo "NOTE: deploy_sha == image_sha for this promotion"
+          fi
+          # Refuse accidental use of workspace deploy/ by comparing aggregate to checkout.
+          workspace_agg="$(
+            tmp="$(mktemp -d)"
+            bash deploy/release/package_deploy_bundle.sh \
+              --source-dir deploy \
+              --out-dir "$tmp" \
+              --deploy-sha "$EXPECTED_DEPLOY" \
+              --image-sha "$EXPECTED_IMAGE" \
+              --version "$EXPECTED_VERSION" \
+              --repository "${{ github.repository }}" >/dev/null
+            jq -er '.aggregate_sha256' "$tmp/deploy-bundle-manifest.json"
+          )"
+          bundle_agg="$(jq -er '.aggregate_sha256' deploy-bundle/deploy-bundle-manifest.json)"
+          [[ "$workspace_agg" == "$bundle_agg" ]] || {
+            echo "Checkout deploy/ aggregate diverges from artifact (refusing promote)"
+            echo "workspace=$workspace_agg bundle=$bundle_agg"
+            exit 1
+          }
+          echo "deploy_bundle_aggregate_sha256=$bundle_agg"
       - name: Configure production SSH
         env:
           PRODUCTION_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
@@ -149,22 +245,27 @@ jobs:
         env:
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
           PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          RELEASE: ${{ inputs.sha }}
+          IMAGE_SHA: ${{ inputs.image_sha }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
         run: |
           set -euo pipefail
           remote="${PRODUCTION_USER}@${PRODUCTION_HOST}"
           ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$remote" \
-            "mkdir -p /srv/docker/croniu-prd/manifests /srv/docker/croniu-prd/deploy"
+            "mkdir -p /srv/docker/croniu-prd/manifests /srv/docker/croniu-prd/deploy /srv/docker/croniu-prd/deploy-bundles"
           scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
             manifest/release-manifest.json \
-            "$remote:/srv/docker/croniu-prd/manifests/${RELEASE}.json"
+            "$remote:/srv/docker/croniu-prd/manifests/${IMAGE_SHA}.json"
+          scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
+            deploy-bundle/deploy-bundle-manifest.json \
+            "$remote:/srv/docker/croniu-prd/deploy-bundles/${DEPLOY_SHA}.json"
+          # Sync ONLY the artifact deploy tree — never workspace deploy/ from image_sha.
           rsync -az -e "ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519" \
             --exclude '.env*' --exclude 'backups/' --exclude 'RELEASE_*' \
-            deploy/ "$remote:/srv/docker/croniu-prd/deploy/"
+            deploy-bundle/deploy/ "$remote:/srv/docker/croniu-prd/deploy/"
           ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$remote" \
             "cd /srv/docker/croniu-prd && RELEASE_OPERATOR='github:${{ github.actor }}' \
-             deploy/release/deploy.sh --environment prd --sha '${RELEASE}' \
-             --manifest \"/srv/docker/croniu-prd/manifests/${RELEASE}.json\""
+             deploy/release/deploy.sh --environment prd --sha '${IMAGE_SHA}' \
+             --manifest \"/srv/docker/croniu-prd/manifests/${IMAGE_SHA}.json\""
       - name: Collect remote /version
         env:
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}

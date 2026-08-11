@@ -272,7 +272,7 @@ jobs:
           rm -f deploy/prd/.env.prd "$rendered"
       - name: Offline release rehearse
         run: bash deploy/release/rehearse_offline.sh
-      - name: Promote must not rebuild images
+      - name: Promote must not rebuild images or sync image_sha deploy/
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -290,6 +290,14 @@ jobs:
               bad.append("defines a build job")
           if "download-artifact" not in text or "build_run_id" not in text:
               bad.append("missing download-artifact/build_run_id wiring")
+          if "deploy_bundle_run_id" not in text or "deploy-bundle/deploy/" not in text:
+              bad.append("missing deploy bundle download/sync")
+          if "inputs.image_sha" not in text or "inputs.deploy_sha" not in text:
+              bad.append("missing distinct image_sha/deploy_sha inputs")
+          if re.search(r"(?m)ref:\s*\$\{\{\s*inputs\.image_sha\s*\}\}", text):
+              bad.append("must not checkout image_sha")
+          if "docker tag" in text or re.search(r"(?m)\bdocker\s+push\b", text):
+              bad.append("retag/push forbidden")
           if bad:
               raise SystemExit("promote rebuild forbidden: " + "; ".join(bad))
           print("promote_no_rebuild_guard=ok")
@@ -321,6 +329,49 @@ jobs:
             exit 1
           fi
           echo "manifest_validation_ok"
+      - name: Deploy bundle positive and negative checks
+        run: |
+          set -euo pipefail
+          chmod +x deploy/release/package_deploy_bundle.sh deploy/release/validate_deploy_bundle.sh
+          bash -n deploy/release/package_deploy_bundle.sh
+          bash -n deploy/release/validate_deploy_bundle.sh
+          out="$(mktemp -d)"
+          bash deploy/release/package_deploy_bundle.sh \
+            --source-dir deploy \
+            --out-dir "$out" \
+            --deploy-sha deadbeefdead \
+            --image-sha c5503c08cd99 \
+            --version v0.0.0-test \
+            --repository palexsfc10/croniu-app \
+            --ci-run-id 1 \
+            --package-run-id 2
+          bash deploy/release/validate_deploy_bundle.sh \
+            --bundle-dir "$out" \
+            --deploy-sha deadbeefdead \
+            --image-sha c5503c08cd99 \
+            --version v0.0.0-test \
+            --repository palexsfc10/croniu-app \
+            --package-run-id 2
+          # Negative: tamper a file
+          echo tamper >> "$out/deploy/release/README.md"
+          if bash deploy/release/validate_deploy_bundle.sh --bundle-dir "$out"; then
+            echo "Expected checksum failure after tamper"
+            exit 1
+          fi
+          # Negative: wrong deploy_sha
+          out2="$(mktemp -d)"
+          bash deploy/release/package_deploy_bundle.sh \
+            --source-dir deploy \
+            --out-dir "$out2" \
+            --deploy-sha deadbeefdead \
+            --image-sha c5503c08cd99 \
+            --version v0.0.0-test \
+            --repository palexsfc10/croniu-app >/dev/null
+          if bash deploy/release/validate_deploy_bundle.sh --bundle-dir "$out2" --deploy-sha other-sha; then
+            echo "Expected deploy_sha mismatch to fail"
+            exit 1
+          fi
+          echo "deploy_bundle_validation_ok"
 
   image-build-smoke:
     runs-on: ubuntu-latest

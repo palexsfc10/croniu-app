@@ -1,37 +1,49 @@
 # Promote HML to production
 
-Build once, promote many. Digests are produced by **Build release images** and
-stored in the immutable `release-manifest.json` artifact. Production never
-rebuilds or retags those images.
+Build once, promote many. Two immutable identities travel together:
+
+1. **image_sha** — GHCR digests in `release-manifest.json` (from **Build release images**).
+2. **deploy_sha** — operational `deploy/` scripts in `release-deploy-bundle-*` (from **Package deploy bundle**).
+
+Production never rebuilds or retags images, and never syncs `deploy/` by checking out
+`image_sha` (that tip may predate ops fixes rehearsed on HML).
 
 ## Flow
 
-1. Confirm CI is green for the candidate PR head.
+1. Confirm CI is green for the candidate PR head (`deploy_sha` tip).
 2. Run **Build release images** once with:
-   - `sha` = candidate tip (or PR head when trees are equivalent)
+   - `sha` = **image_sha** (digest candidate)
    - `version` = immutable label (for example `v1.0.0-rc2.2`)
-   - `ci_run_id` = approved CI run
-   - `expected_ci_head_sha` = PR head SHA reported by that CI run
-3. Rehearse the **same** artifact digests on HML via
-   `deploy/release/deploy.sh --environment hml --sha <SHA> --manifest <file>`.
-4. Keep the artifact / checksum / digests unchanged.
-5. Trigger **Promote production** with:
-   - `sha`, `version`
+   - `ci_run_id` / `expected_ci_head_sha` for that image candidate
+3. Rehearse the **same** image digests on HML with the **same** ops scripts that will
+   later ship in the deploy bundle.
+4. Run **Package deploy bundle** once with:
+   - `deploy_sha` = operational tip (exact SHA)
+   - `image_sha` = the digest candidate above
+   - `version`, `ci_run_id`, `expected_ci_head_sha` (= `deploy_sha`)
+5. Keep both artifacts / checksums / digests unchanged.
+6. Trigger **Promote production** with:
+   - `image_sha`, `deploy_sha`, `version`
    - `build_run_id` of the successful Build release run
-   - optional `manifest_artifact_name` (defaults to `release-manifest-<version>`)
-6. Complete the protected `production` environment approval.
-7. The promote workflow downloads the artifact from that build run, validates
-   SHA/version/digests, SSHes to the host, and runs `deploy.sh`. It does **not**
-   call `build-release`, does **not** `docker build`, and does **not** retag.
+   - `deploy_bundle_run_id` of the successful Package deploy bundle run
+   - optional artifact name overrides
+7. Complete the protected `production` environment approval.
+8. Promote downloads both artifacts, validates repository / SHAs / checksums /
+   digests, SSHes to the host, syncs **only** `deploy-bundle/deploy/`, and runs
+   `deploy.sh` with the image manifest. It does **not** call `build-release`,
+   does **not** `docker build`, does **not** retag, and does **not** checkout
+   `image_sha` for the sync path.
 
 ## Fail closed
 
 Promotion must fail when:
 
-- the artifact is missing;
-- the source Build release run is not `completed`/`success`;
-- SHA or version diverge from the manifest;
-- any image lacks `@sha256:<64 hex>`;
-- any image is tag-only (including `latest`).
+- either artifact is missing;
+- the Build release or Package deploy bundle run is not `completed`/`success`;
+- `image_sha` / `deploy_sha` / version / repository diverge;
+- deploy bundle aggregate or per-file checksums diverge;
+- any image lacks `@sha256:<64 hex>` or is tag-only;
+- workspace `deploy/` aggregate diverges from the bundle artifact.
 
-Do not promote mutable tags. Do not rebuild after a successful HML rehearsal.
+Do not promote mutable tags or mutable branches. Do not rebuild after a successful
+HML rehearsal. Do not treat `image_sha` as the source of ops scripts.

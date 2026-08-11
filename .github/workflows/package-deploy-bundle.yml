@@ -1,0 +1,120 @@
+name: Package deploy bundle
+
+# Immutable operational package for promote-many. Does NOT build or push app images.
+# Separates deploy_sha (scripts) from image_sha (GHCR digests in release-manifest).
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_sha:
+        description: Immutable Git SHA of the operational deploy/ scripts tip
+        required: true
+      image_sha:
+        description: Immutable image candidate SHA recorded in release-manifest.json
+        required: true
+      version:
+        description: Release version (for example v1.0.0-rc2.2)
+        required: true
+      ci_run_id:
+        description: Approved CI workflow run ID that must be green for deploy_sha
+        required: true
+      expected_ci_head_sha:
+        description: Head SHA the approved CI run must report (deploy tip / PR head)
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate approved CI run for deploy_sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          EXPECTED_HEAD: ${{ inputs.expected_ci_head_sha }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/${{ github.repository }}/actions/runs/${CI_RUN_ID}")"
+          name="$(jq -er '.name' <<<"$run_json")"
+          status="$(jq -er '.status' <<<"$run_json")"
+          conclusion="$(jq -er '.conclusion' <<<"$run_json")"
+          head_sha="$(jq -er '.head_sha' <<<"$run_json")"
+          echo "ci_run_id=$CI_RUN_ID"
+          echo "ci_name=$name"
+          echo "ci_status=$status"
+          echo "ci_conclusion=$conclusion"
+          echo "ci_head_sha=$head_sha"
+          echo "expected_ci_head_sha=$EXPECTED_HEAD"
+          echo "deploy_sha=$DEPLOY_SHA"
+          [[ "$name" == "CI" ]] || { echo "Unexpected workflow name"; exit 1; }
+          [[ "$status" == "completed" ]] || { echo "CI run not completed"; exit 1; }
+          [[ "$conclusion" == "success" ]] || { echo "CI run not successful"; exit 1; }
+          [[ "$head_sha" == "$EXPECTED_HEAD" ]] || {
+            echo "CI head_sha does not match expected_ci_head_sha"
+            exit 1
+          }
+          [[ "$EXPECTED_HEAD" == "$DEPLOY_SHA" ]] || {
+            echo "expected_ci_head_sha must equal deploy_sha (no mutable branch identity)"
+            exit 1
+          }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deploy_sha }}
+          fetch-depth: 0
+      - name: Validate deploy_sha checkout
+        run: |
+          set -euo pipefail
+          git rev-parse --verify "${{ inputs.deploy_sha }}^{commit}"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "${{ inputs.deploy_sha }}")"
+          echo "checked_out_deploy_sha=$(git rev-parse HEAD)"
+          # Refuse packaging from image_sha alone when trees diverge on deploy/.
+          if [[ "${{ inputs.deploy_sha }}" == "${{ inputs.image_sha }}" ]]; then
+            echo "NOTE: deploy_sha equals image_sha (allowed only when scripts and images share a tip)"
+          else
+            echo "deploy_sha and image_sha are distinct (required when ops scripts landed after image build)"
+          fi
+      - name: Package deploy bundle
+        id: pkg
+        run: |
+          set -euo pipefail
+          chmod +x deploy/release/package_deploy_bundle.sh deploy/release/validate_deploy_bundle.sh
+          bash deploy/release/package_deploy_bundle.sh \
+            --source-dir deploy \
+            --out-dir /tmp/deploy-bundle \
+            --deploy-sha "${{ inputs.deploy_sha }}" \
+            --image-sha "${{ inputs.image_sha }}" \
+            --version "${{ inputs.version }}" \
+            --repository "${{ github.repository }}" \
+            --ci-run-id "${{ inputs.ci_run_id }}" \
+            --package-run-id "${{ github.run_id }}"
+          # Stamp package_run_id already set; re-validate.
+          bash deploy/release/validate_deploy_bundle.sh \
+            --bundle-dir /tmp/deploy-bundle \
+            --deploy-sha "${{ inputs.deploy_sha }}" \
+            --image-sha "${{ inputs.image_sha }}" \
+            --version "${{ inputs.version }}" \
+            --repository "${{ github.repository }}" \
+            --package-run-id "${{ github.run_id }}"
+          agg="$(jq -er '.aggregate_sha256' /tmp/deploy-bundle/deploy-bundle-manifest.json)"
+          echo "aggregate_sha256=$agg" >> "$GITHUB_OUTPUT"
+          echo "aggregate_sha256=$agg"
+          jq '{deploy_sha,image_sha,version,repository,ci_run_id,package_run_id,aggregate_sha256,file_count:(.files|length)}' \
+            /tmp/deploy-bundle/deploy-bundle-manifest.json
+      - name: Upload deploy bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-deploy-bundle-${{ inputs.version }}
+          path: /tmp/deploy-bundle
+          if-no-files-found: error
+          retention-days: 90
+      - name: Summary
+        run: |
+          echo "artifact=release-deploy-bundle-${{ inputs.version }}"
+          echo "aggregate_sha256=${{ steps.pkg.outputs.aggregate_sha256 }}"
+          echo "deploy_sha=${{ inputs.deploy_sha }}"
+          echo "image_sha=${{ inputs.image_sha }}"
