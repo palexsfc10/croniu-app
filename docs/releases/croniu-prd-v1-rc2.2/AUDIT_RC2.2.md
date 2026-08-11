@@ -34,8 +34,25 @@ tree is the PR head / RC tip.
    validation (`deploy/release/validate_manifest.sh`).
 4. Docs aligned to build-once → HML → same artifact → PRD.
 
+## Digests build (single)
+
+| Item | Value |
+|------|--------|
+| Digest SHA | `c5503c08cd99a6d9222b47cb2ee5de52769077df` |
+| Version | `v1.0.0-rc2.2` |
+| CI for build | `31452832847` |
+| Build run | `31452994104` |
+| Artifact | `release-manifest-v1.0.0-rc2.2` (id `9087002365`) |
+| Manifest SHA-256 | `40958e52b5de386b4513c2aa24764839870f89ed6f20dc39b713a3f95ce5f83d` |
+
+Images were **not** rebuilt after HML. Later integrate tips (`45b5cda`, etc.) are ops-only.
+
+## HML rehearsal
+
+See `HML_REHEARSAL_RC2.2.md`. Summary: digests running on HML; Alembic `0018`; backup + isolated restore + digest rollback + same-manifest redeploy OK; ancestral `:local` rollback **not** executed (missing `/health/ready`/`/version`).
+
 ## Explicit non-goals
 
 - No merge to `main`
-- No PRD promote in this stage until HML rehearsal GO
+- No PRD promote in this stage (rehearsal evidence is not promote authorization)
 - No DNS / Cloudflare / Resend / Asaas Production changes

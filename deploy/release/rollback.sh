@@ -16,9 +16,22 @@ export CRONIU_API_IMAGE="$api_image" CRONIU_WEB_IMAGE="$web_image" CRONIU_ADMIN_
 
 log "Rolling back application containers to prior immutable images"
 log "NOTE: rollback does not reverse irreversible Alembic migrations; restore from backup if schema changed."
-compose pull "$API_SERVICE" "$WEB_SERVICE" "$ADMIN_SERVICE"
+# Pull only when the image is not already present locally (local tags / prior digests).
+for img in "$api_image" "$web_image" "$admin_image"; do
+  if docker image inspect "$img" >/dev/null 2>&1; then
+    log "Image already present locally; skip pull: ${img%%@*}"
+  else
+    log "Pulling image: ${img%%@*}"
+    docker pull "$img"
+  fi
+done
 compose up -d --no-deps --force-recreate "$API_SERVICE"
-wait_for_http "http://127.0.0.1:${API_HOST_PORT}/health/ready"
+# Prefer readiness; fall back to live for ancestral images that only expose /health.
+if ! curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:${API_HOST_PORT}/health/ready" >/dev/null 2>&1; then
+  wait_for_http "http://127.0.0.1:${API_HOST_PORT}/health"
+else
+  wait_for_http "http://127.0.0.1:${API_HOST_PORT}/health/ready"
+fi
 compose up -d --no-deps --force-recreate "$WEB_SERVICE" "$ADMIN_SERVICE"
 wait_for_http "http://127.0.0.1:${WEB_HOST_PORT}/"
 wait_for_http "http://127.0.0.1:${ADMIN_HOST_PORT}/"
