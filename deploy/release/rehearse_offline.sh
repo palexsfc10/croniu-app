@@ -23,9 +23,9 @@ sed -i \
   -e 's/^POSTGRES_DB=$/POSTGRES_DB=croniu/' \
   -e 's/^SECRET_KEY=$/SECRET_KEY=placeholder-secret-key-with-32chars-min/' \
   "$TMP/deploy/prd/.env.prd"
-grep -q '^API_HOST_PORT=.' "$TMP/deploy/prd/.env.prd" || echo 'API_HOST_PORT=18080' >>"$TMP/deploy/prd/.env.prd"
-grep -q '^WEB_HOST_PORT=.' "$TMP/deploy/prd/.env.prd" || echo 'WEB_HOST_PORT=13000' >>"$TMP/deploy/prd/.env.prd"
-grep -q '^ADMIN_HOST_PORT=.' "$TMP/deploy/prd/.env.prd" || echo 'ADMIN_HOST_PORT=13002' >>"$TMP/deploy/prd/.env.prd"
+grep -q '^API_HOST_PORT=19080$' "$TMP/deploy/prd/.env.prd" || { echo "expected API_HOST_PORT=19080"; fail=1; }
+grep -q '^WEB_HOST_PORT=14000$' "$TMP/deploy/prd/.env.prd" || { echo "expected WEB_HOST_PORT=14000"; fail=1; }
+grep -q '^ADMIN_HOST_PORT=14002$' "$TMP/deploy/prd/.env.prd" || { echo "expected ADMIN_HOST_PORT=14002"; fail=1; }
 
 export DEPLOY_ROOT="$TMP" ENVIRONMENT=prd \
   COMPOSE_FILE="$TMP/deploy/prd/compose.prd.yaml" \

@@ -32,10 +32,11 @@ HML permanece isolado (`croniu-hml-*`, path `/home/palex/ntws/croniu-hml`). PRD 
 
 ## Rede / Tunnel
 
-- Serviços PRD escutam só em `127.0.0.1` no host.
+- Serviços PRD escutam só em `127.0.0.1` no host (portas exclusivas **19080 / 14000 / 14002**; nunca 18080/13000/13002 do Pilot).
 - Cloudflare Tunnel no host aponta para esses ports locais (não alterar Tunnel nesta release).
 - Web/Admin fazem proxy interno para `http://api:8000` (alias DNS na network Docker).
 - Bypass público da VPS é rejeitado pelo bind loopback + preflight.
+- **Cold start:** se o volume `croniu-prd-postgres-data` ainda não existe, o deploy registra `COLD_START=1`, pula o backup pré-migration, sobe o Postgres, espera healthy, migra e sobe API/Web/Admin. Instalação existente (volume presente, mesmo com container parado) exige backup obrigatório.
 
 ## Known hosts SSH
 
@@ -43,7 +44,26 @@ O secret `PRODUCTION_KNOWN_HOSTS` deve conter a linha `ssh-ed25519`/`ecdsa` do h
 
 ## GHCR pull no host
 
-O host PRD precisa de autenticação read-only no GHCR (`docker login ghcr.io`) antes do primeiro `compose pull`. Preferir PAT fine-grained ou `GITHUB_TOKEN` de machine user com `read:packages`.
+O host PRD precisa autenticar no GitHub Container Registry antes do primeiro
+`compose pull` (pull anônimo retorna 401 para os pacotes atuais).
+
+Conforme a documentação oficial do Container Registry
+(https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry):
+
+- Use um **Personal Access Token (classic)** — o GHCR **não** autentica Docker com fine-grained PAT.
+- Escopo mínimo para pull: **`read:packages`**.
+- Autentique apenas via stdin (nunca passe o token em argumento visível, log, commit ou chat):
+
+  ```bash
+  # Como usuário croniu-deploy no host — token só na memória/env da sessão
+  printf '%s\n' "$CR_PAT" | docker login ghcr.io -u USERNAME --password-stdin
+  ```
+
+- Não grave o token em arquivo do repositório nem em `/srv/docker/croniu-prd`.
+- A credencial fica apenas no store do Docker do usuário `croniu-deploy` após o login.
+- Alternativa futura (decisão operacional separada): tornar os pacotes GHCR **públicos** e eliminar a credencial de pull no host.
+
+Esta etapa **não** cria o PAT nem executa `docker login` — configurar antes do primeiro Promote.
 
 ## Resend
 

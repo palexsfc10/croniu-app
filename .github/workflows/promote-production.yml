@@ -147,6 +147,12 @@ jobs:
               bad.append("must not checkout image_sha for promote sync")
           if re.search(r"(?m)^\s+run:.*\b(tag|push)\b.*ghcr", text):
               bad.append("image retag or registry push forbidden")
+          if "/srv/docker/croniu-prd/deploy/prd/.env.prd" not in text:
+              bad.append("post-deploy /version must source absolute .env.prd path")
+          if re.search(r"source\s+deploy/prd/\.env\.prd", text):
+              bad.append("must not source relative deploy/prd/.env.prd")
+          if "POST_DEPLOY_SMOKE" not in text:
+              bad.append("must label post-deploy smoke distinctly from deploy step")
           if bad:
               raise SystemExit("promote guard failed: " + "; ".join(bad))
           print("promote_no_rebuild_and_bundle_guard=ok")
@@ -266,12 +272,25 @@ jobs:
             "cd /srv/docker/croniu-prd && RELEASE_OPERATOR='github:${{ github.actor }}' \
              deploy/release/deploy.sh --environment prd --sha '${IMAGE_SHA}' \
              --manifest \"/srv/docker/croniu-prd/manifests/${IMAGE_SHA}.json\""
-      - name: Collect remote /version
+          echo "DEPLOY_STEP=completed"
+      - name: Collect remote /version (post-deploy smoke)
         env:
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
           PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
         run: |
           set -euo pipefail
-          ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
-            "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
-            'set -a; source deploy/prd/.env.prd; set +a; curl -fsS "http://127.0.0.1:${API_HOST_PORT}/version"'
+          # Deploy step above already completed successfully when we reach here.
+          # Failures in this step are POST-DEPLOY SMOKE only — do not treat as
+          # "deploy never ran". Never print .env contents.
+          echo "DEPLOY_STEP=completed POST_DEPLOY_SMOKE=starting"
+          remote="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          prd_root="/srv/docker/croniu-prd"
+          env_abs="${prd_root}/deploy/prd/.env.prd"
+          if ! ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
+            "$remote" \
+            "cd '${prd_root}' && test -f '${env_abs}' && set -a && source '${env_abs}' && set +a && curl -fsS \"http://127.0.0.1:\${API_HOST_PORT}/version\""; then
+            echo "POST_DEPLOY_SMOKE_FAILED: remote /version collection failed after a successful deploy step"
+            echo "Investigate on host under ${prd_root}; do not assume migrate/deploy did not run"
+            exit 1
+          fi
+          echo "POST_DEPLOY_SMOKE=ok"

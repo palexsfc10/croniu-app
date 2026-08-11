@@ -59,7 +59,17 @@ if [[ -f "$RELEASE_STATE_FILE" ]]; then
   cp "$RELEASE_STATE_FILE" "$DEPLOY_ROOT/RELEASE_MANIFEST.previous.json"
 fi
 
-"$SCRIPT_DIR/backup.sh"
+# Cold start vs subsequent install (volume evidence — never create the volume to decide).
+vol_name="$(postgres_volume_name)"
+if is_cold_start; then
+  log "COLD_START=1 volume_missing=$vol_name — skipping pre-migration backup (no prior PRD/HML data)"
+else
+  log "COLD_START=0 volume_present=$vol_name — pre-migration backup is mandatory"
+  # Existing volume with a stopped container is NOT cold start: bring DB up, then backup.
+  ensure_postgres_healthy "$DB_SERVICE"
+  "$SCRIPT_DIR/backup.sh"
+fi
+
 CRONIU_API_IMAGE="$(manifest_image api)"
 CRONIU_WEB_IMAGE="$(manifest_image web)"
 CRONIU_ADMIN_IMAGE="$(manifest_image admin)"
@@ -67,15 +77,16 @@ export CRONIU_API_IMAGE CRONIU_WEB_IMAGE CRONIU_ADMIN_IMAGE
 
 log "Pulling immutable release images for $SHA"
 compose pull "$API_SERVICE" "$WEB_SERVICE" "$ADMIN_SERVICE"
+
+# Always ensure Postgres is healthy before the one-off migration (cold start creates the volume here).
+ensure_postgres_healthy "$DB_SERVICE"
+
 log "Applying migrations as a one-off job (timeout ${MIGRATE_TIMEOUT_SECONDS:-300}s)"
 # `timeout` cannot invoke a shell function; expand to docker compose explicitly.
-project="croniu-prd"
-if [[ "$ENVIRONMENT" == "hml" ]]; then
-  project="croniu-hml"
-fi
+project="$(compose_project_name)"
 timeout "${MIGRATE_TIMEOUT_SECONDS:-300}" \
   docker compose -p "$project" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
-  run --rm "$API_SERVICE" alembic upgrade head
+  run --rm --no-deps "$API_SERVICE" alembic upgrade head
 log "Recreating API"
 compose up -d --no-deps --force-recreate "$API_SERVICE"
 wait_for_http "http://127.0.0.1:${API_HOST_PORT}/health/ready"
