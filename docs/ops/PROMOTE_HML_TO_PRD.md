@@ -8,6 +8,16 @@ Build once, promote many. Two immutable identities travel together:
 Production never rebuilds or retags images, and never syncs `deploy/` by checking out
 `image_sha` (that tip may predate ops fixes rehearsed on HML).
 
+## GitHub Actions registration
+
+Manual workflows (`Package deploy bundle`, `Promote production`, `Build release images`)
+are only dispatchable when their workflow files exist on the repository **default**
+branch. For RC2.3+ that default must be `main` (not a stale `release/croniu-prd-v1`
+tip). `Package deploy bundle` also uses a path-filtered `push` indexer so GitHub
+catalogs the workflow after it lands on the default branch; the package job itself
+runs only on `workflow_dispatch` with immutable SHA inputs (never `latest` / never
+branch names as identity).
+
 ## Flow
 
 1. Confirm CI is green for the candidate PR head (`deploy_sha` tip).

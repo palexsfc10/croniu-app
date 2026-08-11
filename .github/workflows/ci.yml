@@ -279,6 +279,8 @@ jobs:
         run: bash deploy/release/rehearse_offline.sh
       - name: PRD cold-start and port guards
         run: bash deploy/release/test_prd_deploy_guards.sh
+      - name: Package deploy bundle workflow contract
+        run: bash deploy/release/test_package_deploy_workflow.sh
       - name: Promote must not rebuild images or sync image_sha deploy/
         run: |
           set -euo pipefail
