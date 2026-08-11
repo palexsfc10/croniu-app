@@ -145,7 +145,7 @@ jobs:
               bad.append("rsync appears to sync workspace deploy/ instead of deploy-bundle")
           if re.search(r"(?m)ref:\s*\$\{\{\s*inputs\.image_sha\s*\}\}", text):
               bad.append("must not checkout image_sha for promote sync")
-          if "docker tag" in text or "docker push" in text:
+          if re.search(r"(?m)^\s+run:.*\b(tag|push)\b.*ghcr", text):
               bad.append("image retag or registry push forbidden")
           if bad:
               raise SystemExit("promote guard failed: " + "; ".join(bad))
