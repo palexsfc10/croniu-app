@@ -87,6 +87,8 @@ fi
 grep -q '^API_HOST_PORT=19080$' deploy/prd/.env.prd.example || bad "example API port"
 grep -q '^WEB_HOST_PORT=14000$' deploy/prd/.env.prd.example || bad "example WEB port"
 grep -q '^ADMIN_HOST_PORT=14002$' deploy/prd/.env.prd.example || bad "example ADMIN port"
+grep -q '^API_HOST_PORT=19080$' deploy/prd/env.prd.example || bad "bundled env.prd.example API port"
+grep -q '^EMAIL_PROVIDER=' deploy/prd/env.prd.example || bad "bundled env.prd.example EMAIL_PROVIDER"
 pass "example ports 19080/14000/14002"
 
 TMP="$(mktemp -d)"
