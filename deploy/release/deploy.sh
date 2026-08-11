@@ -68,7 +68,14 @@ export CRONIU_API_IMAGE CRONIU_WEB_IMAGE CRONIU_ADMIN_IMAGE
 log "Pulling immutable release images for $SHA"
 compose pull "$API_SERVICE" "$WEB_SERVICE" "$ADMIN_SERVICE"
 log "Applying migrations as a one-off job (timeout ${MIGRATE_TIMEOUT_SECONDS:-300}s)"
-timeout "${MIGRATE_TIMEOUT_SECONDS:-300}" compose run --rm "$API_SERVICE" alembic upgrade head
+# `timeout` cannot invoke a shell function; expand to docker compose explicitly.
+project="croniu-prd"
+if [[ "$ENVIRONMENT" == "hml" ]]; then
+  project="croniu-hml"
+fi
+timeout "${MIGRATE_TIMEOUT_SECONDS:-300}" \
+  docker compose -p "$project" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
+  run --rm "$API_SERVICE" alembic upgrade head
 log "Recreating API"
 compose up -d --no-deps --force-recreate "$API_SERVICE"
 wait_for_http "http://127.0.0.1:${API_HOST_PORT}/health/ready"
