@@ -1,58 +1,63 @@
-# AUDIT RC2.2 — build-once / promote-many + digests rehearsal prep
+# AUDIT RC2.2 — build-once / promote-many + dual identity
 
 Operational successor to RC2.1 (`7cf3d5a`). Product/domain rules unchanged.
-Scope: release workflows, release scripts, and ops/audit docs only.
+Scope: release workflows, release scripts, ops/audit docs, CI flake fixes for gates.
 
-## Identity
-
-| Item | Value |
-|------|--------|
-| RC2.1 functional tip | `7cf3d5aea89322938d6fda2e28d7e296081c9710` |
-| RC2.1 PR head (trees ≡) | `e136330a77cd9a8b0fba091500c5cda80738dbe3` |
-| Approved CI (RC2.1) | https://github.com/palexsfc10/croniu-app/actions/runs/31450597423 |
-| CI event | `pull_request` |
-| CI `head_sha` | `e136330a77cd9a8b0fba091500c5cda80738dbe3` |
-| Temporary merge commit checked out by Actions | `8b4f00de59450807760f2e81765f47e711ff6b54` (= `9bfbd4c` + `e136330`) |
-| Base `main` | `9bfbd4c92c04f2d17eaad6aeddd2375f0cf893ea` |
-| Backend tests | 221 passed |
-| Tree scan candidates | 485 files |
-| History/delta commits (final run) | 96 (log: 95 commits scanned + checkout count) |
-
-Do not equate `8b4f00d` with the release tip: it is only the ephemeral PR merge
-commit used by GitHub Actions checkout for that green CI run. The candidate
-tree is the PR head / RC tip.
-
-## Fixes in RC2.2
-
-1. **Promote production** no longer calls `build-release`. It downloads the
-   existing `release-manifest.json` artifact by `build_run_id` and deploys
-   those digests only.
-2. **Build release images** requires an approved CI run id + expected CI head
-   SHA before push; writes build/CI metadata into the manifest; refuses
-   non-digest image refs.
-3. CI guards: promote-no-rebuild check + positive/negative manifest schema
-   validation (`deploy/release/validate_manifest.sh`).
-4. Docs aligned to build-once → HML → same artifact → PRD.
-
-## Digests build (single)
+## Dual identity
 
 | Item | Value |
 |------|--------|
-| Digest SHA | `c5503c08cd99a6d9222b47cb2ee5de52769077df` |
+| **image_sha** | `c5503c08cd99a6d9222b47cb2ee5de52769077df` |
+| **deploy_sha** / PR tip | `4a5cef2ab8b9c2d0ae0dc8fba368d948e4bf2094` |
 | Version | `v1.0.0-rc2.2` |
-| CI for build | `31452832847` |
+| Main | `9bfbd4c92c04f2d17eaad6aeddd2375f0cf893ea` |
+
+## Image artifact
+
+| Item | Value |
+|------|--------|
 | Build run | `31452994104` |
-| Artifact | `release-manifest-v1.0.0-rc2.2` (id `9087002365`) |
-| Manifest SHA-256 | `40958e52b5de386b4513c2aa24764839870f89ed6f20dc39b713a3f95ce5f83d` |
+| Artifact | `release-manifest-v1.0.0-rc2.2` / `9087002365` |
+| Checksum | `40958e52b5de386b4513c2aa24764839870f89ed6f20dc39b713a3f95ce5f83d` |
+| Images rebuilt after HML? | **No** |
 
-Images were **not** rebuilt after HML. Later integrate tips (`45b5cda`, etc.) are ops-only.
+## Deploy bundle artifact
 
-## HML rehearsal
+| Item | Value |
+|------|--------|
+| Producer | CI job `package-deploy-bundle` on run `31455737695` |
+| Artifact | `release-deploy-bundle-v1.0.0-rc2.2` / `9087944496` |
+| Aggregate | `b3154120247aa2a68eae809cffca91d0a2998d1f13805061a34fa7819034f97d` |
+| `deploy_sha` recorded | PR head (`github.event.pull_request.head.sha`), never merge commit |
 
-See `HML_REHEARSAL_RC2.2.md`. Summary: digests running on HML; Alembic `0018`; backup + isolated restore + digest rollback + same-manifest redeploy OK; ancestral `:local` rollback **not** executed (missing `/health/ready`/`/version`).
+## Promote production
+
+- Inputs: `image_sha`, `deploy_sha`, `version`, `build_run_id`, `deploy_bundle_run_id`
+- Downloads image manifest **and** deploy bundle
+- Syncs **only** `deploy-bundle/deploy/`
+- Does **not** checkout `image_sha` for sync
+- Does **not** rebuild / retag
+- Accepts producer workflow name `CI` or `Package deploy bundle`
+
+## RC2.1 CI identity (historical)
+
+| Item | Value |
+|------|--------|
+| Approved CI | `31450597423` |
+| PR head | `e136330a77cd9a8b0fba091500c5cda80738dbe3` |
+| Temporary merge commit | `8b4f00de59450807760f2e81765f47e711ff6b54` |
+| Backend tests | 221 |
+| Tree scan | 485 files |
+| History/delta | 96 commits |
+
+Do not equate merge commits with release tips.
+
+## HML
+
+See `HML_REHEARSAL_RC2.2.md`. Bundle byte-compare + redeploy + agenda/day 200 + Admin UI login OK.
 
 ## Explicit non-goals
 
 - No merge to `main`
-- No PRD promote in this stage (rehearsal evidence is not promote authorization)
+- No Promote production execution in this stage
 - No DNS / Cloudflare / Resend / Asaas Production changes
