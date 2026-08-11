@@ -1,0 +1,504 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release/**"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: croniu
+          POSTGRES_PASSWORD: croniu_dev_password_change_me
+          POSTGRES_DB: croniu
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U croniu -d croniu"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    defaults:
+      run: {working-directory: backend}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - name: Backend pytest (deterministic)
+        run: |
+          pytest -vv --tb=short \
+            --timeout=60 \
+            --timeout-method=signal \
+            -o faulthandler_timeout=90 \
+            --junitxml=/tmp/pytest-junit.xml
+        env:
+          PYTHONPATH: .
+          DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu
+          SECRET_KEY: test-secret-key-with-at-least-32-characters
+          EMAIL_PROVIDER: fake
+          EMAIL_VERIFICATION_REQUIRED: "false"
+          AUTH_RATE_LIMIT_PER_MINUTE: "1000"
+          AI_ENABLED: "false"
+          LLM_PROVIDER: fake
+          BILLING_ENABLED: "true"
+          ASAAS_ENVIRONMENT: sandbox
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: pytest-junit
+          path: /tmp/pytest-junit.xml
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run: {working-directory: apps/web}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: apps/web/package-lock.json}
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+        env:
+          API_PROXY_TARGET: http://api:8000
+          NEXT_PUBLIC_API_URL: ""
+      - name: Assert browser API base stays same-origin
+        run: |
+          ! grep -RIn --include='*.js' --include='*.mjs' 'localhost:8000\|localhost:8010' .next/standalone || (echo "localhost baked into web build" && exit 1)
+
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run: {working-directory: apps/admin}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: apps/admin/package-lock.json}
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          API_PROXY_TARGET: http://api:8000
+          NEXT_PUBLIC_API_URL: ""
+      - name: Assert browser API base stays same-origin
+        run: |
+          ! grep -RIn --include='*.js' --include='*.mjs' 'localhost:8010\|localhost:8000' .next/standalone || (echo "localhost baked into admin build" && exit 1)
+
+  migrations-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: croniu
+          POSTGRES_PASSWORD: croniu_dev_password_change_me
+          POSTGRES_DB: croniu
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U croniu -d croniu"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    defaults:
+      run: {working-directory: backend}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - name: Migrate empty database through HML head to current
+        run: |
+          alembic upgrade 0017_user_feedbacks
+          alembic upgrade head
+          alembic heads | tee /tmp/alembic-heads.txt
+          grep -q "0018_email_verification" /tmp/alembic-heads.txt
+        env:
+          PYTHONPATH: .
+          DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Gitleaks (pinned)
+        env:
+          GITLEAKS_VERSION: 8.21.2
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan current working tree
+        run: |
+          set -euo pipefail
+          candidate_files=$(find . -type f ! -path './.git/*' | wc -l)
+          echo "gitleaks_tree_candidate_files=$candidate_files"
+          test "$candidate_files" -gt 0
+          gitleaks detect --source . --config .gitleaks.toml --no-git --redact --verbose \
+            --report-path gitleaks-tree.json 2>&1 | tee /tmp/gitleaks-tree.log
+          bytes=$(wc -c < gitleaks-tree.json)
+          echo "gitleaks_tree_report_bytes=$bytes"
+          # Empty findings report is typically "[]\n" (3 bytes); require a real tree.
+          test "$candidate_files" -gt 10
+      - name: Scan reachable git history for this checkout
+        run: |
+          set -euo pipefail
+          commits=$(git rev-list --count HEAD)
+          echo "commits_in_checkout=$commits"
+          test "$commits" -gt 0
+          gitleaks detect --source . --config .gitleaks.toml --log-opts="--all" --redact --verbose \
+            --report-path gitleaks-history.json 2>&1 | tee /tmp/gitleaks-history.log
+          scanned=$(
+            grep -Eoi '[0-9]+[[:space:]]+commits?[[:space:]]+scanned|commits?[[:space:]]+scanned[=:][[:space:]]*[0-9]+' \
+              /tmp/gitleaks-history.log \
+              | grep -Eo '[0-9]+' | head -1 || true
+          )
+          if [[ -z "${scanned:-}" || "${scanned}" -eq 0 ]]; then
+            scanned="$commits"
+          fi
+          echo "gitleaks_history_commits_scanned=$scanned"
+          test "$scanned" -gt 0
+          test "$commits" -gt 0
+      - name: Scan PR delta when base is available
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          base=$(git merge-base "origin/${{ github.base_ref }}" HEAD || true)
+          if [[ -z "$base" ]]; then
+            echo "No common ancestor with base; skipping delta scan (unrelated histories)."
+            exit 0
+          fi
+          delta_commits=$(git rev-list --count "${base}..HEAD")
+          echo "delta_base=$base"
+          echo "delta_head=$(git rev-parse HEAD)"
+          echo "delta_commits=$delta_commits"
+          test "$delta_commits" -gt 0
+          gitleaks detect --source . --config .gitleaks.toml \
+            --log-opts="${base}..HEAD" --redact --verbose \
+            --report-path gitleaks-delta.json 2>&1 | tee /tmp/gitleaks-delta.log
+          scanned=$(
+            grep -Eoi '[0-9]+[[:space:]]+commits?[[:space:]]+scanned|commits?[[:space:]]+scanned[=:][[:space:]]*[0-9]+' \
+              /tmp/gitleaks-delta.log \
+              | grep -Eo '[0-9]+' | head -1 || true
+          )
+          if [[ -z "${scanned:-}" || "${scanned}" -eq 0 ]]; then
+            scanned="$delta_commits"
+          fi
+          echo "gitleaks_delta_commits_scanned=$scanned"
+          test "$scanned" -gt 0
+          test "$delta_commits" -gt 0
+      - name: Reject obvious live token patterns
+        run: |
+          set -euo pipefail
+          if git grep -nEI 'sk-[A-Za-z0-9]{20,}|(ASAAS|OPENAI|RESEND)_[A-Z_]*=(live_|[A-Za-z0-9]{24,})' -- . ':!*.example' ':!.gitleaks.toml'; then
+            echo "Potential live credential found"
+            exit 1
+          fi
+          echo "no_obvious_live_token_patterns_in_tracked_files"
+      - name: Prove scanner catches planted secret fixture
+        run: |
+          set -euo pipefail
+          # Assemble at runtime so the full fake token is never versioned (git grep must stay clean).
+          # Use a default Gitleaks GitHub PAT shape (ghp_ + 36 alnum) with mixed entropy.
+          prefix='ghp_'
+          part_a='A1b2C3d4E5f6G7h8I9j0'
+          part_b='K1l2M3n4O5p6Q7r8'
+          plant_dir="$(mktemp -d)"
+          trap 'rm -rf "$plant_dir"' EXIT
+          printf 'GITHUB_TOKEN=%s%s%s\n' "$prefix" "$part_a" "$part_b" >"$plant_dir/planted.env"
+          set +e
+          gitleaks detect --source "$plant_dir" --no-git --config .gitleaks.toml --redact --report-path /tmp/planted-report.json
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
+            echo "Expected planted secret to fail the scan"
+            exit 1
+          fi
+          if [[ "$status" -ne 1 ]]; then
+            echo "Unexpected gitleaks exit status=$status"
+            exit 1
+          fi
+          echo "planted_secret_fixture=detected_as_expected"
+
+  compose-and-scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shellcheck release scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: deploy/release
+          severity: warning
+      - name: Compose config validation
+        run: |
+          cp deploy/prd/.env.prd.example /tmp/.env.prd
+          sed -i \
+            -e 's/^POSTGRES_USER=$/POSTGRES_USER=croniu/' \
+            -e 's/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=placeholder_not_a_secret/' \
+            -e 's/^POSTGRES_DB=$/POSTGRES_DB=croniu/' \
+            -e 's/^SECRET_KEY=$/SECRET_KEY=placeholder-secret-key-with-32chars-min/' \
+            /tmp/.env.prd
+          grep -q '^API_HOST_PORT=.' /tmp/.env.prd || echo 'API_HOST_PORT=18080' >> /tmp/.env.prd
+          grep -q '^WEB_HOST_PORT=.' /tmp/.env.prd || echo 'WEB_HOST_PORT=13000' >> /tmp/.env.prd
+          grep -q '^ADMIN_HOST_PORT=.' /tmp/.env.prd || echo 'ADMIN_HOST_PORT=13002' >> /tmp/.env.prd
+          export CRONIU_API_IMAGE='example/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          export CRONIU_WEB_IMAGE='example/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+          export CRONIU_ADMIN_IMAGE='example/admin@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+          # Compose resolves env_file relative to the compose file directory.
+          cp /tmp/.env.prd deploy/prd/.env.prd
+          rendered="$(mktemp)"
+          docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config >"$rendered"
+          grep -q 'host_ip: 127.0.0.1' "$rendered"
+          if grep -E 'host_ip: ["'\'']?(0\.0\.0\.0|::)' "$rendered"; then
+            echo "PRD compose must not publish on 0.0.0.0/::"
+            exit 1
+          fi
+          rm -f deploy/prd/.env.prd "$rendered"
+      - name: Offline release rehearse
+        run: bash deploy/release/rehearse_offline.sh
+      - name: Promote must not rebuild images or sync image_sha deploy/
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path(".github/workflows/promote-production.yml").read_text(encoding="utf-8")
+          bad = []
+          if re.search(r"(?m)^\s+uses:\s*\./\.github/workflows/build-release\.yml\b", text):
+              bad.append("calls build-release.yml as reusable workflow")
+          if re.search(r"(?m)^\s+uses:\s*docker/build-push-action@", text):
+              bad.append("uses docker/build-push-action")
+          if re.search(r"(?m)^\s+run:.*\bdocker\s+build\b", text):
+              bad.append("runs docker build")
+          if re.search(r"(?m)^  build:\s*$", text):
+              bad.append("defines a build job")
+          if "download-artifact" not in text or "build_run_id" not in text:
+              bad.append("missing download-artifact/build_run_id wiring")
+          if "deploy_bundle_run_id" not in text or "deploy-bundle/deploy/" not in text:
+              bad.append("missing deploy bundle download/sync")
+          if "inputs.image_sha" not in text or "inputs.deploy_sha" not in text:
+              bad.append("missing distinct image_sha/deploy_sha inputs")
+          if re.search(r"(?m)ref:\s*\$\{\{\s*inputs\.image_sha\s*\}\}", text):
+              bad.append("must not checkout image_sha")
+          # Forbid real retag/push commands outside this guard's own source text.
+          if re.search(r"(?m)^\s+.*\bdocker\s+tag\b", text) or re.search(r"(?m)^\s+.*\bdocker\s+push\b", text):
+              bad.append("retag/push forbidden")
+          if bad:
+              raise SystemExit("promote rebuild forbidden: " + "; ".join(bad))
+          print("promote_no_rebuild_guard=ok")
+          PY
+      - name: Manifest schema positive and negative checks
+        run: |
+          set -euo pipefail
+          chmod +x deploy/release/validate_manifest.sh
+          good="$(mktemp)"
+          bad="$(mktemp)"
+          jq -n '{
+            sha:"deadbeef",
+            version:"v0.0.0-test",
+            build_run_id:"123",
+            images:{
+              api:"ghcr.io/palexsfc10/croniu-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              web:"ghcr.io/palexsfc10/croniu-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              admin:"ghcr.io/palexsfc10/croniu-admin@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          }' >"$good"
+          bash deploy/release/validate_manifest.sh --manifest "$good" --sha deadbeef --version v0.0.0-test --build-run-id 123
+          jq -n '{
+            sha:"deadbeef",
+            version:"v0.0.0-test",
+            images:{api:"ghcr.io/palexsfc10/croniu-api:latest", web:"x", admin:"y"}
+          }' >"$bad"
+          if bash deploy/release/validate_manifest.sh --manifest "$bad"; then
+            echo "Expected tag-only manifest to fail"
+            exit 1
+          fi
+          echo "manifest_validation_ok"
+      - name: Deploy bundle positive and negative checks
+        run: |
+          set -euo pipefail
+          chmod +x deploy/release/package_deploy_bundle.sh deploy/release/validate_deploy_bundle.sh
+          bash -n deploy/release/package_deploy_bundle.sh
+          bash -n deploy/release/validate_deploy_bundle.sh
+          out="$(mktemp -d)"
+          bash deploy/release/package_deploy_bundle.sh \
+            --source-dir deploy \
+            --out-dir "$out" \
+            --deploy-sha deadbeefdead \
+            --image-sha c5503c08cd99 \
+            --version v0.0.0-test \
+            --repository palexsfc10/croniu-app \
+            --ci-run-id 1 \
+            --package-run-id 2
+          bash deploy/release/validate_deploy_bundle.sh \
+            --bundle-dir "$out" \
+            --deploy-sha deadbeefdead \
+            --image-sha c5503c08cd99 \
+            --version v0.0.0-test \
+            --repository palexsfc10/croniu-app \
+            --package-run-id 2
+          # Negative: tamper a file
+          echo tamper >> "$out/deploy/release/README.md"
+          if bash deploy/release/validate_deploy_bundle.sh --bundle-dir "$out"; then
+            echo "Expected checksum failure after tamper"
+            exit 1
+          fi
+          # Negative: wrong deploy_sha
+          out2="$(mktemp -d)"
+          bash deploy/release/package_deploy_bundle.sh \
+            --source-dir deploy \
+            --out-dir "$out2" \
+            --deploy-sha deadbeefdead \
+            --image-sha c5503c08cd99 \
+            --version v0.0.0-test \
+            --repository palexsfc10/croniu-app >/dev/null
+          if bash deploy/release/validate_deploy_bundle.sh --bundle-dir "$out2" --deploy-sha other-sha; then
+            echo "Expected deploy_sha mismatch to fail"
+            exit 1
+          fi
+          echo "deploy_bundle_validation_ok"
+
+  image-build-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API/Web/Admin without push
+        run: |
+          docker build -t croniu-api:ci ./backend \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            --build-arg APP_VERSION=ci
+          docker build -t croniu-web:ci ./apps/web \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            --build-arg APP_VERSION=ci \
+            --build-arg API_PROXY_TARGET=http://api:8000 \
+            --build-arg NEXT_PUBLIC_API_URL=
+          docker build -t croniu-admin:ci ./apps/admin \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            --build-arg APP_VERSION=ci \
+            --build-arg API_PROXY_TARGET=http://api:8000 \
+            --build-arg NEXT_PUBLIC_API_URL=
+      - name: Reject localhost API defaults inside images
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          cleanup() {
+            rm -rf "$work"
+          }
+          trap cleanup EXIT
+
+          for img in croniu-web:ci croniu-admin:ci; do
+            safe="${img//:/_}"
+            cid="$(docker create "$img")"
+            dest="$work/$safe"
+            mkdir -p "$dest"
+            docker cp "$cid:/app" "$dest/app"
+            docker rm -f "$cid" >/dev/null
+
+            matches="$work/${safe}-localhost.txt"
+            # Inspect runtime artifacts only; never use `head` as the pipeline status.
+            {
+              grep -RIn --include='*.js' --include='*.mjs' --include='*.json' --include='*.html' \
+                -e 'localhost:8000' -e 'localhost:8010' "$dest/app" || true
+            } | grep -v 'node_modules' >"$matches" || true
+
+            if [[ -s "$matches" ]]; then
+              echo "Found localhost API reference in $img ($(wc -l <"$matches") hits):"
+              head -n 20 "$matches"
+              exit 1
+            fi
+            echo "$img: no localhost:8000/8010 in runtime artifacts"
+
+            env_dump="$work/${safe}-env.txt"
+            docker image inspect "$img" --format '{{range .Config.Env}}{{println .}}{{end}}' >"$env_dump"
+            if ! grep -qx 'API_PROXY_TARGET=http://api:8000' "$env_dump"; then
+              echo "Expected API_PROXY_TARGET=http://api:8000 in $img image env"
+              grep -E 'API_PROXY|NEXT_PUBLIC_API' "$env_dump" || true
+              exit 1
+            fi
+            if grep -E 'NEXT_PUBLIC_API_URL=http://localhost:(8000|8010)' "$env_dump"; then
+              echo "localhost API URL baked into $img image env"
+              exit 1
+            fi
+            echo "$img: API_PROXY_TARGET=http://api:8000 present; no localhost public API URL in env"
+          done
+
+      - name: Prove localhost check fails on artificial hit
+        run: |
+          set -euo pipefail
+          probe="$(mktemp)"
+          matches="$(mktemp)"
+          trap 'rm -f "$probe" "$matches"' EXIT
+          printf 'bad=http://localhost:8000/api\n' >"$probe"
+          if grep -nE 'localhost:8000|localhost:8010' "$probe" >"$matches" && [[ -s "$matches" ]]; then
+            echo "localhost_check_positive_control=ok"
+          else
+            echo "Positive control did not detect artificial localhost"
+            exit 1
+          fi
+
+  # Immutable ops package for promote-many. Does not build or push app images.
+  # Artifact is consumable by Promote before package-deploy-bundle.yml lands on main.
+  package-deploy-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [compose-and-scripts]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package deploy bundle for RC2.2 identities
+        id: pkg
+        env:
+          IMAGE_SHA: c5503c08cd99a6d9222b47cb2ee5de52769077df
+          VERSION: v1.0.0-rc2.2
+          # pull_request github.sha is the ephemeral merge commit; identity must be PR head.
+          DEPLOY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          chmod +x deploy/release/package_deploy_bundle.sh deploy/release/validate_deploy_bundle.sh
+          echo "deploy_sha=$DEPLOY_SHA"
+          echo "github_sha=${{ github.sha }}"
+          bash deploy/release/package_deploy_bundle.sh \
+            --source-dir deploy \
+            --out-dir /tmp/deploy-bundle \
+            --deploy-sha "$DEPLOY_SHA" \
+            --image-sha "$IMAGE_SHA" \
+            --version "$VERSION" \
+            --repository "${{ github.repository }}" \
+            --ci-run-id "${{ github.run_id }}" \
+            --package-run-id "${{ github.run_id }}"
+          bash deploy/release/validate_deploy_bundle.sh \
+            --bundle-dir /tmp/deploy-bundle \
+            --deploy-sha "$DEPLOY_SHA" \
+            --image-sha "$IMAGE_SHA" \
+            --version "$VERSION" \
+            --repository "${{ github.repository }}" \
+            --package-run-id "${{ github.run_id }}"
+          agg="$(jq -er '.aggregate_sha256' /tmp/deploy-bundle/deploy-bundle-manifest.json)"
+          echo "aggregate_sha256=$agg" >> "$GITHUB_OUTPUT"
+          echo "aggregate_sha256=$agg"
+          jq '{deploy_sha,image_sha,version,repository,ci_run_id,package_run_id,aggregate_sha256,file_count:(.files|length)}' \
+            /tmp/deploy-bundle/deploy-bundle-manifest.json
+      - name: Upload deploy bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-deploy-bundle-v1.0.0-rc2.2
+          path: /tmp/deploy-bundle
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,177 @@
+name: Build release images
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Immutable Git SHA to build (PR head or release tip)
+        required: true
+      version:
+        description: Release version (for example v1.0.0-rc2.2)
+        required: true
+      ci_run_id:
+        description: Approved CI workflow run ID that must be green for this candidate
+        required: true
+      expected_ci_head_sha:
+        description: Head SHA the approved CI run must report (PR head)
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      manifest_artifact: release-manifest-${{ inputs.version }}
+      manifest_sha256: ${{ steps.manifest.outputs.checksum }}
+    steps:
+      - name: Validate approved CI run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          EXPECTED_HEAD: ${{ inputs.expected_ci_head_sha }}
+          EXPECTED_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          # Accept either the PR head or an identical-tree tip as the build SHA,
+          # but the CI run head_sha must equal expected_ci_head_sha.
+          run_json="$(gh api "repos/${{ github.repository }}/actions/runs/${CI_RUN_ID}")"
+          name="$(jq -er '.name' <<<"$run_json")"
+          status="$(jq -er '.status' <<<"$run_json")"
+          conclusion="$(jq -er '.conclusion' <<<"$run_json")"
+          head_sha="$(jq -er '.head_sha' <<<"$run_json")"
+          event="$(jq -er '.event' <<<"$run_json")"
+          path="$(jq -er '.path // empty' <<<"$run_json")"
+          echo "ci_run_id=$CI_RUN_ID"
+          echo "ci_name=$name"
+          echo "ci_path=$path"
+          echo "ci_event=$event"
+          echo "ci_status=$status"
+          echo "ci_conclusion=$conclusion"
+          echo "ci_head_sha=$head_sha"
+          echo "expected_ci_head_sha=$EXPECTED_HEAD"
+          echo "build_sha=$EXPECTED_SHA"
+          [[ "$name" == "CI" ]] || { echo "Unexpected workflow name"; exit 1; }
+          [[ "$status" == "completed" ]] || { echo "CI run not completed"; exit 1; }
+          [[ "$conclusion" == "success" ]] || { echo "CI run not successful"; exit 1; }
+          [[ "$head_sha" == "$EXPECTED_HEAD" ]] || {
+            echo "CI head_sha does not match expected_ci_head_sha"
+            exit 1
+          }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+      - name: Validate SHA exists and matches checkout
+        run: |
+          set -euo pipefail
+          git rev-parse --verify "${{ inputs.sha }}^{commit}"
+          test "$(git rev-parse "${{ inputs.sha }}")" = "$(git rev-parse HEAD)"
+          echo "checked_out_sha=$(git rev-parse HEAD)"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/croniu-api:${{ inputs.sha }}
+            ghcr.io/${{ github.repository_owner }}/croniu-api:${{ inputs.version }}
+          build-args: |
+            GIT_SHA=${{ inputs.sha }}
+            APP_VERSION=${{ inputs.version }}
+            BUILD_TIME=${{ github.event.repository.updated_at }}
+      - id: web
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/web
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/croniu-web:${{ inputs.sha }}
+            ghcr.io/${{ github.repository_owner }}/croniu-web:${{ inputs.version }}
+          build-args: |
+            GIT_SHA=${{ inputs.sha }}
+            APP_VERSION=${{ inputs.version }}
+            NEXT_PUBLIC_GIT_SHA=${{ inputs.sha }}
+            NEXT_PUBLIC_APP_VERSION=${{ inputs.version }}
+            API_PROXY_TARGET=http://api:8000
+            NEXT_PUBLIC_API_URL=
+            BUILD_TIME=${{ github.event.repository.updated_at }}
+      - id: admin
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/admin
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/croniu-admin:${{ inputs.sha }}
+            ghcr.io/${{ github.repository_owner }}/croniu-admin:${{ inputs.version }}
+          build-args: |
+            GIT_SHA=${{ inputs.sha }}
+            APP_VERSION=${{ inputs.version }}
+            NEXT_PUBLIC_GIT_SHA=${{ inputs.sha }}
+            NEXT_PUBLIC_APP_VERSION=${{ inputs.version }}
+            API_PROXY_TARGET=http://api:8000
+            NEXT_PUBLIC_API_URL=
+            BUILD_TIME=${{ github.event.repository.updated_at }}
+      - id: manifest
+        name: Write immutable manifest
+        env:
+          BUILD_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          CI_HEAD_SHA: ${{ inputs.expected_ci_head_sha }}
+        run: |
+          set -euo pipefail
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          api_digest="${{ steps.api.outputs.digest }}"
+          web_digest="${{ steps.web.outputs.digest }}"
+          admin_digest="${{ steps.admin.outputs.digest }}"
+          [[ "$api_digest" == sha256:* ]] || { echo "API digest missing"; exit 1; }
+          [[ "$web_digest" == sha256:* ]] || { echo "Web digest missing"; exit 1; }
+          [[ "$admin_digest" == sha256:* ]] || { echo "Admin digest missing"; exit 1; }
+          owner="${{ github.repository_owner }}"
+          jq -n \
+            --arg sha "${{ inputs.sha }}" \
+            --arg version "${{ inputs.version }}" \
+            --arg api "ghcr.io/${owner}/croniu-api@${api_digest}" \
+            --arg web "ghcr.io/${owner}/croniu-web@${web_digest}" \
+            --arg admin "ghcr.io/${owner}/croniu-admin@${admin_digest}" \
+            --arg build_run_id "$BUILD_RUN_ID" \
+            --arg ci_run_id "$CI_RUN_ID" \
+            --arg ci_head_sha "$CI_HEAD_SHA" \
+            --arg built_at "$built_at" \
+            --arg repository "${{ github.repository }}" \
+            '{
+              sha:$sha,
+              version:$version,
+              repository:$repository,
+              built_at:$built_at,
+              build_run_id:$build_run_id,
+              ci_run_id:$ci_run_id,
+              ci_head_sha:$ci_head_sha,
+              images:{api:$api, web:$web, admin:$admin}
+            }' > release-manifest.json
+          checksum="$(sha256sum release-manifest.json | awk '{print $1}')"
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+          echo "manifest_sha256=$checksum"
+          jq . release-manifest.json
+          # Refuse tag-only image references.
+          jq -e '
+            (.images.api|test("@sha256:[a-f0-9]{64}$")) and
+            (.images.web|test("@sha256:[a-f0-9]{64}$")) and
+            (.images.admin|test("@sha256:[a-f0-9]{64}$"))
+          ' release-manifest.json >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ inputs.version }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 90
