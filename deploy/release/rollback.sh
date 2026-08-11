@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 load_env_file "$ENV_FILE"
 
-previous="${RELEASE_STATE_FILE:-$DEPLOY_ROOT/RELEASE_MANIFEST.previous.json}"
+previous="$DEPLOY_ROOT/RELEASE_MANIFEST.previous.json"
 [[ -f "$previous" ]] || die "No previous release state at $previous"
 
 api_image="$(jq -er '.images.api' "$previous")"
