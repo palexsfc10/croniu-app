@@ -118,7 +118,10 @@ def clean_tables():
     public_rate_limiter.reset()
     reset_email_provider_cache()
     get_settings.cache_clear()
+    # Drop pooled connections that may hold locks from a previous test.
+    engine.dispose(close=True)
     with engine.begin() as conn:
+        conn.execute(text("SET LOCAL lock_timeout = '15s'"))
         conn.execute(
             text(
                 "TRUNCATE TABLE billing_webhook_events, billing_checkouts, subscriptions, "

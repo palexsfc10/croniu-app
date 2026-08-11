@@ -44,6 +44,10 @@ def _seed_cycle(client: TestClient, key: str, *, near_end: bool = True) -> dict:
     # Near end: started ~25d ago so 1-month cycle is in the last week.
     # Early: starts tomorrow (próximo) — renewal must stay hidden.
     starts_on = (today - timedelta(days=25)).isoformat() if near_end else (today + timedelta(days=1)).isoformat()
+    # Unique weekday/time per key so multiple cycles in the same org never collide.
+    slot = sum(ord(c) for c in key) % 5
+    weekdays = [[0, 2], [1, 3], [2, 4], [0, 3], [1, 4]][slot]
+    starts_time = f"{8 + slot:02d}:30:00"
     created = client.post(
         "/api/v1/cycles/intelligent",
         json={
@@ -51,8 +55,8 @@ def _seed_cycle(client: TestClient, key: str, *, near_end: bool = True) -> dict:
             "service_id": service_id,
             "cycle_template_id": template_id,
             "starts_on": starts_on,
-            "weekdays": [1, 3],
-            "starts_time": "09:00:00",
+            "weekdays": weekdays,
+            "starts_time": starts_time,
             "idempotency_key": key,
         },
     )

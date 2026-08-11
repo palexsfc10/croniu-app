@@ -3,30 +3,81 @@ name: Promote production
 on:
   workflow_dispatch:
     inputs:
-      release_tag_or_sha:
-        description: Release tag or immutable SHA whose manifest is already staged on the production host
+      sha:
+        description: Immutable Git SHA to promote
+        required: true
+      version:
+        description: Release version (manifest artifact key)
         required: true
 
 permissions:
   contents: read
+  packages: write
+  actions: read
 
 jobs:
+  build:
+    uses: ./.github/workflows/build-release.yml
+    with:
+      sha: ${{ inputs.sha }}
+      version: ${{ inputs.version }}
+    secrets: inherit
+
   promote:
+    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     environment: production
     steps:
-      - name: Configure production SSH key
-        uses: webfactory/ssh-agent@v0.9.1
+      - uses: actions/checkout@v4
         with:
-          ssh-private-key: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
-      - name: Deploy staged immutable manifest
+          ref: ${{ inputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-manifest-${{ inputs.version }}
+          path: manifest
+      - name: Validate manifest SHA and digests
+        run: |
+          jq -e --arg sha "${{ inputs.sha }}" \
+            '.sha == $sha and (.images.api|test("@sha256:")) and (.images.web|test("@sha256:")) and (.images.admin|test("@sha256:"))' \
+            manifest/release-manifest.json
+      - name: Configure production SSH
         env:
-          RELEASE: ${{ inputs.release_tag_or_sha }}
+          PRODUCTION_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          umask 077
+          printf '%s\n' "$PRODUCTION_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$PRODUCTION_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          test -s ~/.ssh/id_ed25519
+      - name: Stage manifest, sync deploy bundle, run deploy
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          RELEASE: ${{ inputs.sha }}
+        run: |
+          remote="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$remote" \
+            "mkdir -p /srv/docker/croniu-prd/manifests /srv/docker/croniu-prd/deploy"
+          scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
+            manifest/release-manifest.json \
+            "$remote:/srv/docker/croniu-prd/manifests/${RELEASE}.json"
+          rsync -az -e "ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519" \
+            --exclude '.env*' --exclude 'backups/' --exclude 'RELEASE_*' \
+            deploy/ "$remote:/srv/docker/croniu-prd/deploy/"
+          ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$remote" \
+            "cd /srv/docker/croniu-prd && RELEASE_OPERATOR='github:${{ github.actor }}' \
+             deploy/release/deploy.sh --environment prd --sha '${RELEASE}' \
+             --manifest \"/srv/docker/croniu-prd/manifests/${RELEASE}.json\""
+      - name: Collect remote /version
+        env:
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
           PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
         run: |
-          # The approved operator stages CI's release-manifest.json at this server-only path.
-          # This workflow never builds, tags, or deploys automatically.
-          ssh -o StrictHostKeyChecking=yes "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
-            "cd /srv/docker/croniu-prd && deploy/release/deploy.sh --environment prd --sha '${RELEASE}' --manifest '/srv/docker/croniu-prd/manifests/${RELEASE}.json'"
+          ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
+            "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
+            'set -a; source deploy/prd/.env.prd; set +a; curl -fsS "http://127.0.0.1:${API_HOST_PORT}/version"'

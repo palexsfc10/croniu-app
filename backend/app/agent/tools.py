@@ -1019,22 +1019,9 @@ def execute_reschedule_appointment(ctx: ToolContext, arguments: dict[str, Any]) 
 
 def _sanitize_cycle_propose_args(args: dict[str, Any]) -> dict[str, Any]:
     """Normalize prepare-draft keys so propose/execute accept the ready payload."""
-    raw = dict(args)
-    if "generate_appointments" not in raw and raw.get("creates_appointments") is True:
-        raw["generate_appointments"] = True
-    if raw.get("value_cents") is None and raw.get("final_cents") is not None:
-        raw["value_cents"] = raw["final_cents"]
-    for key in (
-        "creates_appointments",
-        "final_cents",
-        "planned_sessions",
-        "client_name",
-        "service_name",
-        "template_name",
-        "summary_lines",
-    ):
-        raw.pop(key, None)
-    return raw
+    from app.agent.cycle_args import sanitize_cycle_propose_args
+
+    return sanitize_cycle_propose_args(args)
 
 
 def _propose_create_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
