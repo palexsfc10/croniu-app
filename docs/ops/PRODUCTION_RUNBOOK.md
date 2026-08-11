@@ -20,8 +20,10 @@ HML permanece isolado (`croniu-hml-*`, path `/home/palex/ntws/croniu-hml`). PRD 
 5. Validar domínio no Resend (SPF/DKIM) e configurar DMARC no DNS.
 6. Configurar webhook Asaas **production** apontando para `https://api.croniu.com.br/...` com token.
 7. Configurar GitHub Environment `production` + secrets SSH (sem misturar HML).
-8. Executar `build-release` (digests) e primeiro `deploy/release/deploy.sh --environment prd ...` **ou** workflow `promote-production`.
-9. Smoke humano final (login, billing sandbox off, admin login, reset e-mail).
+8. Executar **Build release images** uma única vez (digests + artifact).
+9. Ensaiar o **mesmo** manifest em HML (`deploy.sh --environment hml`).
+10. Promover PRD com **Promote production** (`build_run_id` do build; sem rebuild).
+11. Smoke humano final (login, billing production, admin login, reset e-mail).
 
 ## Secrets (somente nomes)
 
@@ -69,9 +71,10 @@ Registro: `RELEASE_MANIFEST.json` + append-only `RELEASE_LOG.jsonl` (sha, horár
 
 ## Checklist abertura pública
 
-- [ ] CI verde na release
-- [ ] Digests GHCR publicados
-- [ ] Rehearsal HML com imagens digest (sem PRD)
+- [ ] CI verde na release (run registrado; head SHA documentado)
+- [ ] Digests GHCR publicados **uma vez** + checksum do manifest
+- [ ] Rehearsal HML com os **mesmos** digests (sem rebuild, sem PRD)
+- [ ] Promote production sem job de build
 - [ ] Cookies Secure + OpenAPI off + CORS produção
 - [ ] Resend domínio validado + teste de reset/verify
 - [ ] Asaas production webhook + idempotência

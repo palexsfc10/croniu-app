@@ -272,6 +272,55 @@ jobs:
           rm -f deploy/prd/.env.prd "$rendered"
       - name: Offline release rehearse
         run: bash deploy/release/rehearse_offline.sh
+      - name: Promote must not rebuild images
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path(".github/workflows/promote-production.yml").read_text(encoding="utf-8")
+          bad = []
+          if re.search(r"(?m)^\s+uses:\s*\./\.github/workflows/build-release\.yml\b", text):
+              bad.append("calls build-release.yml as reusable workflow")
+          if re.search(r"(?m)^\s+uses:\s*docker/build-push-action@", text):
+              bad.append("uses docker/build-push-action")
+          if re.search(r"(?m)^\s+run:.*\bdocker\s+build\b", text):
+              bad.append("runs docker build")
+          if re.search(r"(?m)^  build:\s*$", text):
+              bad.append("defines a build job")
+          if "download-artifact" not in text or "build_run_id" not in text:
+              bad.append("missing download-artifact/build_run_id wiring")
+          if bad:
+              raise SystemExit("promote rebuild forbidden: " + "; ".join(bad))
+          print("promote_no_rebuild_guard=ok")
+          PY
+      - name: Manifest schema positive and negative checks
+        run: |
+          set -euo pipefail
+          chmod +x deploy/release/validate_manifest.sh
+          good="$(mktemp)"
+          bad="$(mktemp)"
+          jq -n '{
+            sha:"deadbeef",
+            version:"v0.0.0-test",
+            build_run_id:"123",
+            images:{
+              api:"ghcr.io/palexsfc10/croniu-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              web:"ghcr.io/palexsfc10/croniu-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              admin:"ghcr.io/palexsfc10/croniu-admin@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          }' >"$good"
+          bash deploy/release/validate_manifest.sh --manifest "$good" --sha deadbeef --version v0.0.0-test --build-run-id 123
+          jq -n '{
+            sha:"deadbeef",
+            version:"v0.0.0-test",
+            images:{api:"ghcr.io/palexsfc10/croniu-api:latest", web:"x", admin:"y"}
+          }' >"$bad"
+          if bash deploy/release/validate_manifest.sh --manifest "$bad"; then
+            echo "Expected tag-only manifest to fail"
+            exit 1
+          fi
+          echo "manifest_validation_ok"
 
   image-build-smoke:
     runs-on: ubuntu-latest

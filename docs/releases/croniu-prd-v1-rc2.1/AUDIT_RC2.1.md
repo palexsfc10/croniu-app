@@ -1,21 +1,22 @@
-# AUDIT RC2.1 â€” CI blockers only
+# AUDIT RC2.1 — CI blockers only
 
-Functional tip starts from RC2 `28057b0`. Scope: four proven CI failures only. No merge, HML, or PRD.
+Functional tip: `7cf3d5aea89322938d6fda2e28d7e296081c9710`.
+PR head (tree-equivalent): `e136330a77cd9a8b0fba091500c5cda80738dbe3`.
+Scope: four proven CI failures only. No merge, HML, or PRD in RC2.1.
 
 ## Fixes
 
-1. **Timezone test** â€” `test_client_service_cycle_receivable_flow` uses `America/Sao_Paulo` local date instead of UTC `date.today()`.
-2. **Secret scan fixture** â€” fake OpenAI key assembled at runtime from fragments; never versioned as a full `sk-â€¦` string. Tree/history/delta evidence uses candidate file count + commits scanned.
-3. **Image smoke** â€” matches written to a temp file; fail only if `-s`; trap cleanup; ENV asserts `API_PROXY_TARGET=http://api:8000`.
-4. **ShellCheck SC2155** â€” `deploy.sh` assigns `CRONIU_*_IMAGE` then exports separately.
+1. **Timezone test** — `test_client_service_cycle_receivable_flow` uses `America/Sao_Paulo` local date instead of UTC `date.today()`.
+2. **Secret scan fixture** — fake token assembled at runtime from fragments; never versioned as a full secret string.
+3. **Image smoke** — fail only when match file is non-empty; ENV asserts `API_PROXY_TARGET=http://api:8000`.
+4. **ShellCheck SC2155** — `deploy.sh` assigns `CRONIU_*_IMAGE` then exports separately.
 
-## Local gates
+## Evidence (final CI)
 
-- Backend: 221 passed
-- ShellCheck `deploy/release` severity=warning: clean
-- Compose + offline rehearse: ok
-- Web/Admin lint+typecheck(+test)+build: ok
+- Run: https://github.com/palexsfc10/croniu-app/actions/runs/31450597423
+- Backend: **221 passed**
+- Tree candidates: **485** files
+- History/delta: **96** commits in checkout / **95** commits scanned (gitleaks log)
+- Temporary Actions merge commit for that PR CI: `8b4f00de59450807760f2e81765f47e711ff6b54` (base `9bfbd4c` + head `e136330`); not a release tip.
 
-## CI
-
-https://github.com/palexsfc10/croniu-app/actions/runs/31450430623 — all required jobs green.
+Successor: `docs/releases/croniu-prd-v1-rc2.2/AUDIT_RC2.2.md` (build-once / promote-many).
