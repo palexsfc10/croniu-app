@@ -2,6 +2,11 @@ name: Package deploy bundle
 
 # Immutable operational package for promote-many. Does NOT build or push app images.
 # Separates deploy_sha (scripts) from image_sha (GHCR digests in release-manifest).
+#
+# Registration note: GitHub Actions only catalogs/dispatches workflows that exist on
+# the repository *default* branch. A path-filtered push trigger exists solely so the
+# platform indexes this workflow after it lands on the default branch; the package
+# job never runs on push.
 
 on:
   workflow_dispatch:
@@ -13,7 +18,7 @@ on:
         description: Immutable image candidate SHA recorded in release-manifest.json
         required: true
       version:
-        description: Release version (for example v1.0.0-rc2.2)
+        description: Release version (for example v1.0.0-rc2.3)
         required: true
       ci_run_id:
         description: Approved CI workflow run ID that must be green for deploy_sha
@@ -21,16 +26,75 @@ on:
       expected_ci_head_sha:
         description: Head SHA the approved CI run must report (deploy tip / PR head)
         required: true
+  push:
+    paths:
+      - ".github/workflows/package-deploy-bundle.yml"
 
 permissions:
   contents: read
   actions: read
 
 jobs:
+  index:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm workflow is indexed (no packaging)
+        run: |
+          set -euo pipefail
+          echo "Package deploy bundle workflow indexed by GitHub Actions."
+          echo "event=${{ github.event_name }}"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
+          echo "No deploy bundle is produced on push."
+
   package:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Validate immutable dispatch inputs
+        env:
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          IMAGE_SHA: ${{ inputs.image_sha }}
+          VERSION: ${{ inputs.version }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          EXPECTED_HEAD: ${{ inputs.expected_ci_head_sha }}
+        run: |
+          set -euo pipefail
+          [[ -n "$DEPLOY_SHA" && "$DEPLOY_SHA" != "main" && "$DEPLOY_SHA" != "latest" ]] || {
+            echo "deploy_sha must be an immutable commit SHA"
+            exit 1
+          }
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "deploy_sha must be a full 40-char hex SHA"
+            exit 1
+          }
+          [[ -n "$IMAGE_SHA" && "$IMAGE_SHA" != "main" && "$IMAGE_SHA" != "latest" ]] || {
+            echo "image_sha must be an immutable commit SHA"
+            exit 1
+          }
+          [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "image_sha must be a full 40-char hex SHA"
+            exit 1
+          }
+          [[ -n "$VERSION" && "$VERSION" != "latest" ]] || {
+            echo "version must be set and must not be latest"
+            exit 1
+          }
+          [[ "$VERSION" != *rc2.2* ]] || {
+            echo "Refusing RC2.2 version identity for this packager"
+            exit 1
+          }
+          [[ -n "$CI_RUN_ID" && "$CI_RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo "ci_run_id must be a numeric Actions run ID"
+            exit 1
+          }
+          [[ -n "$EXPECTED_HEAD" && "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "expected_ci_head_sha must be a full 40-char hex SHA"
+            exit 1
+          }
       - name: Validate approved CI run for deploy_sha
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
