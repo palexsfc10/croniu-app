@@ -279,6 +279,12 @@ jobs:
         run: bash deploy/release/rehearse_offline.sh
       - name: PRD cold-start and port guards
         run: bash deploy/release/test_prd_deploy_guards.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML for workflow contract (fail-closed parse)
+        # Pin matches backend/requirements.txt — do not rely on a preinstalled runner package.
+        run: pip install 'PyYAML==6.0.3'
       - name: Package deploy bundle workflow contract
         run: bash deploy/release/test_package_deploy_workflow.sh
       - name: Promote must not rebuild images or sync image_sha deploy/
