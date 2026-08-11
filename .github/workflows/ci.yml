@@ -296,7 +296,8 @@ jobs:
               bad.append("missing distinct image_sha/deploy_sha inputs")
           if re.search(r"(?m)ref:\s*\$\{\{\s*inputs\.image_sha\s*\}\}", text):
               bad.append("must not checkout image_sha")
-          if "docker tag" in text or re.search(r"(?m)\bdocker\s+push\b", text):
+          # Forbid real retag/push commands outside this guard's own source text.
+          if re.search(r"(?m)^\s+.*\bdocker\s+tag\b", text) or re.search(r"(?m)^\s+.*\bdocker\s+push\b", text):
               bad.append("retag/push forbidden")
           if bad:
               raise SystemExit("promote rebuild forbidden: " + "; ".join(bad))
