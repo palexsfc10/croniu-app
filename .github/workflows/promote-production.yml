@@ -102,8 +102,8 @@ jobs:
           echo "bundle_run_status=$status"
           echo "bundle_run_conclusion=$conclusion"
           echo "bundle_run_head_sha=$head_sha"
-          [[ "$name" == "Package deploy bundle" ]] || {
-            echo "Source run must be Package deploy bundle"
+          [[ "$name" == "Package deploy bundle" || "$name" == "CI" ]] || {
+            echo "Source run must be Package deploy bundle or CI (artifact producer)"
             exit 1
           }
           [[ "$status" == "completed" ]] || { echo "Bundle run not completed"; exit 1; }

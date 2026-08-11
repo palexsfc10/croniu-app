@@ -453,3 +453,48 @@ jobs:
             echo "Positive control did not detect artificial localhost"
             exit 1
           fi
+
+  # Immutable ops package for promote-many. Does not build or push app images.
+  # Artifact is consumable by Promote before package-deploy-bundle.yml lands on main.
+  package-deploy-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [compose-and-scripts]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package deploy bundle for RC2.2 identities
+        id: pkg
+        env:
+          IMAGE_SHA: c5503c08cd99a6d9222b47cb2ee5de52769077df
+          VERSION: v1.0.0-rc2.2
+        run: |
+          set -euo pipefail
+          chmod +x deploy/release/package_deploy_bundle.sh deploy/release/validate_deploy_bundle.sh
+          bash deploy/release/package_deploy_bundle.sh \
+            --source-dir deploy \
+            --out-dir /tmp/deploy-bundle \
+            --deploy-sha "${{ github.sha }}" \
+            --image-sha "$IMAGE_SHA" \
+            --version "$VERSION" \
+            --repository "${{ github.repository }}" \
+            --ci-run-id "${{ github.run_id }}" \
+            --package-run-id "${{ github.run_id }}"
+          bash deploy/release/validate_deploy_bundle.sh \
+            --bundle-dir /tmp/deploy-bundle \
+            --deploy-sha "${{ github.sha }}" \
+            --image-sha "$IMAGE_SHA" \
+            --version "$VERSION" \
+            --repository "${{ github.repository }}" \
+            --package-run-id "${{ github.run_id }}"
+          agg="$(jq -er '.aggregate_sha256' /tmp/deploy-bundle/deploy-bundle-manifest.json)"
+          echo "aggregate_sha256=$agg" >> "$GITHUB_OUTPUT"
+          echo "aggregate_sha256=$agg"
+          jq '{deploy_sha,image_sha,version,repository,ci_run_id,package_run_id,aggregate_sha256,file_count:(.files|length)}' \
+            /tmp/deploy-bundle/deploy-bundle-manifest.json
+      - name: Upload deploy bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-deploy-bundle-v1.0.0-rc2.2
+          path: /tmp/deploy-bundle
+          if-no-files-found: error
+          retention-days: 90
