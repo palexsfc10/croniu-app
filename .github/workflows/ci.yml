@@ -254,9 +254,9 @@ jobs:
             -e 's/^POSTGRES_DB=$/POSTGRES_DB=croniu/' \
             -e 's/^SECRET_KEY=$/SECRET_KEY=placeholder-secret-key-with-32chars-min/' \
             /tmp/.env.prd
-          grep -q '^API_HOST_PORT=.' /tmp/.env.prd || echo 'API_HOST_PORT=18080' >> /tmp/.env.prd
-          grep -q '^WEB_HOST_PORT=.' /tmp/.env.prd || echo 'WEB_HOST_PORT=13000' >> /tmp/.env.prd
-          grep -q '^ADMIN_HOST_PORT=.' /tmp/.env.prd || echo 'ADMIN_HOST_PORT=13002' >> /tmp/.env.prd
+          grep -q '^API_HOST_PORT=19080$' /tmp/.env.prd
+          grep -q '^WEB_HOST_PORT=14000$' /tmp/.env.prd
+          grep -q '^ADMIN_HOST_PORT=14002$' /tmp/.env.prd
           export CRONIU_API_IMAGE='example/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
           export CRONIU_WEB_IMAGE='example/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
           export CRONIU_ADMIN_IMAGE='example/admin@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
@@ -265,13 +265,20 @@ jobs:
           rendered="$(mktemp)"
           docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config >"$rendered"
           grep -q 'host_ip: 127.0.0.1' "$rendered"
+          grep -q 'published: \"19080\"\|published: 19080' "$rendered" || grep -q '19080' "$rendered"
           if grep -E 'host_ip: ["'\'']?(0\.0\.0\.0|::)' "$rendered"; then
             echo "PRD compose must not publish on 0.0.0.0/::"
+            exit 1
+          fi
+          if grep -E '(18080|13000|13002)' "$rendered"; then
+            echo "PRD compose must not bind Pilot ports"
             exit 1
           fi
           rm -f deploy/prd/.env.prd "$rendered"
       - name: Offline release rehearse
         run: bash deploy/release/rehearse_offline.sh
+      - name: PRD cold-start and port guards
+        run: bash deploy/release/test_prd_deploy_guards.sh
       - name: Promote must not rebuild images or sync image_sha deploy/
         run: |
           set -euo pipefail
@@ -299,6 +306,10 @@ jobs:
           # Forbid real retag/push commands outside this guard's own source text.
           if re.search(r"(?m)^\s+.*\bdocker\s+tag\b", text) or re.search(r"(?m)^\s+.*\bdocker\s+push\b", text):
               bad.append("retag/push forbidden")
+          if "/srv/docker/croniu-prd/deploy/prd/.env.prd" not in text:
+              bad.append("absolute .env.prd path required for post-deploy smoke")
+          if "POST_DEPLOY_SMOKE" not in text:
+              bad.append("post-deploy smoke labeling required")
           if bad:
               raise SystemExit("promote rebuild forbidden: " + "; ".join(bad))
           print("promote_no_rebuild_guard=ok")

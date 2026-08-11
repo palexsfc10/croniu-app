@@ -11,9 +11,13 @@ differ from image_sha when ops scripts land after the image build) into
 `release-deploy-bundle-<version>` with per-file and aggregate SHA-256 checksums.
 
 `deploy/release/deploy.sh` is the release entry point for HML and PRD. It locks
-a single target, verifies compose and the manifest, creates a checked PostgreSQL
-backup, pulls images by digest, runs Alembic once, recreates API then Web/Admin,
-and writes `RELEASE_MANIFEST.json` only after health and smoke checks pass.
+a single target, verifies compose and the manifest, detects **cold start** via
+the exclusive Postgres volume name (`croniu-prd-postgres-data` /
+`croniu-hml-postgres-data`) without creating that volume to decide, skips
+pre-migration backup only on cold start, otherwise starts Postgres if needed and
+requires a verified backup, pulls images by digest, runs Alembic once, recreates
+API then Web/Admin, and writes `RELEASE_MANIFEST.json` only after health and
+smoke checks pass.
 
 **Promote production** downloads the image manifest by `build_run_id` and the
 deploy bundle by `deploy_bundle_run_id`, validates both identities, and syncs

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Verified PostgreSQL backup. Requires a RUNNING database container.
+# deploy.sh decides cold-start vs subsequent: on cold start it skips this script;
+# on subsequent installs it starts Postgres (if stopped), waits for healthy, then
+# invokes this script. Failures here must abort the release (never `|| true`).
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"

@@ -87,6 +87,12 @@ if [[ "${ENVIRONMENT:-}" == "prd" ]]; then
     img="$(jq -er --arg s "$svc" '.images[$s]' "$MANIFEST")"
     [[ "$img" == *"@sha256:"* ]] || die "Manifest image for $svc must be digest-pinned (@sha256:...)"
   done
+
+  # Host ports: numeric, unique, loopback-only compose, never Pilot ports.
+  validate_prd_host_ports \
+    "$(env_value API_HOST_PORT)" \
+    "$(env_value WEB_HOST_PORT)" \
+    "$(env_value ADMIN_HOST_PORT)"
 fi
 
 min_gb="${MIN_FREE_DISK_GB:-5}"
