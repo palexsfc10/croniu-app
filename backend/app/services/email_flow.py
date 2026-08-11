@@ -169,3 +169,8 @@ def confirm_email_verification(db: Session, *, token: str) -> None:
         sibling.used_at = now
         db.add(sibling)
     db.commit()
+    db.refresh(user)
+
+    from app.config import get_settings
+
+    send_welcome_email(settings=get_settings(), user=user)

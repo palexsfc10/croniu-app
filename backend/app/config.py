@@ -56,7 +56,16 @@ class Settings(BaseSettings):
     )
     email_reply_to: str = Field(default="", alias="EMAIL_REPLY_TO")
     email_timeout_seconds: float = Field(default=10.0, alias="EMAIL_TIMEOUT_SECONDS")
+    email_verification_required: bool = Field(
+        default=False,
+        alias="EMAIL_VERIFICATION_REQUIRED",
+    )
     auth_rate_limit_per_minute: int = Field(default=10, alias="AUTH_RATE_LIMIT_PER_MINUTE")
+    trust_proxy: bool = Field(default=False, alias="TRUST_PROXY")
+    trusted_proxy_ips: str = Field(
+        default="127.0.0.1,::1",
+        alias="TRUSTED_PROXY_IPS",
+    )
     proof_storage_dir: str = Field(
         default="var/proofs",
         alias="PROOF_STORAGE_DIR",
@@ -160,6 +169,13 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
+    @property
+    def trusted_proxy_ip_set(self) -> set[str]:
+        return {
+            part.strip()
+            for part in self.trusted_proxy_ips.split(",")
+            if part.strip()
+        }
     @property
     def resolved_llm_api_key(self) -> str | None:
         """LLM_API_KEY takes precedence; OPENAI_API_KEY is an accepted alias."""

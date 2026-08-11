@@ -92,16 +92,15 @@ def register_owner(
     db.refresh(membership)
 
     # Optional transactional mail (fake in tests; Resend in PRD). Never blocks signup.
+    # Welcome is sent only after successful e-mail verification.
     try:
         from app.config import get_settings
         from app.services.email_flow import (
             issue_email_verification_token,
             send_email_verification,
-            send_welcome_email,
         )
 
         settings = get_settings()
-        send_welcome_email(settings=settings, user=user)
         raw_verify = issue_email_verification_token(db, user=user)
         db.commit()
         send_email_verification(settings=settings, user=user, raw_token=raw_verify)
@@ -114,6 +113,18 @@ def register_owner(
 
     return user, organization, membership
 
+
+def ensure_email_verified(user: User, settings: Settings) -> None:
+    """Raise when PRD-style hard-gate is on and the account is still pending."""
+    if not settings.email_verification_required:
+        return
+    if user.email_verified_at is not None:
+        return
+    raise AuthError(
+        "email_unverified",
+        "Confirme seu e-mail para acessar o Croniu.",
+        status.HTTP_403_FORBIDDEN,
+    )
 
 def authenticate_user(db: Session, *, email: str, password: str) -> User:
     normalized_email = email.strip().lower()
@@ -223,7 +234,9 @@ def get_current_auth(
 ) -> AuthContext:
     session_token = request.cookies.get(settings.session_cookie_name)
     try:
-        return resolve_session(db, session_token)
+        auth = resolve_session(db, session_token)
+        ensure_email_verified(auth.user, settings)
+        return auth
     except AuthError as exc:
         raise HTTPException(
             status_code=exc.status_code,
