@@ -93,13 +93,17 @@ def test_partial_overlap_conflicts_and_adjacent_ok(client, register_payload):
     # Existing 19:30–20:30
     existing_start = sched.local_dt(day, time(19, 30), tz)
     existing_end = existing_start + timedelta(hours=1)
-    agenda_svc.create_appointment(
-        SessionLocal(),
-        organization_id=org_id,
-        client_id=UUID(ids["client_id"]),
-        starts_at=existing_start,
-        ends_at=existing_end,
-    )
+    seed_db = SessionLocal()
+    try:
+        agenda_svc.create_appointment(
+            seed_db,
+            organization_id=org_id,
+            client_id=UUID(ids["client_id"]),
+            starts_at=existing_start,
+            ends_at=existing_end,
+        )
+    finally:
+        seed_db.close()
 
     db = SessionLocal()
     try:
@@ -246,13 +250,17 @@ def test_create_rolls_back_on_conflict(client, register_payload):
     # Block one Thursday in the period
     conflict_day = date(2026, 8, 20)  # Thursday
     start = sched.local_dt(conflict_day, time(19, 0), tz)
-    agenda_svc.create_appointment(
-        SessionLocal(),
-        organization_id=org_id,
-        client_id=UUID(ids["client_id"]),
-        starts_at=start,
-        ends_at=start + timedelta(hours=1),
-    )
+    seed_db = SessionLocal()
+    try:
+        agenda_svc.create_appointment(
+            seed_db,
+            organization_id=org_id,
+            client_id=UUID(ids["client_id"]),
+            starts_at=start,
+            ends_at=start + timedelta(hours=1),
+        )
+    finally:
+        seed_db.close()
     db = SessionLocal()
     try:
         try:
@@ -299,13 +307,17 @@ def test_suggest_recurring_requires_all_weeks_free(client, register_payload):
     # Block 20:30 only on first Tuesday — should NOT appear as recurring suggestion
     day = date(2026, 8, 11)
     start = sched.local_dt(day, time(20, 30), tz)
-    agenda_svc.create_appointment(
-        SessionLocal(),
-        organization_id=org_id,
-        client_id=UUID(ids["client_id"]),
-        starts_at=start,
-        ends_at=start + timedelta(hours=1),
-    )
+    seed_db = SessionLocal()
+    try:
+        agenda_svc.create_appointment(
+            seed_db,
+            organization_id=org_id,
+            client_id=UUID(ids["client_id"]),
+            starts_at=start,
+            ends_at=start + timedelta(hours=1),
+        )
+    finally:
+        seed_db.close()
     db = SessionLocal()
     try:
         suggestions = sched.suggest_recurring_times(

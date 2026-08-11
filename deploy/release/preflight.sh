@@ -40,13 +40,53 @@ if ((${#missing[@]})); then
   die "Missing required environment keys (names only): ${missing[*]}"
 fi
 
+env_value() {
+  grep -E "^${1}=" "$ENV_FILE" | head -n1 | cut -d= -f2-
+}
+
 if [[ "${ENVIRONMENT:-}" == "prd" ]]; then
-  secure="$(grep -E '^SESSION_COOKIE_SECURE=' "$ENV_FILE" | head -n1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]')"
-  openapi="$(grep -E '^OPENAPI_ENABLED=' "$ENV_FILE" | head -n1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]')"
-  cors="$(grep -E '^CORS_ORIGINS=' "$ENV_FILE" | head -n1 | cut -d= -f2-)"
+  secure="$(env_value SESSION_COOKIE_SECURE | tr '[:upper:]' '[:lower:]')"
+  openapi="$(env_value OPENAPI_ENABLED | tr '[:upper:]' '[:lower:]')"
+  cors="$(env_value CORS_ORIGINS)"
+  email_provider="$(env_value EMAIL_PROVIDER | tr '[:upper:]' '[:lower:]')"
+  verify_req="$(env_value EMAIL_VERIFICATION_REQUIRED | tr '[:upper:]' '[:lower:]')"
+  asaas_env="$(env_value ASAAS_ENVIRONMENT | tr '[:upper:]' '[:lower:]')"
+  asaas_url="$(env_value ASAAS_API_URL)"
+  billing="$(env_value BILLING_ENABLED | tr '[:upper:]' '[:lower:]')"
+  ai="$(env_value AI_ENABLED | tr '[:upper:]' '[:lower:]')"
+
   [[ "$secure" == "true" || "$secure" == "1" ]] || die "SESSION_COOKIE_SECURE must be true in prd"
   [[ "$openapi" == "false" || "$openapi" == "0" ]] || die "OPENAPI_ENABLED must be false in prd"
   [[ "$cors" != *"localhost"* ]] || die "CORS_ORIGINS must not include localhost in prd"
+  [[ "$email_provider" == "resend" ]] || die "EMAIL_PROVIDER must be resend in prd"
+  [[ -n "$(env_value RESEND_API_KEY)" ]] || die "RESEND_API_KEY must be set in prd"
+  [[ -n "$(env_value EMAIL_FROM)" ]] || die "EMAIL_FROM must be set in prd"
+  [[ "$verify_req" == "true" || "$verify_req" == "1" ]] || die "EMAIL_VERIFICATION_REQUIRED must be true in prd"
+  [[ "$asaas_env" == "production" ]] || die "ASAAS_ENVIRONMENT must be production in prd"
+  [[ "$asaas_url" == *"api.asaas.com"* ]] || die "ASAAS_API_URL must be production Asaas"
+  [[ "$asaas_url" != *"sandbox"* ]] || die "ASAAS_API_URL must not be sandbox in prd"
+  if [[ "$billing" == "true" || "$billing" == "1" || -z "$billing" ]]; then
+    [[ -n "$(env_value ASAAS_API_KEY)" ]] || die "ASAAS_API_KEY required when billing enabled"
+    [[ -n "$(env_value ASAAS_WEBHOOK_TOKEN)" ]] || die "ASAAS_WEBHOOK_TOKEN required when billing enabled"
+  fi
+  if [[ "$ai" == "true" || "$ai" == "1" ]]; then
+    [[ -n "$(env_value OPENAI_API_KEY)$(env_value LLM_API_KEY)" ]] || die "AI_ENABLED requires OPENAI_API_KEY or LLM_API_KEY"
+  fi
+
+  # Ports must be loopback-bound in compose (reject 0.0.0.0 publishes).
+  if grep -Eq '^[[:space:]]*-[[:space:]]*(")?[0-9]+:|"?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:' "$COMPOSE_FILE"; then
+    if ! grep -Eq '127\.0\.0\.1:\$\{(API|WEB|ADMIN)_HOST_PORT\}' "$COMPOSE_FILE"; then
+      die "PRD compose must bind host ports to 127.0.0.1 only"
+    fi
+  fi
+  if grep -Eq '0\.0\.0\.0:\$\{(API|WEB|ADMIN)_HOST_PORT\}' "$COMPOSE_FILE"; then
+    die "PRD compose must not bind 0.0.0.0"
+  fi
+
+  for svc in api web admin; do
+    img="$(jq -er --arg s "$svc" '.images[$s]' "$MANIFEST")"
+    [[ "$img" == *"@sha256:"* ]] || die "Manifest image for $svc must be digest-pinned (@sha256:...)"
+  done
 fi
 
 min_gb="${MIN_FREE_DISK_GB:-5}"

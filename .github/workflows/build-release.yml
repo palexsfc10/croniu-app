@@ -6,10 +6,21 @@ on:
       sha:
         description: Immutable Git SHA to build
         required: true
-        default: ${{ github.sha }}
       version:
-        description: Release version (for example v1.0.0-rc1)
+        description: Release version (for example v1.0.0-rc2)
         required: true
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+    outputs:
+      manifest_artifact:
+        description: Artifact name containing release-manifest.json
+        value: ${{ jobs.build.outputs.manifest_artifact }}
 
 permissions:
   contents: read
@@ -19,10 +30,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      manifest_artifact: release-manifest-${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.sha }}
+          fetch-depth: 0
+      - name: Validate SHA exists
+        run: |
+          git rev-parse --verify "${{ inputs.sha }}^{commit}"
+          test "$(git rev-parse "${{ inputs.sha }}")" = "$(git rev-parse HEAD)"
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -54,6 +72,8 @@ jobs:
             APP_VERSION=${{ inputs.version }}
             NEXT_PUBLIC_GIT_SHA=${{ inputs.sha }}
             NEXT_PUBLIC_APP_VERSION=${{ inputs.version }}
+            API_PROXY_TARGET=http://api:8000
+            NEXT_PUBLIC_API_URL=
             BUILD_TIME=${{ github.event.repository.updated_at }}
       - id: admin
         uses: docker/build-push-action@v6
@@ -68,6 +88,8 @@ jobs:
             APP_VERSION=${{ inputs.version }}
             NEXT_PUBLIC_GIT_SHA=${{ inputs.sha }}
             NEXT_PUBLIC_APP_VERSION=${{ inputs.version }}
+            API_PROXY_TARGET=http://api:8000
+            NEXT_PUBLIC_API_URL=
             BUILD_TIME=${{ github.event.repository.updated_at }}
       - name: Write immutable manifest
         run: |
@@ -79,6 +101,7 @@ jobs:
             --arg admin "ghcr.io/palexsfc10/croniu-admin@${{ steps.admin.outputs.digest }}" \
             '{sha:$sha, version:$version, images:{api:$api, web:$web, admin:$admin}}' \
             > release-manifest.json
+          cat release-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: release-manifest-${{ inputs.version }}

@@ -25,7 +25,22 @@ HML permanece isolado (`croniu-hml-*`, path `/home/palex/ntws/croniu-hml`). PRD 
 
 ## Secrets (somente nomes)
 
-`SECRET_KEY`, `POSTGRES_PASSWORD`, `RESEND_API_KEY`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `OPENAI_API_KEY` (se AI on), cookies/CORS já tipados no example.
+`SECRET_KEY`, `POSTGRES_PASSWORD`, `RESEND_API_KEY`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `OPENAI_API_KEY` (se AI on), `PRODUCTION_SSH_PRIVATE_KEY`, `PRODUCTION_KNOWN_HOSTS`, `PRODUCTION_HOST`, `PRODUCTION_USER`.
+
+## Rede / Tunnel
+
+- Serviços PRD escutam só em `127.0.0.1` no host.
+- Cloudflare Tunnel no host aponta para esses ports locais (não alterar Tunnel nesta release).
+- Web/Admin fazem proxy interno para `http://api:8000` (alias DNS na network Docker).
+- Bypass público da VPS é rejeitado pelo bind loopback + preflight.
+
+## Known hosts SSH
+
+O secret `PRODUCTION_KNOWN_HOSTS` deve conter a linha `ssh-ed25519`/`ecdsa` do host PRD. O workflow grava `~/.ssh/known_hosts` com `StrictHostKeyChecking=yes` (sem `ssh-keyscan` no deploy).
+
+## GHCR pull no host
+
+O host PRD precisa de autenticação read-only no GHCR (`docker login ghcr.io`) antes do primeiro `compose pull`. Preferir PAT fine-grained ou `GITHUB_TOKEN` de machine user com `read:packages`.
 
 ## Resend
 

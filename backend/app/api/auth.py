@@ -20,6 +20,7 @@ from app.schemas.auth import (
     RegisterRequest,
     UserOut,
 )
+from app.security.client_ip import request_client_ip
 from app.security.rate_limit import public_rate_limiter
 from app.services.auth import (
     PASSWORD_RESET_GENERIC_MESSAGE,
@@ -29,6 +30,7 @@ from app.services.auth import (
     clear_session_cookie,
     confirm_password_reset,
     create_session,
+    ensure_email_verified,
     get_current_auth,
     primary_organization_id,
     register_owner,
@@ -59,9 +61,14 @@ class EmailVerificationConfirm(BaseModel):
     token: str = Field(min_length=20, max_length=200)
 
 
+class RegisterResponse(MeResponse):
+    requires_email_verification: bool = False
+    message: str | None = None
+
+
 def _http_error(exc: AuthError) -> HTTPException:
     detail: dict = {"code": exc.code, "message": exc.message}
-    if exc.details is not None:
+    if hasattr(exc, "details") and exc.details is not None:
         detail["details"] = exc.details
     return HTTPException(
         status_code=exc.status_code,
@@ -70,7 +77,7 @@ def _http_error(exc: AuthError) -> HTTPException:
 
 
 def _enforce_auth_rate_limit(request: Request, settings: Settings, bucket: str) -> None:
-    client = request.client.host if request.client else "unknown"
+    client = request_client_ip(request, settings)
     key = f"auth:{bucket}:{client}"
     if not public_rate_limiter.allow(
         key,
@@ -83,14 +90,14 @@ def _enforce_auth_rate_limit(request: Request, settings: Settings, bucket: str) 
         )
 
 
-@router.post("/register", response_model=MeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 def register(
     payload: RegisterRequest,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
-) -> MeResponse:
+) -> RegisterResponse:
     _enforce_auth_rate_limit(request, settings, "register")
     try:
         user, organization, membership = register_owner(
@@ -100,15 +107,28 @@ def register(
             full_name=payload.full_name,
             organization_name=payload.organization_name,
         )
-        _, token = create_session(db, user=user, organization_id=organization.id, settings=settings)
     except AuthError as exc:
         raise _http_error(exc) from exc
 
-    set_session_cookie(response, token, settings)
-    return MeResponse(
+    requires_verification = settings.email_verification_required
+    if not requires_verification:
+        _, token = create_session(
+            db, user=user, organization_id=organization.id, settings=settings
+        )
+        set_session_cookie(response, token, settings)
+        return RegisterResponse(
+            user=UserOut.model_validate(user),
+            organization=OrganizationOut.model_validate(organization),
+            role=membership.role,
+            requires_email_verification=False,
+        )
+
+    return RegisterResponse(
         user=UserOut.model_validate(user),
         organization=OrganizationOut.model_validate(organization),
         role=membership.role,
+        requires_email_verification=True,
+        message="Conta criada. Verifique seu e-mail para acessar o Croniu.",
     )
 
 
@@ -123,6 +143,7 @@ def login(
     _enforce_auth_rate_limit(request, settings, "login")
     try:
         user = authenticate_user(db, email=str(payload.email), password=payload.password)
+        ensure_email_verified(user, settings)
         organization_id = primary_organization_id(db, user)
         _, token = create_session(db, user=user, organization_id=organization_id, settings=settings)
         user.last_login_at = datetime.now(UTC)

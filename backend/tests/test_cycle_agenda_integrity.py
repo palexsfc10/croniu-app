@@ -370,13 +370,17 @@ def test_conflict_leaves_no_active_cycle(client, register_payload):
     org_id, _ = _me(client)
     tz = ZoneInfo("America/Sao_Paulo")
     start = sched.local_dt(date(2026, 8, 10), time(17, 0), tz)
-    agenda_svc.create_appointment(
-        SessionLocal(),
-        organization_id=org_id,
-        client_id=UUID(ids["client_id"]),
-        starts_at=start,
-        ends_at=start + timedelta(hours=1),
-    )
+    conflict_db = SessionLocal()
+    try:
+        agenda_svc.create_appointment(
+            conflict_db,
+            organization_id=org_id,
+            client_id=UUID(ids["client_id"]),
+            starts_at=start,
+            ends_at=start + timedelta(hours=1),
+        )
+    finally:
+        conflict_db.close()
     res = client.post(
         "/api/v1/cycles/intelligent",
         json={

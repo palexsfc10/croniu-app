@@ -12,7 +12,7 @@ concurrency:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -31,12 +31,29 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install -r requirements.txt
-      - run: pytest -q
+      - name: Backend pytest (deterministic)
+        run: |
+          pytest -vv --tb=short \
+            --timeout=60 \
+            --timeout-method=signal \
+            -o faulthandler_timeout=90 \
+            --junitxml=/tmp/pytest-junit.xml
         env:
           PYTHONPATH: .
           DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu
           SECRET_KEY: test-secret-key-with-at-least-32-characters
           EMAIL_PROVIDER: fake
+          EMAIL_VERIFICATION_REQUIRED: "false"
+          AUTH_RATE_LIMIT_PER_MINUTE: "1000"
+          AI_ENABLED: "false"
+          LLM_PROVIDER: fake
+          BILLING_ENABLED: "true"
+          ASAAS_ENVIRONMENT: sandbox
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: pytest-junit
+          path: /tmp/pytest-junit.xml
 
   web:
     runs-on: ubuntu-latest
@@ -52,6 +69,12 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+        env:
+          API_PROXY_TARGET: http://api:8000
+          NEXT_PUBLIC_API_URL: ""
+      - name: Assert browser API base stays same-origin
+        run: |
+          ! grep -RIn --include='*.js' --include='*.mjs' 'localhost:8000\|localhost:8010' .next/standalone || (echo "localhost baked into web build" && exit 1)
 
   admin:
     runs-on: ubuntu-latest
@@ -66,6 +89,12 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+        env:
+          API_PROXY_TARGET: http://api:8000
+          NEXT_PUBLIC_API_URL: ""
+      - name: Assert browser API base stays same-origin
+        run: |
+          ! grep -RIn --include='*.js' --include='*.mjs' 'localhost:8010\|localhost:8000' .next/standalone || (echo "localhost baked into admin build" && exit 1)
 
   migrations-check:
     runs-on: ubuntu-latest
@@ -100,17 +129,125 @@ jobs:
 
   secret-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
-      - uses: gitleaks/gitleaks-action@v2
+        with:
+          fetch-depth: 0
+      - name: Install Gitleaks (pinned)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_VERSION: 8.21.2
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan current working tree
+        run: |
+          gitleaks detect --source . --config .gitleaks.toml --no-git --redact --verbose --report-path gitleaks-tree.json
+          bytes=$(wc -c < gitleaks-tree.json)
+          echo "gitleaks_tree_report_bytes=$bytes"
+          test "$bytes" -gt 2
+      - name: Scan reachable git history for this checkout
+        run: |
+          commits=$(git rev-list --count HEAD)
+          echo "commits_in_checkout=$commits"
+          test "$commits" -gt 0
+          gitleaks detect --source . --config .gitleaks.toml --log-opts="--all" --redact --verbose --report-path gitleaks-history.json
+          bytes=$(wc -c < gitleaks-history.json)
+          echo "gitleaks_history_report_bytes=$bytes"
+          test "$bytes" -gt 2
+      - name: Scan PR delta when base is available
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          base=$(git merge-base "origin/${{ github.base_ref }}" HEAD || true)
+          if [[ -z "$base" ]]; then
+            echo "No common ancestor with base; skipping delta scan (unrelated histories)."
+            exit 0
+          fi
+          echo "delta_base=$base"
+          echo "delta_head=$(git rev-parse HEAD)"
+          gitleaks detect --source . --config .gitleaks.toml \
+            --log-opts="${base}..HEAD" --redact --verbose --report-path gitleaks-delta.json
+          bytes=$(wc -c < gitleaks-delta.json)
+          echo "gitleaks_delta_report_bytes=$bytes"
+          test "$bytes" -gt 2
       - name: Reject obvious live token patterns
         run: |
-          if git grep -nEI 'sk-[A-Za-z0-9]{20,}|(ASAAS|OPENAI)_[A-Z_]*=(live_|[A-Za-z0-9]{24,})' -- . ':!*.example'; then
+          if git grep -nEI 'sk-[A-Za-z0-9]{20,}|(ASAAS|OPENAI|RESEND)_[A-Z_]*=(live_|[A-Za-z0-9]{24,})' -- . ':!*.example' ':!.gitleaks.toml'; then
             echo "Potential live credential found"
             exit 1
           fi
+      - name: Prove scanner catches planted secret fixture
+        run: |
+          printf 'OPENAI_API_KEY=sk-thisisfakebutlongenoughtotrippattern0123456789\n' > /tmp/planted-secret.env
+          if gitleaks detect --source /tmp --no-git --config .gitleaks.toml --redact; then
+            echo "Expected planted secret to fail the scan"
+            exit 1
+          fi
+          echo "planted_secret_fixture=detected_as_expected"
+
+  compose-and-scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shellcheck release scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: deploy/release
+          severity: warning
+      - name: Compose config validation
+        run: |
+          cp deploy/prd/.env.prd.example /tmp/.env.prd
+          sed -i \
+            -e 's/^POSTGRES_USER=$/POSTGRES_USER=croniu/' \
+            -e 's/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=placeholder_not_a_secret/' \
+            -e 's/^POSTGRES_DB=$/POSTGRES_DB=croniu/' \
+            -e 's/^SECRET_KEY=$/SECRET_KEY=placeholder-secret-key-with-32chars-min/' \
+            /tmp/.env.prd
+          grep -q '^API_HOST_PORT=.' /tmp/.env.prd || echo 'API_HOST_PORT=18080' >> /tmp/.env.prd
+          grep -q '^WEB_HOST_PORT=.' /tmp/.env.prd || echo 'WEB_HOST_PORT=13000' >> /tmp/.env.prd
+          grep -q '^ADMIN_HOST_PORT=.' /tmp/.env.prd || echo 'ADMIN_HOST_PORT=13002' >> /tmp/.env.prd
+          export CRONIU_API_IMAGE='example/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          export CRONIU_WEB_IMAGE='example/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+          export CRONIU_ADMIN_IMAGE='example/admin@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+          docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config >/dev/null
+          docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config | grep -q '127.0.0.1:'
+          ! docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config | grep -E 'published: ["0-9]'
+      - name: Offline release rehearse
+        run: bash deploy/release/rehearse_offline.sh
+
+  image-build-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API/Web/Admin without push
+        run: |
+          docker build -t croniu-api:ci ./backend \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            --build-arg APP_VERSION=ci
+          docker build -t croniu-web:ci ./apps/web \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            --build-arg APP_VERSION=ci \
+            --build-arg API_PROXY_TARGET=http://api:8000 \
+            --build-arg NEXT_PUBLIC_API_URL=
+          docker build -t croniu-admin:ci ./apps/admin \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            --build-arg APP_VERSION=ci \
+            --build-arg API_PROXY_TARGET=http://api:8000 \
+            --build-arg NEXT_PUBLIC_API_URL=
+      - name: Reject localhost API defaults inside images
+        run: |
+          for img in croniu-web:ci croniu-admin:ci; do
+            cid=$(docker create "$img")
+            docker cp "$cid:/app" "/tmp/${img//:/_}"
+            docker rm "$cid"
+            if grep -RIn 'localhost:8000\|localhost:8010' "/tmp/${img//:/_}" | grep -v 'node_modules' | head; then
+              echo "Found localhost API reference in $img"
+              exit 1
+            fi
+          done

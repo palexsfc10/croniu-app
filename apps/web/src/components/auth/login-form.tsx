@@ -38,6 +38,12 @@ export function LoginForm() {
       body: JSON.stringify(values),
     });
     if (result.error) {
+      if (result.error.code === "email_unverified") {
+        setFormError(
+          "Confirme seu e-mail antes de entrar. Você pode reenviar o link na tela de verificação.",
+        );
+        return;
+      }
       setFormError(result.error.message);
       return;
     }

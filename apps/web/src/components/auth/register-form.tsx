@@ -20,13 +20,20 @@ function valuesFromForm(form: HTMLFormElement): RegisterValues {
   };
 }
 
+type RegisterResult = MeResponse & {
+  requires_email_verification?: boolean;
+  message?: string | null;
+};
+
 export function RegisterForm() {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
@@ -40,7 +47,7 @@ export function RegisterForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const result = await apiFetch<MeResponse>("/api/v1/auth/register", {
+    const result = await apiFetch<RegisterResult>("/api/v1/auth/register", {
       method: "POST",
       body: JSON.stringify(values),
     });
@@ -48,9 +55,51 @@ export function RegisterForm() {
       setFormError(result.error.message);
       return;
     }
+    if (result.data?.requires_email_verification) {
+      setPendingEmail(values.email);
+      return;
+    }
     router.replace("/app");
     router.refresh();
   });
+
+  async function resendVerification() {
+    const email = pendingEmail || getValues("email");
+    if (!email) return;
+    setFormError(null);
+    const result = await apiFetch<{ message: string }>("/api/v1/auth/email-verification/request", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+    if (result.error) {
+      setFormError(result.error.message);
+    }
+  }
+
+  if (pendingEmail) {
+    return (
+      <div className="flex flex-1 flex-col gap-4">
+        <p className="text-sm text-[var(--color-ink)]">
+          Conta criada. Enviamos um link para <strong>{pendingEmail}</strong>. Confirme o e-mail
+          antes de entrar no Croniu.
+        </p>
+        {formError ? (
+          <p role="alert" className="text-sm text-[var(--color-danger)]">
+            {formError}
+          </p>
+        ) : null}
+        <Button type="button" fullWidth onClick={() => void resendVerification()}>
+          Reenviar e-mail
+        </Button>
+        <Link
+          href="/login"
+          className="text-center text-sm font-semibold text-[var(--color-primary)] underline-offset-2 hover:underline"
+        >
+          Ir para o login
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <form
