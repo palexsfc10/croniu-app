@@ -1,51 +1,142 @@
 name: Promote production
 
+# Build-once / promote-many: this workflow NEVER rebuilds or retags images.
+# It downloads the immutable release-manifest.json artifact produced by a prior
+# successful "Build release images" run and deploys those exact digests.
+
 on:
   workflow_dispatch:
     inputs:
       sha:
-        description: Immutable Git SHA to promote
+        description: Immutable Git SHA recorded in the release manifest
         required: true
       version:
-        description: Release version (manifest artifact key)
+        description: Release version (manifest artifact key suffix)
         required: true
+      build_run_id:
+        description: Workflow run ID of the successful Build release images job
+        required: true
+      manifest_artifact_name:
+        description: Artifact name (default release-manifest-<version>)
+        required: false
+        default: ""
 
 permissions:
   contents: read
-  packages: write
   actions: read
+  # packages:read is enough for documentation; host pulls from GHCR with its own login.
+  packages: read
 
 jobs:
-  build:
-    uses: ./.github/workflows/build-release.yml
-    with:
-      sha: ${{ inputs.sha }}
-      version: ${{ inputs.version }}
-    secrets: inherit
-
   promote:
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
     steps:
+      - name: Resolve artifact name
+        id: meta
+        run: |
+          set -euo pipefail
+          name="${{ inputs.manifest_artifact_name }}"
+          if [[ -z "$name" ]]; then
+            name="release-manifest-${{ inputs.version }}"
+          fi
+          echo "artifact_name=$name" >> "$GITHUB_OUTPUT"
+          echo "build_run_id=${{ inputs.build_run_id }}"
+          echo "artifact_name=$name"
+      - name: Validate source Build release run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          EXPECTED_SHA: ${{ inputs.sha }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/${{ github.repository }}/actions/runs/${BUILD_RUN_ID}")"
+          name="$(jq -er '.name' <<<"$run_json")"
+          status="$(jq -er '.status' <<<"$run_json")"
+          conclusion="$(jq -er '.conclusion' <<<"$run_json")"
+          path="$(jq -er '.path // empty' <<<"$run_json")"
+          head_sha="$(jq -er '.head_sha' <<<"$run_json")"
+          echo "build_run_name=$name"
+          echo "build_run_path=$path"
+          echo "build_run_status=$status"
+          echo "build_run_conclusion=$conclusion"
+          echo "build_run_head_sha=$head_sha"
+          [[ "$name" == "Build release images" ]] || {
+            echo "Source run must be Build release images"
+            exit 1
+          }
+          [[ "$status" == "completed" ]] || { echo "Build run not completed"; exit 1; }
+          [[ "$conclusion" == "success" ]] || { echo "Build run not successful"; exit 1; }
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.sha }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-manifest-${{ inputs.version }}
-          path: manifest
-      - name: Validate manifest SHA and digests
+      - name: Assert promote workflow does not rebuild images
         run: |
-          jq -e --arg sha "${{ inputs.sha }}" \
-            '.sha == $sha and (.images.api|test("@sha256:")) and (.images.web|test("@sha256:")) and (.images.admin|test("@sha256:"))' \
-            manifest/release-manifest.json
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path(".github/workflows/promote-production.yml").read_text(encoding="utf-8")
+          bad = []
+          if re.search(r"(?m)^\s+uses:\s*\./\.github/workflows/build-release\.yml\b", text):
+              bad.append("calls build-release.yml as reusable workflow")
+          if re.search(r"(?m)^\s+uses:\s*docker/build-push-action@", text):
+              bad.append("uses docker/build-push-action")
+          if re.search(r"(?m)^\s+run:.*\bdocker\s+build\b", text):
+              bad.append("runs docker build")
+          if "jobs:" in text and re.search(r"(?m)^  build:\s*$", text):
+              bad.append("defines a build job")
+          if bad:
+              raise SystemExit("promote rebuild forbidden: " + "; ".join(bad))
+          print("promote_no_rebuild_guard=ok")
+          PY
+      - name: Download release manifest artifact from build run
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: manifest
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.build_run_id }}
+          repository: ${{ github.repository }}
+      - name: Validate manifest identity and digests
+        env:
+          EXPECTED_SHA: ${{ inputs.sha }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          mf=manifest/release-manifest.json
+          test -f "$mf"
+          checksum="$(sha256sum "$mf" | awk '{print $1}')"
+          echo "manifest_sha256=$checksum"
+          jq -e --arg sha "$EXPECTED_SHA" --arg version "$EXPECTED_VERSION" --arg run "$BUILD_RUN_ID" '
+            .sha == $sha
+            and .version == $version
+            and (.build_run_id|tostring) == $run
+            and (.images.api|test("@sha256:[a-f0-9]{64}$"))
+            and (.images.web|test("@sha256:[a-f0-9]{64}$"))
+            and (.images.admin|test("@sha256:[a-f0-9]{64}$"))
+            and (.images.api|startswith("ghcr.io/"))
+            and (.images.web|startswith("ghcr.io/"))
+            and (.images.admin|startswith("ghcr.io/"))
+            and (.images.api|contains(":latest")|not)
+            and (.images.web|contains(":latest")|not)
+            and (.images.admin|contains(":latest")|not)
+          ' "$mf" >/dev/null
+          # Tag-only references are forbidden (must be digest form).
+          if jq -r '.images[]' "$mf" | grep -v '@sha256:'; then
+            echo "Manifest contains non-digest image reference"
+            exit 1
+          fi
+          jq '{sha,version,build_run_id,ci_run_id,images}' "$mf"
       - name: Configure production SSH
         env:
           PRODUCTION_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
         run: |
+          set -euo pipefail
           install -d -m 700 ~/.ssh
           umask 077
           printf '%s\n' "$PRODUCTION_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
@@ -60,6 +151,7 @@ jobs:
           PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
           RELEASE: ${{ inputs.sha }}
         run: |
+          set -euo pipefail
           remote="${PRODUCTION_USER}@${PRODUCTION_HOST}"
           ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$remote" \
             "mkdir -p /srv/docker/croniu-prd/manifests /srv/docker/croniu-prd/deploy"
@@ -78,6 +170,7 @@ jobs:
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
           PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
         run: |
+          set -euo pipefail
           ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
             "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
             'set -a; source deploy/prd/.env.prd; set +a; curl -fsS "http://127.0.0.1:${API_HOST_PORT}/version"'
