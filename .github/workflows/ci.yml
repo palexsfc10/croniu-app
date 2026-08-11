@@ -467,13 +467,17 @@ jobs:
         env:
           IMAGE_SHA: c5503c08cd99a6d9222b47cb2ee5de52769077df
           VERSION: v1.0.0-rc2.2
+          # pull_request github.sha is the ephemeral merge commit; identity must be PR head.
+          DEPLOY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           chmod +x deploy/release/package_deploy_bundle.sh deploy/release/validate_deploy_bundle.sh
+          echo "deploy_sha=$DEPLOY_SHA"
+          echo "github_sha=${{ github.sha }}"
           bash deploy/release/package_deploy_bundle.sh \
             --source-dir deploy \
             --out-dir /tmp/deploy-bundle \
-            --deploy-sha "${{ github.sha }}" \
+            --deploy-sha "$DEPLOY_SHA" \
             --image-sha "$IMAGE_SHA" \
             --version "$VERSION" \
             --repository "${{ github.repository }}" \
@@ -481,7 +485,7 @@ jobs:
             --package-run-id "${{ github.run_id }}"
           bash deploy/release/validate_deploy_bundle.sh \
             --bundle-dir /tmp/deploy-bundle \
-            --deploy-sha "${{ github.sha }}" \
+            --deploy-sha "$DEPLOY_SHA" \
             --image-sha "$IMAGE_SHA" \
             --version "$VERSION" \
             --repository "${{ github.repository }}" \
