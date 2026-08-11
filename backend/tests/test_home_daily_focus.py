@@ -44,6 +44,49 @@ def _today_slot_on_local_day(local_today: str, *, tz: ZoneInfo) -> tuple[datetim
     return start, end
 
 
+def _past_slot_on_local_day(local_today: str, *, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    """Fully ended appointment still on org-local today (stable near midnight)."""
+    today = date.fromisoformat(local_today)
+    now_local = datetime.now(tz)
+    # Prefer a morning slot when the day has progressed far enough.
+    start = datetime.combine(today, time(6, 0), tzinfo=tz)
+    end = start + timedelta(hours=1)
+    if end < now_local and start.date() == today:
+        return start, end
+    # Early morning: keep a short window that already ended today.
+    end = now_local - timedelta(seconds=30)
+    start = end - timedelta(minutes=15)
+    if start.date() != today:
+        start = datetime.combine(today, time(0, 0), tzinfo=tz)
+        end = start + timedelta(minutes=1)
+        if end >= now_local:
+            end = now_local - timedelta(seconds=5)
+            start = max(start, end - timedelta(minutes=1))
+    if not (start < end <= now_local and start.date() == today):
+        # Degenerate clock edge: force a tiny past window on today.
+        end = min(now_local - timedelta(seconds=1), datetime.combine(today, time(23, 59, 58), tzinfo=tz))
+        start = end - timedelta(seconds=30)
+        if start.date() != today:
+            start = datetime.combine(today, time(0, 0), tzinfo=tz)
+    return start, end
+
+
+def _in_progress_slot_on_local_day(local_today: str, *, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    """Appointment covering now, clamped to org-local today."""
+    today = date.fromisoformat(local_today)
+    now_local = datetime.now(tz)
+    day_start = datetime.combine(today, time(0, 0), tzinfo=tz)
+    start = max(now_local - timedelta(minutes=20), day_start)
+    end = now_local + timedelta(minutes=40)
+    if end.date() != today:
+        end = datetime.combine(today, time(23, 59, 59), tzinfo=tz)
+    if start >= now_local:
+        start = day_start
+    if end <= now_local:
+        end = min(now_local + timedelta(minutes=30), datetime.combine(today, time(23, 59, 59), tzinfo=tz))
+    return start, end
+
+
 def _create_client(client, name="Cliente Home"):
     response = client.post(
         "/api/v1/clients",
@@ -121,15 +164,7 @@ def test_home_past_appointment_needs_outcome_not_upcoming(client, register_paylo
     person = _create_client(client, "Carlos")
     day = client.get("/api/v1/organization/preferences").json()["local_today"]
     tz = ZoneInfo("America/Sao_Paulo")
-    now_local = datetime.now(tz)
-    # Ensure a past slot still on local today
-    start = now_local.replace(hour=6, minute=0, second=0, microsecond=0)
-    if start.date().isoformat() != day:
-        start = now_local - timedelta(hours=3)
-    end = start + timedelta(hours=1)
-    if end >= now_local:
-        start = now_local - timedelta(hours=2)
-        end = start + timedelta(minutes=30)
+    start, end = _past_slot_on_local_day(day, tz=tz)
 
     created = client.post(
         "/api/v1/appointments",
@@ -586,10 +621,9 @@ def test_home_ended_cycle_without_renewal(client, register_payload):
 def test_home_in_progress_not_upcoming(client, register_payload):
     _auth(client, register_payload)
     person = _create_client(client, "Agora")
+    day = client.get("/api/v1/organization/preferences").json()["local_today"]
     tz = ZoneInfo("America/Sao_Paulo")
-    now_local = datetime.now(tz)
-    start = now_local - timedelta(minutes=20)
-    end = now_local + timedelta(minutes=40)
+    start, end = _in_progress_slot_on_local_day(day, tz=tz)
     created = client.post(
         "/api/v1/appointments",
         json={
