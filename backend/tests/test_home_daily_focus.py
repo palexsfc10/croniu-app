@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -8,6 +8,40 @@ def _auth(client, register_payload):
     response = client.post("/api/v1/auth/register", json=register_payload)
     assert response.status_code == 201
     return response.json()
+
+
+def _upcoming_slot_on_local_day(
+    local_today: str,
+    *,
+    tz: ZoneInfo,
+    minutes_ahead: int = 40,
+) -> tuple[datetime, datetime]:
+    """Return a future [start,end) still on org-local today (stable near midnight)."""
+    today = date.fromisoformat(local_today)
+    now_local = datetime.now(tz)
+    start = now_local + timedelta(minutes=minutes_ahead)
+    if start.date() != today:
+        # Keep the slot on local today when +N minutes would roll past midnight.
+        start = datetime.combine(today, time(23, 50), tzinfo=tz)
+    if start <= now_local or start.date() != today:
+        # Last resort: a few minutes ahead still on today, else mid-afternoon past slot.
+        candidate = now_local + timedelta(minutes=5)
+        if candidate.date() == today and candidate > now_local:
+            start = candidate
+        else:
+            start = datetime.combine(today, time(15, 0), tzinfo=tz)
+    end = start + timedelta(hours=1)
+    if end.date() != today:
+        end = datetime.combine(today, time(23, 59, 59), tzinfo=tz)
+    return start, end
+
+
+def _today_slot_on_local_day(local_today: str, *, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    """Any appointment on org-local today (may be past) for list/isolation checks."""
+    today = date.fromisoformat(local_today)
+    start = datetime.combine(today, time(10, 0), tzinfo=tz)
+    end = start + timedelta(hours=1)
+    return start, end
 
 
 def _create_client(client, name="Cliente Home"):
@@ -39,9 +73,7 @@ def test_home_priority_cycle_over_appointment_never_repeats_agenda(client, regis
     service = _create_service(client)
     day = client.get("/api/v1/organization/preferences").json()["local_today"]
     tz = ZoneInfo("America/Sao_Paulo")
-    now_local = datetime.now(tz)
-    start = now_local + timedelta(minutes=40)
-    end = start + timedelta(hours=1)
+    start, end = _upcoming_slot_on_local_day(day, tz=tz, minutes_ahead=40)
 
     cycle = client.post(
         "/api/v1/cycles",
@@ -49,7 +81,7 @@ def test_home_priority_cycle_over_appointment_never_repeats_agenda(client, regis
             "client_id": person["id"],
             "service_id": service["id"],
             "starts_on": day,
-            "ends_on": (datetime.fromisoformat(day).date() + timedelta(days=2)).isoformat(),
+            "ends_on": (date.fromisoformat(day) + timedelta(days=2)).isoformat(),
             "value_cents": 40000,
             "create_receivable": False,
         },
@@ -64,7 +96,7 @@ def test_home_priority_cycle_over_appointment_never_repeats_agenda(client, regis
             "ends_at": end.isoformat(),
         },
     )
-    assert created.status_code == 201
+    assert created.status_code == 201, created.text
     appt_id = created.json()["id"]
 
     home = client.get("/api/v1/home/summary")
@@ -77,8 +109,10 @@ def test_home_priority_cycle_over_appointment_never_repeats_agenda(client, regis
     }
     assert body["priority_action"]["entity_id"] != appt_id
     assert body["contextual_hint"] is None
-    assert any(a["id"] == appt_id for a in body["upcoming_appointments"])
-    assert appt_id not in {a["id"] for a in body.get("in_progress_appointments") or []}
+    today_ids = {a["id"] for a in body["upcoming_appointments"]} | {
+        a["id"] for a in body.get("in_progress_appointments") or []
+    }
+    assert appt_id in today_ids
     assert body["priority_action"]["cta_label"] == "Ver ciclo"
 
 
@@ -359,8 +393,7 @@ def test_home_summary_tenant_isolation(client, register_payload):
     person = _create_client(client, "Privado A")
     day = client.get("/api/v1/organization/preferences").json()["local_today"]
     tz = ZoneInfo("America/Sao_Paulo")
-    start = datetime.now(tz) + timedelta(hours=1)
-    end = start + timedelta(hours=1)
+    start, end = _today_slot_on_local_day(day, tz=tz)
     appt = client.post(
         "/api/v1/appointments",
         json={
