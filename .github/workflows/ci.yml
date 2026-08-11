@@ -214,14 +214,23 @@ jobs:
         run: |
           set -euo pipefail
           # Assemble at runtime so the full fake token is never versioned (git grep must stay clean).
-          prefix='sk-'
-          part_a='fixturepartthisisfakebutlongenought'
-          part_b='otrippattern0123456789'
+          # Use a default Gitleaks GitHub PAT shape (ghp_ + 36 alnum) with mixed entropy.
+          prefix='ghp_'
+          part_a='A1b2C3d4E5f6G7h8I9j0'
+          part_b='K1l2M3n4O5p6Q7r8'
           plant_dir="$(mktemp -d)"
           trap 'rm -rf "$plant_dir"' EXIT
-          printf 'OPENAI_API_KEY=%s%s%s\n' "$prefix" "$part_a" "$part_b" >"$plant_dir/planted.env"
-          if gitleaks detect --source "$plant_dir" --no-git --config .gitleaks.toml --redact; then
+          printf 'GITHUB_TOKEN=%s%s%s\n' "$prefix" "$part_a" "$part_b" >"$plant_dir/planted.env"
+          set +e
+          gitleaks detect --source "$plant_dir" --no-git --config .gitleaks.toml --redact --report-path /tmp/planted-report.json
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
             echo "Expected planted secret to fail the scan"
+            exit 1
+          fi
+          if [[ "$status" -ne 1 ]]; then
+            echo "Unexpected gitleaks exit status=$status"
             exit 1
           fi
           echo "planted_secret_fixture=detected_as_expected"
@@ -251,9 +260,16 @@ jobs:
           export CRONIU_API_IMAGE='example/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
           export CRONIU_WEB_IMAGE='example/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
           export CRONIU_ADMIN_IMAGE='example/admin@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
-          docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config >/dev/null
-          docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config | grep -q '127.0.0.1:'
-          ! docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config | grep -E 'published: ["0-9]'
+          # Compose resolves env_file relative to the compose file directory.
+          cp /tmp/.env.prd deploy/prd/.env.prd
+          rendered="$(mktemp)"
+          docker compose --env-file /tmp/.env.prd -f deploy/prd/compose.prd.yaml config >"$rendered"
+          grep -q 'host_ip: 127.0.0.1' "$rendered"
+          if grep -E 'host_ip: ["'\'']?(0\.0\.0\.0|::)' "$rendered"; then
+            echo "PRD compose must not publish on 0.0.0.0/::"
+            exit 1
+          fi
+          rm -f deploy/prd/.env.prd "$rendered"
       - name: Offline release rehearse
         run: bash deploy/release/rehearse_offline.sh
 
