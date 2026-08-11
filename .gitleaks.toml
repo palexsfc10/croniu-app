@@ -1,19 +1,23 @@
-# Gitleaks config: default rules + narrow allowlists for known non-secret fixtures.
+# Gitleaks: default rules + narrow global allowlist for known fixtures.
+# Global allowlist key is [allowlist] (singular) in gitleaks 8.21.
 title = "croniu"
 
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Fixture SECRET_KEY values used only in tests and HML pytest helper scripts"
+[allowlist]
+description = "Known non-secret fixtures (tests, CI placeholders, env examples)"
+# OR across paths and regexes at the global allowlist level.
 paths = [
-  '''backend/tests/.*''',
-  '''deploy/hml/_ops_.*\.sh''',
-  '''\.env\.example''',
-  '''deploy/.*/\.env\..*\.example''',
+  '''(^|/)backend/tests/''',
+  '''(^|/)deploy/hml/_ops_''',
+  '''(^|/)\.env\.example$''',
+  '''(^|/)deploy/.*/\.env\.[^/]+\.example$''',
 ]
 regexes = [
   '''test-secret-key-with-at-least-32-characters''',
   '''dev-only-change-me-to-a-long-random-string-at-least-32-chars''',
   '''CHANGE_ME_TO_A_LONG_RANDOM_STRING_AT_LEAST_32_CHARS''',
+  '''placeholder-secret-key-with-32chars-min''',
+  '''placeholder_not_a_secret''',
 ]
