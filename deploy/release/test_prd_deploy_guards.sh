@@ -205,7 +205,9 @@ fi
 
 # First up creates volume (simulates ensure_postgres_healthy on cold start)
 docker compose -p "$PROJ" -f "$REH/compose.yaml" up -d db
-for i in $(seq 1 40); do
+attempt=0
+while ((attempt < 40)); do
+  attempt=$((attempt + 1))
   cid="$(docker compose -p "$PROJ" -f "$REH/compose.yaml" ps -q db 2>/dev/null || true)"
   [[ -n "$cid" ]] || { sleep 1; continue; }
   st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$cid" 2>/dev/null || true)"
