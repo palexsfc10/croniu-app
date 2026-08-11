@@ -1,5 +1,9 @@
-# Gitleaks allowlist for known non-secret fixtures (tests / local examples).
+# Gitleaks config: default rules + narrow allowlists for known non-secret fixtures.
 title = "croniu"
+
+[extend]
+useDefault = true
+
 [[allowlists]]
 description = "Fixture SECRET_KEY values used only in tests and HML pytest helper scripts"
 paths = [
