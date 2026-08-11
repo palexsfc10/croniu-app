@@ -60,9 +60,10 @@ if [[ -f "$RELEASE_STATE_FILE" ]]; then
 fi
 
 "$SCRIPT_DIR/backup.sh"
-export CRONIU_API_IMAGE="$(manifest_image api)"
-export CRONIU_WEB_IMAGE="$(manifest_image web)"
-export CRONIU_ADMIN_IMAGE="$(manifest_image admin)"
+CRONIU_API_IMAGE="$(manifest_image api)"
+CRONIU_WEB_IMAGE="$(manifest_image web)"
+CRONIU_ADMIN_IMAGE="$(manifest_image admin)"
+export CRONIU_API_IMAGE CRONIU_WEB_IMAGE CRONIU_ADMIN_IMAGE
 
 log "Pulling immutable release images for $SHA"
 compose pull "$API_SERVICE" "$WEB_SERVICE" "$ADMIN_SERVICE"
