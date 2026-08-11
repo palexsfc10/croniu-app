@@ -120,11 +120,15 @@ JSON
 
 # Optional full preflight when jq is available (CI).
 if command -v jq >/dev/null 2>&1 && command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  export CRONIU_API_IMAGE='ghcr.io/palexsfc10/croniu-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  export CRONIU_WEB_IMAGE='ghcr.io/palexsfc10/croniu-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+  export CRONIU_ADMIN_IMAGE='ghcr.io/palexsfc10/croniu-admin@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
   if bash "$SCRIPT_DIR/preflight.sh" >/tmp/preflight_ok.log 2>&1; then
     pass "full preflight accepts canonical PRD env"
   else
     bad "full preflight rejected valid PRD env"
-    tail -n 20 /tmp/preflight_ok.log || true
+    # Log names/errors only — never dump .env values.
+    grep -E 'ERROR:|error while|die|missing' /tmp/preflight_ok.log | head -n 20 || true
   fi
 else
   echo "SKIP full preflight (jq not on PATH locally; CI provides jq)"
