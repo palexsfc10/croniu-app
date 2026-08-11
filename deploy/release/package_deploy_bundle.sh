@@ -68,7 +68,7 @@ done < <(find "$OUT/deploy" -type l -print0)
 
 (
   cd "$OUT/deploy"
-  find . -type f -print0 | sort -z | while IFS= read -r -d '' f; do
+  LC_ALL=C find . -type f -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' f; do
     rel="${f#./}"
     sum="$(sha256sum "$f" | awk '{print $1}')"
     printf '%s\t%s\n' "$rel" "$sum"
