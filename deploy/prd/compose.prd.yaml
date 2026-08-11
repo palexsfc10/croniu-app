@@ -28,14 +28,20 @@ services:
     environment:
       CRONIU_ENV: production
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    ports: ["${API_HOST_PORT}:8000"]
+      TRUST_PROXY: "true"
+      TRUSTED_PROXY_IPS: "127.0.0.1,::1"
+      EMAIL_VERIFICATION_REQUIRED: "true"
+    # Loopback only — Cloudflare Tunnel on the host reaches services without public bind.
+    ports: ["127.0.0.1:${API_HOST_PORT}:8000"]
     depends_on: {db: {condition: service_healthy}}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
       interval: 15s
       timeout: 5s
       retries: 10
-    networks: [croniu-prd-network]
+    networks:
+      croniu-prd-network:
+        aliases: [api]
     logging: *logging
     deploy: {resources: {limits: {memory: 1G}}}
 
@@ -43,7 +49,12 @@ services:
     image: ${CRONIU_WEB_IMAGE:?Set immutable web image}
     container_name: croniu-prd-web
     restart: unless-stopped
-    ports: ["${WEB_HOST_PORT}:3000"]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_PROXY_TARGET: http://api:8000
+    ports: ["127.0.0.1:${WEB_HOST_PORT}:3000"]
     depends_on: {api: {condition: service_healthy}}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -58,7 +69,12 @@ services:
     image: ${CRONIU_ADMIN_IMAGE:?Set immutable admin image}
     container_name: croniu-prd-admin
     restart: unless-stopped
-    ports: ["${ADMIN_HOST_PORT}:3000"]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_PROXY_TARGET: http://api:8000
+    ports: ["127.0.0.1:${ADMIN_HOST_PORT}:3000"]
     depends_on: {api: {condition: service_healthy}}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

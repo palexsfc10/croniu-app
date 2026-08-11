@@ -84,7 +84,22 @@ export type Paginated<T> = {
   page_size: number;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010";
+const SERVER_API_URL = (
+  process.env.API_PROXY_TARGET?.trim() ||
+  process.env.NEXT_PUBLIC_API_URL?.trim() ||
+  "http://127.0.0.1:8010"
+).replace(/\/$/, "");
+
+/**
+ * Browser always uses same-origin `/api` (Next rewrite → backend).
+ * Admin cookie remains `croniu_admin_session` and is same-origin with this host.
+ */
+export function getApiBaseUrl() {
+  if (typeof window !== "undefined") {
+    return "";
+  }
+  return SERVER_API_URL;
+}
 
 async function parseError(response: Response): Promise<ApiError> {
   try {
@@ -100,7 +115,7 @@ export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<{ data?: T; error?: ApiError; status: number }> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     credentials: "include",
     headers: {

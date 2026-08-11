@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 const apiProxyTarget = (
   process.env.API_PROXY_TARGET?.trim() ||
   process.env.NEXT_PUBLIC_API_URL?.trim() ||
-  "http://127.0.0.1:8010"
+  "http://api:8000"
 ).replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
