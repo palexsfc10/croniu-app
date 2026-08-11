@@ -114,6 +114,36 @@ manifest_image() {
   jq -er --arg service "$service" '.images[$service]' "$MANIFEST"
 }
 
+# Reject empty / latest / tag-only / abbreviated digests. Digest must be full sha256.
+require_digest_image_ref() {
+  local label="$1" image="$2"
+  [[ -n "$image" ]] || die "$label must not be empty"
+  [[ "$image" != *[Ll][Aa][Tt][Ee][Ss][Tt]* ]] || die "$label must not use latest"
+  [[ "$image" == *"@sha256:"* ]] || die "$label must be digest-pinned (name@sha256:<64 hex>)"
+  local digest="${image##*@sha256:}"
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || die "$label digest must be a full 64-char lowercase hex sha256"
+}
+
+# Load immutable app images from the official release-manifest BEFORE preflight/compose config.
+export_release_images_from_manifest() {
+  [[ -n "${MANIFEST:-}" ]] || die "MANIFEST path is required"
+  [[ -f "$MANIFEST" && -r "$MANIFEST" ]] || die "release-manifest not found or unreadable: $MANIFEST"
+  jq -e '
+    (.images.api | type == "string") and
+    (.images.web | type == "string") and
+    (.images.admin | type == "string")
+  ' "$MANIFEST" >/dev/null || die "release-manifest must define string images.api/web/admin"
+
+  CRONIU_API_IMAGE="$(manifest_image api)"
+  CRONIU_WEB_IMAGE="$(manifest_image web)"
+  CRONIU_ADMIN_IMAGE="$(manifest_image admin)"
+  require_digest_image_ref CRONIU_API_IMAGE "$CRONIU_API_IMAGE"
+  require_digest_image_ref CRONIU_WEB_IMAGE "$CRONIU_WEB_IMAGE"
+  require_digest_image_ref CRONIU_ADMIN_IMAGE "$CRONIU_ADMIN_IMAGE"
+  export CRONIU_API_IMAGE CRONIU_WEB_IMAGE CRONIU_ADMIN_IMAGE
+  log "Exported immutable CRONIU_*_IMAGE refs from release-manifest"
+}
+
 append_release_log() {
   local result="$1"
   local log_file="${DEPLOY_ROOT}/RELEASE_LOG.jsonl"

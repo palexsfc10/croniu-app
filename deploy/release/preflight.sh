@@ -58,10 +58,36 @@ if [[ "${ENVIRONMENT:-}" == "prd" ]]; then
   [[ "$secure" == "true" || "$secure" == "1" ]] || die "SESSION_COOKIE_SECURE must be true in prd"
   [[ "$openapi" == "false" || "$openapi" == "0" ]] || die "OPENAPI_ENABLED must be false in prd"
   [[ "$cors" != *"localhost"* ]] || die "CORS_ORIGINS must not include localhost in prd"
-  [[ "$email_provider" == "resend" ]] || die "EMAIL_PROVIDER must be resend in prd"
-  [[ -n "$(env_value RESEND_API_KEY)" ]] || die "RESEND_API_KEY must be set in prd"
-  [[ -n "$(env_value EMAIL_FROM)" ]] || die "EMAIL_FROM must be set in prd"
-  [[ "$verify_req" == "true" || "$verify_req" == "1" ]] || die "EMAIL_VERIFICATION_REQUIRED must be true in prd"
+  # EMAIL_PROVIDER is the explicit enable/disable switch (matches backend factory):
+  #   fake|test|noop → outbound email disabled (Resend not required)
+  #   resend         → outbound email enabled (real RESEND_API_KEY required)
+  [[ -n "$email_provider" ]] || die "EMAIL_PROVIDER must be set explicitly in prd"
+  case "$email_provider" in
+    fake|test|noop)
+      log "EMAIL_PROVIDER=$email_provider — outbound email disabled; RESEND_API_KEY not required"
+      ;;
+    resend)
+      resend_key="$(env_value RESEND_API_KEY)"
+      [[ -n "$resend_key" ]] || die "RESEND_API_KEY must be set when EMAIL_PROVIDER=resend"
+      # Reject obvious placeholders without printing the secret.
+      resend_key_l="$(printf '%s' "$resend_key" | tr '[:upper:]' '[:lower:]')"
+      if [[ "$resend_key_l" == *synthetic* || "$resend_key_l" == *placeholder* ||
+            "$resend_key_l" == *changeme* || "$resend_key_l" == *example* ||
+            "$resend_key_l" == *your_api* || "$resend_key_l" == *xxx* ]]; then
+        die "RESEND_API_KEY looks like a placeholder; refuse when EMAIL_PROVIDER=resend"
+      fi
+      [[ -n "$(env_value EMAIL_FROM)" ]] || die "EMAIL_FROM must be set when EMAIL_PROVIDER=resend"
+      [[ "$verify_req" == "true" || "$verify_req" == "1" ]] ||
+        die "EMAIL_VERIFICATION_REQUIRED must be true when EMAIL_PROVIDER=resend"
+      ;;
+    *)
+      die "EMAIL_PROVIDER must be fake (disabled) or resend (enabled) in prd"
+      ;;
+  esac
+  # Compose/runtime also require exported digest-pinned images before config.
+  require_digest_image_ref CRONIU_API_IMAGE "${CRONIU_API_IMAGE:-}"
+  require_digest_image_ref CRONIU_WEB_IMAGE "${CRONIU_WEB_IMAGE:-}"
+  require_digest_image_ref CRONIU_ADMIN_IMAGE "${CRONIU_ADMIN_IMAGE:-}"
   [[ "$asaas_env" == "production" ]] || die "ASAAS_ENVIRONMENT must be production in prd"
   [[ "$asaas_url" == *"api.asaas.com"* ]] || die "ASAAS_API_URL must be production Asaas"
   [[ "$asaas_url" != *"sandbox"* ]] || die "ASAAS_API_URL must not be sandbox in prd"

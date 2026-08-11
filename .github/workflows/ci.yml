@@ -279,6 +279,8 @@ jobs:
         run: bash deploy/release/rehearse_offline.sh
       - name: PRD cold-start and port guards
         run: bash deploy/release/test_prd_deploy_guards.sh
+      - name: Cold-start image export before preflight
+        run: bash deploy/release/test_cold_start_preflight_order.sh
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
