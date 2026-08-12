@@ -132,12 +132,31 @@ def confirm_email_verification(db: Session, *, token: str) -> None:
         select(EmailVerificationToken).where(EmailVerificationToken.token_hash == token_hash)
     )
     now = datetime.now(UTC)
-    if record is None or record.used_at is not None:
+    if record is None:
         raise AuthError(
             "invalid_verification_token",
             "Link de verificação inválido ou já utilizado.",
             400,
         )
+
+    user = db.get(User, record.user_id)
+    if user is None:
+        raise AuthError(
+            "invalid_verification_token",
+            "Link de verificação inválido ou já utilizado.",
+            400,
+        )
+
+    # Idempotent success: already-confirmed account with a consumed token.
+    if record.used_at is not None:
+        if user.email_verified_at is not None:
+            return
+        raise AuthError(
+            "invalid_verification_token",
+            "Link de verificação inválido ou já utilizado.",
+            400,
+        )
+
     expires_at = record.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
@@ -147,13 +166,14 @@ def confirm_email_verification(db: Session, *, token: str) -> None:
             "Este link de verificação expirou. Solicite um novo.",
             400,
         )
-    user = db.get(User, record.user_id)
-    if user is None:
-        raise AuthError(
-            "invalid_verification_token",
-            "Link de verificação inválido ou já utilizado.",
-            400,
-        )
+
+    # Already verified by another path: consume this token and succeed.
+    if user.email_verified_at is not None:
+        record.used_at = now
+        db.add(record)
+        db.commit()
+        return
+
     user.email_verified_at = now
     record.used_at = now
     db.add(user)

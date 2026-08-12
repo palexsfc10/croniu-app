@@ -77,7 +77,10 @@ def test_email_verification_flow(client, register_payload, db_session):
         "/api/v1/auth/email-verification/confirm",
         json={"token": token},
     )
-    assert again.status_code == 400
+    # Idempotent: already confirmed + consumed token still succeeds.
+    assert again.status_code == 200
+    db_session.refresh(user)
+    assert user.email_verified_at is not None
 
 
 def test_email_verification_unknown_email_no_enumeration(client):
@@ -138,6 +141,211 @@ def test_email_verification_required_blocks_login_and_session(client, register_p
     assert client.get("/api/v1/auth/me").status_code == 200
 
     monkeypatch.delenv("EMAIL_VERIFICATION_REQUIRED", raising=False)
+    get_settings.cache_clear()
+
+
+def test_email_verification_invalid_and_expired_tokens(client, register_payload, db_session, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from app.models.email_verification_token import EmailVerificationToken
+
+    reset_email_provider_cache()
+    public_rate_limiter.reset()
+    monkeypatch.setenv("EMAIL_VERIFICATION_REQUIRED", "true")
+    get_settings.cache_clear()
+
+    client.post("/api/v1/auth/register", json=register_payload)
+    bad = client.post(
+        "/api/v1/auth/email-verification/confirm",
+        json={"token": "token-invalido-sem-chance-de-existir"},
+    )
+    assert bad.status_code == 400
+    assert bad.json()["code"] == "invalid_verification_token"
+
+    token = client.post(
+        "/api/v1/auth/email-verification/request",
+        json={"email": register_payload["email"]},
+    ).json()["dev_verification_token"]
+    user = db_session.scalar(select(User).where(User.email == register_payload["email"]))
+    assert user is not None
+    record = db_session.scalars(
+        select(EmailVerificationToken)
+        .where(EmailVerificationToken.user_id == user.id)
+        .order_by(EmailVerificationToken.created_at.desc())
+    ).first()
+    assert record is not None
+    record.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    db_session.add(record)
+    db_session.commit()
+
+    expired = client.post(
+        "/api/v1/auth/email-verification/confirm",
+        json={"token": token},
+    )
+    assert expired.status_code == 400
+    assert expired.json()["code"] == "expired_verification_token"
+    db_session.refresh(user)
+    assert user.email_verified_at is None
+
+    monkeypatch.delenv("EMAIL_VERIFICATION_REQUIRED", raising=False)
+    get_settings.cache_clear()
+
+
+def test_email_verification_resend_invalidates_previous_token(client, register_payload, db_session):
+    reset_email_provider_cache()
+    public_rate_limiter.reset()
+    client.post("/api/v1/auth/register", json=register_payload)
+    first = client.post(
+        "/api/v1/auth/email-verification/request",
+        json={"email": register_payload["email"]},
+    ).json()["dev_verification_token"]
+    second = client.post(
+        "/api/v1/auth/email-verification/request",
+        json={"email": register_payload["email"]},
+    ).json()["dev_verification_token"]
+    assert first and second and first != second
+
+    stale = client.post("/api/v1/auth/email-verification/confirm", json={"token": first})
+    assert stale.status_code == 400
+    assert stale.json()["code"] == "invalid_verification_token"
+
+    ok = client.post("/api/v1/auth/email-verification/confirm", json={"token": second})
+    assert ok.status_code == 200
+    user = db_session.scalar(select(User).where(User.email == register_payload["email"]))
+    assert user is not None
+    assert user.email_verified_at is not None
+
+
+def test_password_reset_does_not_confirm_pending_email(client, register_payload, db_session, monkeypatch):
+    reset_email_provider_cache()
+    public_rate_limiter.reset()
+    monkeypatch.setenv("EMAIL_VERIFICATION_REQUIRED", "true")
+    get_settings.cache_clear()
+
+    client.post("/api/v1/auth/register", json=register_payload)
+    requested = client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": register_payload["email"]},
+    )
+    assert requested.status_code == 200
+    token = requested.json()["dev_reset_token"]
+    assert token
+
+    new_password = "NovaSenhaForte9!"
+    confirmed = client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": token, "password": new_password},
+    )
+    assert confirmed.status_code == 200
+
+    user = db_session.scalar(select(User).where(User.email == register_payload["email"]))
+    assert user is not None
+    assert user.email_verified_at is None
+
+    denied = client.post(
+        "/api/v1/auth/login",
+        json={"email": register_payload["email"], "password": new_password},
+    )
+    assert denied.status_code == 403
+    assert denied.json()["code"] == "email_unverified"
+
+    monkeypatch.delenv("EMAIL_VERIFICATION_REQUIRED", raising=False)
+    get_settings.cache_clear()
+
+
+def test_password_reset_works_after_email_confirmed(client, register_payload, monkeypatch):
+    reset_email_provider_cache()
+    public_rate_limiter.reset()
+    monkeypatch.setenv("EMAIL_VERIFICATION_REQUIRED", "true")
+    get_settings.cache_clear()
+
+    client.post("/api/v1/auth/register", json=register_payload)
+    verify_token = client.post(
+        "/api/v1/auth/email-verification/request",
+        json={"email": register_payload["email"]},
+    ).json()["dev_verification_token"]
+    assert (
+        client.post("/api/v1/auth/email-verification/confirm", json={"token": verify_token}).status_code
+        == 200
+    )
+
+    reset_token = client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": register_payload["email"]},
+    ).json()["dev_reset_token"]
+    new_password = "OutraSenhaForte8!"
+    assert (
+        client.post(
+            "/api/v1/auth/password-reset/confirm",
+            json={"token": reset_token, "password": new_password},
+        ).status_code
+        == 200
+    )
+
+    old = client.post(
+        "/api/v1/auth/login",
+        json={"email": register_payload["email"], "password": register_payload["password"]},
+    )
+    assert old.status_code == 401
+    ok = client.post(
+        "/api/v1/auth/login",
+        json={"email": register_payload["email"], "password": new_password},
+    )
+    assert ok.status_code == 200
+
+    monkeypatch.delenv("EMAIL_VERIFICATION_REQUIRED", raising=False)
+    get_settings.cache_clear()
+
+
+def test_provider_failure_does_not_mark_email_verified(client, register_payload, db_session, monkeypatch):
+    reset_email_provider_cache()
+    public_rate_limiter.reset()
+
+    class BoomProvider:
+        def send(self, message):  # noqa: ANN001
+            raise RuntimeError("provider down")
+
+    monkeypatch.setattr("app.services.email_flow.get_email_provider", lambda _settings: BoomProvider())
+    created = client.post("/api/v1/auth/register", json=register_payload)
+    assert created.status_code == 201
+    user = db_session.scalar(select(User).where(User.email == register_payload["email"]))
+    assert user is not None
+    assert user.email_verified_at is None
+
+
+def test_email_verification_link_uses_app_public_url(register_payload, monkeypatch):
+    from app.email.messages import email_verification_email
+
+    message = email_verification_email(
+        to=register_payload["email"],
+        token="tok",
+        app_public_url="https://app.croniu.com.br",
+        reply_to=None,
+        idempotency_key="k",
+    )
+    assert "https://app.croniu.com.br/verify-email?token=tok" in message.text_body
+    assert "hml" not in message.text_body.lower()
+
+
+def test_production_email_from_must_use_send_domain(monkeypatch):
+    from app.config import Settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("CRONIU_ENV", "production")
+    monkeypatch.setenv("EMAIL_PROVIDER", "resend")
+    monkeypatch.setenv("EMAIL_FROM", "Croniu <no-reply@croniu.com.br>")
+    settings = Settings()
+    with pytest.raises(ValueError, match="send.croniu.com.br"):
+        settings.validate_production_email_from()
+
+    monkeypatch.setenv("EMAIL_FROM", "Croniu <no-reply@send.croniu.com.br>")
+    ok = Settings()
+    ok.validate_production_email_from()
+    assert ok.email_from_domain == "send.croniu.com.br"
+
+    monkeypatch.delenv("CRONIU_ENV", raising=False)
+    monkeypatch.delenv("EMAIL_PROVIDER", raising=False)
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
     get_settings.cache_clear()
 
 

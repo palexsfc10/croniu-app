@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiFetch, type MeResponse } from "@/lib/api";
@@ -18,8 +18,10 @@ function valuesFromForm(form: HTMLFormElement): LoginValues {
   };
 }
 
-export function LoginForm() {
+function LoginFormInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const verified = searchParams.get("verified") === "1";
   const [formError, setFormError] = useState<string | null>(null);
   const {
     register,
@@ -63,6 +65,14 @@ export function LoginForm() {
       noValidate
     >
       <div className="space-y-4">
+        {verified ? (
+          <p
+            role="status"
+            className="rounded-[var(--radius-sm)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-ink)]"
+          >
+            E-mail confirmado. Entre com sua senha para acessar o Croniu.
+          </p>
+        ) : null}
         <TextField
           label="E-mail"
           type="email"
@@ -83,7 +93,13 @@ export function LoginForm() {
           error={errors.password?.message}
           {...register("password")}
         />
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link
+            href="/verify-email"
+            className="text-sm font-semibold text-[var(--color-primary)] underline-offset-2 hover:underline"
+          >
+            Reenviar verificação
+          </Link>
           <Link
             href="/forgot-password"
             className="text-sm font-semibold text-[var(--color-primary)] underline-offset-2 hover:underline"
@@ -96,7 +112,13 @@ export function LoginForm() {
             role="alert"
             className="rounded-[var(--radius-sm)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
           >
-            {formError}
+            {formError}{" "}
+            <Link
+              href="/verify-email"
+              className="font-semibold underline underline-offset-2"
+            >
+              Abrir verificação
+            </Link>
           </p>
         ) : null}
       </div>
@@ -115,5 +137,13 @@ export function LoginForm() {
         </p>
       </div>
     </form>
+  );
+}
+
+export function LoginForm() {
+  return (
+    <Suspense fallback={<p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>}>
+      <LoginFormInner />
+    </Suspense>
   );
 }
