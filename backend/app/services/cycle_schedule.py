@@ -162,6 +162,7 @@ def find_occurrence_conflicts(
     *,
     organization_id: uuid.UUID,
     occurrences: list[Occurrence],
+    exclude_cycle_id: uuid.UUID | None = None,
 ) -> list[ConflictHit]:
     hits: list[ConflictHit] = []
     for occ in occurrences:
@@ -170,6 +171,7 @@ def find_occurrence_conflicts(
             organization_id=organization_id,
             starts_at=occ.starts_at,
             ends_at=occ.ends_at,
+            exclude_cycle_id=exclude_cycle_id,
         )
         if rows:
             hits.append(ConflictHit(occurrence=occ, conflicting=rows))
