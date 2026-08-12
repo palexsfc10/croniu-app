@@ -198,7 +198,9 @@ describe("Official favicon assets", () => {
     const body = JSON.parse(readFileSync(manifest, "utf8")) as {
       icons: Array<{ src: string }>;
     };
-    expect(body.icons.some((entry) => entry.src.includes("/icons/icon-192.png"))).toBe(true);
-    expect(body.icons.some((entry) => entry.src.includes("/icons/icon-512.png"))).toBe(true);
+    expect(body.icons.some((entry) => entry.src.includes("/icons/icon-192-v3.png"))).toBe(true);
+    expect(body.icons.some((entry) => entry.src.includes("/icons/icon-512-v3.png"))).toBe(true);
+    expect(body.icons.some((entry) => entry.src.includes("maskable"))).toBe(true);
+    expect(body.icons.every((entry) => !entry.src.endsWith("/icons/icon-192.png"))).toBe(true);
   });
 });
