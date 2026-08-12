@@ -380,8 +380,19 @@ def create_intelligent_cycle(
         tz=tz,
     )
     planned = [(o.starts_at, o.ends_at) for o in occurrences]
+    # Renewal approval will end the source cycle and cancel its future scheduled
+    # appointments after create. Exclude that source from conflict detection so a
+    # legitimate same-slot renewal is not blocked by appointments about to be cancelled.
+    exclude_cycle_id = (
+        renewal_row.source_cycle_id
+        if renewal_row is not None and renewal_row.source_cycle_id is not None
+        else None
+    )
     hits = schedule_svc.find_occurrence_conflicts(
-        db, organization_id=organization_id, occurrences=occurrences
+        db,
+        organization_id=organization_id,
+        occurrences=occurrences,
+        exclude_cycle_id=exclude_cycle_id,
     )
     if hits:
         all_conflicts = []
