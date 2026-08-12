@@ -52,7 +52,10 @@ grep -q 'container_name: croniu-prd-db' deploy/prd/compose.prd.yaml
 grep -q 'name: croniu-prd-postgres-data' deploy/prd/compose.prd.yaml
 grep -q 'name: croniu-prd-network' deploy/prd/compose.prd.yaml
 grep -q '127.0.0.1:\${API_HOST_PORT}' deploy/prd/compose.prd.yaml
-pass "PRD exclusive containers/network/volume + loopback"
+grep -q 'container_name: croniu-prd-cloudflared' deploy/prd/compose.prd.yaml
+grep -q 'profiles: \["edge"\]' deploy/prd/compose.prd.yaml
+grep -q '^CLOUDFLARE_TUNNEL_TOKEN=' deploy/prd/env.prd.example
+pass "PRD exclusive containers/network/volume + loopback + edge cloudflared"
 
 # --- 8/9: Port preflight ---
 # --- 8/9: Port contract (unit — no jq/docker required) ---

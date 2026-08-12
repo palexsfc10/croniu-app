@@ -14,6 +14,11 @@ performs local/public smoke checks. It writes `RELEASE_MANIFEST.json` only after
 success. A failed deployment attempts to restore the images from the preceding
 release state; database migrations are not automatically reversed.
 
+`deploy.sh` and `rollback.sh` never pass Compose profile `edge`. The optional
+Cloudflare Tunnel connector (`croniu-prd-cloudflared`) stays stopped until an
+operator starts it explicitly — see `deploy/prd/README.md`. Application rollback
+does not create, destroy, or reconfigure Tunnel, DNS, or Cloudflare Access.
+
 Run `backup.sh` manually with the same exported deployment variables to create a
 verified database backup. Keep manifests and backups in server-controlled,
 access-restricted locations.

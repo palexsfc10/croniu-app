@@ -16,6 +16,7 @@ export CRONIU_API_IMAGE="$api_image" CRONIU_WEB_IMAGE="$web_image" CRONIU_ADMIN_
 
 log "Rolling back application containers to prior immutable images"
 log "NOTE: rollback does not reverse irreversible Alembic migrations; restore from backup if schema changed."
+log "NOTE: rollback does not start/stop Cloudflare Tunnel, DNS, or Access; edge connector is independent."
 # Pull only when the image is not already present locally (local tags / prior digests).
 for img in "$api_image" "$web_image" "$admin_image"; do
   if docker image inspect "$img" >/dev/null 2>&1; then
