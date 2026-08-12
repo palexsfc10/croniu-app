@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     email_provider: str = Field(default="fake", alias="EMAIL_PROVIDER")
     resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
     email_from: str = Field(
-        default="Croniu <no-reply@croniu.com.br>",
+        default="Croniu <no-reply@send.croniu.com.br>",
         alias="EMAIL_FROM",
     )
     email_reply_to: str = Field(default="", alias="EMAIL_REPLY_TO")
@@ -194,6 +194,26 @@ class Settings(BaseSettings):
     @property
     def is_production_like(self) -> bool:
         return self.croniu_env.lower() in {"production", "hml", "staging"}
+
+    @property
+    def email_from_domain(self) -> str:
+        raw = self.email_from or ""
+        start = raw.rfind("@")
+        if start < 0:
+            return ""
+        end = raw.find(">", start)
+        return (raw[start + 1 :] if end < 0 else raw[start + 1 : end]).strip().lower()
+
+    def validate_production_email_from(self) -> None:
+        """Refuse PRD Resend sender outside the verified Croniu mail domain."""
+        if self.croniu_env.lower() != "production":
+            return
+        if (self.email_provider or "").strip().lower() != "resend":
+            return
+        if self.email_from_domain != "send.croniu.com.br":
+            raise ValueError(
+                "EMAIL_FROM must use @send.croniu.com.br in production when EMAIL_PROVIDER=resend"
+            )
 
     @property
     def voice_mime_allowlist(self) -> set[str]:

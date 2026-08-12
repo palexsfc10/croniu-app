@@ -35,6 +35,7 @@ async def lifespan(_app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    settings.validate_production_email_from()
     app = FastAPI(
         title="Croniu API",
         version="0.1.0",
