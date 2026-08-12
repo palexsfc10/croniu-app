@@ -8,9 +8,11 @@ import json as json_lib
 import logging
 from datetime import date, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
+from app.billing.asaas_url import normalize_asaas_api_url
 from app.billing.checkout_helpers import (
     ASAAS_CHECKOUT_ITEM_IMAGE_BASE64,
     format_asaas_next_due_date,
@@ -140,14 +142,22 @@ class AsaasBillingProvider:
         webhook_token: str | None = None,
         timeout: float = 30.0,
     ) -> None:
+        settings = get_settings()
         self.api_key = (
-            api_key if api_key is not None else get_settings().asaas_api_key
+            api_key if api_key is not None else settings.asaas_api_key
         ).strip()
+        raw_url = api_url if api_url is not None else settings.asaas_api_url
         self.api_url = (
-            api_url if api_url is not None else get_settings().asaas_api_url
-        ).rstrip("/") + "/"
+            normalize_asaas_api_url(
+                raw_url,
+                environment=settings.asaas_environment,
+            ).rstrip("/")
+            + "/"
+        )
         self.webhook_token = (
-            webhook_token if webhook_token is not None else get_settings().asaas_webhook_token
+            webhook_token
+            if webhook_token is not None
+            else settings.asaas_webhook_token
         ).strip()
         self.timeout = timeout
         if not self.api_key:
@@ -175,31 +185,63 @@ class AsaasBillingProvider:
         *,
         json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        with self._client() as client:
-            response = client.request(method, path.lstrip("/"), json=json)
-        if response.status_code >= 400:
-            payload = self._safe_json(response)
-            provider_errors = summarize_asaas_api_errors(payload)
-            # Path is the internal relative path only (never full URL / query / headers).
-            safe_path = str(path).split("?", 1)[0][:200]
+        safe_path = str(path).split("?", 1)[0][:200]
+        try:
+            with self._client() as client:
+                response = client.request(method, path.lstrip("/"), json=json)
+        except httpx.TimeoutException as exc:
             logger.warning(
-                "asaas_api_error path=%s provider_errors=%s",
+                "asaas_api_timeout path=%s base_host=%s",
                 safe_path,
-                json_lib.dumps(provider_errors, ensure_ascii=False),
-                extra={"status_code": response.status_code},
+                urlparse(self.api_url).netloc,
             )
             raise AuthError(
                 "billing_provider_error",
-                "Falha ao comunicar com o provedor de pagamento.",
+                "Não foi possível abrir o checkout agora. Aguarde alguns instantes "
+                "e tente novamente.",
+                status_code=504,
+                details={"stage": safe_path, "reason": "timeout"},
+            ) from exc
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "asaas_api_network path=%s err=%s base_host=%s",
+                safe_path,
+                type(exc).__name__,
+                urlparse(self.api_url).netloc,
+            )
+            raise AuthError(
+                "billing_provider_error",
+                "Não foi possível abrir o checkout agora. Aguarde alguns instantes "
+                "e tente novamente.",
                 status_code=502,
-                details={"provider_status": response.status_code},
+                details={"stage": safe_path, "reason": "network"},
+            ) from exc
+        if response.status_code >= 400:
+            payload = self._safe_json(response)
+            provider_errors = summarize_asaas_api_errors(payload)
+            logger.warning(
+                "asaas_api_error path=%s http=%s provider_errors=%s base_host=%s",
+                safe_path,
+                response.status_code,
+                json_lib.dumps(provider_errors, ensure_ascii=False),
+                urlparse(self.api_url).netloc,
+            )
+            # Never surface provider/Cloudflare HTML or English raw bodies to clients.
+            raise AuthError(
+                "billing_provider_error",
+                "Não foi possível abrir o checkout agora. Aguarde alguns instantes "
+                "e tente novamente.",
+                status_code=502,
+                details={"provider_status": response.status_code, "stage": safe_path},
             )
         data = self._safe_json(response)
         if not isinstance(data, dict):
             raise AuthError(
                 "billing_provider_error",
-                "Resposta inválida do provedor de pagamento.",
+                "Não foi possível abrir o checkout agora. Aguarde alguns instantes "
+                "e tente novamente.",
                 status_code=502,
+                details={"stage": safe_path, "reason": "invalid_json"},
             )
         return data
 

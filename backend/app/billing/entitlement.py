@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+import math
 from typing import Any
 import uuid
 
@@ -49,14 +50,23 @@ def compute_trial_days_remaining(
     *,
     now: datetime | None = None,
 ) -> int | None:
+    """Whole days remaining until trial expiry, rounded up while still valid.
+
+    ``timedelta.days`` truncates toward zero, so a fresh 7-day trial would show
+    ``6`` after the first second. Ceiling keeps ``7`` until fewer than 6 full
+    days remain, and ``1`` for any positive remainder under 24h.
+    """
     ends = _aware(trial_ends_at)
     if ends is None:
         return None
     current = now or datetime.now(UTC)
     if ends < current:
         return 0
-    delta = ends - current
-    return max(0, delta.days)
+    seconds = (ends - current).total_seconds()
+    if seconds <= 0:
+        # Still open when ends == now (is_trial_window_open uses >=).
+        return 1
+    return max(1, int(math.ceil(seconds / 86_400.0)))
 
 
 def is_trial_window_open(

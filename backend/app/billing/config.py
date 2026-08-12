@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
+from app.billing.asaas_url import normalize_asaas_api_url
 from app.config import get_settings
 from app.services.auth import AuthError
 
@@ -64,12 +65,15 @@ def validate_asaas_environment_config() -> tuple[bool, list[str]]:
     settings = get_settings()
     issues: list[str] = []
     env = (settings.asaas_environment or "").strip().lower()
-    url = (settings.asaas_api_url or "").strip().lower()
+    url = normalize_asaas_api_url(
+        settings.asaas_api_url or "",
+        environment=env,
+    ).lower()
 
     if env not in {"sandbox", "production"}:
         issues.append("asaas_environment_invalid")
 
-    if env == "sandbox" and ASAAS_SANDBOX_URL_MARKER not in url:
+    if env == "sandbox" and ASAAS_SANDBOX_URL_MARKER not in url and "api-sandbox.asaas.com" not in url:
         issues.append("sandbox_requires_sandbox_api_url")
 
     if env == "production" and ASAAS_SANDBOX_URL_MARKER in url:
@@ -110,7 +114,10 @@ def get_billing_runtime_status() -> BillingRuntimeStatus:
     return BillingRuntimeStatus(
         billing_enabled=bool(settings.billing_enabled),
         asaas_environment=env,
-        asaas_api_url=settings.asaas_api_url.strip(),
+        asaas_api_url=normalize_asaas_api_url(
+            settings.asaas_api_url,
+            environment=env,
+        ),
         asaas_credentials_present=creds,
         webhook_token_present=webhook,
         config_valid=config_ok,

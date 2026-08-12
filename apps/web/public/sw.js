@@ -1,6 +1,12 @@
 /* Minimal offline-capable shell for Croniu PWA foundation */
-const CACHE = "croniu-static-v1";
-const ASSETS = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
+const CACHE = "croniu-static-v3";
+const ASSETS = [
+  "/",
+  "/manifest.webmanifest",
+  "/icons/icon-192-v3.png",
+  "/icons/icon-512-v3.png",
+  "/icons/icon-512-maskable-v3.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()));

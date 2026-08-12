@@ -58,7 +58,7 @@ RESEND_API_KEY=${resend_key}
 EMAIL_FROM="Croniu <no-reply@example.test>"
 EMAIL_VERIFICATION_REQUIRED=$([ "$email_provider" = "resend" ] && echo true || echo false)
 ASAAS_ENVIRONMENT=production
-ASAAS_API_URL=https://api.asaas.com/api/v3
+ASAAS_API_URL=https://api.asaas.com/v3
 BILLING_ENABLED=false
 AI_ENABLED=false
 EOF

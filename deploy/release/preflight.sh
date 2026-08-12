@@ -92,7 +92,8 @@ if [[ "${ENVIRONMENT:-}" == "prd" ]]; then
   require_digest_image_ref CRONIU_WEB_IMAGE "${CRONIU_WEB_IMAGE:-}"
   require_digest_image_ref CRONIU_ADMIN_IMAGE "${CRONIU_ADMIN_IMAGE:-}"
   [[ "$asaas_env" == "production" ]] || die "ASAAS_ENVIRONMENT must be production in prd"
-  [[ "$asaas_url" == *"api.asaas.com"* ]] || die "ASAAS_API_URL must be production Asaas"
+  [[ "$asaas_url" == *"api.asaas.com/v3"* ]] || die "ASAAS_API_URL must be https://api.asaas.com/v3"
+  [[ "$asaas_url" != *"/api/v3"* ]] || die "ASAAS_API_URL must not use /api/v3 on api.asaas.com"
   [[ "$asaas_url" != *"sandbox"* ]] || die "ASAAS_API_URL must not be sandbox in prd"
   if [[ "$billing" == "true" || "$billing" == "1" || -z "$billing" ]]; then
     [[ -n "$(env_value ASAAS_API_KEY)" ]] || die "ASAAS_API_KEY required when billing enabled"
