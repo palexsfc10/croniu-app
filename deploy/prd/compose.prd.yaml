@@ -85,6 +85,35 @@ services:
     logging: *logging
     deploy: {resources: {limits: {memory: 512M}}}
 
+  # Optional Cloudflare Tunnel connector (profile: edge). Off by default.
+  # First loopback deploy / deploy.sh must NOT pass --profile edge.
+  # Prefer deploy/prd/edge_up.sh (fails closed if CLOUDFLARE_TUNNEL_TOKEN is empty).
+  # Note: Compose interpolates this file even when the profile is inactive, so
+  # CLOUDFLARE_TUNNEL_TOKEN uses ${...:-} (empty allowed) rather than :? here.
+  # Explicit activation:
+  #   ./deploy/prd/edge_up.sh
+  #   # or: docker compose ... --profile edge up -d cloudflared
+  # Stop connector without touching app/db:
+  #   docker compose ... --profile edge stop cloudflared
+  # Remote origins (configured in Cloudflare, not here):
+  #   app.croniu.com.br   -> http://web:3000
+  #   api.croniu.com.br   -> http://api:8000
+  #   admin.croniu.com.br -> http://admin:3000  (Cloudflare Access required before publish)
+  # Image pin: Docker Hub tag 2025.7.0 multi-arch manifest (never :latest).
+  # Auth: TUNNEL_TOKEN from env (official cloudflared contract); no credentials volume.
+  # Release upgrades recreate api/web/admin only; edge is independent and opt-in.
+  cloudflared:
+    profiles: ["edge"]
+    image: cloudflare/cloudflared@sha256:803b17adb5326a38ce397b9c9f374289ad290ee5526d204b5879a1423b6f5c3e
+    container_name: croniu-prd-cloudflared
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    networks: [croniu-prd-network]
+    logging: *logging
+    deploy: {resources: {limits: {memory: 256M}}}
+
 volumes:
   croniu-prd-postgres-data: {name: croniu-prd-postgres-data}
 

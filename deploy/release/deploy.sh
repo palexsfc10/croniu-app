@@ -73,6 +73,8 @@ else
   "$SCRIPT_DIR/backup.sh"
 fi
 
+# Never pass Compose profile "edge" here. Cloudflare Tunnel connector is opt-in
+# and must be started explicitly after loopback validation (see deploy/prd/README.md).
 log "Pulling immutable release images for $SHA"
 compose pull "$API_SERVICE" "$WEB_SERVICE" "$ADMIN_SERVICE"
 
