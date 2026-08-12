@@ -105,4 +105,27 @@ describe("PWA icon contract (v3 official Croniu C)", () => {
     expect(pngSize(apple)).toEqual({ width: 180, height: 180 });
     expect(sha256(icon)).toBe(sha256(icon512));
   });
+
+  it("ICON_MANIFEST_v3.json uses only repo-relative POSIX paths", () => {
+    const iconManifestPath = path.join(iconsDir, "ICON_MANIFEST_v3.json");
+    expect(existsSync(iconManifestPath)).toBe(true);
+    const raw = readFileSync(iconManifestPath, "utf8");
+    expect(raw).not.toMatch(/^[A-Za-z]:[\\/]/m);
+    expect(raw).not.toMatch(/C:\\|C:\//);
+    expect(raw).not.toMatch(/\/home\/|\/Users\//);
+    const body = JSON.parse(raw) as {
+      source: string;
+      derivatives: Record<string, { path: string; sha256: string; bytes: number }>;
+    };
+    expect(body.source).toBe("assets/brand/croniu-c-official.png");
+    expect(path.isAbsolute(body.source)).toBe(false);
+    for (const entry of Object.values(body.derivatives)) {
+      expect(path.isAbsolute(entry.path)).toBe(false);
+      expect(entry.path.startsWith("apps/")).toBe(true);
+      expect(entry.path.includes("\\")).toBe(false);
+      expect(existsSync(path.join(repoRoot, entry.path))).toBe(true);
+      expect(entry.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(entry.bytes).toBeGreaterThan(0);
+    }
+  });
 });

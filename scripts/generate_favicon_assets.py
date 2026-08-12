@@ -26,6 +26,11 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _repo_rel(path: Path) -> str:
+    """POSIX path relative to repo root — never absolute machine paths."""
+    return path.resolve().relative_to(ROOT.resolve()).as_posix()
+
+
 def load_official_tile() -> Image.Image:
     if not SOURCE.is_file():
         raise FileNotFoundError(f"Official Croniu C missing: {SOURCE}")
@@ -102,17 +107,39 @@ def main() -> None:
             legacy_path.unlink()
 
     report = {
-        "source": SOURCE.as_posix().replace("\\", "/"),
+        "source": _repo_rel(SOURCE),
         "source_sha256": _sha256(SOURCE),
         "icon_version": ICON_VERSION,
         "derivatives": {
-            key: {"path": path.as_posix().replace("\\", "/"), "sha256": _sha256(path), "bytes": path.stat().st_size}
+            key: {
+                "path": _repo_rel(path),
+                "sha256": _sha256(path),
+                "bytes": path.stat().st_size,
+            }
             for key, path in outputs.items()
         },
     }
     report_path = MANIFEST_ICON_DIR / f"ICON_MANIFEST_{ICON_VERSION}.json"
-    report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"ok": True, "report": report_path.as_posix(), **report}, indent=2))
+    report_path.write_text(
+        json.dumps(report, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+    # Console summary uses relative paths only (reproducible across OS).
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "report": _repo_rel(report_path),
+                "source": report["source"],
+                "icon_version": ICON_VERSION,
+                "derivatives": {
+                    k: {"path": v["path"], "sha256": v["sha256"], "bytes": v["bytes"]}
+                    for k, v in report["derivatives"].items()
+                },
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
