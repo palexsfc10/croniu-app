@@ -25,6 +25,7 @@ import {
   IconUsersRound,
 } from "@/components/ui/icons";
 import { BillingGate } from "@/components/billing/billing-gate";
+import { PwaInstallBanner } from "@/components/pwa/pwa-install-banner";
 
 const navItems: {
   href: string;
@@ -349,6 +350,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
+
+        <PwaInstallBanner />
 
         <main
           className={
