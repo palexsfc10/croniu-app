@@ -1,0 +1,52 @@
+{
+  "source": "assets/brand/croniu-c-official.png",
+  "source_sha256": "8fd16a4e296596a05cdab596e3a9beb218f0a7d048fbd31b3ad3d0011e9c6e12",
+  "icon_version": "v3",
+  "derivatives": {
+    "icon-192-v3.png": {
+      "path": "apps/web/public/icons/icon-192-v3.png",
+      "sha256": "717c764163a9052e63b2c8b799a8c06af73d5915fc93d44de112431072575323",
+      "bytes": 27973
+    },
+    "icon-512-v3.png": {
+      "path": "apps/web/public/icons/icon-512-v3.png",
+      "sha256": "84bd97b551ee7d0ecf31509a3d654b2b059d566abe7ae575ef92eec3917dd5e1",
+      "bytes": 206911
+    },
+    "icon-512-maskable-v3.png": {
+      "path": "apps/web/public/icons/icon-512-maskable-v3.png",
+      "sha256": "d3c87f110f5f9bc2c4c661faaca7c5da6f55daad94bbc202878735068816c3e4",
+      "bytes": 119803
+    },
+    "web/icon.png": {
+      "path": "apps/web/src/app/icon.png",
+      "sha256": "84bd97b551ee7d0ecf31509a3d654b2b059d566abe7ae575ef92eec3917dd5e1",
+      "bytes": 206911
+    },
+    "web/apple-icon.png": {
+      "path": "apps/web/src/app/apple-icon.png",
+      "sha256": "528e840ad8424d99b8b465bf8976022ab535ce6caf1ecf464aafd3ff532d0418",
+      "bytes": 24486
+    },
+    "web/favicon.ico": {
+      "path": "apps/web/src/app/favicon.ico",
+      "sha256": "2642ededadb9ffd715d4393efae2cbc52214194096b3f13375bfa8942233d610",
+      "bytes": 4530
+    },
+    "admin/icon.png": {
+      "path": "apps/admin/src/app/icon.png",
+      "sha256": "84bd97b551ee7d0ecf31509a3d654b2b059d566abe7ae575ef92eec3917dd5e1",
+      "bytes": 206911
+    },
+    "admin/apple-icon.png": {
+      "path": "apps/admin/src/app/apple-icon.png",
+      "sha256": "528e840ad8424d99b8b465bf8976022ab535ce6caf1ecf464aafd3ff532d0418",
+      "bytes": 24486
+    },
+    "admin/favicon.ico": {
+      "path": "apps/admin/src/app/favicon.ico",
+      "sha256": "2642ededadb9ffd715d4393efae2cbc52214194096b3f13375bfa8942233d610",
+      "bytes": 4530
+    }
+  }
+}

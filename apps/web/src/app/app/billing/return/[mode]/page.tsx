@@ -6,6 +6,10 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import type { BillingEntitlement } from "@/lib/billing";
+import {
+  paymentStatusLabel,
+  subscriptionStatusLabel,
+} from "@/lib/billing-labels";
 
 const POLL_INTERVAL_MS = 4000;
 const POLL_MAX_MS = 90_000;
@@ -102,7 +106,8 @@ export default function BillingReturnPage() {
       ) : null}
       {ent ? (
         <p className="text-sm text-[var(--color-ink-muted)]">
-          Status · {ent.subscription_status} · setup · {ent.billing_setup_status}
+          {subscriptionStatusLabel(ent.subscription_status)} ·{" "}
+          {paymentStatusLabel(ent.payment_status, ent.subscription_status)}
         </p>
       ) : null}
       <div className="flex flex-col gap-2 sm:flex-row">

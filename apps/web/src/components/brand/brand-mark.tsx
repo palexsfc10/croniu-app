@@ -19,9 +19,10 @@ export type BrandMarkProps = Omit<
 };
 
 /**
- * Croniu app mark (letter C, transparent cutout for UI).
- * Asset: public/brand/croniu-mark.png (derived from assets/*.png).
- * Favicon/PWA keep the solid tile variants under public/icons and app/*.
+ * Croniu app mark (letter C, transparent cutout for UI chrome).
+ * Asset: public/brand/croniu-mark.png (UI cutout only).
+ * Official solid tile for favicon/PWA: assets/brand/croniu-c-official.png
+ * → public/icons/icon-*-v3.png (see scripts/generate_favicon_assets.py).
  */
 export function BrandMark({
   size = "sm",

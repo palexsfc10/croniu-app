@@ -1,13 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, formatBRL } from "@/lib/api";
 import type { BillingCheckout, BillingEntitlement } from "@/lib/billing";
-import { formatBRL } from "@/lib/api";
+import {
+  CHECKOUT_TEMPORARY_ERROR,
+  CHECKOUT_VERIFYING,
+  isAllowedAsaasCheckoutUrl,
+  sanitizeBillingErrorMessage,
+} from "@/lib/billing-errors";
+import {
+  paymentStatusLabel,
+  subscriptionStatusLabel,
+  trialRemainingLabel,
+} from "@/lib/billing-labels";
 
 function setupLabel(status: string) {
   switch (status) {
@@ -30,6 +40,7 @@ export default function BillingPage() {
   const [ent, setEnt] = useState<BillingEntitlement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [form, setForm] = useState({
     cpf_cnpj: "",
     phone: "",
@@ -43,7 +54,7 @@ export default function BillingPage() {
   async function load() {
     const result = await apiFetch<BillingEntitlement>("/api/v1/billing/entitlement");
     if (result.error) {
-      setError(result.error.message);
+      setError(sanitizeBillingErrorMessage(result.error.message));
       return;
     }
     setEnt(result.data ?? null);
@@ -57,27 +68,36 @@ export default function BillingPage() {
   }, []);
 
   async function startCheckout() {
+    if (inFlight.current || busy) {
+      setError(CHECKOUT_VERIFYING);
+      return;
+    }
+    inFlight.current = true;
     setBusy(true);
     setError(null);
-    const result = await apiFetch<BillingCheckout>("/api/v1/billing/checkout", {
-      method: "POST",
-      body: JSON.stringify({
-        billing_method: "credit_card",
-        customer: form,
-      }),
-    });
-    setBusy(false);
-    if (result.error) {
-      setError(result.error.message);
-      return;
+    try {
+      const result = await apiFetch<BillingCheckout>("/api/v1/billing/checkout", {
+        method: "POST",
+        body: JSON.stringify({
+          billing_method: "credit_card",
+          customer: form,
+        }),
+      });
+      if (result.error) {
+        setError(sanitizeBillingErrorMessage(result.error.message) || CHECKOUT_TEMPORARY_ERROR);
+        return;
+      }
+      const url = result.data?.checkout_url;
+      if (url && isAllowedAsaasCheckoutUrl(url)) {
+        window.location.href = url;
+        return;
+      }
+      setError(CHECKOUT_TEMPORARY_ERROR);
+      await load();
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
-    const url = result.data?.checkout_url;
-    if (url) {
-      window.location.href = url;
-      return;
-    }
-    setError("Checkout criado sem URL. Tente novamente.");
-    await load();
   }
 
   if (!ent && !error) {
@@ -88,6 +108,12 @@ export default function BillingPage() {
   const cardOn = Boolean(ent?.card_enabled);
   const canResume = Boolean(ent?.can_resume_checkout && ent.resume_checkout_url);
   const canStart = Boolean(ent?.can_start_checkout && cardOn);
+  const trialLabel = trialRemainingLabel(ent?.trial_days_remaining);
+  const isTrial = (ent?.subscription_status || "").toLowerCase() === "trial";
+  const resumeUrl =
+    canResume && isAllowedAsaasCheckoutUrl(ent?.resume_checkout_url)
+      ? ent!.resume_checkout_url!
+      : null;
 
   return (
     <div className="mx-auto max-w-lg space-y-4 animate-fade-up">
@@ -100,7 +126,10 @@ export default function BillingPage() {
       </div>
 
       {error ? (
-        <p role="alert" className="rounded-[var(--radius-md)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]">
+        <p
+          role="alert"
+          className="rounded-[var(--radius-md)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
+        >
           {error}
         </p>
       ) : null}
@@ -108,28 +137,25 @@ export default function BillingPage() {
       {ent ? (
         <section className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <p className="text-sm font-semibold text-[var(--color-ink)]">
-            {setupLabel(ent.billing_setup_status)}
+            {isTrial
+              ? subscriptionStatusLabel(ent.subscription_status)
+              : setupLabel(ent.billing_setup_status)}
           </p>
           <p className="text-sm text-[var(--color-ink-muted)]">
-            Status · {ent.subscription_status}
-            {ent.trial_days_remaining != null
-              ? ` · ${ent.trial_days_remaining} dia(s) de trial restantes`
-              : ""}
+            {subscriptionStatusLabel(ent.subscription_status)}
+            {isTrial && trialLabel ? ` · ${trialLabel}` : ""}
           </p>
           <p className="text-sm text-[var(--color-ink-muted)]">
-            Pagamento · {ent.payment_status || "none"}
+            Pagamento · {paymentStatusLabel(ent.payment_status, ent.subscription_status)}
           </p>
           {!cardOn ? (
-            <p className="text-sm text-[var(--color-warning)]">
-              Checkout com cartão ainda não está liberado neste ambiente. Em breve você
-              poderá assinar por aqui.
-            </p>
+            <p className="text-sm text-[var(--color-warning)]">{CHECKOUT_TEMPORARY_ERROR}</p>
           ) : null}
         </section>
       ) : null}
 
-      {canResume ? (
-        <a href={ent!.resume_checkout_url!} className="block">
+      {resumeUrl ? (
+        <a href={resumeUrl} className="block">
           <Button fullWidth>Continuar checkout</Button>
         </a>
       ) : null}
@@ -148,44 +174,51 @@ export default function BillingPage() {
             value={form.cpf_cnpj}
             onChange={(e) => setForm({ ...form, cpf_cnpj: e.target.value })}
             required
+            disabled={busy}
           />
           <TextField
             label="Telefone"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
             required
+            disabled={busy}
           />
           <TextField
             label="CEP"
             value={form.postal_code}
             onChange={(e) => setForm({ ...form, postal_code: e.target.value })}
             required
+            disabled={busy}
           />
           <TextField
             label="Endereço"
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
             required
+            disabled={busy}
           />
           <TextField
             label="Número"
             value={form.address_number}
             onChange={(e) => setForm({ ...form, address_number: e.target.value })}
             required
+            disabled={busy}
           />
           <TextField
             label="Bairro"
             value={form.province}
             onChange={(e) => setForm({ ...form, province: e.target.value })}
             required
+            disabled={busy}
           />
           <TextField
             label="Complemento"
             value={form.complement}
             onChange={(e) => setForm({ ...form, complement: e.target.value })}
+            disabled={busy}
           />
           <Button fullWidth type="submit" disabled={busy}>
-            {busy ? "Abrindo checkout…" : "Assinar com cartão"}
+            {busy ? "Abrindo checkout…" : `Assinar por ${formatBRL(amount)}/mês`}
           </Button>
         </form>
       ) : null}

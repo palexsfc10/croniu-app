@@ -1,71 +1,144 @@
-"""Derive favicon/PWA icons from the canonical Croniu mark (no redesign)."""
+"""Derive favicon/PWA icons from the official Croniu C tile (no redesign).
+
+Source of truth (do not replace):
+  assets/brand/croniu-c-official.png
+
+UI cutout mark (unchanged by this script):
+  apps/web/public/brand/croniu-mark.png
+"""
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "apps/web/public/brand/croniu-mark.png"
+SOURCE = ROOT / "assets/brand/croniu-c-official.png"
+# Versioned public names — bump ICON_VERSION to bust PWA/OS caches.
+ICON_VERSION = "v3"
+MANIFEST_ICON_DIR = ROOT / "apps/web/public/icons"
 
 
-def _transparent_mark() -> Image.Image:
-    mark = Image.open(SOURCE).convert("RGBA")
-    pixels = mark.load()
-    width, height = mark.size
-    for y in range(height):
-        for x in range(width):
-            r, g, b, a = pixels[x, y]
-            # Solid black tile behind the C → transparent for favicon/PWA.
-            if r < 25 and g < 25 and b < 25:
-                pixels[x, y] = (r, g, b, 0)
-    return mark
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def fit(mark: Image.Image, size: int) -> Image.Image:
-    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    pad = max(1, size // 12)
-    inner = size - 2 * pad
-    scaled = mark.copy()
-    scaled.thumbnail((inner, inner), Image.Resampling.LANCZOS)
-    ox = (size - scaled.width) // 2
-    oy = (size - scaled.height) // 2
-    canvas.paste(scaled, (ox, oy), scaled)
+def _repo_rel(path: Path) -> str:
+    """POSIX path relative to repo root — never absolute machine paths."""
+    return path.resolve().relative_to(ROOT.resolve()).as_posix()
+
+
+def load_official_tile() -> Image.Image:
+    if not SOURCE.is_file():
+        raise FileNotFoundError(f"Official Croniu C missing: {SOURCE}")
+    img = Image.open(SOURCE).convert("RGBA")
+    # Source is an opaque navy tile; keep as-is (no recolor / no redraw).
+    return img
+
+
+def sample_background(tile: Image.Image) -> tuple[int, int, int, int]:
+    px = tile.convert("RGBA")
+    # Corners of the official tile define the identity background.
+    return px.getpixel((2, 2))
+
+
+def fit_any(tile: Image.Image, size: int) -> Image.Image:
+    """Full-bleed resize for purpose=any (preserve official tile)."""
+    return tile.resize((size, size), Image.Resampling.LANCZOS)
+
+
+def fit_maskable(tile: Image.Image, size: int, content_ratio: float = 0.72) -> Image.Image:
+    """Maskable: same navy bg, glyph inset so Android circular crop keeps the C."""
+    bg = sample_background(tile)
+    canvas = Image.new("RGBA", (size, size), bg)
+    inner = max(1, int(round(size * content_ratio)))
+    scaled = tile.resize((inner, inner), Image.Resampling.LANCZOS)
+    ox = (size - inner) // 2
+    oy = (size - inner) // 2
+    canvas.alpha_composite(scaled, (ox, oy))
     return canvas
 
 
-def write_ico(path: Path, mark: Image.Image, sizes: tuple[int, ...] = (16, 32, 48)) -> None:
-    # Pillow writes a multi-resolution ICO from the largest canvas + sizes=.
-    largest = fit(mark, max(sizes))
+def write_ico(path: Path, tile: Image.Image, sizes: tuple[int, ...] = (16, 32, 48)) -> None:
+    largest = fit_any(tile, max(sizes))
     largest.save(path, format="ICO", sizes=[(s, s) for s in sizes])
 
 
 def main() -> None:
-    mark = _transparent_mark()
+    tile = load_official_tile()
     web_app = ROOT / "apps/web/src/app"
     admin_app = ROOT / "apps/admin/src/app"
-    icons_dir = ROOT / "apps/web/public/icons"
-    icons_dir.mkdir(parents=True, exist_ok=True)
+    MANIFEST_ICON_DIR.mkdir(parents=True, exist_ok=True)
 
-    fit(mark, 512).save(web_app / "icon.png", optimize=True)
-    fit(mark, 180).save(web_app / "apple-icon.png", optimize=True)
-    fit(mark, 192).save(icons_dir / "icon-192.png", optimize=True)
-    fit(mark, 512).save(icons_dir / "icon-512.png", optimize=True)
-    write_ico(web_app / "favicon.ico", mark)
+    outputs: dict[str, Path] = {
+        f"icon-192-{ICON_VERSION}.png": MANIFEST_ICON_DIR / f"icon-192-{ICON_VERSION}.png",
+        f"icon-512-{ICON_VERSION}.png": MANIFEST_ICON_DIR / f"icon-512-{ICON_VERSION}.png",
+        f"icon-512-maskable-{ICON_VERSION}.png": MANIFEST_ICON_DIR
+        / f"icon-512-maskable-{ICON_VERSION}.png",
+        "web/icon.png": web_app / "icon.png",
+        "web/apple-icon.png": web_app / "apple-icon.png",
+        "web/favicon.ico": web_app / "favicon.ico",
+        "admin/icon.png": admin_app / "icon.png",
+        "admin/apple-icon.png": admin_app / "apple-icon.png",
+        "admin/favicon.ico": admin_app / "favicon.ico",
+    }
 
-    fit(mark, 512).save(admin_app / "icon.png", optimize=True)
-    fit(mark, 180).save(admin_app / "apple-icon.png", optimize=True)
-    write_ico(admin_app / "favicon.ico", mark)
+    fit_any(tile, 192).save(outputs[f"icon-192-{ICON_VERSION}.png"], optimize=True)
+    fit_any(tile, 512).save(outputs[f"icon-512-{ICON_VERSION}.png"], optimize=True)
+    fit_maskable(tile, 512).save(
+        outputs[f"icon-512-maskable-{ICON_VERSION}.png"], optimize=True
+    )
 
+    fit_any(tile, 512).save(outputs["web/icon.png"], optimize=True)
+    fit_any(tile, 180).save(outputs["web/apple-icon.png"], optimize=True)
+    write_ico(outputs["web/favicon.ico"], tile)
+
+    fit_any(tile, 512).save(outputs["admin/icon.png"], optimize=True)
+    fit_any(tile, 180).save(outputs["admin/apple-icon.png"], optimize=True)
+    write_ico(outputs["admin/favicon.ico"], tile)
+
+    # Remove legacy unversioned PWA names so the contract cannot drift.
+    for legacy in ("icon-192.png", "icon-512.png"):
+        legacy_path = MANIFEST_ICON_DIR / legacy
+        if legacy_path.exists():
+            legacy_path.unlink()
+
+    report = {
+        "source": _repo_rel(SOURCE),
+        "source_sha256": _sha256(SOURCE),
+        "icon_version": ICON_VERSION,
+        "derivatives": {
+            key: {
+                "path": _repo_rel(path),
+                "sha256": _sha256(path),
+                "bytes": path.stat().st_size,
+            }
+            for key, path in outputs.items()
+        },
+    }
+    report_path = MANIFEST_ICON_DIR / f"ICON_MANIFEST_{ICON_VERSION}.json"
+    report_path.write_text(
+        json.dumps(report, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+    # Console summary uses relative paths only (reproducible across OS).
     print(
-        "ok",
-        "web_favicon",
-        (web_app / "favicon.ico").stat().st_size,
-        "admin_favicon",
-        (admin_app / "favicon.ico").stat().st_size,
-        "source",
-        SOURCE.as_posix(),
+        json.dumps(
+            {
+                "ok": True,
+                "report": _repo_rel(report_path),
+                "source": report["source"],
+                "icon_version": ICON_VERSION,
+                "derivatives": {
+                    k: {"path": v["path"], "sha256": v["sha256"], "bytes": v["bytes"]}
+                    for k, v in report["derivatives"].items()
+                },
+            },
+            indent=2,
+        )
     )
 
 

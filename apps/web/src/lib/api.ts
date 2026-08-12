@@ -384,21 +384,45 @@ async function parseError(response: Response): Promise<ApiError> {
       detail?: string | { code?: string; message?: string; details?: unknown };
     };
     if (data?.code && data?.message) {
-      return { code: data.code, message: data.message, details: data.details };
+      return {
+        code: data.code,
+        message: sanitizePublicApiMessage(data.message),
+        details: data.details,
+      };
     }
     if (data?.detail && typeof data.detail === "object") {
       const detail = data.detail;
       if (detail.code && detail.message) {
-        return { code: detail.code, message: detail.message, details: detail.details };
+        return {
+          code: detail.code,
+          message: sanitizePublicApiMessage(detail.message),
+          details: detail.details,
+        };
       }
     }
     if (typeof data?.detail === "string" && data.detail.trim()) {
-      return { code: "http_error", message: data.detail };
+      return { code: "http_error", message: sanitizePublicApiMessage(data.detail) };
     }
   } catch {
-    // fall through
+    // Non-JSON (Cloudflare HTML, proxy junk) — never echo raw body.
   }
-  return { code: "unknown_error", message: "Não foi possível concluir a solicitação." };
+  return {
+    code: "unknown_error",
+    message: "Não foi possível concluir a solicitação.",
+  };
+}
+
+function sanitizePublicApiMessage(message: string): string {
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("cloudflare") ||
+    lower.includes("origin web server") ||
+    lower.includes("invalid or incomplete response") ||
+    lower.includes("<html")
+  ) {
+    return "Não foi possível concluir a solicitação.";
+  }
+  return message;
 }
 
 export async function apiFetch<T>(
