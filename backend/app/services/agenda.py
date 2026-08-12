@@ -344,6 +344,7 @@ def find_conflicts(
     starts_at: datetime,
     ends_at: datetime,
     exclude_appointment_id: uuid.UUID | None = None,
+    exclude_cycle_id: uuid.UUID | None = None,
 ) -> list[Appointment]:
     starts_at = _ensure_aware(starts_at)
     ends_at = _ensure_aware(ends_at)
@@ -360,6 +361,11 @@ def find_conflicts(
     )
     if exclude_appointment_id is not None:
         query = query.where(Appointment.id != exclude_appointment_id)
+    if exclude_cycle_id is not None:
+        # Keep NULL cycle_id rows (standalone appointments); drop only the excluded cycle.
+        query = query.where(
+            (Appointment.cycle_id.is_(None)) | (Appointment.cycle_id != exclude_cycle_id)
+        )
     return list(db.scalars(query).all())
 
 
