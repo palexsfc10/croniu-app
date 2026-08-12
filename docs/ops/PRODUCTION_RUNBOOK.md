@@ -70,7 +70,7 @@ Esta etapa **não** cria o PAT nem executa `docker login` — configurar antes d
 
 ## Resend
 
-- Remetente: `EMAIL_FROM=Croniu <no-reply@croniu.com.br>` (sem caixa contratada).
+- Remetente: `EMAIL_FROM=Croniu <no-reply@send.croniu.com.br>` (domínio Resend verificado `send.croniu.com.br`).
 - `EMAIL_REPLY_TO` pode ficar vazio no lançamento.
 - Provider: `EMAIL_PROVIDER=resend` em PRD; `fake` em testes.
 - Sem MX adicional além do necessário para autenticação de domínio no Resend.

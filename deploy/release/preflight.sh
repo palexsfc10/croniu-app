@@ -77,6 +77,9 @@ if [[ "${ENVIRONMENT:-}" == "prd" ]]; then
         die "RESEND_API_KEY looks like a placeholder; refuse when EMAIL_PROVIDER=resend"
       fi
       [[ -n "$(env_value EMAIL_FROM)" ]] || die "EMAIL_FROM must be set when EMAIL_PROVIDER=resend"
+      email_from_l="$(printf '%s' "$(env_value EMAIL_FROM)" | tr '[:upper:]' '[:lower:]')"
+      [[ "$email_from_l" == *"@send.croniu.com.br"* ]] ||
+        die "EMAIL_FROM must use @send.croniu.com.br in prd (verified Resend domain)"
       [[ "$verify_req" == "true" || "$verify_req" == "1" ]] ||
         die "EMAIL_VERIFICATION_REQUIRED must be true when EMAIL_PROVIDER=resend"
       ;;
