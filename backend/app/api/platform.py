@@ -28,6 +28,7 @@ from app.services.platform import (
     list_organizations,
     list_users,
 )
+from app.services.environment_label import normalize_croniu_env
 from app.services.platform_auth import (
     PlatformAuthContext,
     authenticate_platform_user,
@@ -43,6 +44,23 @@ from app.services.platform_auth import (
 )
 
 router = APIRouter(prefix="/platform", tags=["platform"])
+
+
+def _platform_me_response(
+    *,
+    user_id: uuid.UUID,
+    email: str,
+    full_name: str,
+    role: str,
+    settings: Settings,
+) -> PlatformMeResponse:
+    return PlatformMeResponse(
+        id=user_id,
+        email=email,
+        full_name=full_name,
+        role=role,
+        environment=normalize_croniu_env(settings.croniu_env),
+    )
 
 
 def _http_error(exc: AuthError) -> HTTPException:
@@ -89,11 +107,12 @@ def platform_login(
         raise _http_error(exc) from exc
 
     set_platform_session_cookie(response, token, settings)
-    return PlatformMeResponse(
-        id=user.id,
+    return _platform_me_response(
+        user_id=user.id,
         email=user.email,
         full_name=user.full_name,
         role=membership.role,
+        settings=settings,
     )
 
 
@@ -128,12 +147,14 @@ def platform_logout(
 @router.get("/auth/me", response_model=PlatformMeResponse)
 def platform_me(
     auth: PlatformAuthContext = Depends(get_current_platform_auth),
+    settings: Settings = Depends(get_settings),
 ) -> PlatformMeResponse:
-    return PlatformMeResponse(
-        id=auth.user.id,
+    return _platform_me_response(
+        user_id=auth.user.id,
         email=auth.user.email,
         full_name=auth.user.full_name,
         role=auth.membership.role,
+        settings=settings,
     )
 
 

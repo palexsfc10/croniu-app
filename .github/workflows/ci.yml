@@ -95,6 +95,23 @@ jobs:
       - name: Assert browser API base stays same-origin
         run: |
           ! grep -RIn --include='*.js' --include='*.mjs' 'localhost:8010\|localhost:8000' .next/standalone || (echo "localhost baked into admin build" && exit 1)
+      - name: Assert PRD-oriented build has no HML hostnames or piloto hardcodes
+        run: |
+          set -euo pipefail
+          if grep -RIn --include='*.js' --include='*.mjs' --include='*.html' --include='*.json' \
+            -E 'croniu-hml\.ntws\.cloud|api-croniu-hml|Painel operacional do piloto' \
+            .next/standalone .next/static; then
+            echo "HML hostname or piloto hardcode found in admin build"
+            exit 1
+          fi
+          if grep -RIn --include='*.js' --include='*.mjs' -F '|| "hml"' .next/standalone; then
+            echo "silent hml fallback found in admin build"
+            exit 1
+          fi
+          if grep -RIn --include='*.js' --include='*.mjs' -F "|| 'hml'" .next/standalone; then
+            echo "silent hml fallback found in admin build"
+            exit 1
+          fi
 
   migrations-check:
     runs-on: ubuntu-latest

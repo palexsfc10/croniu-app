@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetch, type OrganizationDetail } from "@/lib/api";
+import { EnvironmentBadge } from "@/components/environment-identity";
+import { useAdminAuth } from "@/components/auth/admin-auth-provider";
 
 type TimelineEvent = {
   kind: string;
@@ -20,6 +22,7 @@ type Timeline = {
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ organizationId: string }>();
+  const { me } = useAdminAuth();
   const [data, setData] = useState<OrganizationDetail | null>(null);
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,9 +64,7 @@ export default function OrganizationDetailPage() {
       </Link>
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="h-display text-3xl">{data.name}</h1>
-        <span className="rounded bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold uppercase text-amber-800">
-          HML
-        </span>
+        <EnvironmentBadge environment={me?.environment} />
       </div>
       <dl className="grid gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:grid-cols-2">
         <div>

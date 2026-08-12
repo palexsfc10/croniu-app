@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch, type OverviewMetrics } from "@/lib/api";
+import { presentCroniuEnvironment } from "@/lib/environment";
 
 function MetricCard({
   label,
@@ -75,7 +76,7 @@ export default function DashboardPage() {
           <h1 className="h-display text-3xl">Visão operacional</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             Atualizado em {new Date(data.generated_at).toLocaleString("pt-BR")} · ambiente{" "}
-            {(data.environment || "hml").toUpperCase()}
+            {presentCroniuEnvironment(data.environment).headline}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">

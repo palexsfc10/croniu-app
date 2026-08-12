@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.models.agent import AgentPendingAction, AgentRun, AgentThread
 from app.models.billing import Subscription, SubscriptionStatus
 from app.models.membership import Membership
@@ -26,22 +26,59 @@ from app.schemas.platform import (
     mask_email,
 )
 from app.services import domain as domain_svc
+from app.services.environment_label import normalize_croniu_env
 from app.services.platform_pilot_ops import list_cycle_agenda_integrity
+
+
+def _count_professionals(db: Session) -> int:
+    """Distinct active users with at least one organizational membership."""
+    return (
+        db.scalar(
+            select(func.count(func.distinct(Membership.user_id)))
+            .select_from(Membership)
+            .join(User, User.id == Membership.user_id)
+            .where(User.account_status == "active")
+        )
+        or 0
+    )
+
+
+def _count_professional_registrations_since(db: Session, since: datetime) -> int:
+    """Distinct professionals whose first org membership was created at/after ``since`` (UTC).
+
+    Platform-only admins (no org membership) are excluded. Multiple orgs do not duplicate.
+    """
+    first_membership = (
+        select(
+            Membership.user_id.label("user_id"),
+            func.min(Membership.created_at).label("first_at"),
+        )
+        .group_by(Membership.user_id)
+        .subquery()
+    )
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(first_membership)
+            .join(User, User.id == first_membership.c.user_id)
+            .where(
+                User.account_status == "active",
+                first_membership.c.first_at >= since,
+            )
+        )
+        or 0
+    )
 
 
 def get_overview_metrics(db: Session) -> OverviewMetrics:
     from app.services import agenda as agenda_svc
 
     organizations_total = db.scalar(select(func.count()).select_from(Organization)) or 0
-    professionals_total = db.scalar(select(func.count()).select_from(User)) or 0
+    professionals_total = _count_professionals(db)
     since_7d = days_ago(7)
     since_24h = datetime.now(UTC) - timedelta(hours=24)
-    registrations_last_7_days = (
-        db.scalar(select(func.count()).select_from(User).where(User.created_at >= since_7d)) or 0
-    )
-    registrations_last_24_hours = (
-        db.scalar(select(func.count()).select_from(User).where(User.created_at >= since_24h)) or 0
-    )
+    registrations_last_7_days = _count_professional_registrations_since(db, since_7d)
+    registrations_last_24_hours = _count_professional_registrations_since(db, since_24h)
     organizations_active = (
         db.scalar(
             select(func.count()).select_from(Organization).where(Organization.status == "active")
@@ -189,7 +226,7 @@ def get_overview_metrics(db: Session) -> OverviewMetrics:
         errors_recent=errors_recent,
         cycle_agenda_critical=int(summary.get("critical") or 0),
         cycle_agenda_divergent=int(summary.get("divergent") or 0),
-        environment="hml",
+        environment=normalize_croniu_env(get_settings().croniu_env),
         generated_at=datetime.now(UTC),
     )
 
