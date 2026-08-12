@@ -18,6 +18,7 @@ class PlatformMeResponse(BaseModel):
     email: EmailStr
     full_name: str
     role: str
+    environment: str
 
 
 class OverviewMetrics(BaseModel):
@@ -45,7 +46,7 @@ class OverviewMetrics(BaseModel):
     errors_recent: int = 0
     cycle_agenda_critical: int = 0
     cycle_agenda_divergent: int = 0
-    environment: str = "hml"
+    environment: str
     generated_at: datetime
 
 

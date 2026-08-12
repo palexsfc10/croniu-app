@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrandWordmark } from "@/components/brand";
 import { useAdminAuth } from "@/components/auth/admin-auth-provider";
+import { EnvironmentBadge, EnvironmentIdentity } from "@/components/environment-identity";
 import { Button } from "@/components/ui/button";
 
 const nav = [
@@ -58,10 +59,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               Admin
             </span>
           </div>
-          <p className="mt-2 inline-flex items-center rounded bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-800">
-            HML
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-ink-muted)]">Painel operacional do piloto</p>
+          <EnvironmentIdentity environment={me.environment} className="mt-2" />
         </div>
         <nav aria-label="Admin" className="flex gap-1 overflow-x-auto px-2 pb-3 md:flex-col md:overflow-visible">
           {nav.map((item) => {
@@ -95,7 +93,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <header className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3 md:hidden">
           <div className="min-w-0">
             <p className="truncate text-sm">{me.full_name}</p>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-800">HML</p>
+            <EnvironmentBadge environment={me.environment} className="mt-0.5" />
           </div>
           <Button variant="ghost" onClick={() => void logout()}>
             Sair

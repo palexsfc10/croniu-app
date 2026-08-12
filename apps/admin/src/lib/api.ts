@@ -8,6 +8,7 @@ export type PlatformMe = {
   email: string;
   full_name: string;
   role: string;
+  environment: string;
 };
 
 export type OverviewMetrics = {
