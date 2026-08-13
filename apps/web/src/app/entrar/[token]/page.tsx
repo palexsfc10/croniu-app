@@ -134,11 +134,17 @@ function QuestionField({
 export default function PublicIntakePage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
-  const idempotencyKey = useRef(
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `intake-${Date.now()}`,
-  );
+  // Generate once on first submit (not during render) to satisfy react-hooks/purity.
+  const idempotencyKey = useRef<string | null>(null);
+  function ensureIdempotencyKey(): string {
+    if (!idempotencyKey.current) {
+      idempotencyKey.current =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `intake-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+    }
+    return idempotencyKey.current;
+  }
 
   const [ctx, setCtx] = useState<PublicIntakeContext | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -260,6 +266,7 @@ export default function PublicIntakePage() {
 
     setBusy(true);
     setError(null);
+    const key = ensureIdempotencyKey();
     const payloadAnswers: Record<string, unknown> = { ...answers };
     if (!payloadAnswers.a_primary_goal && identity.primary_goal.trim()) {
       payloadAnswers.a_primary_goal = identity.primary_goal.trim();
@@ -270,7 +277,7 @@ export default function PublicIntakePage() {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "Idempotency-Key": idempotencyKey.current,
+        "Idempotency-Key": key,
       },
       body: JSON.stringify({
         full_name: identity.full_name.trim(),
@@ -284,7 +291,7 @@ export default function PublicIntakePage() {
         initial_notes: identity.initial_notes.trim() || null,
         answers: payloadAnswers,
         consents,
-        idempotency_key: idempotencyKey.current,
+        idempotency_key: key,
       }),
     });
     const body = await res.json().catch(() => null);

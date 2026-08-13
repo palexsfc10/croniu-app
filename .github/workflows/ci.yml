@@ -136,10 +136,17 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Migrate empty database through HML head to current
         run: |
-          alembic upgrade 0017_user_feedbacks
+          set -euo pipefail
+          # Simulate prior HML head (0018), then upgrade this branch tip.
+          alembic upgrade 0018_email_verification
+          alembic current | tee /tmp/alembic-at-hml-head.txt
+          grep -q "0018_email_verification" /tmp/alembic-at-hml-head.txt
           alembic upgrade head
+          alembic current | tee /tmp/alembic-current.txt
           alembic heads | tee /tmp/alembic-heads.txt
-          grep -q "0018_email_verification" /tmp/alembic-heads.txt
+          test "$(wc -l < /tmp/alembic-heads.txt)" -eq 1
+          grep -q "0019_client_intake_journey" /tmp/alembic-heads.txt
+          grep -q "0019_client_intake_journey" /tmp/alembic-current.txt
         env:
           PYTHONPATH: .
           DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu

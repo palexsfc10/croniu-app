@@ -314,3 +314,95 @@ def test_reject_and_protocol_versioning(client, register_payload):
 
     # silence unused
     assert client_id
+
+def test_token_hash_only_in_db_and_cross_tenant_isolation(client, register_payload):
+    _auth(client, register_payload)
+    token = _create_link(client)
+    # Public context must not expose organization_id
+    ctx = client.get(f"/api/v1/public/intake/{token}").json()
+    assert "organization_id" not in ctx
+    assert "organizationId" not in ctx
+
+    submitted = client.post(
+        f"/api/v1/public/intake/{token}/submit",
+        json={
+            "full_name": "Aluno Org A",
+            "phone": "11922223333",
+            "age_band": "18+",
+            "primary_goal": "Forca",
+            "answers": _minimal_answers(),
+            "consents": _required_consents(),
+            "idempotency_key": "idem-org-a",
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+    assert client.get("/api/v1/intake-submissions").json()
+
+    # Second org cannot see first org submissions
+    other = {
+        "email": f"other-intake-{register_payload['email']}",
+        "password": register_payload["password"],
+        "full_name": "Other Pro",
+        "organization_name": "Other Org",
+    }
+    assert client.post("/api/v1/auth/register", json=other).status_code == 201
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": other["email"], "password": other["password"]},
+        ).status_code
+        == 200
+    )
+    listed = client.get("/api/v1/intake-submissions")
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
+def test_missing_consent_blocked_and_logs_safe(client, register_payload, caplog):
+    import logging
+
+    _auth(client, register_payload)
+    token = _create_link(client)
+    with caplog.at_level(logging.INFO, logger="croniu.intake"):
+        bad = client.post(
+            f"/api/v1/public/intake/{token}/submit",
+            json={
+                "full_name": "Sem Consent",
+                "phone": "11911112222",
+                "age_band": "18+",
+                "primary_goal": "Saude",
+                "answers": _minimal_answers(),
+                "consents": {"purpose_science": True},
+                "idempotency_key": "idem-consent-missing",
+            },
+        )
+    assert bad.status_code == 422
+    assert bad.json()["code"] == "consent_required"
+    blob = " ".join(
+        r.message for r in caplog.records if r.name.startswith("croniu")
+    )
+    assert "11911112222" not in blob
+    assert token not in blob
+    assert "Sem Consent" not in blob
+
+
+def test_legacy_client_journey_active_without_anamnesis(client, register_payload):
+    _auth(client, register_payload)
+    created = client.post(
+        "/api/v1/clients",
+        json={"full_name": "Cliente Antigo", "phone": "11900001111"},
+    )
+    assert created.status_code == 201
+    cid = created.json()["id"]
+    journey = client.get(f"/api/v1/clients/{cid}/journey")
+    assert journey.status_code == 200
+    assert journey.json()["stage"] == "active"
+    assert journey.json()["stage_label"] == "Em acompanhamento"
+
+
+def test_invite_token_cannot_open_portal_status(client, register_payload):
+    _auth(client, register_payload)
+    invite = _create_link(client)
+    # Invite token is not a portal token
+    status = client.get(f"/api/v1/public/intake/portal/{invite}/status")
+    assert status.status_code == 404
