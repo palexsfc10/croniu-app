@@ -231,6 +231,45 @@ h2,
   animation: fade-up var(--duration-normal) var(--ease-out) 80ms both;
 }
 
+@keyframes public-entry-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.public-entry-card {
+  animation: public-entry-card-in var(--duration-normal) var(--ease-out) both;
+}
+
+.public-entry-card:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.public-entry-card:nth-child(3) {
+  animation-delay: 100ms;
+}
+
+.public-entry-card--offset {
+  transform: none;
+}
+
+@media (min-width: 640px) {
+  .public-entry-card--offset {
+    transform: translateY(0.35rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-entry-card {
+    animation: none;
+  }
+}
+
 /* —— Button variants —— */
 .btn-primary {
   background-color: var(--color-primary);

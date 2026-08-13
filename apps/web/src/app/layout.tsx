@@ -21,7 +21,8 @@ export const metadata: Metadata = {
     default: "Croniu",
     template: "%s · Croniu",
   },
-  description: "Sua rotina. Seus ciclos. Tudo sob controle.",
+  description:
+    "Organize seus clientes. Simplifique sua rotina. Cadastros, agenda, planos, ciclos e acompanhamentos — com IA no dia a dia.",
   applicationName: "Croniu",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
