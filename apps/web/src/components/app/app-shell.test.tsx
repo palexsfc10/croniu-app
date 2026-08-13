@@ -106,4 +106,14 @@ describe("AppShell account navigation", () => {
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
+
+  it("mounts at most one PWA install banner host under authenticated shell", () => {
+    const { container } = render(
+      <AppShell>
+        <p>content</p>
+      </AppShell>,
+    );
+    expect(container.querySelectorAll('[data-testid="pwa-install-banner"]')).toHaveLength(0);
+    expect(screen.getAllByRole("link", { name: "Hoje" }).length).toBeGreaterThan(0);
+  });
 });
