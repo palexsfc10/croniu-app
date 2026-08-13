@@ -1221,6 +1221,25 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     else:
         message = "Veja o que precisa da sua atenção hoje."
 
+    from app.services import intake as intake_svc
+
+    intake_counts = intake_svc.intake_home_counts(
+        db, organization_id=organization_id, today=today
+    )
+    if intake_counts.get("new_submissions_count"):
+        attention.insert(
+            0,
+            AttentionItemOut(
+                kind="intake_new_submissions",
+                title="Novos alunos",
+                subtitle=f"{intake_counts['new_submissions_count']} cadastro(s) aguardando análise",
+                href="/app/clients/intake",
+                entity_id=organization_id,
+                tone="warning",
+            ),
+        )
+        message = "Veja o que precisa da sua atenção hoje."
+
     return HomeSummaryOut(
         organization_id=organization_id,
         timezone=tz_name,
@@ -1239,6 +1258,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         priority_action=priority,
         contextual_hint=None,
         message=message,
+        **intake_counts,
     )
 
 

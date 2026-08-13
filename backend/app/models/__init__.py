@@ -38,6 +38,18 @@ from app.models.service import Service
 from app.models.session import Session
 from app.models.user import User
 from app.models.user_feedback import UserFeedback
+from app.models.intake import (
+    AnamnesisTemplate,
+    AnamnesisTemplateVersion,
+    ClientAnamnesisResponse,
+    ClientIntakeSubmission,
+    ClientJourney,
+    ConsentRecord,
+    OrganizationIntakeLink,
+    Protocol,
+    ProtocolVersion,
+    RecurringClientTask,
+)
 
 __all__ = [
     "Base",
@@ -77,4 +89,14 @@ __all__ = [
     "BillingCheckout",
     "BillingWebhookEvent",
     "UserFeedback",
+    "OrganizationIntakeLink",
+    "ClientJourney",
+    "ClientIntakeSubmission",
+    "AnamnesisTemplate",
+    "AnamnesisTemplateVersion",
+    "ClientAnamnesisResponse",
+    "ConsentRecord",
+    "Protocol",
+    "ProtocolVersion",
+    "RecurringClientTask",
 ]

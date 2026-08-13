@@ -34,9 +34,17 @@ export default function ClientsPage() {
           <h1 className="h-display text-3xl text-[var(--color-ink)]">Clientes</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Pessoas que você atende.</p>
         </div>
-        <Link href="/app/clients/new">
-          <Button>Novo</Button>
-        </Link>
+        <div className="flex flex-col items-end gap-2 sm:flex-row">
+          <Link href="/app/clients/intake">
+            <Button variant="secondary">Novos alunos</Button>
+          </Link>
+          <Link href="/app/clients/intake">
+            <Button variant="secondary">Convidar aluno</Button>
+          </Link>
+          <Link href="/app/clients/new">
+            <Button>Novo</Button>
+          </Link>
+        </div>
       </div>
       {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
       {error ? (

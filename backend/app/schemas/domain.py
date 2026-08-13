@@ -221,3 +221,10 @@ class HomeSummaryOut(BaseModel):
     priority_action: PriorityActionOut | None = None
     contextual_hint: str | None = None
     message: str
+    # Intake journey grouped pendências (backward-compatible defaults)
+    new_submissions_count: int = 0
+    anamnesis_pending_count: int = 0
+    evaluation_pending_count: int = 0
+    protocol_pending_count: int = 0
+    protocol_reviews_due_count: int = 0
+    routines_due_today_count: int = 0

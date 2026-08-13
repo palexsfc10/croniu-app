@@ -166,6 +166,17 @@ def platform_overview(
     return get_overview_metrics(db)
 
 
+@router.get("/intake-stats")
+def platform_intake_stats(
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+):
+    from app.schemas.intake import PlatformIntakeStatsOut
+    from app.services import intake as intake_svc
+
+    return PlatformIntakeStatsOut.model_validate(intake_svc.platform_intake_stats(db))
+
+
 @router.get("/organizations", response_model=PaginatedOrganizations)
 def platform_organizations(
     db: Session = Depends(get_db),

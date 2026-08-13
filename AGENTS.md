@@ -26,11 +26,13 @@ Instruções operacionais para agentes de IA. Detalhes: `docs/`.
 
 ## Sprint autorizada
 
-**Sprint — Avaliações do cliente e fundação do agente LLM** autorizada na branch `feature/client-evaluations-and-agent-foundation`.  
-Spec: `docs/sprints/SPRINT_CLIENT_EVALS_AND_AGENT.md`.  
-SHA-base: `dcc1e664d0759e9a76da5a4a86449e19b1343aab` (contém 2D `2b17a30`).
+**Sprint — Jornada completa do aluno, anamnese e protocolo aberto** autorizada na branch `feature/client-intake-journey`.  
+Spec: `docs/sprints/SPRINT_CLIENT_INTAKE_JOURNEY.md`.  
+SHA-base: `4a7ee0351860dadf196ebdcef798013fbac4d412` (main com RC2.9 / PR #11).  
 
-Sprint 2D permanece entregue. Não iniciar gateway, GCal, WhatsApp API, deploy, Jarvis ou produção sem nova autorização.
+Deploy autorizado **somente em HML**. Não Promote, não PRD, não merge em `main` sem nova autorização do operador.
+
+Sprint de avaliações/agente permanece entregue. Não iniciar gateway, GCal, WhatsApp API, Kyvora ou produção sem nova autorização.
 
 ## Commits / PR
 
