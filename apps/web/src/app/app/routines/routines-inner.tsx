@@ -57,6 +57,7 @@ export default function RoutinesPageInner() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount/remote hydrate
     void load();
   }, []);
 

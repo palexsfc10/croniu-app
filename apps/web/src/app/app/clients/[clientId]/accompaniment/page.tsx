@@ -56,7 +56,7 @@ export default function AccompanimentPreparePage() {
     else setClient(c.data ?? null);
     if (j.data) {
       setJourney(j.data);
-      setChecklist(j.data.accompaniment_checklist ?? {
+      const base = j.data.accompaniment_checklist ?? {
         anamnesis: "done",
         evaluation: "todo",
         plan: "todo",
@@ -64,21 +64,22 @@ export default function AccompanimentPreparePage() {
         agenda: "todo",
         routine: "todo",
         activate: "todo",
-      });
+      };
+      const done = search.get("done");
+      if (done && STEP_ORDER.includes(done as StepKey)) {
+        setChecklist({ ...base, [done]: "done" });
+        setInfo(`Etapa atualizada: ${done}`);
+      } else {
+        setChecklist(base);
+      }
     }
     if (p.data) setProfession(p.data);
-  }, [params.clientId]);
+  }, [params.clientId, search]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount/remote hydrate
     void load();
   }, [load]);
-
-  useEffect(() => {
-    const done = search.get("done");
-    if (!done || !STEP_ORDER.includes(done as StepKey)) return;
-    setChecklist((prev) => ({ ...prev, [done]: "done" }));
-    setInfo(`Etapa atualizada: ${done}`);
-  }, [search]);
 
   function mark(step: StepKey, value: "done" | "later" | "na" | "todo") {
     setChecklist((prev) => ({ ...prev, [step]: value }));

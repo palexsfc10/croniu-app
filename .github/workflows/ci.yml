@@ -145,8 +145,8 @@ jobs:
           alembic current | tee /tmp/alembic-current.txt
           alembic heads | tee /tmp/alembic-heads.txt
           test "$(wc -l < /tmp/alembic-heads.txt)" -eq 1
-          grep -q "0020_professional_accompaniment_ux" /tmp/alembic-heads.txt
-          grep -q "0020_professional_accompaniment_ux" /tmp/alembic-current.txt
+          grep -q "0020_prof_accomp_ux" /tmp/alembic-heads.txt
+          grep -q "0020_prof_accomp_ux" /tmp/alembic-current.txt
         env:
           PYTHONPATH: .
           DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu

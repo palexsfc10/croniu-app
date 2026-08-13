@@ -80,10 +80,10 @@ def test_empty_database_upgrade_head_unique(migration_db: str):
     assert heads.returncode == 0, heads.stderr
     lines = [ln for ln in heads.stdout.strip().splitlines() if ln.strip()]
     assert len(lines) == 1
-    assert "0020_professional_accompaniment_ux" in lines[0]
+    assert "0020_prof_accomp_ux" in lines[0]
 
     current = _run_alembic("current")
-    assert "0020_professional_accompaniment_ux" in current.stdout
+    assert "0020_prof_accomp_ux" in current.stdout
 
     engine = create_engine(migration_db)
     insp = inspect(engine)
@@ -151,7 +151,7 @@ def test_upgrade_from_0018_to_head(migration_db: str):
     to_head = _run_alembic("upgrade", "head")
     assert to_head.returncode == 0, to_head.stdout + to_head.stderr
     heads = _run_alembic("heads")
-    assert "0020_professional_accompaniment_ux" in heads.stdout
+    assert "0020_prof_accomp_ux" in heads.stdout
     assert len([ln for ln in heads.stdout.strip().splitlines() if ln.strip()]) == 1
 
     engine = create_engine(migration_db)
@@ -190,4 +190,4 @@ def test_upgrade_from_0019_to_0020(migration_db: str):
     to_20 = _run_alembic("upgrade", "head")
     assert to_20.returncode == 0, to_20.stdout + to_20.stderr
     current = _run_alembic("current")
-    assert "0020_professional_accompaniment_ux" in current.stdout
+    assert "0020_prof_accomp_ux" in current.stdout

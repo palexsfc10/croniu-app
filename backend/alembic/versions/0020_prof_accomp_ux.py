@@ -1,6 +1,6 @@
 """Professional segmentation, multi intake links, anamnesis snapshot, plan↔cycle.
 
-Revision ID: 0020_professional_accompaniment_ux
+Revision ID: 0020_prof_accomp_ux
 Revises: 0019_client_intake_journey
 Create Date: 2026-08-13
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0020_professional_accompaniment_ux"
+revision: str = "0020_prof_accomp_ux"
 down_revision: Union[str, None] = "0019_client_intake_journey"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
