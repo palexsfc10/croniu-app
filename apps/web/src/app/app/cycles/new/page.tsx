@@ -34,7 +34,8 @@ function NewIntelligentCycleForm() {
   const [templates, setTemplates] = useState<CycleTemplate[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
 
-  const [clientId, setClientId] = useState(search.get("clientId") ?? "");
+  const clientIdFromQuery = search.get("clientId") ?? "";
+  const [clientId, setClientId] = useState(clientIdFromQuery);
   const [serviceId, setServiceId] = useState(search.get("serviceId") ?? "");
   const [templateId, setTemplateId] = useState(search.get("templateId") ?? "");
   // Never default to "today" — the professional must choose when the cycle starts.
@@ -184,6 +185,11 @@ function NewIntelligentCycleForm() {
       }
       return;
     }
+    const returnTo = search.get("returnTo");
+    if (returnTo && returnTo.startsWith("/app/") && !returnTo.includes("://")) {
+      router.replace(`${returnTo}?done=cycle`);
+      return;
+    }
     router.replace(`/app/cycles/${result.data!.id}`);
   }
 
@@ -196,7 +202,19 @@ function NewIntelligentCycleForm() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <BackLink href="/app/cycles" label="Ciclos" />
+      <BackLink
+        href={
+          clientId
+            ? `/app/clients/${clientId}/accompaniment`
+            : "/app/cycles"
+        }
+        label={clientId ? "Voltar ao acompanhamento" : "Ciclos"}
+      />
+      {client ? (
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          Ciclo para <strong className="text-[var(--color-ink)]">{client.full_name}</strong>
+        </p>
+      ) : null}
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo ciclo</h1>
       <p className="text-sm text-[var(--color-ink-muted)]">Passo {step} de 4</p>
 

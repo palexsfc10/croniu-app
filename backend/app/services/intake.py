@@ -27,8 +27,11 @@ from app.models.intake import (
 )
 from app.models.organization import Organization
 from app.security.passwords import generate_session_token, hash_session_token
+from app.services import anamnesis_snapshot as snap_svc
 from app.services import anamnesis_template as anam_svc
+from app.services import form_templates as form_svc
 from app.services import journey as journey_svc
+from app.services import profession as profession_svc
 from app.services.auth import AuthError
 
 logger = logging.getLogger("croniu.intake")
@@ -107,12 +110,44 @@ def _wa_invite(url: str) -> str:
 
 
 def _active_link(db: Session, organization_id: uuid.UUID) -> OrganizationIntakeLink | None:
-    return db.scalar(
+    primary = db.scalar(
         select(OrganizationIntakeLink).where(
             OrganizationIntakeLink.organization_id == organization_id,
             OrganizationIntakeLink.status == "active",
+            OrganizationIntakeLink.is_primary.is_(True),
         )
     )
+    if primary is not None:
+        return primary
+    return db.scalar(
+        select(OrganizationIntakeLink)
+        .where(
+            OrganizationIntakeLink.organization_id == organization_id,
+            OrganizationIntakeLink.status == "active",
+        )
+        .order_by(OrganizationIntakeLink.created_at.desc())
+    )
+
+
+def _link_out(row: OrganizationIntakeLink, *, raw: str | None = None) -> dict[str, Any]:
+    url = _public_intake_url(raw) if raw else None
+    return {
+        "has_active_link": row.status == "active",
+        "id": str(row.id),
+        "status": row.status,
+        "name": row.name,
+        "purpose": row.purpose,
+        "form_kind": row.form_kind,
+        "is_primary": bool(row.is_primary),
+        "submissions_count": int(row.submissions_count or 0),
+        "created_at": row.created_at,
+        "rotated_at": row.rotated_at,
+        "last_used_at": row.last_used_at,
+        "token": raw,
+        "public_path": _public_intake_path(raw) if raw else None,
+        "public_url": url,
+        "wa_message_url": _wa_invite(url) if url else None,
+    }
 
 
 def get_intake_link(
@@ -130,75 +165,144 @@ def get_intake_link(
             "public_path": None,
             "public_url": None,
             "wa_message_url": None,
+            "name": None,
+            "purpose": None,
+            "form_kind": None,
+            "is_primary": False,
+            "submissions_count": 0,
         }
-    return {
-        "has_active_link": True,
-        "id": str(row.id),
-        "status": row.status,
-        "created_at": row.created_at,
-        "rotated_at": row.rotated_at,
-        "last_used_at": row.last_used_at,
-        "token": None,
-        "public_path": None,
-        "public_url": None,
-        "wa_message_url": None,
-    }
+    return _link_out(row)
+
+
+def list_intake_links(
+    db: Session, *, organization_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    rows = list(
+        db.scalars(
+            select(OrganizationIntakeLink)
+            .where(OrganizationIntakeLink.organization_id == organization_id)
+            .order_by(
+                OrganizationIntakeLink.is_primary.desc(),
+                OrganizationIntakeLink.created_at.desc(),
+            )
+        ).all()
+    )
+    return [_link_out(r) for r in rows]
 
 
 def create_intake_link(
-    db: Session, *, organization_id: uuid.UUID, user_id: uuid.UUID | None
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    name: str = "Link de entrada",
+    purpose: str = "new_client",
+    form_kind: str = "physical_anamnesis",
+    set_primary: bool = False,
 ) -> dict[str, Any]:
-    existing = _active_link(db, organization_id)
-    if existing is not None:
-        raise AuthError(
-            "intake_link_exists",
-            "Já existe um link ativo. Use regenerar para criar um novo.",
-            409,
-        )
+    existing_active = list(
+        db.scalars(
+            select(OrganizationIntakeLink).where(
+                OrganizationIntakeLink.organization_id == organization_id,
+                OrganizationIntakeLink.status == "active",
+            )
+        ).all()
+    )
+    make_primary = set_primary or len(existing_active) == 0
+    if make_primary:
+        for other in existing_active:
+            other.is_primary = False
+            db.add(other)
     raw = generate_session_token()
     row = OrganizationIntakeLink(
         id=uuid.uuid4(),
         organization_id=organization_id,
         token_hash=hash_session_token(raw),
         status="active",
+        name=(name or "Link de entrada").strip()[:120],
+        purpose=(purpose or "new_client").strip()[:64],
+        form_kind=(form_kind or "physical_anamnesis").strip()[:64],
+        is_primary=make_primary,
         created_by_user_id=user_id,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    logger.info("intake_link created org=%s", organization_id)
-    url = _public_intake_url(raw)
-    return {
-        "has_active_link": True,
-        "id": str(row.id),
-        "status": row.status,
-        "created_at": row.created_at,
-        "rotated_at": row.rotated_at,
-        "last_used_at": row.last_used_at,
-        "token": raw,
-        "public_path": _public_intake_path(raw),
-        "public_url": url,
-        "wa_message_url": _wa_invite(url),
-    }
+    logger.info("intake_link created org=%s form_kind=%s", organization_id, row.form_kind)
+    return _link_out(row, raw=raw)
+
+
+def set_primary_intake_link(
+    db: Session, *, organization_id: uuid.UUID, link_id: uuid.UUID
+) -> dict[str, Any]:
+    row = db.scalar(
+        select(OrganizationIntakeLink).where(
+            OrganizationIntakeLink.id == link_id,
+            OrganizationIntakeLink.organization_id == organization_id,
+        )
+    )
+    if row is None:
+        raise AuthError("intake_link_not_found", "Link não encontrado.", 404)
+    others = list(
+        db.scalars(
+            select(OrganizationIntakeLink).where(
+                OrganizationIntakeLink.organization_id == organization_id,
+                OrganizationIntakeLink.id != link_id,
+            )
+        ).all()
+    )
+    for other in others:
+        other.is_primary = False
+        db.add(other)
+    row.is_primary = True
+    if row.status != "active":
+        row.status = "active"
+        row.disabled_at = None
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _link_out(row)
 
 
 def rotate_intake_link(
-    db: Session, *, organization_id: uuid.UUID, user_id: uuid.UUID | None
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    link_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     now = datetime.now(UTC)
-    current = _active_link(db, organization_id)
-    if current is not None:
-        current.status = "disabled"
-        current.disabled_at = now
-        current.rotated_at = now
-        db.add(current)
-        db.flush()
+    if link_id is not None:
+        current = db.scalar(
+            select(OrganizationIntakeLink).where(
+                OrganizationIntakeLink.id == link_id,
+                OrganizationIntakeLink.organization_id == organization_id,
+            )
+        )
+    else:
+        current = _active_link(db, organization_id)
+    if current is None:
+        raise AuthError("intake_link_not_found", "Link não encontrado.", 404)
+    was_primary = bool(current.is_primary)
+    name = current.name
+    purpose = current.purpose
+    form_kind = current.form_kind
+    current.status = "disabled"
+    current.disabled_at = now
+    current.rotated_at = now
+    current.is_primary = False
+    db.add(current)
+    db.flush()
     raw = generate_session_token()
     row = OrganizationIntakeLink(
         id=uuid.uuid4(),
         organization_id=organization_id,
         token_hash=hash_session_token(raw),
         status="active",
+        name=name or "Link principal",
+        purpose=purpose or "new_client",
+        form_kind=form_kind or "physical_anamnesis",
+        is_primary=was_primary,
         created_by_user_id=user_id,
         rotated_at=now,
     )
@@ -206,27 +310,40 @@ def rotate_intake_link(
     db.commit()
     db.refresh(row)
     logger.info("intake_link rotated org=%s", organization_id)
-    url = _public_intake_url(raw)
-    return {
-        "has_active_link": True,
-        "id": str(row.id),
-        "status": row.status,
-        "created_at": row.created_at,
-        "rotated_at": row.rotated_at,
-        "last_used_at": None,
-        "token": raw,
-        "public_path": _public_intake_path(raw),
-        "public_url": url,
-        "wa_message_url": _wa_invite(url),
-    }
+    return _link_out(row, raw=raw)
 
 
-def disable_intake_link(db: Session, *, organization_id: uuid.UUID) -> dict[str, Any]:
-    row = _active_link(db, organization_id)
+def disable_intake_link(
+    db: Session, *, organization_id: uuid.UUID, link_id: uuid.UUID | None = None
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    if link_id is not None:
+        row = db.scalar(
+            select(OrganizationIntakeLink).where(
+                OrganizationIntakeLink.id == link_id,
+                OrganizationIntakeLink.organization_id == organization_id,
+            )
+        )
+    else:
+        row = _active_link(db, organization_id)
     if row is None:
         return get_intake_link(db, organization_id=organization_id)
     row.status = "disabled"
-    row.disabled_at = datetime.now(UTC)
+    row.disabled_at = now
+    if row.is_primary:
+        row.is_primary = False
+        replacement = db.scalar(
+            select(OrganizationIntakeLink)
+            .where(
+                OrganizationIntakeLink.organization_id == organization_id,
+                OrganizationIntakeLink.status == "active",
+                OrganizationIntakeLink.id != row.id,
+            )
+            .order_by(OrganizationIntakeLink.created_at.desc())
+        )
+        if replacement is not None:
+            replacement.is_primary = True
+            db.add(replacement)
     db.add(row)
     db.commit()
     logger.info("intake_link disabled org=%s", organization_id)
@@ -255,20 +372,30 @@ def _resolve_active_link_by_token(
 
 def get_public_intake_context(db: Session, *, raw_token: str) -> dict[str, Any]:
     link, org = _resolve_active_link_by_token(db, raw_token=raw_token)
-    version = anam_svc.get_published_system_version(db)
+    schema, template_version_id, form_name = form_svc.resolve_form_schema(
+        db, form_kind=link.form_kind
+    )
+    if template_version_id is None:
+        # Persist FK against system template for non-physical forms
+        version = anam_svc.get_published_system_version(db)
+        template_version_id = str(version.id)
     link.last_used_at = datetime.now(UTC)
     db.add(link)
     db.commit()
+    terms = profession_svc.nomenclature_for(org.profession_code)
     return {
         "professional_public_name": org.name,
         "welcome_message": f"Bem-vindo(a) ao acompanhamento com {org.name}.",
         "process_summary": (
-            "Preencha seus dados, a anamnese e os consentimentos. "
+            f"Preencha seus dados, o {terms.get('intake_form', 'formulário')} e os consentimentos. "
             "O profissional analisará antes de liberar o acompanhamento."
         ),
-        "anamnesis_schema": version.schema_json,
-        "template_version_id": str(version.id),
-        "attention_client_message": ATTENTION_SAFE_MESSAGE,
+        "anamnesis_schema": schema,
+        "template_version_id": template_version_id,
+        "attention_client_message": schema.get("attention_client_message") or ATTENTION_SAFE_MESSAGE,
+        "form_kind": link.form_kind,
+        "form_name": form_name,
+        "nomenclature": terms,
     }
 
 
@@ -468,6 +595,12 @@ def submit_intake(
     db.add(submission)
     db.flush()
 
+    snapshot = snap_svc.build_questions_snapshot(answers=answers, schema=version.schema_json)
+    # Prefer schema from the intake link form when available
+    form_schema, _, _ = form_svc.resolve_form_schema(db, form_kind=link.form_kind)
+    if form_schema:
+        snapshot = snap_svc.build_questions_snapshot(answers=answers, schema=form_schema)
+
     response = ClientAnamnesisResponse(
         id=uuid.uuid4(),
         organization_id=org.id,
@@ -475,9 +608,12 @@ def submit_intake(
         submission_id=submission.id,
         template_version_id=version.id,
         answers_json=answers,
+        questions_snapshot=snapshot,
         requires_professional_attention=attention,
     )
     db.add(response)
+
+    link.submissions_count = int(link.submissions_count or 0) + 1
 
     for consent_key, accepted in consents.items():
         meta = anam_svc.CONSENT_META.get(str(consent_key))
@@ -616,11 +752,36 @@ def get_submission(
         journey = journey_svc.get_journey(
             db, organization_id=organization_id, client_id=row.client_id
         )
+    form_name = None
+    version_number = None
+    snapshot = None
+    summary = None
+    if anam is not None:
+        from app.models.intake import AnamnesisTemplateVersion
+
+        version = db.get(AnamnesisTemplateVersion, anam.template_version_id)
+        version_number = version.version_number if version else None
+        form_name = (
+            anam_svc.SYSTEM_TEMPLATE_NAME
+            if version is not None
+            else "Formulário"
+        )
+        snapshot = anam.questions_snapshot
+        if not snapshot and version is not None:
+            snapshot = snap_svc.build_questions_snapshot(
+                answers=anam.answers_json or {},
+                schema=version.schema_json,
+            )
+        summary = snap_svc.summarize_snapshot(snapshot or [])
     return {
         "submission": row,
         "anamnesis": anam,
         "consents": consents,
         "journey": journey,
+        "questions_snapshot": snapshot or [],
+        "form_name": form_name,
+        "template_version_number": version_number,
+        "anamnesis_summary": summary,
     }
 
 
@@ -684,8 +845,23 @@ def approve_submission(
             to_stage="approved",
             evaluation_decision=evaluation_decision,
             protocol_decision=protocol_decision,
-            next_action="continue_onboarding",
+            next_action="prepare_accompaniment",
         )
+        journey = journey_svc.get_journey(
+            db, organization_id=organization_id, client_id=row.client_id
+        )
+        if journey is not None:
+            journey.preparation_status = "in_progress"
+            journey.accompaniment_checklist = journey.accompaniment_checklist or {
+                "anamnesis": "done",
+                "evaluation": "todo",
+                "plan": "todo",
+                "cycle": "todo",
+                "agenda": "todo",
+                "routine": "todo",
+                "activate": "todo",
+            }
+            db.add(journey)
         if to_stage != "approved":
             journey_svc.transition_journey(
                 db,

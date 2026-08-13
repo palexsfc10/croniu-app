@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.intake import (
     ApproveSubmissionIn,
     EvaluationDecisionIn,
+    IntakeLinkCreateIn,
     IntakeLinkOut,
     IntakeSubmissionDetailOut,
     IntakeSubmissionListItem,
@@ -20,6 +21,7 @@ from app.schemas.intake import (
     RejectSubmissionIn,
     RequestChangesIn,
     AnamnesisOut,
+    AnamnesisQuestionSnapshot,
     ConsentOut,
 )
 from app.services import intake as intake_svc
@@ -49,6 +51,9 @@ def _journey_out(row) -> JourneyOut | None:
         requires_professional_attention=row.requires_professional_attention,
         attention_note=row.attention_note,
         next_action=row.next_action,
+        preparation_status=getattr(row, "preparation_status", None),
+        accompaniment_checklist=getattr(row, "accompaniment_checklist", None),
+        anamnesis_reviewed_at=getattr(row, "anamnesis_reviewed_at", None),
         approved_at=row.approved_at,
         rejected_at=row.rejected_at,
         activated_at=row.activated_at,
@@ -86,6 +91,13 @@ def _submission_detail(data: dict) -> IntakeSubmissionDetailOut:
                 id=anam.id,
                 template_version_id=anam.template_version_id,
                 answers_json=anam.answers_json,
+                questions_snapshot=[
+                    AnamnesisQuestionSnapshot.model_validate(q)
+                    for q in (data.get("questions_snapshot") or [])
+                ],
+                form_name=data.get("form_name"),
+                template_version_number=data.get("template_version_number"),
+                summary=data.get("anamnesis_summary"),
                 requires_professional_attention=anam.requires_professional_attention,
                 created_at=anam.created_at,
             )
@@ -117,14 +129,34 @@ def get_link(
     )
 
 
+@router.get("/intake-links", response_model=list[IntakeLinkOut])
+def list_links(
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> list[IntakeLinkOut]:
+    return [
+        IntakeLinkOut.model_validate(item)
+        for item in intake_svc.list_intake_links(
+            db, organization_id=auth.organization.id
+        )
+    ]
+
+
 @router.post("/intake-link", response_model=IntakeLinkOut)
 def create_link(
+    payload: IntakeLinkCreateIn = Body(default_factory=IntakeLinkCreateIn),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> IntakeLinkOut:
     try:
         data = intake_svc.create_intake_link(
-            db, organization_id=auth.organization.id, user_id=auth.user.id
+            db,
+            organization_id=auth.organization.id,
+            user_id=auth.user.id,
+            name=payload.name,
+            purpose=payload.purpose,
+            form_kind=payload.form_kind,
+            set_primary=payload.set_primary,
         )
     except AuthError as exc:
         raise _http(exc) from exc
@@ -145,12 +177,57 @@ def rotate_link(
     return IntakeLinkOut.model_validate(data)
 
 
+@router.post("/intake-links/{link_id}/rotate", response_model=IntakeLinkOut)
+def rotate_link_by_id(
+    link_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> IntakeLinkOut:
+    try:
+        data = intake_svc.rotate_intake_link(
+            db,
+            organization_id=auth.organization.id,
+            user_id=auth.user.id,
+            link_id=link_id,
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return IntakeLinkOut.model_validate(data)
+
+
+@router.post("/intake-links/{link_id}/primary", response_model=IntakeLinkOut)
+def set_primary_link(
+    link_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> IntakeLinkOut:
+    try:
+        data = intake_svc.set_primary_intake_link(
+            db, organization_id=auth.organization.id, link_id=link_id
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return IntakeLinkOut.model_validate(data)
+
+
 @router.post("/intake-link/disable", response_model=IntakeLinkOut)
 def disable_link(
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> IntakeLinkOut:
     data = intake_svc.disable_intake_link(db, organization_id=auth.organization.id)
+    return IntakeLinkOut.model_validate(data)
+
+
+@router.post("/intake-links/{link_id}/disable", response_model=IntakeLinkOut)
+def disable_link_by_id(
+    link_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> IntakeLinkOut:
+    data = intake_svc.disable_intake_link(
+        db, organization_id=auth.organization.id, link_id=link_id
+    )
     return IntakeLinkOut.model_validate(data)
 
 

@@ -103,9 +103,11 @@ def create_app() -> FastAPI:
     app.include_router(evaluations_routes.router, prefix="/api/v1")
     app.include_router(agent_routes.router, prefix="/api/v1")
     app.include_router(feedback_routes.router, prefix="/api/v1")
+    from app.api import profession as profession_routes
     from app.api import billing as billing_routes
     from app.api import billing_webhooks as billing_webhooks_routes
 
+    app.include_router(profession_routes.router, prefix="/api/v1")
     app.include_router(billing_routes.router, prefix="/api/v1")
     app.include_router(billing_webhooks_routes.router, prefix="/api/v1")
     app.include_router(platform_routes.router, prefix="/api/v1")

@@ -15,6 +15,10 @@ export type MeResponse = {
     id: string;
     name: string;
     timezone?: string;
+    profession_code?: string | null;
+    profession_specialty?: string | null;
+    profession_other?: string | null;
+    profession_onboarding_done?: boolean;
   };
   role: string;
 };
@@ -316,6 +320,11 @@ export type IntakeLink = {
   has_active_link: boolean;
   id?: string | null;
   status?: string | null;
+  name?: string | null;
+  purpose?: string | null;
+  form_kind?: string | null;
+  is_primary?: boolean;
+  submissions_count?: number;
   created_at?: string | null;
   rotated_at?: string | null;
   last_used_at?: string | null;
@@ -347,11 +356,25 @@ export type ClientJourney = {
   requires_professional_attention?: boolean;
   attention_note?: string | null;
   next_action?: string | null;
+  preparation_status?: string | null;
+  accompaniment_checklist?: Record<string, string> | null;
+  anamnesis_reviewed_at?: string | null;
   approved_at?: string | null;
   rejected_at?: string | null;
   activated_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ProfessionProfile = {
+  profession_code: string | null;
+  profession_specialty: string | null;
+  profession_other: string | null;
+  use_cases: string[] | null;
+  profession_onboarding_done: boolean;
+  recommended_form_kind: string;
+  nomenclature: Record<string, string>;
+  catalog: Record<string, unknown>;
 };
 
 export type IntakeConsent = {
@@ -363,10 +386,35 @@ export type IntakeConsent = {
   accepted_at: string;
 };
 
+export type IntakeAnamnesisQuestion = {
+  id: string;
+  label: string;
+  section?: string | null;
+  section_title?: string | null;
+  type?: string;
+  order?: number;
+  answer?: unknown;
+  answer_label?: string | null;
+  attention?: boolean;
+  sensitive?: boolean;
+  help_text?: string | null;
+};
+
 export type IntakeAnamnesis = {
   id: string;
   template_version_id: string;
   answers_json: Record<string, unknown>;
+  questions_snapshot?: IntakeAnamnesisQuestion[];
+  form_name?: string | null;
+  template_version_number?: number | null;
+  summary?: {
+    primary_goal?: string | null;
+    modalities?: string | null;
+    availability?: string | null;
+    experience?: string | null;
+    attention_count?: number;
+    attention_labels?: string[];
+  } | null;
   requires_professional_attention: boolean;
   created_at: string;
 };

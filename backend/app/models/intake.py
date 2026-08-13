@@ -36,6 +36,11 @@ class OrganizationIntakeLink(Base):
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    form_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    submissions_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -77,6 +82,11 @@ class ClientJourney(Base):
     )
     attention_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_action: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    anamnesis_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    preparation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    accompaniment_checklist: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -250,6 +260,7 @@ class ClientAnamnesisResponse(Base):
         nullable=False,
     )
     answers_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    questions_snapshot: Mapped[list | dict | None] = mapped_column(JSONB, nullable=True)
     requires_professional_attention: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
@@ -314,6 +325,14 @@ class Protocol(Base):
     review_due_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     review_recurrence_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cycles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    activation_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     current_version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

@@ -301,13 +301,15 @@ export function TodayBoard({ summary }: Props) {
 
       {(summary.new_submissions_count ?? 0) > 0 ||
       (summary.evaluation_pending_count ?? 0) > 0 ||
-      (summary.protocol_pending_count ?? 0) > 0 ? (
+      (summary.protocol_pending_count ?? 0) > 0 ||
+      (summary.routines_due_today_count ?? 0) > 0 ||
+      (summary.protocol_reviews_due_count ?? 0) > 0 ? (
         <section
           aria-label="Cadastros e jornada"
           className="rounded-[var(--radius-md)] border border-[var(--color-warning)]/20 bg-[var(--color-warning-subtle)]/40 px-3.5 py-3"
         >
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-warning)]">
-            Novos alunos
+            Operação de hoje
           </p>
           <ul className="mt-1 space-y-0.5 text-sm text-[var(--color-ink)]">
             {(summary.new_submissions_count ?? 0) > 0 ? (
@@ -317,14 +319,31 @@ export function TodayBoard({ summary }: Props) {
               <li>{summary.evaluation_pending_count} avaliação(ões) pendente(s)</li>
             ) : null}
             {(summary.protocol_pending_count ?? 0) > 0 ? (
-              <li>{summary.protocol_pending_count} protocolo(s) pendente(s)</li>
+              <li>{summary.protocol_pending_count} plano(s) pendente(s)</li>
+            ) : null}
+            {(summary.protocol_reviews_due_count ?? 0) > 0 ? (
+              <li>
+                Revisão de treinos · {summary.protocol_reviews_due_count} para revisar
+              </li>
+            ) : null}
+            {(summary.routines_due_today_count ?? 0) > 0 ? (
+              <li>
+                Feedbacks e rotinas · {summary.routines_due_today_count} para acompanhar
+              </li>
             ) : null}
           </ul>
-          <Link href="/app/clients/intake" className="mt-2.5 inline-block">
-            <Button className="min-h-10 px-3 text-sm" variant="secondary">
-              Abrir fila
-            </Button>
-          </Link>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <Link href="/app/clients/intake" className="inline-block">
+              <Button className="min-h-10 px-3 text-sm" variant="secondary">
+                Abrir fila
+              </Button>
+            </Link>
+            <Link href="/app/routines" className="inline-block">
+              <Button className="min-h-10 px-3 text-sm" variant="secondary">
+                Rotinas
+              </Button>
+            </Link>
+          </div>
         </section>
       ) : null}
 

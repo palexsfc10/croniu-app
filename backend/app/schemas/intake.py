@@ -13,6 +13,11 @@ class IntakeLinkOut(BaseModel):
     has_active_link: bool
     id: str | None = None
     status: str | None = None
+    name: str | None = None
+    purpose: str | None = None
+    form_kind: str | None = None
+    is_primary: bool = False
+    submissions_count: int = 0
     created_at: datetime | None = None
     rotated_at: datetime | None = None
     last_used_at: datetime | None = None
@@ -22,6 +27,13 @@ class IntakeLinkOut(BaseModel):
     wa_message_url: str | None = None
 
 
+class IntakeLinkCreateIn(BaseModel):
+    name: str = Field(default="Link de entrada", min_length=1, max_length=120)
+    purpose: str = Field(default="new_client", max_length=64)
+    form_kind: str = Field(default="physical_anamnesis", max_length=64)
+    set_primary: bool = False
+
+
 class PublicIntakeContextOut(BaseModel):
     professional_public_name: str
     welcome_message: str
@@ -29,6 +41,9 @@ class PublicIntakeContextOut(BaseModel):
     anamnesis_schema: dict[str, Any]
     template_version_id: str
     attention_client_message: str
+    form_kind: str | None = None
+    form_name: str | None = None
+    nomenclature: dict[str, str] = Field(default_factory=dict)
 
 
 class IntakeSubmitIn(BaseModel):
@@ -85,10 +100,28 @@ class ConsentOut(BaseModel):
     accepted_at: datetime
 
 
+class AnamnesisQuestionSnapshot(BaseModel):
+    id: str
+    label: str
+    section: str | None = None
+    section_title: str | None = None
+    type: str = "text"
+    order: int = 0
+    answer: Any = None
+    answer_label: str | None = None
+    attention: bool = False
+    sensitive: bool = False
+    help_text: str | None = None
+
+
 class AnamnesisOut(BaseModel):
     id: UUID
     template_version_id: UUID
     answers_json: dict[str, Any]
+    questions_snapshot: list[AnamnesisQuestionSnapshot] = Field(default_factory=list)
+    form_name: str | None = None
+    template_version_number: int | None = None
+    summary: dict[str, Any] | None = None
     requires_professional_attention: bool
     created_at: datetime
 
@@ -103,6 +136,9 @@ class JourneyOut(BaseModel):
     requires_professional_attention: bool = False
     attention_note: str | None = None
     next_action: str | None = None
+    preparation_status: str | None = None
+    accompaniment_checklist: dict[str, Any] | None = None
+    anamnesis_reviewed_at: datetime | None = None
     approved_at: datetime | None = None
     rejected_at: datetime | None = None
     activated_at: datetime | None = None
@@ -168,6 +204,29 @@ class PrepareStartOut(BaseModel):
     ready: bool
 
 
+class AccompanimentChecklistIn(BaseModel):
+    checklist: dict[str, Any]
+
+
+class ProfessionOut(BaseModel):
+    profession_code: str | None = None
+    profession_specialty: str | None = None
+    profession_other: str | None = None
+    use_cases: list[str] | None = None
+    profession_onboarding_done: bool = False
+    recommended_form_kind: str = "simple_registration"
+    nomenclature: dict[str, str] = Field(default_factory=dict)
+    catalog: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProfessionUpdateIn(BaseModel):
+    profession_code: str | None = None
+    profession_specialty: str | None = None
+    profession_other: str | None = None
+    use_cases: list[str] | None = None
+    profession_onboarding_done: bool | None = None
+
+
 class PortalIntakeStatusOut(BaseModel):
     professional_public_name: str | None = None
     client_first_name: str | None = None
@@ -178,6 +237,7 @@ class PortalIntakeStatusOut(BaseModel):
     requires_professional_attention: bool = False
     attention_message: str | None = None
     protocol: dict[str, Any] | None = None
+    nomenclature: dict[str, str] = Field(default_factory=dict)
 
 
 class ProtocolCreateIn(BaseModel):
@@ -187,6 +247,9 @@ class ProtocolCreateIn(BaseModel):
     content_json: dict[str, Any] = Field(default_factory=dict)
     private_notes: str | None = None
     is_org_template: bool = False
+    cycle_id: UUID | None = None
+    effective_from: date | None = None
+    activation_mode: str | None = None
 
 
 class ProtocolUpdateIn(BaseModel):
@@ -194,6 +257,9 @@ class ProtocolUpdateIn(BaseModel):
     protocol_type: str | None = None
     content_json: dict[str, Any] | None = None
     private_notes: str | None = None
+    cycle_id: UUID | None = None
+    effective_from: date | None = None
+    activation_mode: str | None = None
 
 
 class ProtocolScheduleIn(BaseModel):
@@ -226,6 +292,9 @@ class ProtocolOut(BaseModel):
     review_due_on: date | None = None
     review_recurrence_days: int | None = None
     review_reason: str | None = None
+    cycle_id: UUID | None = None
+    effective_from: date | None = None
+    activation_mode: str | None = None
     current_version_number: int
     created_at: datetime
     updated_at: datetime

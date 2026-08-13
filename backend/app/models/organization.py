@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -29,6 +29,13 @@ class Organization(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="evaluating")
     plan_code: Mapped[str] = mapped_column(String(50), nullable=False, default="starter")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/Sao_Paulo")
+    profession_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profession_specialty: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profession_other: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    use_cases: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
+    profession_onboarding_done: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     last_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

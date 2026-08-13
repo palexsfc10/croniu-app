@@ -245,7 +245,7 @@ export default function ClientDetailPage() {
   }
 
   return (
-    <div className="space-y-4 animate-fade-up">
+    <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
       <ContextualBar label={item ? `Cliente · ${item.full_name}` : null} />
       <BackLink href="/app/clients" label="Clientes" />
       {error ? (
@@ -260,8 +260,86 @@ export default function ClientDetailPage() {
       ) : null}
       {item ? (
         <>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">{item.full_name}</h1>
-          <dl className="space-y-2 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="space-y-1">
+              <h1 className="h-display text-3xl text-[var(--color-ink)]">{item.full_name}</h1>
+              {journey ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="info">{journey.stage_label}</Badge>
+                  {journey.next_action ? (
+                    <span className="text-sm text-[var(--color-ink-muted)]">
+                      Próxima ação: {journey.next_action}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <details className="relative">
+              <summary className="cursor-pointer list-none rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-sm">
+                Mais
+              </summary>
+              <div className="absolute right-0 z-10 mt-1 min-w-[12rem] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-sm">
+                <Button
+                  fullWidth
+                  variant="danger"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!window.confirm("Arquivar este cliente?")) return;
+                    void archive();
+                  }}
+                >
+                  Arquivar cliente
+                </Button>
+              </div>
+            </details>
+          </div>
+
+          {(journey?.stage === "approved" ||
+            journey?.next_action === "prepare_accompaniment") && (
+            <Link href={`/app/clients/${params.clientId}/accompaniment`}>
+              <Button fullWidth>Preparar acompanhamento</Button>
+            </Link>
+          )}
+
+          <div className="flex gap-1 overflow-x-auto border-b border-[var(--color-border)] pb-1 text-sm">
+            {(
+              [
+                ["overview", "Visão geral"],
+                ["journey", "Jornada"],
+                ["info", "Informações"],
+                ["accompaniment", "Acompanhamento"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className="min-h-10 shrink-0 rounded-[var(--radius-md)] px-3 py-1.5 font-medium text-[var(--color-ink-muted)] data-[active=true]:bg-[var(--color-primary-subtle)] data-[active=true]:text-[var(--color-ink)]"
+                data-active={true}
+                onClick={() => {
+                  const el = document.getElementById(`tab-${id}`);
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <section id="tab-overview" className="space-y-2">
+            <h2 className="text-base font-semibold">Visão geral</h2>
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Etapa: {journey?.stage_label ?? "—"} · Próxima ação:{" "}
+              {journey?.next_action ?? "—"}
+            </p>
+            <Link
+              href={`/app/cycles/new?clientId=${params.clientId}&returnTo=${encodeURIComponent(`/app/clients/${params.clientId}/accompaniment`)}`}
+            >
+              <Button variant="secondary">Criar ciclo</Button>
+            </Link>
+          </section>
+
+          <dl id="tab-info" className="space-y-2 text-sm">
+            <h2 className="text-base font-semibold">Informações</h2>
             <div>
               <dt className="text-[var(--color-ink-muted)]">Telefone</dt>
               <dd>{item.phone || "—"}</dd>
@@ -278,6 +356,7 @@ export default function ClientDetailPage() {
 
           {journey ? (
             <section
+              id="tab-journey"
               aria-label="Jornada do aluno"
               className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
             >
@@ -448,15 +527,25 @@ export default function ClientDetailPage() {
             ) : null}
           </section>
 
+          <section
+            id="tab-accompaniment"
+            className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+          >
+            <h2 className="text-base font-semibold">Acompanhamento</h2>
+            <Link href={`/app/clients/${params.clientId}/accompaniment`}>
+              <Button fullWidth variant="secondary">
+                Abrir checklist de acompanhamento
+              </Button>
+            </Link>
+          </section>
+
           <div className="flex flex-col gap-3 pb-2">
-            <Link href={`/app/cycles/new?clientId=${item.id}`} className="block">
+            <Link
+              href={`/app/cycles/new?clientId=${item.id}&returnTo=${encodeURIComponent(`/app/clients/${item.id}/accompaniment`)}`}
+              className="block"
+            >
               <Button fullWidth>Criar ciclo</Button>
             </Link>
-            {item.status === "active" ? (
-              <Button fullWidth onClick={() => void archive()}>
-                Arquivar cliente
-              </Button>
-            ) : null}
           </div>
         </>
       ) : (

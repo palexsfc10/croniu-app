@@ -54,6 +54,9 @@ def create_protocol(
     content_json: dict[str, Any] | None = None,
     private_notes: str | None = None,
     is_org_template: bool = False,
+    cycle_id: uuid.UUID | None = None,
+    effective_from: date | None = None,
+    activation_mode: str | None = None,
 ) -> Protocol:
     title = (title or "").strip()
     if not title:
@@ -62,6 +65,8 @@ def create_protocol(
         raise AuthError("invalid_type", "Tipo de protocolo inválido.", 422)
     if client_id is not None:
         domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
+    if activation_mode is not None and activation_mode not in {"now", "date", "next_cycle"}:
+        raise AuthError("invalid_activation_mode", "Modo de vigência inválido.", 422)
 
     protocol = Protocol(
         id=uuid.uuid4(),
@@ -71,6 +76,9 @@ def create_protocol(
         protocol_type=protocol_type,
         status="draft",
         is_org_template=is_org_template,
+        cycle_id=cycle_id,
+        effective_from=effective_from,
+        activation_mode=activation_mode,
         current_version_number=0,
         created_by_user_id=user_id,
     )

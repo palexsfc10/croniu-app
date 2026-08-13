@@ -58,6 +58,10 @@ def register_owner(
     password: str,
     full_name: str,
     organization_name: str,
+    profession_code: str | None = None,
+    profession_specialty: str | None = None,
+    profession_other: str | None = None,
+    use_cases: list[str] | None = None,
 ) -> tuple[User, Organization, Membership]:
     normalized_email = email.strip().lower()
     existing = db.scalar(select(User).where(User.email == normalized_email))
@@ -68,12 +72,32 @@ def register_owner(
             status.HTTP_409_CONFLICT,
         )
 
+    cleaned = None
+    if profession_code:
+        from app.services import profession as profession_svc
+
+        try:
+            cleaned = profession_svc.validate_profession_payload(
+                profession_code=profession_code,
+                profession_specialty=profession_specialty,
+                profession_other=profession_other,
+                use_cases=use_cases,
+            )
+        except ValueError as exc:
+            raise AuthError("invalid_profession", str(exc), 422) from exc
+
     user = User(
         email=normalized_email,
         password_hash=hash_password(password),
         full_name=full_name.strip(),
     )
     organization = Organization(name=organization_name.strip())
+    if cleaned:
+        organization.profession_code = cleaned["profession_code"]
+        organization.profession_specialty = cleaned["profession_specialty"]
+        organization.profession_other = cleaned["profession_other"]
+        organization.use_cases = cleaned["use_cases"]
+        organization.profession_onboarding_done = True
     db.add(user)
     db.add(organization)
     db.flush()

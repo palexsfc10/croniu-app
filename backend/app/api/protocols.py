@@ -41,6 +41,9 @@ def _protocol_out(row) -> ProtocolOut:
         review_due_on=row.review_due_on,
         review_recurrence_days=row.review_recurrence_days,
         review_reason=row.review_reason,
+        cycle_id=getattr(row, "cycle_id", None),
+        effective_from=getattr(row, "effective_from", None),
+        activation_mode=getattr(row, "activation_mode", None),
         current_version_number=row.current_version_number,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -99,6 +102,9 @@ def create_protocol(
             content_json=payload.content_json,
             private_notes=payload.private_notes,
             is_org_template=payload.is_org_template,
+            cycle_id=payload.cycle_id,
+            effective_from=payload.effective_from,
+            activation_mode=payload.activation_mode,
         )
     except AuthError as exc:
         raise _http(exc) from exc

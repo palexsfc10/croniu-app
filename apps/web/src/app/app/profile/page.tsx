@@ -43,6 +43,12 @@ export default function MorePage() {
 
         <SettingsGroup title="Preferências">
           <SettingsRow
+            href="/app/profile/professional"
+            title="Perfil profissional"
+            description="Área de atuação, especialidade e forma de acompanhamento."
+            Icon={IconBriefcase}
+          />
+          <SettingsRow
             href="/app/preferences"
             title="Preferências gerais"
             description="Fuso horário e pagamentos no portal."

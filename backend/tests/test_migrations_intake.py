@@ -80,10 +80,10 @@ def test_empty_database_upgrade_head_unique(migration_db: str):
     assert heads.returncode == 0, heads.stderr
     lines = [ln for ln in heads.stdout.strip().splitlines() if ln.strip()]
     assert len(lines) == 1
-    assert "0019_client_intake_journey" in lines[0]
+    assert "0020_professional_accompaniment_ux" in lines[0]
 
     current = _run_alembic("current")
-    assert "0019_client_intake_journey" in current.stdout
+    assert "0020_professional_accompaniment_ux" in current.stdout
 
     engine = create_engine(migration_db)
     insp = inspect(engine)
@@ -102,6 +102,13 @@ def test_empty_database_upgrade_head_unique(migration_db: str):
         "client_public_accesses",
     ):
         assert insp.has_table(table), table
+    cols = {c["name"] for c in insp.get_columns("organizations")}
+    assert "profession_code" in cols
+    link_cols = {c["name"] for c in insp.get_columns("organization_intake_links")}
+    assert "form_kind" in link_cols
+    assert "is_primary" in link_cols
+    anam_cols = {c["name"] for c in insp.get_columns("client_anamnesis_responses")}
+    assert "questions_snapshot" in anam_cols
     engine.dispose()
 
 
@@ -144,7 +151,7 @@ def test_upgrade_from_0018_to_head(migration_db: str):
     to_head = _run_alembic("upgrade", "head")
     assert to_head.returncode == 0, to_head.stdout + to_head.stderr
     heads = _run_alembic("heads")
-    assert "0019_client_intake_journey" in heads.stdout
+    assert "0020_professional_accompaniment_ux" in heads.stdout
     assert len([ln for ln in heads.stdout.strip().splitlines() if ln.strip()]) == 1
 
     engine = create_engine(migration_db)
@@ -167,4 +174,20 @@ def test_upgrade_from_0018_to_head(migration_db: str):
             )
         ).fetchall()
         assert constraints
+        # 0020 profession column present and nullable for legacy orgs
+        code = conn.execute(
+            text("SELECT profession_code FROM organizations WHERE id = :id"),
+            {"id": org_id},
+        ).scalar_one()
+        assert code is None
     engine.dispose()
+
+
+def test_upgrade_from_0019_to_0020(migration_db: str):
+    os.environ["DATABASE_URL"] = migration_db
+    to_19 = _run_alembic("upgrade", "0019_client_intake_journey")
+    assert to_19.returncode == 0, to_19.stdout + to_19.stderr
+    to_20 = _run_alembic("upgrade", "head")
+    assert to_20.returncode == 0, to_20.stdout + to_20.stderr
+    current = _run_alembic("current")
+    assert "0020_professional_accompaniment_ux" in current.stdout
