@@ -11,8 +11,10 @@
 ## Estado
 
 - [x] AUTORIZADA  
-- [ ] EM_ANDAMENTO  
-- [ ] ENTREGUE  
+- [x] EM_ANDAMENTO  
+- [x] ENTREGUE_HML (`7b7f8a4` — migration `0019`, smoke API PASS)  
+- [ ] HOMOLOGADA (validação humana)  
+- [ ] ENTREGUE (merge main / RC — aguarda autorização)  
 
 > Sem `AUTORIZADA`, agentes **não** implementam. Esta sprint está **AUTORIZADA**.
 
