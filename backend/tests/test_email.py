@@ -402,3 +402,71 @@ def test_client_ip_trusts_cf_only_from_trusted_peer(monkeypatch):
     monkeypatch.delenv("TRUST_PROXY", raising=False)
     monkeypatch.delenv("TRUSTED_PROXY_IPS", raising=False)
     get_settings.cache_clear()
+
+
+def test_hml_soft_gate_allows_unverified_login(client, register_payload, db_session, monkeypatch):
+    """HML contract: EMAIL_VERIFICATION_REQUIRED=false must not block login."""
+    reset_email_provider_cache()
+    public_rate_limiter.reset()
+    monkeypatch.setenv("CRONIU_ENV", "hml")
+    monkeypatch.setenv("EMAIL_VERIFICATION_REQUIRED", "false")
+    get_settings.cache_clear()
+
+    created = client.post("/api/v1/auth/register", json=register_payload)
+    assert created.status_code == 201
+    assert created.json()["requires_email_verification"] is False
+
+    user = db_session.scalar(select(User).where(User.email == register_payload["email"]))
+    assert user is not None
+    assert user.email_verified_at is None
+
+    ok = client.post(
+        "/api/v1/auth/login",
+        json={"email": register_payload["email"], "password": register_payload["password"]},
+    )
+    assert ok.status_code == 200
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+    monkeypatch.delenv("CRONIU_ENV", raising=False)
+    monkeypatch.delenv("EMAIL_VERIFICATION_REQUIRED", raising=False)
+    get_settings.cache_clear()
+
+
+def test_production_rejects_email_verification_bypass(monkeypatch):
+    from app.config import Settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("CRONIU_ENV", "production")
+    monkeypatch.setenv("EMAIL_VERIFICATION_REQUIRED", "false")
+    settings = Settings()
+    with pytest.raises(ValueError, match="EMAIL_VERIFICATION_REQUIRED must be true"):
+        settings.validate_email_verification_contract()
+
+    monkeypatch.setenv("EMAIL_VERIFICATION_REQUIRED", "true")
+    ok = Settings()
+    ok.validate_email_verification_contract()
+
+    monkeypatch.delenv("CRONIU_ENV", raising=False)
+    monkeypatch.delenv("EMAIL_VERIFICATION_REQUIRED", raising=False)
+    get_settings.cache_clear()
+
+
+def test_invalid_credentials_code_stable_when_verification_required(
+    client, register_payload, monkeypatch
+):
+    reset_email_provider_cache()
+    public_rate_limiter.reset()
+    monkeypatch.setenv("EMAIL_VERIFICATION_REQUIRED", "true")
+    get_settings.cache_clear()
+    client.post("/api/v1/auth/register", json=register_payload)
+
+    bad = client.post(
+        "/api/v1/auth/login",
+        json={"email": register_payload["email"], "password": "senha-errada-12345"},
+    )
+    assert bad.status_code == 401
+    assert bad.json()["code"] == "invalid_credentials"
+    assert "verific" not in bad.json()["message"].lower()
+
+    monkeypatch.delenv("EMAIL_VERIFICATION_REQUIRED", raising=False)
+    get_settings.cache_clear()

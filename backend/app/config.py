@@ -215,6 +215,16 @@ class Settings(BaseSettings):
                 "EMAIL_FROM must use @send.croniu.com.br in production when EMAIL_PROVIDER=resend"
             )
 
+    def validate_email_verification_contract(self) -> None:
+        """Fail-closed: production must require e-mail verification (no HML-style bypass)."""
+        if self.croniu_env.lower() != "production":
+            return
+        if not self.email_verification_required:
+            raise ValueError(
+                "EMAIL_VERIFICATION_REQUIRED must be true in production "
+                "(HML soft-gate bypass is not allowed in PRD)"
+            )
+
     @property
     def voice_mime_allowlist(self) -> set[str]:
         return {

@@ -58,6 +58,8 @@ describe("Auth forms", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("E-mail ou senha inválidos.");
     });
+    expect(screen.queryByRole("link", { name: "Abrir verificação" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Reenviar verificação" })).toBeInTheDocument();
   });
 
   it("links unverified login to verify-email", async () => {
@@ -78,7 +80,7 @@ describe("Auth forms", () => {
     await user.click(screen.getByRole("button", { name: "Entrar" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Confirme seu e-mail");
+      expect(screen.getByRole("alert")).toHaveTextContent("ainda não foi verificado");
     });
     expect(screen.getByRole("link", { name: "Abrir verificação" })).toHaveAttribute(
       "href",

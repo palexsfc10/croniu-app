@@ -23,6 +23,7 @@ function LoginFormInner() {
   const searchParams = useSearchParams();
   const verified = searchParams.get("verified") === "1";
   const [formError, setFormError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -35,14 +36,16 @@ function LoginFormInner() {
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
+    setErrorCode(null);
     const result = await apiFetch<MeResponse>("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify(values),
     });
     if (result.error) {
+      setErrorCode(result.error.code);
       if (result.error.code === "email_unverified") {
         setFormError(
-          "Confirme seu e-mail antes de entrar. Você pode reenviar o link na tela de verificação.",
+          "Seu e-mail ainda não foi verificado. Você pode verificar ou reenviar o link.",
         );
         return;
       }
@@ -112,13 +115,18 @@ function LoginFormInner() {
             role="alert"
             className="rounded-[var(--radius-sm)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
           >
-            {formError}{" "}
-            <Link
-              href="/verify-email"
-              className="font-semibold underline underline-offset-2"
-            >
-              Abrir verificação
-            </Link>
+            {formError}
+            {errorCode === "email_unverified" ? (
+              <>
+                {" "}
+                <Link
+                  href="/verify-email"
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Abrir verificação
+                </Link>
+              </>
+            ) : null}
           </p>
         ) : null}
       </div>
