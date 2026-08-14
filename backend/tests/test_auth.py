@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.config import get_settings
+
 
 def test_health_ok(client):
     response = client.get("/health")
@@ -25,6 +27,26 @@ def test_liveness_readiness_and_version(client):
         "build_time": "",
         "status": "ok",
     }
+
+
+def test_version_uses_injected_build_metadata(monkeypatch):
+    monkeypatch.setenv("GIT_SHA", "3922da876514a5484f738d6ab0140b8a86c16090")
+    monkeypatch.setenv("BUILD_TIME", "20260814T120000Z")
+    monkeypatch.setenv("CRONIU_ENV", "hml")
+    monkeypatch.setenv("APP_VERSION", "client-intake-hml")
+    get_settings.cache_clear()
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    with TestClient(create_app()) as local:
+        body = local.get("/version").json()
+    get_settings.cache_clear()
+    assert body["environment"] == "hml"
+    assert body["git_sha"] == "3922da876514a5484f738d6ab0140b8a86c16090"
+    assert body["git_sha"] != "unknown"
+    assert body["build_time"] == "20260814T120000Z"
+    assert body["status"] == "ok"
 
 
 def test_register_valid(client, register_payload):

@@ -53,7 +53,13 @@ echo "feature=client-intake-journey" >> "$ROOT/DEPLOY_MARKER.txt"
 echo "=== rebuild api+web+admin ==="
 cd "$ROOT/deploy/hml"
 set -a; source .env.hml; set +a
-docker build -t "${CRONIU_API_IMAGE:-croniu-hml-api:local}" -f "$ROOT/backend/Dockerfile" "$ROOT/backend"
+docker build \
+  --build-arg "GIT_SHA=${SHA}" \
+  --build-arg "APP_VERSION=client-intake-hml" \
+  --build-arg "BUILD_TIME=${STAMP}" \
+  -t "${CRONIU_API_IMAGE:-croniu-hml-api:local}" \
+  -f "$ROOT/backend/Dockerfile" \
+  "$ROOT/backend"
 docker build \
   --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
   --build-arg "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}" \
@@ -97,6 +103,7 @@ docker inspect croniu-hml-cloudflared --format 'cf={{.State.Status}}' 2>/dev/nul
 
 echo "=== smoke api ==="
 curl -sS -o /dev/null -w 'health=%{http_code}\n' "http://127.0.0.1:${API_HOST_PORT}/health"
+curl -sS "http://127.0.0.1:${API_HOST_PORT}/version" || true
 curl -sS -o /dev/null -w 'intake_invalid=%{http_code}\n' "http://127.0.0.1:${API_HOST_PORT}/api/v1/public/intake/not-a-token" || true
 
 echo "=== DONE client-intake HML sha=$SHA backup=$BK ==="

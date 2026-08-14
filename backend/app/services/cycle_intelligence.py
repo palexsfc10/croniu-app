@@ -25,6 +25,7 @@ from app.schemas.cycle_intelligence import (
 )
 from app.schemas.domain import CycleOut
 from app.services import agenda as agenda_svc
+from app.services import cycle_guard as cycle_guard_svc
 from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
 from app.services.auth import AuthError
@@ -358,6 +359,22 @@ def create_intelligent_cycle(
             "Nenhuma aula cai neste período com os dias escolhidos.",
             422,
         )
+
+    exclude_cycle_id = (
+        renewal_row.source_cycle_id
+        if renewal_row is not None and renewal_row.source_cycle_id is not None
+        else None
+    )
+    cycle_guard_svc.assert_no_duplicate_or_overlap(
+        db,
+        organization_id=organization_id,
+        client_id=client.id,
+        service_id=service.id,
+        starts_on=preview.starts_on,
+        ends_on=preview.ends_on,
+        lesson_count=preview.lesson_count,
+        exclude_cycle_id=exclude_cycle_id,
+    )
 
     planned: list[tuple[datetime, datetime]] = []
     if not payload.generate_appointments or payload.starts_time is None:

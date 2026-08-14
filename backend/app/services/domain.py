@@ -23,6 +23,7 @@ from app.schemas.domain import (
     ReceivableOut,
     WhatsAppPrepOut,
 )
+from app.services import cycle_guard as cycle_guard_svc
 from app.services.auth import AuthError
 
 NEARING_END_DAYS = 7
@@ -578,6 +579,16 @@ def create_cycle(
         raise AuthError("service_archived", "Não é possível criar ciclo com serviço arquivado.")
     if ends_on < starts_on:
         raise AuthError("invalid_dates", "A data de fim deve ser igual ou posterior ao início.")
+
+    cycle_guard_svc.assert_no_duplicate_or_overlap(
+        db,
+        organization_id=organization_id,
+        client_id=client.id,
+        service_id=service.id,
+        starts_on=starts_on,
+        ends_on=ends_on,
+        lesson_count=lesson_count,
+    )
 
     if cycle_template_id is not None:
         tmpl = db.scalar(

@@ -15,6 +15,7 @@ from app.models.appointment import Appointment
 from app.models.cycle import Cycle
 from app.models.receivable import Receivable
 from app.services import agenda as agenda_svc
+from app.services import cycle_guard as cycle_guard_svc
 from app.services import domain as domain_svc
 from app.services.auth import AuthError
 from app.services.cycle_calc import compose_financial, compute_renewal_on, enumerate_lesson_dates
@@ -139,6 +140,13 @@ def build_occurrences(
     duration_minutes: int,
     tz: ZoneInfo,
 ) -> list[Occurrence]:
+    """One occurrence per lesson day. A cycle never emits two rows with the same starts_at.
+
+    Duplicate `starts_at` on the same cycle is treated as data corruption, not two
+    legitimate simultaneous sessions. Agenda completeness therefore uses
+    count(distinct starts_at). If the domain later allows two sessions at the same
+    instant, switch the identity to appointment id (or session key), not distinct time.
+    """
     weekdays = [s.weekday for s in slots]
     times = {s.weekday: s.starts_time for s in slots}
     days = enumerate_lesson_dates(starts_on=starts_on, ends_on=ends_on, weekdays=weekdays)
@@ -155,6 +163,13 @@ def build_occurrences(
                 ends_at=start_at + duration,
                 index=i,
             )
+        )
+    instants = [o.starts_at for o in out]
+    if len(instants) != len(set(instants)):
+        raise AuthError(
+            "invalid_schedule",
+            "A programação gerou duas aulas no mesmo horário.",
+            422,
         )
     return out
 
@@ -439,6 +454,16 @@ def create_cycle_with_schedule(
             "Nenhuma aula cai neste período com os dias escolhidos.",
             422,
         )
+
+    cycle_guard_svc.assert_no_duplicate_or_overlap(
+        db,
+        organization_id=organization_id,
+        client_id=client.id,
+        service_id=service.id,
+        starts_on=starts_on,
+        ends_on=ends_on,
+        lesson_count=len(occurrences),
+    )
 
     unit = unit_price_cents if unit_price_cents is not None else (service.default_price_cents or 0)
     # Prefer explicit package total from assistant when provided as value_cents/final_cents

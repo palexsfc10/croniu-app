@@ -365,3 +365,37 @@ def test_agenda_complete_only_counts_own_valid_distinct_lessons(
     journey = client.get(f"/api/v1/clients/{cid}/journey").json()
     assert journey["accompaniment_checklist"]["cycle"] == "done"
     assert journey["accompaniment_checklist"]["agenda"] != "done"
+
+    extra_done = Appointment(
+        organization_id=rows[1].organization_id,
+        client_id=rows[1].client_id,
+        cycle_id=rows[1].cycle_id,
+        service_id=rows[1].service_id,
+        title=rows[1].title,
+        starts_at=rows[1].starts_at.replace(year=2027, month=1, day=3, hour=6),
+        ends_at=rows[1].ends_at.replace(year=2027, month=1, day=3, hour=7),
+        status="completed",
+    )
+    extra_ns = Appointment(
+        organization_id=rows[1].organization_id,
+        client_id=rows[1].client_id,
+        cycle_id=rows[1].cycle_id,
+        service_id=rows[1].service_id,
+        title=rows[1].title,
+        starts_at=rows[1].starts_at.replace(year=2027, month=1, day=4, hour=6),
+        ends_at=rows[1].ends_at.replace(year=2027, month=1, day=4, hour=7),
+        status="no_show",
+    )
+    db_session.add_all([extra_done, extra_ns])
+    db_session.commit()
+
+    over = client.get(f"/api/v1/clients/{cid}/journey").json()
+    assert over["accompaniment_checklist"]["agenda"] == "done"
+
+    rows[1].status = "completed"
+    db_session.add(rows[1])
+    db_session.commit()
+    still = client.get(f"/api/v1/clients/{cid}/journey").json()
+    assert still["accompaniment_checklist"]["cycle"] == "done"
+    assert still["accompaniment_checklist"]["agenda"] == "done"
+

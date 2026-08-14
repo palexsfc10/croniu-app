@@ -25,6 +25,11 @@ import {
   isScheduleConflictCode,
   type ScheduleConflictItem,
 } from "@/components/app/schedule-conflict-alert";
+import {
+  CycleOverlapAlert,
+  isDuplicateCycleCode,
+  isOverlappingCycleCode,
+} from "@/components/app/cycle-overlap-alert";
 
 function NewIntelligentCycleForm() {
   const router = useRouter();
@@ -60,6 +65,10 @@ function NewIntelligentCycleForm() {
   const [error, setError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<ScheduleConflictItem[]>([]);
   const [conflictCount, setConflictCount] = useState(0);
+  const [cycleGuardCode, setCycleGuardCode] = useState<
+    "DUPLICATE_CYCLE" | "OVERLAPPING_CYCLE" | null
+  >(null);
+  const [existingCycleId, setExistingCycleId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const template = templates.find((t) => t.id === templateId);
@@ -152,6 +161,8 @@ function NewIntelligentCycleForm() {
     setError(null);
     setConflicts([]);
     setConflictCount(0);
+    setCycleGuardCode(null);
+    setExistingCycleId(null);
     const body: Record<string, unknown> = {
       client_id: clientId,
       service_id: serviceId,
@@ -183,6 +194,7 @@ function NewIntelligentCycleForm() {
         | {
             conflicts?: ScheduleConflictItem[];
             conflict_count?: number;
+            existing_cycle_id?: string;
           }
         | undefined;
       const items = details?.conflicts ?? [];
@@ -190,6 +202,13 @@ function NewIntelligentCycleForm() {
       setConflictCount(details?.conflict_count ?? items.length);
       if (isScheduleConflictCode(result.error.code)) {
         setError("schedule_conflict");
+      } else if (
+        isDuplicateCycleCode(result.error.code) ||
+        isOverlappingCycleCode(result.error.code)
+      ) {
+        setCycleGuardCode(result.error.code as "DUPLICATE_CYCLE" | "OVERLAPPING_CYCLE");
+        setExistingCycleId(details?.existing_cycle_id ?? null);
+        setError(result.error.message);
       } else {
         setError(result.error.message);
       }
@@ -458,6 +477,22 @@ function NewIntelligentCycleForm() {
               onAdjust={() => {
                 setError(null);
                 setStep(2);
+              }}
+            />
+          ) : cycleGuardCode ? (
+            <CycleOverlapAlert
+              code={cycleGuardCode}
+              message={error || ""}
+              existingCycleId={existingCycleId}
+              clientId={clientId}
+              onAdjustPeriod={() => {
+                setError(null);
+                setCycleGuardCode(null);
+              }}
+              onCancel={() => {
+                router.replace(
+                  clientId ? `/app/clients/${clientId}` : "/app/cycles"
+                );
               }}
             />
           ) : error ? (

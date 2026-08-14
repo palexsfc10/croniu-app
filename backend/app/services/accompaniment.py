@@ -89,7 +89,14 @@ def count_cycle_agenda_slots(
     organization_id: uuid.UUID,
     cycle_id: uuid.UUID,
 ) -> int:
-    """Distinct valid lessons for this cycle/tenant. Duplicates and cancelled/archived do not count."""
+    """Distinct valid lessons for this cycle/tenant.
+
+    Counts scheduled/completed/no_show only. Cancelled rows and appointments of
+    other cycles (including manual bookings with cycle_id null) are excluded.
+    Duplicate rows sharing starts_at count as one: a single cycle never generates
+    two legitimate lessons at the same instant (see build_occurrences).
+    Appointment status has no `archived` value; cancelled covers withdrawn lessons.
+    """
     return int(
         db.scalar(
             select(func.count(func.distinct(Appointment.starts_at))).where(
