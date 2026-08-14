@@ -274,3 +274,94 @@ def test_schedule_conflict_leaves_no_partial_cycle(client, register_payload):
     after = client.get(f"/api/v1/clients/{cid}/journey").json()
     assert after["accompaniment_checklist"]["cycle"] == "done"
     assert after["accompaniment_checklist"]["agenda"] == "done"
+
+
+def _cycle_payload(cid: str, svc: str, tmpl: str, key: str, time: str = "09:00:00") -> dict:
+    return {
+        "client_id": cid,
+        "service_id": svc,
+        "cycle_template_id": tmpl,
+        "starts_on": "2026-08-17",
+        "weekdays": [0, 2],
+        "starts_time": time,
+        "generate_appointments": True,
+        "create_receivable": True,
+        "idempotency_key": key,
+    }
+
+
+def test_agenda_complete_only_counts_own_valid_distinct_lessons(
+    client, register_payload, db_session
+):
+    from uuid import UUID
+
+    from app.models.appointment import Appointment
+    from sqlalchemy import select
+
+    _auth(client, register_payload)
+    cid = client.post("/api/v1/clients", json={"full_name": "Cliente Agenda"}).json()["id"]
+    other = client.post("/api/v1/clients", json={"full_name": "Outro Aluno"}).json()["id"]
+    svc = client.post(
+        "/api/v1/services",
+        json={"name": "Aula padrão", "default_price_cents": 9000, "default_duration_minutes": 60},
+    ).json()["id"]
+    tmpl = client.post(
+        "/api/v1/cycle-templates",
+        json={
+            "name": "2x — mensal",
+            "weekly_frequency": 2,
+            "duration_type": "calendar_months",
+            "duration_value": 1,
+        },
+    ).json()["id"]
+    mine = client.post(
+        "/api/v1/cycles/intelligent",
+        json=_cycle_payload(cid, svc, tmpl, "agenda-own-1", "09:00:00"),
+    )
+    assert mine.status_code == 201, mine.text
+    other_cycle = client.post(
+        "/api/v1/cycles/intelligent",
+        json=_cycle_payload(other, svc, tmpl, "agenda-other-1", "14:00:00"),
+    )
+    assert other_cycle.status_code == 201, other_cycle.text
+
+    rows = list(
+        db_session.scalars(
+            select(Appointment).where(Appointment.cycle_id == UUID(mine.json()["id"]))
+        ).all()
+    )
+    assert len(rows) >= 2
+    first = rows[0]
+    cancel = client.patch(
+        f"/api/v1/appointments/{first.id}",
+        json={"status": "cancelled"},
+    )
+    assert cancel.status_code == 200, cancel.text
+
+    manual = client.post(
+        "/api/v1/appointments",
+        json={
+            "client_id": cid,
+            "starts_at": "2026-08-18T15:00:00-03:00",
+            "ends_at": "2026-08-18T16:00:00-03:00",
+        },
+    )
+    assert manual.status_code == 201, manual.text
+
+    clone = Appointment(
+        organization_id=rows[1].organization_id,
+        client_id=rows[1].client_id,
+        cycle_id=rows[1].cycle_id,
+        service_id=rows[1].service_id,
+        title=rows[1].title,
+        starts_at=rows[1].starts_at,
+        ends_at=rows[1].ends_at,
+        status="scheduled",
+        notes="duplicate-slot",
+    )
+    db_session.add(clone)
+    db_session.commit()
+
+    journey = client.get(f"/api/v1/clients/{cid}/journey").json()
+    assert journey["accompaniment_checklist"]["cycle"] == "done"
+    assert journey["accompaniment_checklist"]["agenda"] != "done"

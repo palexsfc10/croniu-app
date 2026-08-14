@@ -42,6 +42,7 @@ STEP_KEYS = (
     "routine",
     "activate",
 )
+AGENDA_COUNT_STATUSES = frozenset({"scheduled", "completed", "no_show"})
 VALID_STATUSES = {"todo", "done", "later", "na"}
 
 NEXT_BY_STEP = {
@@ -80,6 +81,25 @@ def _pick_cycle(
     if upcoming:
         return sorted(upcoming, key=lambda c: c.starts_on)[0]
     return None
+
+
+def count_cycle_agenda_slots(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    cycle_id: uuid.UUID,
+) -> int:
+    """Distinct valid lessons for this cycle/tenant. Duplicates and cancelled/archived do not count."""
+    return int(
+        db.scalar(
+            select(func.count(func.distinct(Appointment.starts_at))).where(
+                Appointment.organization_id == organization_id,
+                Appointment.cycle_id == cycle_id,
+                Appointment.status.in_(AGENDA_COUNT_STATUSES),
+            )
+        )
+        or 0
+    )
 
 
 def _merge(stored: str | None, *, fact_done: bool) -> str:
@@ -125,15 +145,8 @@ def resolve_accompaniment(
     cycle = _pick_cycle(cycles, today)
     appt_count = 0
     if cycle is not None:
-        appt_count = int(
-            db.scalar(
-                select(func.count()).select_from(Appointment).where(
-                    Appointment.organization_id == organization_id,
-                    Appointment.cycle_id == cycle.id,
-                    Appointment.status != "cancelled",
-                )
-            )
-            or 0
+        appt_count = count_cycle_agenda_slots(
+            db, organization_id=organization_id, cycle_id=cycle.id
         )
 
     expected = int(cycle.lesson_count or 0) if cycle else 0
