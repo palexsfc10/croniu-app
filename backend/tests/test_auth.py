@@ -37,6 +37,20 @@ def test_register_valid(client, register_payload):
     assert "croniu_session" in response.cookies
 
 
+def test_register_with_profession(client, register_payload):
+    payload = {
+        **register_payload,
+        "email": "consultor@example.com",
+        "profession_code": "consultant",
+        "use_cases": ["consulting", "periodic_feedback"],
+    }
+    response = client.post("/api/v1/auth/register", json=payload)
+    assert response.status_code == 201
+    org = response.json()["organization"]
+    assert org["profession_code"] == "consultant"
+    assert org["profession_onboarding_done"] is True
+
+
 def test_register_duplicate_email(client, register_payload):
     assert client.post("/api/v1/auth/register", json=register_payload).status_code == 201
     response = client.post("/api/v1/auth/register", json=register_payload)

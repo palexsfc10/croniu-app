@@ -37,7 +37,7 @@ export function PublicEntryHero({ next = null }: Props) {
         <BrandWordmark size="lg" surface="light" />
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center gap-10 px-5 py-6 sm:px-8 lg:grid lg:grid-cols-2 lg:items-center lg:gap-12 lg:py-10">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-start gap-8 px-5 py-4 sm:px-8 lg:grid lg:grid-cols-2 lg:items-start lg:gap-12 lg:py-8">
         <section className="animate-fade-up space-y-6">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-primary)]">
             Seu parceiro de rotina
@@ -81,7 +81,7 @@ export function PublicEntryHero({ next = null }: Props) {
             ))}
           </ul>
 
-          <p className="hidden text-sm text-[var(--color-ink-muted)] lg:block">
+          <p className="text-sm text-[var(--color-ink-muted)]">
             Cliente entra → Croniu organiza → Você acompanha
           </p>
         </section>

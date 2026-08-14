@@ -35,10 +35,25 @@ describe("Auth forms", () => {
     searchParams = new URLSearchParams();
   });
 
+  it("walks two steps before creating the account", async () => {
+    const user = userEvent.setup();
+    render(<RegisterForm />);
+    await user.type(screen.getByLabelText("Seu nome"), "Ana Consultora");
+    await user.type(screen.getByLabelText(/Nome do negócio/i), "Studio Ana");
+    await user.type(screen.getByLabelText("E-mail"), "ana@example.com");
+    await user.type(screen.getByLabelText("Senha"), "senha12345");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    expect(screen.getByText(/Etapa 2 de 2/)).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Consultor"));
+    expect(screen.getByText(/Seu Croniu será preparado para/)).toBeInTheDocument();
+    expect(screen.queryByText(/anamnese de atividade física/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Criar minha conta" })).toBeInTheDocument();
+  }, 15_000);
+
   it("shows validation errors on empty register submit", async () => {
     const user = userEvent.setup();
     render(<RegisterForm />);
-    await user.click(screen.getByRole("button", { name: "Criar conta" }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(await screen.findAllByRole("alert")).not.toHaveLength(0);
   });
 

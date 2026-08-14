@@ -105,7 +105,19 @@ export default function OrganizationDetailPage() {
         </div>
         <div>
           <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Profissão</dt>
-          <dd>{data.profession_label ?? "—"}</dd>
+          <dd>{data.profession_label ?? "Não preenchida"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Especialidade</dt>
+          <dd>{data.profession_specialty ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Onboarding profissional</dt>
+          <dd>{data.profession_onboarding_done ? "Concluído" : "Pendente"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Formulário recomendado</dt>
+          <dd>{data.recommended_form_kind ?? "—"}</dd>
         </div>
         <div>
           <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Planos / publicados / ocorrências atrasadas</dt>

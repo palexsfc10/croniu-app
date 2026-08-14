@@ -63,6 +63,10 @@ export type OrganizationDetail = OrganizationListItem & {
   timezone?: string;
   appointments_count?: number;
   profession_label?: string | null;
+  profession_specialty?: string | null;
+  profession_onboarding_done?: boolean;
+  recommended_form_kind?: string | null;
+  use_cases?: string[] | null;
   plans_count?: number;
   published_plans_count?: number;
   overdue_occurrences_count?: number;

@@ -1,17 +1,12 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
+import { registerProfessional } from "./register-flow";
 
 const artifacts = path.join("e2e", "artifacts", "sprint2c");
 
 async function register(page: import("@playwright/test").Page, prefix: string) {
   const email = `${prefix}_${Date.now()}@example.com`;
-  await page.goto("/register");
-  await page.getByLabel("Seu nome").fill(`Pro ${prefix}`);
-  await page.getByLabel("Nome do negócio / organização").fill(`Studio ${prefix}`);
-  await page.getByLabel("E-mail").fill(email);
-  await page.locator("#password").fill("SenhaForte1!");
-  await page.getByRole("button", { name: "Criar conta" }).click();
-  await expect(page).toHaveURL(/\/app/);
+  await registerProfessional(page, { name: `Pro ${prefix}`, org: `Studio ${prefix}`, email });
 }
 
 function nav(page: import("@playwright/test").Page, name: string) {

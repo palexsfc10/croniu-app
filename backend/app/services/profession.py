@@ -54,6 +54,7 @@ FORM_KIND_OPTIONS: list[dict[str, str]] = [
     {"code": "simple_registration", "label": "Cadastro simples"},
     {"code": "physical_anamnesis", "label": "Cadastro + anamnese de atividade física"},
     {"code": "class_questionnaire", "label": "Cadastro + questionário de aulas"},
+    {"code": "sports_questionnaire", "label": "Cadastro + questionário esportivo"},
     {"code": "consulting_brief", "label": "Cadastro + briefing"},
     {"code": "custom", "label": "Formulário personalizado"},
 ]
@@ -71,21 +72,39 @@ _VALID_PROFESSION = {p["code"] for p in PROFESSION_OPTIONS}
 _VALID_USE_CASES = {u["code"] for u in USE_CASE_OPTIONS}
 
 
-def recommended_form_kind(profession_code: str | None) -> str:
-    if profession_code == "personal_trainer":
+def recommended_form_kind(profession_code: str | None, specialty: str | None = None) -> str:
+    code = _canonical(profession_code)
+    if code == "personal_trainer":
         return "physical_anamnesis"
-    if profession_code == "private_tutor":
+    if code == "private_tutor":
         return "class_questionnaire"
-    if profession_code == "sports_teacher":
-        return "physical_anamnesis"
-    if profession_code in {"consultant", "coach_mentor"}:
+    if code == "sports_teacher":
+        if specialty in {"musculacao", "funcional", "luta", "pilates", "corrida"}:
+            return "physical_anamnesis"
+        return "sports_questionnaire"
+    if code in {"consultant", "coach_mentor"}:
         return "consulting_brief"
     return "simple_registration"
 
 
+_CODE_ALIASES = {
+    "private_teacher": "private_tutor",
+    "sports_instructor": "sports_teacher",
+    "beauty_professional": "aesthetics",
+    "other_self_employed": "other",
+}
+_USE_CASE_ALIASES = {"appointments": "appointments_agenda"}
+
+
+def _canonical(profession_code: str | None) -> str | None:
+    if not profession_code or profession_code in {"generic_professional", "generic"}:
+        return None
+    return _CODE_ALIASES.get(profession_code, profession_code)
+
+
 def nomenclature_for(profession_code: str | None) -> dict[str, str]:
     """Central term resolver — UI only; enums/API stay unchanged."""
-    code = profession_code or "generic"
+    code = _canonical(profession_code) or "generic"
     if code == "personal_trainer":
         return {
             "client": "aluno",
@@ -158,6 +177,42 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "plan_ending": "Preparar novo planejamento",
             "feedback": "Follow-up",
         }
+    if code == "coach_mentor":
+        return {
+            "client": "cliente",
+            "clients": "clientes",
+            "plan": "plano de acompanhamento",
+            "plan_short": "plano",
+            "plan_review": "revisão do plano",
+            "session": "sessão",
+            "evaluation": "avaliação",
+            "cycle": "ciclo",
+            "agenda": "agenda",
+            "routine": "rotina",
+            "accompaniment": "acompanhamento",
+            "new_intake": "Novos clientes",
+            "intake_form": "briefing",
+            "plan_ending": "Preparar novo planejamento",
+            "feedback": "Acompanhamento",
+        }
+    if code == "aesthetics":
+        return {
+            "client": "cliente",
+            "clients": "clientes",
+            "plan": "plano de atendimento",
+            "plan_short": "plano",
+            "plan_review": "revisão do plano",
+            "session": "sessão",
+            "evaluation": "avaliação",
+            "cycle": "ciclo",
+            "agenda": "agenda",
+            "routine": "rotina",
+            "accompaniment": "acompanhamento",
+            "new_intake": "Novos clientes",
+            "intake_form": "cadastro",
+            "plan_ending": "Preparar próximo plano",
+            "feedback": "Retorno",
+        }
     # Generic + regulated professions: avoid clinical overclaims
     return {
         "client": "cliente",
@@ -185,15 +240,17 @@ def validate_profession_payload(
     profession_other: str | None = None,
     use_cases: list[str] | None = None,
 ) -> dict[str, Any]:
+    profession_code = _canonical(profession_code)
     if profession_code is not None and profession_code not in _VALID_PROFESSION:
         raise ValueError("Área de atuação inválida.")
     cleaned_cases: list[str] = []
     if use_cases:
         for item in use_cases:
-            if item not in _VALID_USE_CASES:
+            mapped = _USE_CASE_ALIASES.get(item, item)
+            if mapped not in _VALID_USE_CASES:
                 raise ValueError(f"Forma de acompanhamento inválida: {item}")
-            if item not in cleaned_cases:
-                cleaned_cases.append(item)
+            if mapped not in cleaned_cases:
+                cleaned_cases.append(mapped)
     other = (profession_other or "").strip() or None
     if profession_code == "other" and not other:
         raise ValueError("Descreva sua atuação.")
@@ -201,15 +258,43 @@ def validate_profession_payload(
     if profession_code == "sports_teacher" and specialty:
         if specialty not in {s["code"] for s in SPORTS_SPECIALTIES}:
             raise ValueError("Especialidade esportiva inválida.")
+        if specialty == "other" and not other:
+            raise ValueError("Descreva a especialidade.")
     if profession_code == "private_tutor" and specialty:
         if specialty not in {s["code"] for s in TUTOR_SPECIALTIES}:
             raise ValueError("Área de ensino inválida.")
+        if specialty == "other" and not other:
+            raise ValueError("Descreva a área de ensino.")
+    keep_other = profession_code == "other" or specialty == "other"
     return {
         "profession_code": profession_code,
         "profession_specialty": specialty,
-        "profession_other": other if profession_code == "other" else None,
+        "profession_other": other if keep_other else None,
         "use_cases": cleaned_cases or None,
     }
+
+
+def assistant_nomenclature_block(
+    profession_code: str | None,
+    *,
+    specialty: str | None = None,
+    use_cases: list[str] | None = None,
+) -> str:
+    terms = nomenclature_for(profession_code)
+    cases = ", ".join(use_cases or []) or "não informado"
+    return (
+        "Nomenclatura do profissional autenticado:\n"
+        f"- código interno: {profession_code or 'generic_professional'}\n"
+        f"- especialidade: {specialty or 'não informada'}\n"
+        f"- formas de acompanhamento: {cases}\n"
+        f"- cliente: {terms['client']} / {terms['clients']}\n"
+        f"- plano: {terms['plan']}\n"
+        f"- sessão: {terms['session']}\n"
+        f"- feedback: {terms['feedback']}\n"
+        "Use esses termos. Não fale em treino/aluno se o vocabulário for cliente/atendimento. "
+        "Não sugira anamnese física fora do contexto de atividade física. "
+        "Não use códigos técnicos na resposta ao usuário."
+    )
 
 
 def profession_catalog() -> dict[str, Any]:

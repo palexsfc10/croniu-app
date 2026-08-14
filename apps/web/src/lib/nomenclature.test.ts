@@ -31,7 +31,8 @@ describe("recommendedFormKind", () => {
   it("does not recommend physical anamnesis for tutors/consultants", () => {
     expect(recommendedFormKind("private_tutor")).toBe("class_questionnaire");
     expect(recommendedFormKind("consultant")).toBe("consulting_brief");
-    expect(recommendedFormKind("personal_trainer")).toBe("physical_anamnesis");
+    expect(recommendedFormKind("sports_teacher")).toBe("sports_questionnaire");
+    expect(recommendedFormKind("sports_teacher", "musculacao")).toBe("physical_anamnesis");
   });
 });
 

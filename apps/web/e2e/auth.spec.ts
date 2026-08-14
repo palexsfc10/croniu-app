@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { registerProfessional } from "./register-flow";
 
 const apiURL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8010";
 
@@ -14,12 +15,12 @@ test.describe("auth vertical slice", () => {
     const email = `e2e_${suffix}@example.com`;
     const password = "SenhaForte1!";
 
-    await page.goto("/register");
-    await page.getByLabel("Seu nome").fill("Profissional E2E");
-    await page.getByLabel("Nome do negócio / organização").fill(`Studio ${suffix}`);
-    await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Senha").fill(password);
-    await page.getByRole("button", { name: "Criar conta" }).click();
+    await registerProfessional(page, {
+      name: "Profissional E2E",
+      org: `Studio ${suffix}`,
+      email,
+      password,
+    });
 
     await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
       timeout: 15_000,

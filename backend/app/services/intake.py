@@ -197,9 +197,18 @@ def create_intake_link(
     user_id: uuid.UUID | None,
     name: str = "Link de entrada",
     purpose: str = "new_client",
-    form_kind: str = "physical_anamnesis",
+    form_kind: str | None = None,
     set_primary: bool = False,
 ) -> dict[str, Any]:
+    org = db.get(Organization, organization_id)
+    from app.services import profession as profession_svc
+
+    resolved_kind = (form_kind or "").strip()
+    if not resolved_kind:
+        resolved_kind = profession_svc.recommended_form_kind(
+            org.profession_code if org else None,
+            org.profession_specialty if org else None,
+        )
     existing_active = list(
         db.scalars(
             select(OrganizationIntakeLink).where(
@@ -221,7 +230,7 @@ def create_intake_link(
         status="active",
         name=(name or "Link de entrada").strip()[:120],
         purpose=(purpose or "new_client").strip()[:64],
-        form_kind=(form_kind or "physical_anamnesis").strip()[:64],
+        form_kind=resolved_kind[:64],
         is_primary=make_primary,
         created_by_user_id=user_id,
         template_version_id=anam_svc.get_published_system_version(db).id,

@@ -106,25 +106,111 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     plan_ending: "Preparar novo planejamento",
     feedback: "Follow-up",
   },
+  coach_mentor: {
+    client: "cliente",
+    clients: "clientes",
+    plan: "plano de acompanhamento",
+    plan_short: "plano",
+    plan_review: "revisão do plano",
+    session: "sessão",
+    evaluation: "avaliação",
+    cycle: "ciclo",
+    agenda: "agenda",
+    routine: "rotina",
+    accompaniment: "acompanhamento",
+    new_intake: "Novos clientes",
+    intake_form: "briefing",
+    plan_ending: "Preparar novo planejamento",
+    feedback: "Acompanhamento",
+  },
+  aesthetics: {
+    client: "cliente",
+    clients: "clientes",
+    plan: "plano de atendimento",
+    plan_short: "plano",
+    plan_review: "revisão do plano",
+    session: "sessão",
+    evaluation: "avaliação",
+    cycle: "ciclo",
+    agenda: "agenda",
+    routine: "rotina",
+    accompaniment: "acompanhamento",
+    new_intake: "Novos clientes",
+    intake_form: "cadastro",
+    plan_ending: "Preparar próximo plano",
+    feedback: "Retorno",
+  },
 };
 
+const CODE_ALIASES: Record<string, string> = {
+  private_teacher: "private_tutor",
+  sports_instructor: "sports_teacher",
+  beauty_professional: "aesthetics",
+  other_self_employed: "other",
+  generic_professional: "generic",
+};
+
+export function canonicalProfessionCode(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return CODE_ALIASES[code] ?? code;
+}
+
 export function nomenclatureFor(professionCode: string | null | undefined): Nomenclature {
-  if (!professionCode) return GENERIC;
-  return BY_PROFESSION[professionCode] ?? GENERIC;
+  const code = canonicalProfessionCode(professionCode);
+  if (!code || code === "generic") return GENERIC;
+  return BY_PROFESSION[code] ?? GENERIC;
 }
 
 export function t(terms: Nomenclature, key: NomenclatureKey): string {
   return terms[key] ?? GENERIC[key];
 }
 
-export function recommendedFormKind(professionCode: string | null | undefined): string {
-  if (professionCode === "personal_trainer") return "physical_anamnesis";
-  if (professionCode === "private_tutor") return "class_questionnaire";
-  if (professionCode === "sports_teacher") return "physical_anamnesis";
-  if (professionCode === "consultant" || professionCode === "coach_mentor") {
-    return "consulting_brief";
+const PHYSICAL_SPORTS = new Set(["musculacao", "funcional", "luta", "pilates", "corrida"]);
+
+export function recommendedFormKind(
+  professionCode: string | null | undefined,
+  specialty?: string | null,
+): string {
+  const code = canonicalProfessionCode(professionCode);
+  if (code === "personal_trainer") return "physical_anamnesis";
+  if (code === "private_tutor") return "class_questionnaire";
+  if (code === "sports_teacher") {
+    return specialty && PHYSICAL_SPORTS.has(specialty)
+      ? "physical_anamnesis"
+      : "sports_questionnaire";
   }
+  if (code === "consultant" || code === "coach_mentor") return "consulting_brief";
   return "simple_registration";
+}
+
+export const FORM_KIND_LABELS: Record<string, string> = {
+  simple_registration: "Cadastro simples",
+  physical_anamnesis: "Cadastro + anamnese de atividade física",
+  class_questionnaire: "Cadastro + questionário de aulas",
+  sports_questionnaire: "Cadastro + questionário esportivo",
+  consulting_brief: "Cadastro + briefing",
+  custom: "Formulário personalizado",
+};
+
+export function recommendedFormLabel(
+  professionCode: string | null | undefined,
+  specialty?: string | null,
+): string {
+  return FORM_KIND_LABELS[recommendedFormKind(professionCode, specialty)] ?? "Cadastro simples";
+}
+
+export function registerSummaryLines(professionCode: string | null | undefined): string[] {
+  const code = canonicalProfessionCode(professionCode);
+  if (code === "personal_trainer") {
+    return ["organizar alunos", "acompanhar treinos", "revisar planos", "controlar ciclos e agenda"];
+  }
+  if (code === "private_tutor" || code === "sports_teacher") {
+    return ["organizar alunos", "planejar aulas", "acompanhar evolução", "controlar agenda e períodos"];
+  }
+  if (code === "consultant" || code === "coach_mentor") {
+    return ["organizar clientes", "planejar acompanhamentos", "registrar follow-ups", "controlar agenda e ciclos"];
+  }
+  return ["organizar clientes", "planejar acompanhamentos", "registrar evoluções", "controlar agenda e ciclos"];
 }
 
 export const PROFESSION_OPTIONS = [

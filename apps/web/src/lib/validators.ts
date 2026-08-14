@@ -5,6 +5,10 @@ export const registerSchema = z.object({
   organization_name: z.string().trim().min(2, "Informe o nome do negócio.").max(200),
   email: z.string().trim().email("E-mail inválido."),
   password: z.string().min(8, "A senha deve ter pelo menos 8 caracteres.").max(128),
+  profession_code: z.string().min(1, "Selecione sua área de atuação."),
+  profession_specialty: z.string().optional(),
+  profession_other: z.string().optional(),
+  use_cases: z.array(z.string()).optional(),
 });
 
 export const loginSchema = z.object({

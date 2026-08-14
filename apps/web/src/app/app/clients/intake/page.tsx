@@ -2,11 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import {
-  apiFetch,
-  type IntakeLink,
-  type IntakeSubmissionListItem,
-} from "@/lib/api";
+import { apiFetch, type IntakeLink, type IntakeSubmissionListItem, type ProfessionProfile } from "@/lib/api";
+import { nomenclatureFor, recommendedFormLabel } from "@/lib/nomenclature";
 import { submissionStatusLabel } from "@/lib/intake";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
@@ -23,18 +20,21 @@ export default function ClientsIntakePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
 
   const load = useCallback(async () => {
-    const [linkRes, listRes] = await Promise.all([
+    const [linkRes, listRes, profRes] = await Promise.all([
       apiFetch<IntakeLink>("/api/v1/intake-link"),
       apiFetch<IntakeSubmissionListItem[]>(
         "/api/v1/intake-submissions?status=pending_review",
       ),
+      apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
     ]);
     if (linkRes.error) setError(linkRes.error.message);
     else setLink(linkRes.data ?? null);
     if (listRes.error) setError(listRes.error.message);
     else setItems(listRes.data ?? []);
+    if (profRes.data) setProfession(profRes.data);
     setLoading(false);
   }, []);
 
@@ -146,13 +146,16 @@ export default function ClientsIntakePage() {
     window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
   }
 
+  const terms = nomenclatureFor(profession?.profession_code);
+
   return (
     <div className="space-y-5 animate-fade-up">
-      <BackLink href="/app/clients" label="Clientes" />
+      <BackLink href="/app/clients" label={terms.clients.charAt(0).toUpperCase() + terms.clients.slice(1)} />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Novos alunos</h1>
+        <h1 className="h-display text-3xl text-[var(--color-ink)]">{terms.new_intake}</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Convite permanente e fila de cadastros para analisar.
+          Convite permanente e fila de cadastros para analisar. Recomendação:{" "}
+          {recommendedFormLabel(profession?.profession_code, profession?.profession_specialty)}.
         </p>
       </div>
 

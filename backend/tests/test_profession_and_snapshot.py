@@ -18,6 +18,11 @@ def test_nomenclature_personal_vs_consultant():
 
 
 def test_recommended_form_kind():
+    assert profession_svc.recommended_form_kind("sports_teacher") == "sports_questionnaire"
+    assert (
+        profession_svc.recommended_form_kind("sports_teacher", "musculacao")
+        == "physical_anamnesis"
+    )
     assert profession_svc.recommended_form_kind("personal_trainer") == "physical_anamnesis"
     assert profession_svc.recommended_form_kind("private_tutor") == "class_questionnaire"
     assert profession_svc.recommended_form_kind("consultant") == "consulting_brief"

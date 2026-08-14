@@ -7,7 +7,7 @@ import {
   SPORTS_SPECIALTIES,
   TUTOR_SPECIALTIES,
   USE_CASE_OPTIONS,
-  recommendedFormKind,
+  recommendedFormLabel,
 } from "@/lib/nomenclature";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
@@ -177,7 +177,7 @@ export default function ProfessionalProfilePage() {
       {code ? (
         <p className="text-sm text-[var(--color-ink-muted)]">
           Formulário recomendado para novos links:{" "}
-          <strong>{recommendedFormKind(code)}</strong>
+          <strong>{recommendedFormLabel(code, specialty)}</strong>
           {profile?.recommended_form_kind
             ? ` (atual no servidor: ${profile.recommended_form_kind})`
             : ""}

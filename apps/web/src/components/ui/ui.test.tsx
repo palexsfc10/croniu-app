@@ -24,7 +24,7 @@ vi.mock("@/components/auth/auth-provider", () => ({
     loading: false,
     me: {
       user: { id: "1", email: "a@b.com", full_name: "Ana Pro", created_at: "" },
-      organization: { id: "1", name: "Studio", timezone: "America/Sao_Paulo" },
+      organization: { id: "1", name: "Studio", timezone: "America/Sao_Paulo", profession_onboarding_done: true },
       role: "owner",
     },
     logout: vi.fn(),

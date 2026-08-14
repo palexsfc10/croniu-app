@@ -1,17 +1,18 @@
 import { expect, test } from "@playwright/test";
 
+import { registerProfessional } from "./register-flow";
+
 test.describe("sprint 2a local flow", () => {
   test("client service cycle payment today flow", async ({ page }) => {
     const suffix = Date.now();
     const email = `s2a_${suffix}@example.com`;
     const password = "SenhaForte1!";
-
-    await page.goto("/register");
-    await page.getByLabel("Seu nome").fill("Profissional S2A");
-    await page.getByLabel("Nome do negócio / organização").fill(`Studio S2A ${suffix}`);
-    await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Senha").fill(password);
-    await page.getByRole("button", { name: "Criar conta" }).click();
+    await registerProfessional(page, {
+      name: "Profissional S2A",
+      org: `Studio S2A ${suffix}`,
+      email,
+      password,
+    });
     await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
       timeout: 15_000,
     });

@@ -34,7 +34,9 @@ def _out(org) -> ProfessionOut:
         profession_other=org.profession_other,
         use_cases=use_cases,
         profession_onboarding_done=bool(org.profession_onboarding_done),
-        recommended_form_kind=profession_svc.recommended_form_kind(code),
+        recommended_form_kind=profession_svc.recommended_form_kind(
+            code, org.profession_specialty
+        ),
         nomenclature=profession_svc.nomenclature_for(code),
         catalog=profession_svc.profession_catalog(),
     )

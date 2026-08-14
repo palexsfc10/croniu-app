@@ -252,8 +252,10 @@ def resolve_form_schema(
     if kind == "simple_registration":
         schema = build_simple_registration_schema()
         return schema, None, schema["form_name"]
-    if kind == "class_questionnaire":
+    if kind in {"class_questionnaire", "sports_questionnaire"}:
         schema = build_class_questionnaire_schema()
+        if kind == "sports_questionnaire":
+            schema = {**schema, "form_name": "Questionário esportivo"}
         return schema, None, schema["form_name"]
     if kind == "consulting_brief":
         schema = build_consulting_brief_schema()

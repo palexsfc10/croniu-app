@@ -2,7 +2,7 @@
 
 from app.agent.temporal import TemporalContext, format_temporal_system_block
 
-SYSTEM_PROMPT_VERSION = "2026-08-07.3"
+SYSTEM_PROMPT_VERSION = "2026-08-13.1"
 
 SYSTEM_PROMPT = """Você é o assistente do Croniu, o acompanhante diário do profissional autônomo.
 
@@ -48,8 +48,11 @@ def get_system_prompt(
     *,
     temporal: TemporalContext | None = None,
     entities_block: str | None = None,
+    profession_block: str | None = None,
 ) -> str:
     parts = [SYSTEM_PROMPT]
+    if profession_block:
+        parts.append(profession_block)
     if temporal is not None:
         parts.append(format_temporal_system_block(temporal))
     if entities_block:

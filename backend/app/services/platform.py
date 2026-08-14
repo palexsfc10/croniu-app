@@ -28,7 +28,7 @@ from app.schemas.platform import (
 )
 from app.services import domain as domain_svc
 from app.services.environment_label import normalize_croniu_env
-from app.services.profession import PROFESSION_OPTIONS
+from app.services.profession import PROFESSION_OPTIONS, recommended_form_kind
 from app.services.platform_pilot_ops import list_cycle_agenda_integrity
 
 _PROFESSION_LABEL = {item["code"]: item["label"] for item in PROFESSION_OPTIONS}
@@ -421,6 +421,12 @@ def get_organization_detail(db: Session, organization_id: uuid.UUID) -> Organiza
         subscription_status=sub_status,
         operational_status=_operational_status(org.status, sub_status),
         profession_label=_PROFESSION_LABEL.get(org.profession_code or "") or None,
+        profession_specialty=org.profession_specialty,
+        profession_onboarding_done=bool(org.profession_onboarding_done),
+        recommended_form_kind=recommended_form_kind(
+            org.profession_code, org.profession_specialty
+        ),
+        use_cases=org.use_cases if isinstance(org.use_cases, list) else None,
         plans_count=plans_count,
         published_plans_count=published_plans,
         overdue_occurrences_count=overdue,

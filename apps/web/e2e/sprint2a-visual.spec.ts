@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
+import { registerProfessional } from "./register-flow";
 
 const shotDir = path.join(__dirname, "artifacts", "sprint2a");
 
@@ -12,12 +13,12 @@ test.describe("sprint 2a visual QA", () => {
     const password = "SenhaForte1!";
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/register");
-    await page.getByLabel("Seu nome").fill("Visual QA");
-    await page.getByLabel("Nome do negócio / organização").fill(`Studio Viz ${suffix}`);
-    await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Senha").fill(password);
-    await page.getByRole("button", { name: "Criar conta" }).click();
+    await registerProfessional(page, {
+      name: "Visual QA",
+      org: `Studio Viz ${suffix}`,
+      email,
+      password,
+    });
     await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
       timeout: 15_000,
     });

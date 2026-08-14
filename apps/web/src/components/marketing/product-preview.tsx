@@ -34,12 +34,12 @@ export function ProductPreview() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <article className="public-entry-card public-entry-card--offset rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3.5 shadow-[var(--shadow-sm)]">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
-              Novo aluno
+              Novo cliente
             </p>
             <p className="mt-1.5 text-sm font-medium text-[var(--color-ink)]">
               Cadastro recebido
             </p>
-            <p className="text-xs text-[var(--color-ink-muted)]">Anamnese concluída</p>
+            <p className="text-xs text-[var(--color-ink-muted)]">Formulário concluído</p>
             <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
               Próximo passo: analisar
             </p>

@@ -13,6 +13,7 @@ import {
   IconRefreshCw,
 } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
+import { ProfessionNudge } from "@/components/app/profession-nudge";
 import {
   firstName,
   greetingForHour,
@@ -329,6 +330,8 @@ export function TodayBoard({ summary }: Props) {
           </Link>
         </div>
       </header>
+
+      <ProfessionNudge />
 
       {fullyClear ? (
         <EmptyState

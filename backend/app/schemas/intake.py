@@ -30,7 +30,7 @@ class IntakeLinkOut(BaseModel):
 class IntakeLinkCreateIn(BaseModel):
     name: str = Field(default="Link de entrada", min_length=1, max_length=120)
     purpose: str = Field(default="new_client", max_length=64)
-    form_kind: str = Field(default="physical_anamnesis", max_length=64)
+    form_kind: str | None = Field(default=None, max_length=64)
     set_primary: bool = False
 
 
