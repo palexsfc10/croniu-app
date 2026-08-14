@@ -26,6 +26,7 @@ from app.schemas.agenda import (
 )
 from app.services.auth import AuthError
 
+AGENDA_VISIBLE_STATUSES = ("scheduled", "completed", "no_show")
 MAX_AGENDA_RANGE_DAYS = 31
 
 
@@ -626,6 +627,33 @@ def list_upcoming_appointments(
         ).all()
     )
     return [_appointment_out(row) for row in rows]
+
+
+def next_visible_appointment_after(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    after_day: date,
+) -> Appointment | None:
+    org = get_organization(db, organization_id)
+    tz_name = get_org_timezone(org)
+    _start, end_utc = day_bounds_utc(after_day, tz_name)
+    return db.scalar(
+        select(Appointment)
+        .where(
+            Appointment.organization_id == organization_id,
+            Appointment.status.in_(AGENDA_VISIBLE_STATUSES),
+            Appointment.starts_at >= end_utc,
+        )
+        .options(
+            selectinload(Appointment.client),
+            selectinload(Appointment.service),
+            selectinload(Appointment.location),
+            selectinload(Appointment.cycle).selectinload(Cycle.service),
+        )
+        .order_by(Appointment.starts_at.asc())
+        .limit(1)
+    )
 
 
 def next_upcoming_appointment(

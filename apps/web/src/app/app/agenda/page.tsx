@@ -3,6 +3,7 @@
 import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   apiFetch,
   appointmentStatusLabel,
@@ -10,8 +11,66 @@ import {
   type DayAgenda,
   type OrgPreferences,
 } from "@/lib/api";
+import { formatHumanDate, formatNextLessonLine } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+
+function EmptyAgenda({
+  day,
+  timezone,
+}: {
+  day: string | null;
+  timezone: string;
+}) {
+  const [nextDay, setNextDay] = useState<string | null>(null);
+  const [nextLine, setNextLine] = useState<string | null>(null);
+  useEffect(() => {
+    if (!day) return;
+    void (async () => {
+      const result = await apiFetch<{
+        date: string | null;
+        timezone: string;
+        appointment: { client_name: string | null; starts_at: string } | null;
+      }>(`/api/v1/agenda/next?after=${day}`);
+      setNextDay(result.data?.date ?? null);
+      if (result.data?.appointment && result.data.date) {
+        setNextLine(
+          formatNextLessonLine(
+            result.data.appointment.client_name,
+            result.data.appointment.starts_at,
+            result.data.timezone || timezone,
+          ),
+        );
+      } else {
+        setNextLine(null);
+      }
+    })();
+  }, [day, timezone]);
+  const dayLabel = day ? formatHumanDate(day) : "este dia";
+  return (
+    <EmptyState
+      title={`Nenhuma aula em ${dayLabel}`}
+      description={nextLine ?? "Não há aula nesta data."}
+      action={
+        <div className="flex w-full flex-col gap-2">
+          {nextDay ? (
+            <Link
+              href={`/app/agenda?day=${nextDay}`}
+              className="btn-primary inline-flex min-h-11 w-full items-center justify-center rounded-[var(--radius-md)] px-4 text-sm font-semibold"
+            >
+              Ver próxima aula
+            </Link>
+          ) : null}
+          <Link href={`/app/appointments/new?day=${day ?? ""}`}>
+            <Button fullWidth variant="secondary">
+              Criar compromisso
+            </Button>
+          </Link>
+        </div>
+      }
+    />
+  );
+}
 
 function shiftDay(isoDay: string, delta: number) {
   const [y, m, d] = isoDay.split("-").map(Number);
@@ -22,7 +81,13 @@ function shiftDay(isoDay: string, delta: number) {
 
 function AgendaRoutines({ day }: { day: string | null }) {
   const [groups, setGroups] = useState<
-    Array<{ label: string; count: number; occurrence_type: string }>
+    Array<{
+      label: string;
+      count: number;
+      occurrence_count?: number;
+      client_count?: number;
+      occurrence_type: string;
+    }>
   >([]);
   useEffect(() => {
     if (!day) return;
@@ -54,7 +119,9 @@ function AgendaRoutines({ day }: { day: string | null }) {
               Rotina
             </p>
             <p className="font-semibold">
-              {g.label} · {g.count} {g.count === 1 ? "cliente" : "clientes"}
+              {g.label} · {g.occurrence_count ?? g.count} ocorrência
+              {(g.occurrence_count ?? g.count) === 1 ? "" : "s"} · {g.client_count ?? g.count}{" "}
+              cliente{(g.client_count ?? g.count) === 1 ? "" : "s"}
             </p>
             <Link href="/app/routines" className="text-sm text-[var(--color-link)]">
               Abrir lista
@@ -67,19 +134,25 @@ function AgendaRoutines({ day }: { day: string | null }) {
 }
 
 export default function AgendaPage() {
+  const router = useRouter();
+  const search = useSearchParams();
+  const dayParam = search.get("day");
   const [prefs, setPrefs] = useState<OrgPreferences | null>(null);
-  const [day, setDay] = useState<string | null>(null);
   const [agenda, setAgenda] = useState<DayAgenda | null>(null);
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const day = dayParam || prefs?.local_today || null;
+
+  function setDay(next: string) {
+    router.replace(`/app/agenda?day=${next}`);
+  }
 
   useEffect(() => {
     void (async () => {
       const result = await apiFetch<OrgPreferences>("/api/v1/organization/preferences");
       if (result.data) {
         setPrefs(result.data);
-        setDay(result.data.local_today);
       } else if (result.error) {
         setError(result.error.message);
         setLoading(false);
@@ -170,15 +243,7 @@ export default function AgendaPage() {
       {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
 
       {!loading && agenda && agenda.appointments.length === 0 ? (
-        <EmptyState
-          title="Nenhum compromisso"
-          description="Crie um compromisso único para este dia."
-          action={
-            <Link href={`/app/appointments/new?day=${day ?? ""}`}>
-              <Button variant="secondary">Criar compromisso</Button>
-            </Link>
-          }
-        />
+        <EmptyAgenda day={day} timezone={agenda.timezone || prefs?.timezone || "America/Sao_Paulo"} />
       ) : null}
 
       <ul className="space-y-2">

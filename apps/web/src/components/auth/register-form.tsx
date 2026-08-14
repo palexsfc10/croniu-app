@@ -14,9 +14,15 @@ import {
   SPORTS_SPECIALTIES,
   TUTOR_SPECIALTIES,
   USE_CASE_OPTIONS,
-  recommendedFormLabel,
-  registerSummaryLines,
 } from "@/lib/nomenclature";
+import { registerExperienceSummary } from "@/lib/capabilities";
+import {
+  IconCalendarDays,
+  IconClipboardList,
+  IconLayers,
+  IconRefreshCw,
+  IconUsersRound,
+} from "@/components/ui/icons";
 
 type RegisterResult = MeResponse & {
   requires_email_verification?: boolean;
@@ -71,6 +77,7 @@ export function RegisterForm() {
   const profession = watch("profession_code");
   const specialty = watch("profession_specialty");
   const useCases = watch("use_cases") ?? [];
+  const experience = registerExperienceSummary(profession, useCases);
 
   function toggleUseCase(code: string) {
     const next = useCases.includes(code)
@@ -79,24 +86,35 @@ export function RegisterForm() {
     setValue("use_cases", next, { shouldValidate: false });
   }
 
-  function goNext() {
+  function goNext(form?: HTMLFormElement | null) {
+    const data = form ? new FormData(form) : null;
     const values = getValues();
-    if (values.full_name.trim().length < 2) {
+    const full_name = String(data?.get("full_name") ?? values.full_name).trim();
+    const organization_name = String(
+      data?.get("organization_name") ?? values.organization_name,
+    ).trim();
+    const email = String(data?.get("email") ?? values.email).trim();
+    const password = String(data?.get("password") ?? values.password);
+    setValue("full_name", full_name, { shouldValidate: false });
+    setValue("organization_name", organization_name, { shouldValidate: false });
+    setValue("email", email, { shouldValidate: false });
+    setValue("password", password, { shouldValidate: false });
+    if (full_name.length < 2) {
       setFormError({ title: "Não foi possível criar sua conta", body: "Informe seu nome." });
       return;
     }
-    if (values.organization_name.trim().length < 2) {
+    if (organization_name.length < 2) {
       setFormError({
         title: "Não foi possível criar sua conta",
         body: "Informe o nome do negócio.",
       });
       return;
     }
-    if (!values.email.includes("@")) {
+    if (!email.includes("@")) {
       setFormError({ title: "Não foi possível criar sua conta", body: "E-mail inválido." });
       return;
     }
-    if (values.password.length < 8) {
+    if (password.length < 8) {
       setFormError({
         title: "Não foi possível criar sua conta",
         body: "A senha deve ter pelo menos 8 caracteres.",
@@ -195,11 +213,13 @@ export function RegisterForm() {
   }
 
   return (
+    <div className="flex flex-1 flex-col gap-4">
     <form
       onSubmit={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         if (step === 1) {
-          goNext();
+          goNext(event.currentTarget);
           return;
         }
         void onSubmit();
@@ -353,16 +373,30 @@ export function RegisterForm() {
           </div>
         </fieldset>
 
-        {profession ? (
+        {experience.visible ? (
           <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
-            <p className="font-medium">Seu Croniu será preparado para:</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--color-ink-muted)]">
-              {registerSummaryLines(profession).map((line) => (
-                <li key={line}>{line}</li>
+            <p className="font-medium">Sua experiência</p>
+            <p className="mt-1 text-[var(--color-ink-muted)]">{experience.blurb}</p>
+            <ul className="mt-2 space-y-2">
+              {experience.items.map((item) => (
+                <li key={item.id} className="flex items-center gap-2">
+                  {item.id === "people" ? (
+                    <IconUsersRound className="h-4 w-4" />
+                  ) : item.id === "cycles" ? (
+                    <IconRefreshCw className="h-4 w-4" />
+                  ) : item.id === "plans" || item.id === "workouts" ? (
+                    <IconLayers className="h-4 w-4" />
+                  ) : item.id === "evaluations" || item.id === "followups" ? (
+                    <IconClipboardList className="h-4 w-4" />
+                  ) : (
+                    <IconCalendarDays className="h-4 w-4" />
+                  )}
+                  <span>{item.text}</span>
+                </li>
               ))}
             </ul>
             <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-              Formulário recomendado: {recommendedFormLabel(profession, specialty)}
+              Você poderá alterar essas preferências depois.
             </p>
           </div>
         ) : null}
@@ -397,16 +431,18 @@ export function RegisterForm() {
             </Button>
           </>
         )}
-        <p className="text-center text-sm text-[var(--color-ink-muted)]">
+      </div>
+    </form>
+        <p className="relative z-20 text-center text-sm text-[var(--color-ink-muted)]">
           Já tem conta?{" "}
-          <Link
-            className="font-semibold text-[var(--color-primary)] underline-offset-2 hover:underline"
+          <a
+            data-testid="register-login-link"
+            className="relative z-20 inline-flex min-h-11 items-center font-semibold text-[var(--color-primary)] underline-offset-2 hover:underline"
             href="/login"
           >
             Entrar
-          </Link>
+          </a>
         </p>
-      </div>
-    </form>
+    </div>
   );
 }

@@ -118,12 +118,16 @@ def complete_routine(
 @router.get("/board")
 def routines_board(
     bucket: str | None = Query(default=None),
+    client_id: UUID | None = Query(default=None),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> dict:
     try:
         return pendency_svc.board(
-            db, organization_id=auth.organization.id, bucket=bucket
+            db,
+            organization_id=auth.organization.id,
+            bucket=bucket,
+            client_id=client_id,
         )
     except AuthError as exc:
         raise _http(exc) from exc

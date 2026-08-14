@@ -22,13 +22,13 @@ test.describe("auth vertical slice", () => {
       password,
     });
 
-    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page).toHaveURL(/\/app/);
-    await expect(page.getByText("Atendimentos de hoje")).toBeVisible();
 
-    await page.getByRole("button", { name: "Sair" }).click();
+    await page.getByRole("button", { name: "Abrir menu da conta" }).click();
+    await page.getByRole("menuitem", { name: "Sair" }).click();
     await expect(page.getByRole("heading", { name: "Entrar", exact: true })).toBeVisible({
       timeout: 15_000,
     });
@@ -37,7 +37,7 @@ test.describe("auth vertical slice", () => {
     await page.getByLabel("E-mail").fill(email);
     await page.getByLabel("Senha").fill(password);
     await page.getByRole("button", { name: "Entrar" }).click();
-    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page).toHaveURL(/\/app/);

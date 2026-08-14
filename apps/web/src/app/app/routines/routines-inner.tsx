@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { safeReturnTo } from "@/lib/nomenclature";
@@ -39,24 +39,44 @@ const TASK_TYPES = [
   { value: "free", label: "Tarefa livre" },
 ];
 
+type BoardItem = {
+  id: string;
+  client_id: string | null;
+  client_name: string | null;
+  plan_title: string | null;
+  due_on: string;
+  overdue: boolean;
+  type_label: string;
+};
+
 type BoardGroup = {
   occurrence_type: string;
   label: string;
   count: number;
+  occurrence_count?: number;
+  client_count?: number;
   overdue_count: number;
-  items: Array<{
-    id: string;
-    client_name: string | null;
-    plan_title: string | null;
-    due_on: string;
-    overdue: boolean;
-    type_label: string;
-  }>;
+  items: BoardItem[];
 };
+
+function groupByClient(items: BoardItem[]) {
+  const map = new Map<string, BoardItem[]>();
+  for (const item of items) {
+    const key = item.client_id || item.id;
+    const list = map.get(key) ?? [];
+    list.push(item);
+    map.set(key, list);
+  }
+  return [...map.values()].map((list) => {
+    const sorted = [...list].sort((a, b) => a.due_on.localeCompare(b.due_on));
+    return { next: sorted[0], rest: sorted.slice(1) };
+  });
+}
 
 export default function RoutinesPageInner() {
   const search = useSearchParams();
   const returnTo = safeReturnTo(search.get("returnTo"));
+  const clientId = search.get("clientId");
   const [items, setItems] = useState<Routine[]>([]);
   const [board, setBoard] = useState<BoardGroup[]>([]);
   const [name, setName] = useState("");
@@ -66,20 +86,30 @@ export default function RoutinesPageInner() {
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const boardQuery = useMemo(() => {
+    const boardQs = new URLSearchParams();
+    if (clientId) boardQs.set("client_id", clientId);
+    return boardQs.toString();
+  }, [clientId]);
+
   async function load() {
     const [routines, groups] = await Promise.all([
       apiFetch<Routine[]>("/api/v1/routines"),
-      apiFetch<{ groups: BoardGroup[] }>("/api/v1/routines/board"),
+      apiFetch<{ groups: BoardGroup[] }>(
+        `/api/v1/routines/board${boardQuery ? `?${boardQuery}` : ""}`,
+      ),
     ]);
     if (routines.error) setError(routines.error.message);
     else setItems(routines.data ?? []);
-    if (groups.data) setBoard(groups.data.groups ?? []);
+    if (groups.error) setError(groups.error.message);
+    else if (groups.data) setBoard(groups.data.groups ?? []);
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount/remote hydrate
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- remote hydrate
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed remount plus clientId filter
+  }, [boardQuery]);
 
   async function create() {
     if (!name.trim()) {
@@ -123,13 +153,30 @@ export default function RoutinesPageInner() {
     await load();
   }
 
+  async function completeOccurrence(id: string) {
+    setBusy(true);
+    const result = await apiFetch(`/api/v1/routines/occurrences/${id}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ status: "completed" }),
+    });
+    setBusy(false);
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    setInfo("Ocorrência marcada como realizada.");
+    await load();
+  }
+
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
       <BackLink href={returnTo || "/app"} label={returnTo ? "Voltar" : "Hoje"} />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
         <p className="text-sm text-[var(--color-ink-muted)]">
-          Organize os dias em que você revisa planos, acompanha clientes e prepara renovações.
+          {clientId
+            ? "Pendências deste cliente. Cada marco permanece visível até ser concluído."
+            : "Organize os dias em que você revisa planos, acompanha clientes e prepara renovações."}
         </p>
       </header>
       {error ? (
@@ -145,43 +192,51 @@ export default function RoutinesPageInner() {
 
       {board.length ? (
         <section className="space-y-2" aria-label="Pendências">
-          {board.map((group) => (
-            <details
-              key={group.occurrence_type}
-              className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
-            >
-              <summary className="cursor-pointer min-h-11">
-                <span className="font-semibold">{group.label}</span>
-                <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
-                  {group.count} cliente{group.count === 1 ? "" : "s"}
-                  {group.overdue_count ? ` · ${group.overdue_count} atrasado(s)` : ""}
-                </span>
-              </summary>
-              <ul className="mt-2 space-y-2">
-                {group.items.map((item) => (
-                  <li key={item.id} className="text-sm">
-                    <span className="font-medium">{item.client_name || "Cliente"}</span>
-                    {item.plan_title ? ` · ${item.plan_title}` : ""}
-                    {" · "}até {item.due_on}
-                    {item.overdue ? " · atrasado" : ""}
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      <Button
-                        variant="secondary"
-                        onClick={() =>
-                          void apiFetch(`/api/v1/routines/occurrences/${item.id}/decide`, {
-                            method: "POST",
-                            body: JSON.stringify({ status: "completed" }),
-                          }).then(() => load())
-                        }
-                      >
-                        Marcar realizado
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ))}
+          {board.map((group) => {
+            const occ = group.occurrence_count ?? group.count;
+            const clients = group.client_count ?? new Set(group.items.map((i) => i.client_id)).size;
+            return (
+              <details
+                key={group.occurrence_type}
+                className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
+              >
+                <summary className="cursor-pointer min-h-11">
+                  <span className="font-semibold">{group.label}</span>
+                  <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
+                    {occ} ocorrência{occ === 1 ? "" : "s"} · {clients} cliente
+                    {clients === 1 ? "" : "s"}
+                    {group.overdue_count ? ` · ${group.overdue_count} atrasado(s)` : ""}
+                  </span>
+                </summary>
+                <ul className="mt-2 space-y-3">
+                  {groupByClient(group.items).map(({ next, rest }) => (
+                    <li key={next.id} className="text-sm">
+                      <OccurrenceRow item={next} busy={busy} onComplete={completeOccurrence} />
+                      {rest.length ? (
+                        <details className="mt-1">
+                          <summary className="flex min-h-11 cursor-pointer items-center text-sm text-[var(--color-ink-muted)]">
+                            Ver {rest.length} ocorrência{rest.length === 1 ? "" : "s"} seguinte
+                            {rest.length === 1 ? "" : "s"}
+                          </summary>
+                          <ul className="mt-2 space-y-2 pl-2">
+                            {rest.map((item) => (
+                              <li key={item.id}>
+                                <OccurrenceRow
+                                  item={item}
+                                  busy={busy}
+                                  onComplete={completeOccurrence}
+                                />
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            );
+          })}
         </section>
       ) : null}
 
@@ -238,11 +293,7 @@ export default function RoutinesPageInner() {
               {item.weekday != null ? ` · ${WEEKDAYS[item.weekday] ?? item.weekday}` : ""}
               {item.next_run_on ? ` · próxima: ${item.next_run_on}` : ""}
             </p>
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void complete(item.id)}
-            >
+            <Button variant="secondary" disabled={busy} onClick={() => void complete(item.id)}>
               Marcar concluído
             </Button>
           </li>
@@ -256,6 +307,30 @@ export default function RoutinesPageInner() {
           </Button>
         </Link>
       ) : null}
+    </div>
+  );
+}
+
+function OccurrenceRow({
+  item,
+  busy,
+  onComplete,
+}: {
+  item: BoardItem;
+  busy: boolean;
+  onComplete: (id: string) => void;
+}) {
+  return (
+    <div>
+      <span className="font-medium">{item.client_name || "Cliente"}</span>
+      {item.plan_title ? ` · ${item.plan_title}` : ""}
+      {" · "}até {item.due_on}
+      {item.overdue ? " · atrasado" : ""}
+      <div className="mt-1">
+        <Button variant="secondary" disabled={busy} onClick={() => onComplete(item.id)}>
+          Marcar realizado
+        </Button>
+      </div>
     </div>
   );
 }

@@ -27,6 +27,44 @@ export function formatHumanDate(iso: string): string {
   return `${p.d} ${MONTHS[p.m - 1]}`;
 }
 
+export function formatLessonClock(isoInstant: string, timeZone = "America/Sao_Paulo"): string {
+  try {
+    const parts = new Intl.DateTimeFormat("pt-BR", {
+      timeZone,
+      hour: "numeric",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(isoInstant));
+    const hour = parts.find((p) => p.type === "hour")?.value ?? "0";
+    const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+    return minute === "00" ? `${Number(hour)}h` : `${Number(hour)}h${minute}`;
+  } catch {
+    return "";
+  }
+}
+
+export function formatNextLessonLine(
+  clientName: string | null | undefined,
+  isoInstant: string,
+  timeZone = "America/Sao_Paulo",
+): string {
+  let day = formatHumanDate(isoInstant.slice(0, 10));
+  try {
+    const local = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(isoInstant));
+    day = formatHumanDate(local);
+  } catch {
+    /* keep fallback */
+  }
+  const clock = formatLessonClock(isoInstant, timeZone);
+  const who = clientName?.trim() || "Cliente";
+  return `Próxima aula: ${who} · ${day}${clock ? `, ${clock}` : ""}`;
+}
+
 export function formatIsoDayMonth(iso: string): string {
   const p = parseIsoDate(iso);
   if (!p) return iso;

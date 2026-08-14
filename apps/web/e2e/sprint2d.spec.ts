@@ -21,14 +21,13 @@ test.describe("Sprint 2D Meu Ciclo", () => {
     expect(client.ok()).toBeTruthy();
     const clientId = (await client.json()).id;
 
-    await page.goto(`/app/clients/${clientId}`);
-    await page.getByRole("button", { name: "Criar link" }).click();
-    await expect(page.getByText(/Link gerado/i)).toBeVisible();
-    const open = page.getByRole("link", { name: "Abrir" });
-    const href = await open.getAttribute("href");
-    expect(href).toMatch(/^\/c\//);
-
-    await page.goto(href!);
+    await page.goto(`/app/clients/${clientId}?tab=dados`);
+    await page.getByRole("button", { name: "Criar acesso" }).click();
+    await expect(page.getByText(/Acesso gerado/i)).toBeVisible();
+    const rotated = await page.request.post(`/api/v1/clients/${clientId}/public-access/rotate`);
+    expect(rotated.ok()).toBeTruthy();
+    const token = (await rotated.json()).token as string;
+    await page.goto(`/c/${token}`);
     await expect(page.getByText(/Olá, Renata/i)).toBeVisible();
     await expect(page.getByText(/ainda não disponibilizou/i)).toBeVisible();
   });

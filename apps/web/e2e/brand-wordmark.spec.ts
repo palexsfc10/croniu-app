@@ -60,7 +60,7 @@ test.describe("brand wordmark QA", () => {
       email,
       password,
     });
-    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByRole("img", { name: "Croniu" })).toHaveCount(1);

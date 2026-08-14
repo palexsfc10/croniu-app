@@ -143,7 +143,7 @@ export default function AccompanimentPreparePage() {
       return { href: `/app/agenda?clientId=${params.clientId}&returnTo=${ret}`, label: "Organizar agenda" };
     }
     if (step === "routine") {
-      return { href: `/app/routines?returnTo=${ret}`, label: "Configurar rotina" };
+      return { href: `/app/routines?clientId=${params.clientId}&returnTo=${ret}`, label: "Configurar rotina" };
     }
     return { action: () => void persist("activate", "done"), label: "Ativar acompanhamento" };
   }

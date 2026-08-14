@@ -228,8 +228,18 @@ def board(
     organization_id: uuid.UUID,
     today: date | None = None,
     bucket: str | None = None,
+    client_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     today = materialize_org(db, organization_id=organization_id, today=today)
+    if client_id is not None:
+        owned = db.scalar(
+            select(Client).where(
+                Client.id == client_id,
+                Client.organization_id == organization_id,
+            )
+        )
+        if owned is None:
+            raise AuthError("client_not_found", "Cliente não encontrado.", 404)
     rows = list(
         db.scalars(
             select(OperationalOccurrence).where(
@@ -267,6 +277,8 @@ def board(
         return True
 
     visible = [r for r in rows if include(r)]
+    if client_id is not None:
+        visible = [r for r in visible if r.client_id == client_id]
     groups: dict[str, list[dict[str, Any]]] = {}
     for row in visible:
         item = _item_out(
@@ -290,11 +302,15 @@ def board(
         items = groups.get(kind) or []
         if not items:
             continue
+        items.sort(key=lambda i: (i["due_on"], i["client_name"] or ""))
+        client_ids = {i["client_id"] for i in items if i.get("client_id")}
         summaries.append(
             {
                 "occurrence_type": kind,
                 "label": status_labels.occurrence_type_label(kind),
                 "count": len(items),
+                "occurrence_count": len(items),
+                "client_count": len(client_ids),
                 "overdue_count": sum(1 for i in items if i["overdue"]),
                 "items": items,
             }

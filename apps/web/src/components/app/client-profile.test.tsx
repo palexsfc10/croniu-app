@@ -82,6 +82,18 @@ vi.mock("@/lib/api", async () => {
         };
       }
       if (path.includes("/public-access")) return { data: { has_active_link: false } };
+      if (path.includes("/clients/c2")) {
+        return {
+          data: {
+            id: "c2",
+            full_name: "Ana Souza",
+            status: "active",
+            phone: "11900001111",
+            email: "",
+            notes: "",
+          },
+        };
+      }
       if (path.includes("/clients/c1")) {
         return {
           data: {
@@ -120,13 +132,21 @@ describe("ClientProfile", () => {
     nav.tab = "acompanhamento";
     render(<ClientProfile clientId="c1" />);
     expect(await screen.findByText("Ciclo atual")).toBeInTheDocument();
-    expect(screen.getByText("17 ago. a 16 set.")).toBeInTheDocument();
-    expect(screen.getByText("Renovação em 17 set.")).toBeInTheDocument();
+    expect(screen.getByText(/17 ago\. a 16 set\./)).toBeInTheDocument();
+    expect(screen.getByText(/Renovação em 17 set\./)).toBeInTheDocument();
     expect(screen.queryByText(/2026-08-17/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver ciclo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver plano" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Criar plano/i })).not.toBeInTheDocument();
     expect(screen.getByText("Nenhuma avaliação registrada")).toBeInTheDocument();
     expect(screen.getByText(/Registre o ponto de partida/i)).toBeInTheDocument();
+  });
+
+  it("clears previous client name when switching fichas", async () => {
+    nav.tab = "resumo";
+    const { rerender } = render(<ClientProfile clientId="c1" />);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Pedro Silva");
+    rerender(<ClientProfile clientId="c2" />);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Ana Souza");
+    expect(screen.queryByText("Pedro Silva")).not.toBeInTheDocument();
   });
 });

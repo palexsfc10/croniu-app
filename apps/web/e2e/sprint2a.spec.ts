@@ -13,13 +13,12 @@ test.describe("sprint 2a local flow", () => {
       email,
       password,
     });
-    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible({
       timeout: 15_000,
     });
 
     await page.getByRole("link", { name: "Clientes" }).click();
-    await page.getByRole("link", { name: "Novo" }).click();
-    await page.getByLabel("Nome").fill("Cliente S2A");
+    await page.getByRole("link", { name: /Adicionar / }).click();
     await page.getByLabel("Telefone (WhatsApp)").fill("11977776666");
     await page.getByRole("button", { name: "Salvar cliente" }).click();
     await expect(page.getByRole("heading", { name: "Cliente S2A" })).toBeVisible({
@@ -30,8 +29,7 @@ test.describe("sprint 2a local flow", () => {
     await page.getByRole("link", { name: "Serviços e planos" }).click();
     await page.getByRole("link", { name: "Novo" }).click();
     await page.getByLabel("Nome").fill("Mensal S2A");
-    await page.getByLabel("Duração padrão (dias)").fill("30");
-    await page.getByLabel("Valor padrão (R$)").fill("350,00");
+    await page.getByLabel("Valor (R$)").fill("350,00");
     await page.getByRole("button", { name: "Salvar serviço" }).click();
     await expect(page.getByText("Mensal S2A")).toBeVisible({ timeout: 15_000 });
 
@@ -59,6 +57,6 @@ test.describe("sprint 2a local flow", () => {
     await expect(page.getByText(/Pago em/)).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole("link", { name: "Hoje", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible();
   });
 });

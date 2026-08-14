@@ -48,7 +48,7 @@ export const TextField = forwardRef<HTMLInputElement, Props>(function TextField(
             type="button"
             className="absolute top-1/2 right-2 min-h-9 -translate-y-1/2 rounded-[var(--radius-sm)] px-2 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-surface-muted)]"
             onClick={() => setVisible((value) => !value)}
-            aria-label={visible ? "Ocultar senha" : "Mostrar senha"}
+            aria-label={visible ? "Ocultar valor" : "Mostrar valor"}
             aria-pressed={visible}
           >
             {visible ? "Ocultar" : "Mostrar"}

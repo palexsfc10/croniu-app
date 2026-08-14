@@ -21,7 +21,7 @@ test.describe("Sprint 2C cycle intelligence", () => {
     await page.getByRole("link", { name: "Serviços" }).click();
     await page.getByRole("link", { name: "Novo" }).click();
     await page.getByLabel("Nome").fill("Personal presencial");
-    await page.getByLabel("Valor por aula (R$)").fill("90,00");
+    await page.getByLabel("Valor (R$)").fill("90,00");
     await page.getByRole("button", { name: "Salvar serviço" }).click();
     await expect(page.getByText("Personal presencial")).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, "services.png"), fullPage: true });
@@ -34,8 +34,7 @@ test.describe("Sprint 2C cycle intelligence", () => {
     await expect(page.getByText("2x por semana — mensal")).toBeVisible();
 
     await nav(page, "Clientes").click();
-    await page.getByRole("link", { name: "Novo" }).click();
-    await page.getByLabel("Nome").fill("Ana Souza");
+    await page.getByRole("link", { name: /Adicionar / }).click();
     await page.getByRole("button", { name: "Salvar cliente" }).click();
     await expect(page.getByRole("heading", { name: /Ana Souza/i })).toBeVisible();
 

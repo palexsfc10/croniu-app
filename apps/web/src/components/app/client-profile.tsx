@@ -25,6 +25,7 @@ import { cycleListStatus, selectDisplayCycle } from "@/lib/cycle-period";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AccompanimentCard } from "@/components/app/accompaniment-card";
 import {
   IconClipboardList,
   IconHistory,
@@ -89,7 +90,7 @@ export function ClientProfile({ clientId }: Props) {
   }, [clientId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount/remote hydrate
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- remote hydrate
     void load();
   }, [load]);
 
@@ -394,150 +395,97 @@ export function ClientProfile({ clientId }: Props) {
           className="space-y-3"
           aria-label="Acompanhamento"
         >
-          <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-            <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
-                <IconRefreshCw className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h2 className="text-sm font-semibold">Ciclo atual</h2>
-                    <p className="text-sm text-[var(--color-ink)]">
-                      {activeCycle?.service_name || "Sem ciclo"}
-                    </p>
-                  </div>
-                  {activeCycle ? (
-                    <Badge tone="neutral">{cycleListStatus(activeCycle, todayIso)}</Badge>
-                  ) : null}
-                </div>
-                {activeCycle ? (
-                  <>
-                    <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                      {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).range}
-                    </p>
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).renewal}
-                    </p>
-                    {activeCycle.lesson_count != null ? (
-                      <p className="text-sm text-[var(--color-ink-muted)]">
-                        {activeCycle.lessons_completed ?? 0} de {activeCycle.lesson_count} aulas
-                        realizadas
-                      </p>
-                    ) : null}
-                    <Link href={`/app/cycles/${activeCycle.id}`} className="mt-2 inline-block">
-                      <Button variant="secondary">Ver ciclo</Button>
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Nenhum ciclo ainda.</p>
-                    <Link
-                      href={`/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`}
-                      className="mt-2 inline-block"
-                    >
-                      <Button>Criar ciclo</Button>
-                    </Link>
-                  </>
-                )}
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-            <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
-                <IconLayers className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-semibold">{t(terms, "plan")}</h2>
-                {published || draft ? (
-                  <>
-                    <p className="text-sm text-[var(--color-ink)]">{(published || draft)?.title}</p>
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      {protocolStatusLabel((published || draft)?.status)}
-                      {(published || draft)?.duration_value
-                        ? ` · ${(published || draft)?.duration_value} semanas`
-                        : ""}
-                    </p>
-                    {draft ? (
-                      <Link
-                        href={`/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`}
-                        className="mt-2 inline-block"
-                      >
-                        <Button variant="secondary">Continuar rascunho</Button>
-                      </Link>
-                    ) : published ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Link
-                          href={`/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`}
-                        >
-                          <Button variant="secondary">Ver plano</Button>
-                        </Link>
-                        <details>
-                          <summary className="cursor-pointer text-sm text-[var(--color-ink-muted)]">
-                            Mais
-                          </summary>
-                          <Link
-                            href={`/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`}
-                            className="mt-1 block text-sm"
-                          >
-                            Nova versão
-                          </Link>
-                        </details>
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-[var(--color-ink-muted)]">Plano ainda não criado</p>
-                    <Link
-                      href={`/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`}
-                      className="mt-2 inline-block"
-                    >
-                      <Button>Criar plano</Button>
-                    </Link>
-                  </>
-                )}
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-            <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
-                <IconClipboardList className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-semibold">Avaliações</h2>
-                <p className="text-sm text-[var(--color-ink)]">Nenhuma avaliação registrada</p>
-                <p className="text-sm text-[var(--color-ink-muted)]">
-                  Registre o ponto de partida quando fizer sentido.
-                </p>
-                <Link
-                  href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`}
-                  className="mt-2 inline-block"
-                >
-                  <Button variant="secondary">Nova avaliação</Button>
-                </Link>
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-            <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
-                <IconHistory className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-semibold">Rotinas</h2>
-                <p className="text-sm text-[var(--color-ink-muted)]">Rotina configurada no quadro.</p>
-                <Link href={`/app/routines?returnTo=${encodeURIComponent(returnAccomp)}`} className="mt-2 inline-block">
-                  <Button variant="secondary">Ver rotinas</Button>
-                </Link>
-              </div>
-            </div>
-          </article>
+          <AccompanimentCard
+            icon={<IconRefreshCw className="h-5 w-5" />}
+            title="Ciclo atual"
+            state={activeCycle ? cycleListStatus(activeCycle, todayIso) : "Vazio"}
+            summary={activeCycle?.service_name || "Sem ciclo"}
+            detail={
+              activeCycle
+                ? [
+                    formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).range,
+                    formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).renewal,
+                    activeCycle.lesson_count != null
+                      ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} aulas realizadas`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "Nenhum ciclo ainda."
+            }
+            primary={
+              activeCycle
+                ? { href: `/app/cycles/${activeCycle.id}`, label: "Ver ciclo", variant: "secondary" }
+                : {
+                    href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+                    label: "Criar ciclo",
+                    variant: "primary",
+                  }
+            }
+          />
+          <AccompanimentCard
+            icon={<IconLayers className="h-5 w-5" />}
+            title={t(terms, "plan")}
+            state={published || draft ? protocolStatusLabel((published || draft)?.status) : "Vazio"}
+            summary={(published || draft)?.title || "Plano ainda não criado"}
+            detail={
+              (published || draft)?.duration_value
+                ? `${(published || draft)?.duration_value} semanas`
+                : undefined
+            }
+            primary={
+              draft
+                ? {
+                    href: `/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                    label: "Continuar rascunho",
+                    variant: "secondary",
+                  }
+                : published
+                  ? {
+                      href: `/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                      label: "Ver plano",
+                      variant: "secondary",
+                    }
+                  : {
+                      href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                      label: "Criar plano",
+                      variant: "primary",
+                    }
+            }
+            extras={
+              published
+                ? [
+                    {
+                      href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                      label: "Nova versão",
+                    },
+                  ]
+                : []
+            }
+          />
+          <AccompanimentCard
+            icon={<IconClipboardList className="h-5 w-5" />}
+            title="Avaliações"
+            state="Vazio"
+            summary="Nenhuma avaliação registrada"
+            detail="Registre o ponto de partida quando fizer sentido."
+            primary={{
+              href: `/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+              label: "Nova avaliação",
+              variant: "secondary",
+            }}
+          />
+          <AccompanimentCard
+            icon={<IconHistory className="h-5 w-5" />}
+            title="Rotinas"
+            state="Quadro"
+            summary="Rotina configurada no quadro."
+            primary={{
+              href: `/app/routines?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+              label: "Ver rotinas",
+              variant: "secondary",
+            }}
+          />
         </section>
       ) : null}
 

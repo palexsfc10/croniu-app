@@ -9,11 +9,10 @@ export async function registerProfessional(
   await page.getByLabel(/Nome do negócio/).fill(opts.org);
   await page.getByLabel("E-mail").fill(opts.email);
   const password = opts.password ?? "SenhaForte1!";
-  const pwd = page.locator("#password");
-  if (await pwd.count()) await pwd.fill(password);
-  else await page.getByLabel("Senha").fill(password);
+  await page.getByLabel("Senha").fill(password);
   await page.getByRole("button", { name: "Continuar" }).click();
-  await page.getByLabel("Consultor").click();
+  await expect(page.getByText(/Etapa 2 de 2/)).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("radio", { name: "Consultor" }).click();
   await page.getByRole("button", { name: "Criar minha conta" }).click();
   await expect(page).toHaveURL(/\/app/, { timeout: 30_000 });
 }

@@ -64,6 +64,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await apiFetch("/api/v1/auth/logout", { method: "POST" });
     setMe(null);
+    try {
+      sessionStorage.clear();
+      localStorage.removeItem("croniu-ui-cache");
+    } catch {
+      /* ignore */
+    }
     router.replace("/login");
     router.refresh();
   }, [router]);

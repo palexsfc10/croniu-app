@@ -11,7 +11,7 @@ function shot(name: string) {
 }
 
 async function expectHome(page: Page) {
-  await expect(page.getByRole("heading", { name: /Bom (dia|tarde|noite)/ })).toBeVisible({
+  await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible({
     timeout: 20_000,
   });
 }
@@ -22,8 +22,8 @@ async function logoutAndLogin(page: Page, email: string) {
   await expect(page.getByRole("heading", { name: "Entrar", exact: true })).toBeVisible({
     timeout: 15_000,
   });
-  await page.getByLabel("E-mail").fill(email);
-  await page.locator("#password").fill(password);
+  await page.getByRole("textbox", { name: "E-mail" }).fill(email);
+  await page.getByRole("textbox", { name: "Senha" }).fill(password);
   await page.getByRole("button", { name: "Entrar" }).click();
   await expectHome(page);
 }

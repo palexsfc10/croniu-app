@@ -41,8 +41,7 @@ test.describe("Sprint 2B agenda core", () => {
     await page.screenshot({ path: path.join(artifacts, "locations-edit.png"), fullPage: true });
 
     await nav(page, "Clientes").click();
-    await page.getByRole("link", { name: "Novo" }).click();
-    await page.getByLabel("Nome").fill("Ana Souza");
+    await page.getByRole("link", { name: /Adicionar / }).click();
     await page.getByRole("button", { name: "Salvar cliente" }).click();
     await expect(page.getByRole("heading", { name: /Ana Souza/i })).toBeVisible();
 
@@ -60,7 +59,7 @@ test.describe("Sprint 2B agenda core", () => {
     await page.screenshot({ path: path.join(artifacts, "agenda-filled-mobile.png"), fullPage: true });
 
     await nav(page, "Hoje").click();
-    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible();
     await expect(page.getByText("Ana Souza").first()).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, "today-with-appointment.png"), fullPage: true });
 
@@ -89,7 +88,8 @@ test.describe("Sprint 2B agenda core", () => {
     const locationId = page.url().split("/").pop()!;
 
     await nav(page, "Mais").click();
-    await page.getByRole("button", { name: "Sair" }).click();
+    await page.getByRole("button", { name: "Abrir menu da conta" }).click();
+    await page.getByRole("menuitem", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login/);
 
     await registerOrg(page, "isoB");

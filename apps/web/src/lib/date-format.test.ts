@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCycleDetailLines, formatCycleVigencyCard, formatHumanDateRange, lastInclusiveIso, rangesOverlap } from "@/lib/date-format";
+import { formatCycleDetailLines, formatCycleVigencyCard, formatHumanDateRange, formatNextLessonLine, lastInclusiveIso, rangesOverlap } from "@/lib/date-format";
 import { filterCycles, type CycleBucket } from "@/lib/cycle-period";
 import type { Cycle } from "@/lib/api";
 
@@ -83,5 +83,16 @@ describe("cycle-period", () => {
     });
     expect(active.map((c) => c.id)).toEqual(["span"]);
     expect(JSON.stringify(items)).toBe(frozen);
+  });
+});
+
+describe("next lesson copy", () => {
+  it("formats client, day and hour in America/Sao_Paulo", () => {
+    const line = formatNextLessonLine(
+      "Murilo",
+      "2026-08-17T17:00:00-03:00",
+      "America/Sao_Paulo",
+    );
+    expect(line).toBe("Próxima aula: Murilo · 17 ago., 17h");
   });
 });
