@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { Appointment, AttentionItem, HomeSummary, PriorityAction } from "@/lib/api";
-import { formatOrgDateTime } from "@/lib/api";
+import { apiFetch, formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import {
@@ -262,6 +262,60 @@ function subscribeSetupStorage(onStoreChange: () => void) {
   return subscribeInitialSetupCollapse(onStoreChange);
 }
 
+function TodayActions() {
+  const [items, setItems] = useState<
+    Array<{
+      id: string;
+      name?: string | null;
+      type_label: string;
+      client_name?: string | null;
+      client_id?: string | null;
+      overdue?: boolean;
+      due_on: string;
+      occurrence_type: string;
+    }>
+  >([]);
+  useEffect(() => {
+    void (async () => {
+      const result = await apiFetch<{
+        groups: Array<{ items: typeof items }>;
+      }>("/api/v1/routines/board?bucket=today");
+      const flat = (result.data?.groups ?? []).flatMap((g) => g.items ?? []);
+      setItems(flat);
+    })();
+  }, []);
+  if (!items.length) return null;
+  return (
+    <section aria-label="Suas ações de hoje" className="space-y-2">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        Suas ações de hoje
+      </h2>
+      <ul className="space-y-2">
+        {items.map((item) => (
+          <li
+            key={item.id}
+            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+              {item.overdue ? "Atrasada" : "Hoje"}
+            </p>
+            <p className="font-semibold">{item.name || item.type_label}</p>
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              {item.client_name || "Grupo de clientes"} · prazo {item.due_on}
+            </p>
+            <Link
+              href={item.client_id ? `/app/clients/${item.client_id}` : "/app/routines"}
+              className="mt-1 inline-block text-sm font-medium text-[var(--color-link)]"
+            >
+              {item.client_id ? "Abrir cliente" : "Ver rotinas"}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function TodayBoard({ summary }: Props) {
   const { me } = useAuth();
   const [now, setNow] = useState(() => new Date());
@@ -425,6 +479,7 @@ export function TodayBoard({ summary }: Props) {
                 Sua rotina ainda está sendo configurada.
               </p>
             ) : null}
+            <TodayActions />
             <DayTimeline
               inProgress={inProgress}
               upcoming={upcoming}

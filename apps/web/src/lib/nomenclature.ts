@@ -243,6 +243,16 @@ export const PROFESSION_OPTIONS = [
   { code: "other", label: "Outro profissional autônomo" },
 ] as const;
 
+/** Cadastro novo: lista curta. Códigos antigos permanecem válidos. */
+export const REGISTER_PROFESSION_OPTIONS = [
+  { code: "personal_trainer", label: "Personal trainer" },
+  { code: "private_tutor", label: "Professor ou instrutor" },
+  { code: "aesthetics", label: "Profissional de estética" },
+  { code: "physiotherapist", label: "Fisioterapeuta" },
+  { code: "nutritionist", label: "Nutricionista" },
+  { code: "other", label: "Outro profissional" },
+] as const;
+
 export const USE_CASE_OPTIONS = [
   { code: "appointments_agenda", label: "Atendimentos e agenda" },
   { code: "classes", label: "Aulas" },

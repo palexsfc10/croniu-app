@@ -10,7 +10,7 @@ import { registerSchema, type RegisterValues } from "@/lib/validators";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import {
-  PROFESSION_OPTIONS,
+  REGISTER_PROFESSION_OPTIONS,
   SPORTS_SPECIALTIES,
   TUTOR_SPECIALTIES,
   USE_CASE_OPTIONS,
@@ -278,7 +278,7 @@ export function RegisterForm() {
             Qual é a sua área de atuação?
           </legend>
           <div className="mt-2 grid gap-2">
-            {PROFESSION_OPTIONS.map((opt) => (
+            {REGISTER_PROFESSION_OPTIONS.map((opt) => (
               <label
                 key={opt.code}
                 className={`flex min-h-11 cursor-pointer items-center rounded-[var(--radius-md)] border px-3 text-sm ${
@@ -302,6 +302,11 @@ export function RegisterForm() {
             ))}
           </div>
         </fieldset>
+        <TextField
+          label="Especialidade (opcional)"
+          placeholder="Ex.: professor de inglês, estética facial, nutrição clínica"
+          {...register("profession_specialty")}
+        />
 
         {profession === "sports_teacher" ? (
           <label className="block space-y-1.5 text-sm">

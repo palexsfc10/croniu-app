@@ -20,7 +20,7 @@ import {
   IconLayoutGrid,
   IconLifeBuoy,
   IconLogOut,
-  IconRefreshCw,
+  IconClipboardList,
   IconUser,
   IconUsersRound,
 } from "@/components/ui/icons";
@@ -35,7 +35,7 @@ const navItems: {
   { href: "/app", label: "Hoje", Icon: IconHome },
   { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
   { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
-  { href: "/app/cycles", label: "Ciclos", Icon: IconRefreshCw },
+  { href: "/app/routines", label: "Rotinas", Icon: IconClipboardList },
   { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
 ];
 

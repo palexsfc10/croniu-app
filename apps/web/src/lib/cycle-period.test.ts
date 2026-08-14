@@ -99,8 +99,14 @@ describe("filterCycles active bucket", () => {
     const visible = filterCycles([upcoming], {
       bucket: "active",
       today: "2026-08-13",
-      period: { start: "2026-08-01", end: "2026-08-31" },
+      period: null,
     });
     expect(visible.map((c) => c.id)).toEqual([]);
+    const allTime = filterCycles([upcoming], {
+      bucket: "upcoming",
+      today: "2026-08-13",
+      period: null,
+    });
+    expect(allTime.map((c) => c.id)).toEqual(["later"]);
   });
 });

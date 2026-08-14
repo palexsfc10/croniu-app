@@ -32,7 +32,7 @@ export default function CyclesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10));
   const [bucket, setBucket] = useState<CycleBucket>("active");
-  const [preset, setPreset] = useState<PeriodPreset>("this_month");
+  const [preset, setPreset] = useState<PeriodPreset>("all");
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(today));
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -114,7 +114,12 @@ export default function CyclesPage() {
       <BackLink href="/app" label="Hoje" />
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-ink)]">Ciclos</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
+            Renovações
+          </h1>
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Ciclos e decisões de renovação da organização.
+          </p>
         </div>
         <Link href="/app/cycles/new" className="shrink-0">
           <Button className="whitespace-nowrap">Novo ciclo</Button>
@@ -198,6 +203,7 @@ export default function CyclesPage() {
         <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
           {(
             [
+              ["all", "Todos"],
               ["this_month", "Este mês"],
               ["next_30", "Próximos 30 dias"],
               ["last_30", "Últimos 30 dias"],

@@ -255,14 +255,12 @@ def validate_profession_payload(
     if profession_code == "other" and not other:
         raise ValueError("Descreva sua atuação.")
     specialty = (profession_specialty or "").strip() or None
-    if profession_code == "sports_teacher" and specialty:
-        if specialty not in {s["code"] for s in SPORTS_SPECIALTIES}:
-            raise ValueError("Especialidade esportiva inválida.")
+    if specialty and len(specialty) > 120:
+        raise ValueError("Especialidade muito longa.")
+    if profession_code == "sports_teacher" and specialty and specialty in {s["code"] for s in SPORTS_SPECIALTIES}:
         if specialty == "other" and not other:
             raise ValueError("Descreva a especialidade.")
-    if profession_code == "private_tutor" and specialty:
-        if specialty not in {s["code"] for s in TUTOR_SPECIALTIES}:
-            raise ValueError("Área de ensino inválida.")
+    if profession_code == "private_tutor" and specialty and specialty in {s["code"] for s in TUTOR_SPECIALTIES}:
         if specialty == "other" and not other:
             raise ValueError("Descreva a área de ensino.")
     keep_other = profession_code == "other" or specialty == "other"

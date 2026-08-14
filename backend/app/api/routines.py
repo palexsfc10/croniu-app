@@ -163,6 +163,7 @@ def skip_routine_occurrence(
 def routines_board(
     bucket: str | None = Query(default=None),
     client_id: UUID | None = Query(default=None),
+    on: date | None = Query(default=None),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -172,6 +173,7 @@ def routines_board(
             organization_id=auth.organization.id,
             bucket=bucket,
             client_id=client_id,
+            on=on,
         )
     except AuthError as exc:
         raise _http(exc) from exc

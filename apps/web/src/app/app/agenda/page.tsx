@@ -49,7 +49,7 @@ function EmptyAgenda({
   const dayLabel = day ? formatHumanDate(day) : "este dia";
   return (
     <EmptyState
-      title={`Nenhuma aula em ${dayLabel}`}
+      title={`Nenhum compromisso em ${dayLabel}`}
       description={nextLine ?? "Não há aula nesta data."}
       action={
         <div className="flex w-full flex-col gap-2">
@@ -85,49 +85,124 @@ function AgendaRoutines({ day }: { day: string | null }) {
       label: string;
       count: number;
       occurrence_count?: number;
-      client_count?: number;
       occurrence_type: string;
+      items?: Array<{
+        id: string;
+        name?: string | null;
+        client_id?: string | null;
+        client_name?: string | null;
+        overdue?: boolean;
+        time?: string | null;
+        type_label?: string;
+        due_on?: string;
+      }>;
     }>
   >([]);
-  useEffect(() => {
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function load() {
     if (!day) return;
-    void (async () => {
-      const result = await apiFetch<{
-        today: string;
-        groups: Array<{ label: string; count: number; occurrence_type: string }>;
-      }>("/api/v1/routines/board?bucket=today");
-      if (result.data?.today === day) {
-        setGroups(result.data.groups ?? []);
-      } else if (result.data) {
-        setGroups(result.data.groups ?? []);
-      }
-    })();
+    const result = await apiFetch<{
+      today: string;
+      groups: Array<{
+        label: string;
+        count: number;
+        occurrence_type: string;
+        items?: Array<{
+          id: string;
+          name?: string | null;
+          client_id?: string | null;
+          client_name?: string | null;
+          overdue?: boolean;
+          time?: string | null;
+          type_label?: string;
+          due_on?: string;
+        }>;
+      }>;
+    }>(`/api/v1/routines/board?on=${day}`);
+    setGroups(result.data?.groups ?? []);
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day]);
+
+  async function decide(id: string, status: "completed" | "deferred") {
+    setBusyId(id);
+    const body: { status: string; deferred_until?: string } = { status };
+    if (status === "deferred" && day) {
+      const next = shiftDay(day, 1);
+      body.deferred_until = next;
+    }
+    await apiFetch(`/api/v1/routines/occurrences/${id}/decide`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    setBusyId(null);
+    await load();
+  }
+
   if (!groups.length) return null;
   return (
-    <section className="space-y-2" aria-label="Rotinas do dia">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-        Rotinas
+    <section className="space-y-2" aria-label="Ações da rotina">
+      <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        Ações da rotina
       </h2>
       <ul className="space-y-2">
-        {groups.map((g) => (
-          <li
-            key={g.occurrence_type}
-            className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-3"
-          >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
-              Rotina
-            </p>
-            <p className="font-semibold">
-              {g.label} · {g.occurrence_count ?? g.count} ocorrência
-              {(g.occurrence_count ?? g.count) === 1 ? "" : "s"} · {g.client_count ?? g.count}{" "}
-              cliente{(g.client_count ?? g.count) === 1 ? "" : "s"}
-            </p>
-            <Link href="/app/routines" className="text-sm text-[var(--color-link)]">
-              Abrir lista
-            </Link>
-          </li>
-        ))}
+        {groups.flatMap((g) =>
+          (g.items && g.items.length ? g.items : [{ id: g.occurrence_type, type_label: g.label }]).map(
+            (item) => (
+              <li
+                key={item.id}
+                className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-3"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+                  Rotina{item.overdue ? " · vencida" : ""}
+                </p>
+                <p className="font-semibold">{item.name || item.type_label || g.label}</p>
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  {item.time ? `${item.time} · ` : "Ação do dia · "}
+                  {item.client_name || "Clientes ativos"}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {item.client_id ? (
+                    <Link
+                      href={`/app/clients/${item.client_id}`}
+                      className="text-sm text-[var(--color-link)]"
+                    >
+                      Abrir cliente
+                    </Link>
+                  ) : (
+                    <Link href="/app/routines" className="text-sm text-[var(--color-link)]">
+                      Abrir rotinas
+                    </Link>
+                  )}
+                  {item.id.includes("-") ? (
+                    <>
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-[var(--color-primary)]"
+                        disabled={busyId === item.id}
+                        onClick={() => void decide(item.id, "completed")}
+                      >
+                        Concluir
+                      </button>
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-[var(--color-ink-muted)]"
+                        disabled={busyId === item.id}
+                        onClick={() => void decide(item.id, "deferred")}
+                      >
+                        Adiar
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </li>
+            ),
+          ),
+        )}
       </ul>
     </section>
   );
@@ -246,6 +321,11 @@ export default function AgendaPage() {
         <EmptyAgenda day={day} timezone={agenda.timezone || prefs?.timezone || "America/Sao_Paulo"} />
       ) : null}
 
+      {agenda && agenda.appointments.length > 0 ? (
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+          Compromissos
+        </h2>
+      ) : null}
       <ul className="space-y-2">
         {agenda?.appointments.map((item) => (
           <li key={item.id}>

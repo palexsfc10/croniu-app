@@ -2,7 +2,7 @@ import type { Cycle } from "@/lib/api";
 import { addDaysIso, endOfMonth, rangesOverlap, startOfMonth } from "@/lib/date-format";
 
 export type CycleBucket = "active" | "upcoming" | "ended" | "all";
-export type PeriodPreset = "this_month" | "next_30" | "last_30" | "custom" | "month";
+export type PeriodPreset = "all" | "this_month" | "next_30" | "last_30" | "custom" | "month";
 
 export function cycleBucket(cycle: Cycle, today: string): CycleBucket {
   if (cycle.status === "ended" || cycle.status === "completed" || cycle.status === "cancelled") {
@@ -39,6 +39,9 @@ export function periodBounds(
   customStart?: string,
   customEnd?: string,
 ): { start: string; end: string } | null {
+  if (preset === "all") {
+    return null;
+  }
   if (preset === "this_month") {
     return { start: startOfMonth(today), end: endOfMonth(today) };
   }

@@ -7,6 +7,7 @@ import {
   IconLayers,
   IconLifeBuoy,
   IconMapPin,
+  IconRefreshCw,
   IconSliders,
 } from "@/components/ui/icons";
 
@@ -33,6 +34,12 @@ export default function MorePage() {
             title="Serviços"
             description="O que você oferece, duração e valor."
             Icon={IconBriefcase}
+          />
+          <SettingsRow
+            href="/app/cycles"
+            title="Ciclos e renovações"
+            description="Visão global de vigências, alertas e decisões de renovação."
+            Icon={IconRefreshCw}
           />
           <SettingsRow
             href="/app/cycle-templates"

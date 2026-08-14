@@ -13,6 +13,7 @@ from app.models.intake import Protocol, ProtocolVersion
 from app.services import domain as domain_svc
 from app.services import journey as journey_svc
 from app.services import plan_cadence as cadence
+from app.services.external_ref import sanitize_content_json
 from app.services import status_labels
 from app.services.auth import AuthError
 
@@ -140,7 +141,7 @@ def create_protocol(
         organization_id=organization_id,
         version_number=1,
         status="draft",
-        content_json=content_json or {},
+        content_json=sanitize_content_json(content_json),
         private_notes=private_notes,
         created_by_user_id=user_id,
     )
@@ -214,14 +215,14 @@ def update_protocol_draft(
             organization_id=organization_id,
             version_number=next_num,
             status="draft",
-            content_json=content_json or {},
+            content_json=sanitize_content_json(content_json),
             private_notes=private_notes,
         )
         protocol.current_version_number = next_num
         db.add(draft)
     else:
         if content_json is not None:
-            draft.content_json = content_json
+            draft.content_json = sanitize_content_json(content_json)
         if private_notes is not None:
             draft.private_notes = private_notes
         db.add(draft)

@@ -93,13 +93,13 @@ export default function ManualPage() {
     {
       id: "ciclos",
       title: "Ciclos",
-      body: "Ciclo é o período comercial com um cliente: serviço, modelo, datas, dias da semana, valor e agenda gerada. A tela inteligente atual exige cliente, serviço e modelo. Conflitos de horário são avisados antes de confirmar. Recebimentos podem ser criados junto. Status e renovação ficam no detalhe do ciclo. Encerrar um ciclo não apaga o plano.",
+      body: "Ciclo continua sendo o período contratado. A visão global ficou em Mais → Ciclos e renovações. Criação e renovação permanecem na ficha do cliente.",
       href: "/app/cycles",
     },
     {
       id: "agenda",
       title: "Agenda",
-      body: "A agenda contém os atendimentos. Você registra realizada, falta ou cancelada, cria avulsos e resolve conflitos. Gerar o ciclo com agenda evita criar o período sem os compromissos.",
+      body: "A agenda mostra compromissos e, em seção separada, as ações da rotina do dia. Você registra realizada, falta ou cancelada, cria avulsos e resolve conflitos. Gerar o ciclo com agenda evita criar o período sem os compromissos.",
       href: "/app/agenda",
     },
     {

@@ -26,7 +26,7 @@ test.describe("sprint 2a visual QA", () => {
     await page.screenshot({ path: path.join(shotDir, "servicos-390.png"), fullPage: true });
     await createTemplateUi(page, "2x por semana — mensal");
 
-    await page.getByRole("link", { name: "Ciclos" }).click();
+    await page.goto("/app/cycles");
     await page.getByRole("link", { name: /Novo ciclo/ }).click();
     await page.screenshot({ path: path.join(shotDir, "ciclo-novo-390.png"), fullPage: true });
     await confirmIntelligentCycle(page, {
