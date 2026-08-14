@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -13,6 +13,7 @@ from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.platform_membership import PlatformMembership
 from app.models.receivable import Receivable
+from app.models.intake import OperationalOccurrence, Protocol
 from app.models.user import User
 from app.models.user_feedback import UserFeedback
 from app.schemas.platform import (
@@ -27,7 +28,49 @@ from app.schemas.platform import (
 )
 from app.services import domain as domain_svc
 from app.services.environment_label import normalize_croniu_env
+from app.services.profession import PROFESSION_OPTIONS
 from app.services.platform_pilot_ops import list_cycle_agenda_integrity
+
+_PROFESSION_LABEL = {item["code"]: item["label"] for item in PROFESSION_OPTIONS}}
+
+
+def _plan_ops_counts(db: Session, organization_id: uuid.UUID) -> tuple[int, int, int]:
+    plans = (
+        db.scalar(
+            select(func.count())
+            .select_from(Protocol)
+            .where(
+                Protocol.organization_id == organization_id,
+                Protocol.is_org_template.is_(False),
+            )
+        )
+        or 0
+    )
+    published = (
+        db.scalar(
+            select(func.count())
+            .select_from(Protocol)
+            .where(
+                Protocol.organization_id == organization_id,
+                Protocol.status == "published",
+                Protocol.is_org_template.is_(False),
+            )
+        )
+        or 0
+    )
+    overdue = (
+        db.scalar(
+            select(func.count())
+            .select_from(OperationalOccurrence)
+            .where(
+                OperationalOccurrence.organization_id == organization_id,
+                OperationalOccurrence.status == "open",
+                OperationalOccurrence.due_on < date.today(),
+            )
+        )
+        or 0
+    )
+    return int(plans), int(published), int(overdue)
 
 
 def _count_professionals(db: Session) -> int:
@@ -358,6 +401,7 @@ def get_organization_detail(db: Session, organization_id: uuid.UUID) -> Organiza
         )
         or 0
     )
+    plans_count, published_plans, overdue = _plan_ops_counts(db, org.id)
     return OrganizationDetail(
         id=org.id,
         name=org.name,
@@ -376,6 +420,10 @@ def get_organization_detail(db: Session, organization_id: uuid.UUID) -> Organiza
         assistant_threads_count=int(threads),
         subscription_status=sub_status,
         operational_status=_operational_status(org.status, sub_status),
+        profession_label=_PROFESSION_LABEL.get(org.profession_code or "") or None,
+        plans_count=plans_count,
+        published_plans_count=published_plans,
+        overdue_occurrences_count=overdue,
     )
 
 

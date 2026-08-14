@@ -72,6 +72,10 @@ class OrganizationDetail(OrganizationListItem):
     owner_email: str | None = None
     timezone: str = "America/Sao_Paulo"
     appointments_count: int = 0
+    profession_label: str | None = None
+    plans_count: int = 0
+    published_plans_count: int = 0
+    overdue_occurrences_count: int = 0
 
 
 class UserListItem(BaseModel):

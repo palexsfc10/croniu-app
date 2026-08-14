@@ -104,6 +104,16 @@ export default function OrganizationDetailPage() {
           </dd>
         </div>
         <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Profissão</dt>
+          <dd>{data.profession_label ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Planos / publicados / ocorrências atrasadas</dt>
+          <dd>
+            {data.plans_count ?? 0} / {data.published_plans_count ?? 0} / {data.overdue_occurrences_count ?? 0}
+          </dd>
+        </div>
+        <div>
           <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Uso do Assistente</dt>
           <dd>{data.assistant_threads_count ?? 0} conversa(s)</dd>
         </div>

@@ -62,6 +62,10 @@ export type OrganizationDetail = OrganizationListItem & {
   owner_email?: string | null;
   timezone?: string;
   appointments_count?: number;
+  profession_label?: string | null;
+  plans_count?: number;
+  published_plans_count?: number;
+  overdue_occurrences_count?: number;
 };
 
 export type UserListItem = {
