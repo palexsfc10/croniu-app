@@ -49,7 +49,12 @@ Filtro de serviço em painel secundário. Excluir/editar permanece em “Mais”
 
 ## 24–27. HML / riscos
 
-Sem migration nova. Head permanece `0022_form_template_pin`. Backup só se o deploy HML seguir o script existente (pg_dump). Prints sanitizados e smoke humano pendentes após CI verde. Agrupamento temporal fino (esta semana / este mês) ainda simples quando a lista é curta.
+Sem migration nova. Alembic **antes e depois**: `0022_form_template_pin (head)`.
+Backup: `/home/palex/ntws/backups/croniu-hml/pre-client-intake_20260814T024256Z.sql.gz`.
+SHA HML: `03ec032d565129f715a9dc3971c31b694ab5df20`.
+CI: https://github.com/palexsfc10/croniu-app/actions/runs/31764360200 (verde).
+Serviços recriados: api, web, admin. Preservados: db, cloudflared, `.env.hml`.
+API health=200. Prints sanitizados e smoke humano ainda pendentes.
 
 ## 28. Validação humana
 
