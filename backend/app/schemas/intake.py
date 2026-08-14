@@ -151,34 +151,10 @@ class JourneyOut(BaseModel):
 
 
 class AccompanimentStepIn(BaseModel):
-    step: str
-    status: str
-    id: UUID
-    client_id: UUID
-    stage: str
-    stage_label: str
-    evaluation_decision: str | None = None
-    protocol_decision: str | None = None
-    requires_professional_attention: bool = False
-    attention_note: str | None = None
-    next_action: str | None = None
-    next_action_label: str | None = None
-    preparation_status: str | None = None
-    accompaniment_checklist: dict[str, Any] | None = None
-    accompaniment_summaries: dict[str, str | None] | None = None
-    progress_defined: int | None = None
-    progress_total: int | None = None
-    anamnesis_reviewed_at: datetime | None = None
-    approved_at: datetime | None = None
-    rejected_at: datetime | None = None
-    activated_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    model_config = ConfigDict(extra="forbid")
 
-
-class AccompanimentStepIn(BaseModel):
-    step: str
-    status: str
+    step: str = Field(min_length=1, max_length=32)
+    status: str = Field(min_length=1, max_length=16)
 
 
 class IntakeSubmissionDetailOut(BaseModel):

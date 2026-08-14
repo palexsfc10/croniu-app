@@ -1,4 +1,17 @@
-"""Canonical accompaniment preparation state: checklist + live entities."""
+"""Canonical accompaniment preparation state: checklist + live entities.
+
+Resolver precedence (highest first):
+1. Real operational entity (evaluation/plan/cycle/agenda complete) → done
+2. Explicit stored `na`
+3. Explicit stored `later`
+4. Explicit stored `done` (user marked complete without entity)
+5. Default `todo`
+
+A later real entity always wins over an older `na`/`later`.
+Absence of an entity never clears `na` or `later`.
+Cancelled/ended cycles are not operational current cycles.
+Partial agenda (fewer appointments than lesson_count) is not complete.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.appointment import Appointment
 from app.models.cycle import Cycle
@@ -225,6 +239,7 @@ def apply_step(
     current = dict(journey.accompaniment_checklist or {})
     current[step] = status
     journey.accompaniment_checklist = current
+    flag_modified(journey, "accompaniment_checklist")
     if step == "anamnesis" and status == "done" and journey.anamnesis_reviewed_at is None:
         journey.anamnesis_reviewed_at = datetime.now(UTC)
     resolved = resolve_accompaniment(
@@ -233,7 +248,6 @@ def apply_step(
         client_id=client_id,
         journey=journey,
     )
-    journey.accompaniment_checklist = resolved["checklist"]
     journey.next_action = resolved["next_action"] or "prepare_accompaniment"
     db.add(journey)
     db.commit()
