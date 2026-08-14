@@ -15,11 +15,17 @@ describe("Mais page", () => {
     render(<MorePage />);
     expect(screen.getByRole("heading", { name: "Mais" })).toBeInTheDocument();
     expect(screen.getByText(/Configure como o Croniu funciona/i)).toBeInTheDocument();
+    expect(screen.getByText("Configurações do trabalho")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Serviços/i })).toHaveAttribute("href", "/app/services");
     expect(screen.getByRole("link", { name: /Modelos de ciclo/i })).toHaveAttribute(
       "href",
       "/app/cycle-templates",
     );
+    expect(screen.getByRole("link", { name: /Configuração inicial/i })).toHaveAttribute(
+      "href",
+      "/app/setup",
+    );
+    expect(screen.getByRole("link", { name: /^Manual/i })).toHaveAttribute("href", "/app/manual");
     expect(screen.getByRole("link", { name: /Locais/i })).toHaveAttribute("href", "/app/locations");
     expect(screen.getByRole("link", { name: /Preferências gerais/i })).toHaveAttribute(
       "href",

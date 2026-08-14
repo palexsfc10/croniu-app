@@ -45,6 +45,8 @@ const emptySummary: HomeSummary = {
   priority_action: null,
   contextual_hint: null,
   message: "Você não possui nenhuma pendência importante neste momento.",
+  has_active_service: true,
+  has_active_cycle_template: true,
 };
 
 describe("UI fundamentals", () => {
@@ -323,5 +325,39 @@ describe("UI fundamentals", () => {
     expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
     expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
     expect(screen.getByText(/Precisa de atenção · 1/)).toBeInTheDocument();
+  });
+
+  it("shows initial setup card instead of Tudo organizado when config is missing", () => {
+    render(
+      <TodayBoard
+        summary={{
+          ...emptySummary,
+          has_active_service: false,
+          has_active_cycle_template: false,
+          message: "Sua rotina ainda está sendo configurada.",
+        }}
+      />,
+    );
+    expect(screen.getByText("Prepare seu Croniu")).toBeInTheDocument();
+    expect(screen.getByText("0 de 2 etapas concluídas")).toBeInTheDocument();
+    expect(screen.getByText("Criar serviço")).toBeInTheDocument();
+    expect(screen.getByText("Criar modelo")).toBeInTheDocument();
+    expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tudo em dia")).not.toBeInTheDocument();
+  });
+
+  it("shows 1 of 2 when only a service exists", () => {
+    render(
+      <TodayBoard
+        summary={{
+          ...emptySummary,
+          has_active_service: true,
+          has_active_cycle_template: false,
+          message: "Sua rotina ainda está sendo configurada.",
+        }}
+      />,
+    );
+    expect(screen.getByText("1 de 2 etapas concluídas")).toBeInTheDocument();
+    expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
   });
 });

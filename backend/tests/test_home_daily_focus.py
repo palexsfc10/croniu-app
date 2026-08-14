@@ -422,7 +422,13 @@ def test_home_empty_day_message(client, register_payload):
     assert home["attention_items"] == []
     assert home["upcoming_appointments"] == []
     assert home["contextual_hint"] is None
-    assert "pendência" in home["message"].lower() or "organizado" in home["message"].lower()
+    msg = home["message"].lower()
+    assert (
+        "pendência" in msg
+        or "organizado" in msg
+        or "configurada" in msg
+    )
+    assert home["has_active_service"] is False
 
 
 def test_home_summary_tenant_isolation(client, register_payload):

@@ -3,6 +3,7 @@
 import { SettingsGroup, SettingsRow } from "@/components/app/settings-list";
 import {
   IconBriefcase,
+  IconClipboardList,
   IconLayers,
   IconLifeBuoy,
   IconMapPin,
@@ -20,33 +21,45 @@ export default function MorePage() {
       </header>
 
       <div className="grid gap-6 md:grid-cols-2 md:gap-5">
-        <SettingsGroup title="Seu trabalho">
-          <SettingsRow
-            href="/app/services"
-            title="Serviços"
-            description="Atividades, duração e valores."
-            Icon={IconBriefcase}
-          />
-          <SettingsRow
-            href="/app/cycle-templates"
-            title="Modelos de ciclo"
-            description="Frequência e duração dos ciclos."
-            Icon={IconLayers}
-          />
-          <SettingsRow
-            href="/app/locations"
-            title="Locais de atendimento"
-            description="Onde você atende seus clientes."
-            Icon={IconMapPin}
-          />
-        </SettingsGroup>
-
-        <SettingsGroup title="Preferências">
+        <SettingsGroup title="Configurações do trabalho">
           <SettingsRow
             href="/app/profile/professional"
             title="Perfil profissional"
             description="Área de atuação, especialidade e forma de acompanhamento."
             Icon={IconBriefcase}
+          />
+          <SettingsRow
+            href="/app/services"
+            title="Serviços"
+            description="O que você oferece, duração e valor."
+            Icon={IconBriefcase}
+          />
+          <SettingsRow
+            href="/app/cycle-templates"
+            title="Modelos de ciclo"
+            description="Frequência e período reutilizáveis."
+            Icon={IconLayers}
+          />
+          <SettingsRow
+            href="/app/setup"
+            title="Configuração inicial"
+            description="Serviço e modelo mínimos para começar."
+            Icon={IconClipboardList}
+          />
+          <SettingsRow
+            href="/app/manual"
+            title="Manual"
+            description="Como o Croniu funciona hoje."
+            Icon={IconLifeBuoy}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup title="Preferências">
+          <SettingsRow
+            href="/app/locations"
+            title="Locais de atendimento"
+            description="Onde você atende seus clientes."
+            Icon={IconMapPin}
           />
           <SettingsRow
             href="/app/preferences"

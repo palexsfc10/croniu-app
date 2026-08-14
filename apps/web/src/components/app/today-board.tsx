@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { Appointment, AttentionItem, HomeSummary, PriorityAction } from "@/lib/api";
 import { formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -14,11 +14,18 @@ import {
 } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ProfessionNudge } from "@/components/app/profession-nudge";
+import { InitialSetupCard } from "@/components/app/initial-setup-card";
 import {
   firstName,
   greetingForHour,
   hourInTimeZone,
 } from "@/lib/greeting";
+import {
+  getInitialSetupCollapsed,
+  setInitialSetupCollapsed,
+  SETUP_CELEBRATE_KEY,
+  subscribeInitialSetupCollapse,
+} from "@/lib/setup-copy";
 
 type Props = {
   summary: HomeSummary;
@@ -251,13 +258,44 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
   );
 }
 
+function subscribeSetupStorage(onStoreChange: () => void) {
+  return subscribeInitialSetupCollapse(onStoreChange);
+}
+
 export function TodayBoard({ summary }: Props) {
   const { me } = useAuth();
   const [now, setNow] = useState(() => new Date());
+  const setupCollapsed = useSyncExternalStore(
+    subscribeSetupStorage,
+    getInitialSetupCollapsed,
+    () => false,
+  );
+  const [setupCelebrate, setSetupCelebrate] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let hideTimer = 0;
+    try {
+      if (sessionStorage.getItem(SETUP_CELEBRATE_KEY) !== "1") return;
+      sessionStorage.removeItem(SETUP_CELEBRATE_KEY);
+      hideTimer = window.setTimeout(() => {
+        if (!cancelled) setSetupCelebrate(true);
+        hideTimer = window.setTimeout(() => {
+          if (!cancelled) setSetupCelebrate(false);
+        }, 3500);
+      }, 0);
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      cancelled = true;
+      window.clearTimeout(hideTimer);
+    };
   }, []);
 
   const hour = hourInTimeZone(now, summary.timezone);
@@ -312,7 +350,11 @@ export function TodayBoard({ summary }: Props) {
   const hasAttention = attention.length > 0 || hasIntakeCounts;
   const priority = summary.priority_action;
   const hasAgenda = upcoming.length > 0 || inProgress.length > 0;
-  const fullyClear = !priority && !hasAttention && !hasAgenda;
+  const setupIncomplete =
+    summary.has_active_service === false || summary.has_active_cycle_template === false;
+  const showSetupCard = setupIncomplete && !setupCollapsed;
+  const fullyClear = !priority && !hasAttention && !hasAgenda && !setupIncomplete;
+  const showCalmLine = !priority && hasAgenda && !hasAttention && !setupIncomplete;
 
   return (
     <div className="space-y-4 animate-fade-up md:space-y-5">
@@ -332,6 +374,23 @@ export function TodayBoard({ summary }: Props) {
       </header>
 
       <ProfessionNudge />
+
+      {showSetupCard ? (
+        <InitialSetupCard
+          compact
+          professionCode={me?.organization.profession_code}
+          hasService={Boolean(summary.has_active_service)}
+          hasTemplate={Boolean(summary.has_active_cycle_template)}
+          returnTo="/app"
+          onDismissLater={() => setInitialSetupCollapsed(true)}
+        />
+      ) : null}
+
+      {setupCelebrate && !setupIncomplete ? (
+        <p role="status" className="text-sm text-[var(--color-ink-muted)]">
+          Configuração inicial concluída
+        </p>
+      ) : null}
 
       {fullyClear ? (
         <EmptyState
@@ -355,13 +414,17 @@ export function TodayBoard({ summary }: Props) {
               <p className="text-sm text-[var(--color-ink-muted)]">
                 Revise o que precisa da sua atenção.
               </p>
-            ) : (
+            ) : showCalmLine ? (
               <CalmPriorityLine
                 message={
                   summary.message || "Nenhuma pendência operacional no momento."
                 }
               />
-            )}
+            ) : setupIncomplete && !hasAgenda ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Sua rotina ainda está sendo configurada.
+              </p>
+            ) : null}
             <DayTimeline
               inProgress={inProgress}
               upcoming={upcoming}

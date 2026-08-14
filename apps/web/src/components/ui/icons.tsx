@@ -316,6 +316,14 @@ export function IconHistory({ className = "", ...props }: IconProps) {
   );
 }
 
+export function IconCheck({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 export function IconCalendarPlus({ className = "", ...props }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>

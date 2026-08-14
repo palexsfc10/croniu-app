@@ -244,6 +244,8 @@ export type HomeSummary = {
   routines_due_today_count?: number;
   feedbacks_due_count?: number;
   plans_ending_count?: number;
+  has_active_service?: boolean;
+  has_active_cycle_template?: boolean;
 };
 
 export type AnamnesisQuestion = {

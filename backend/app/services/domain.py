@@ -1287,6 +1287,26 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         )
         message = "Veja o que precisa da sua atenção hoje."
 
+    has_active_service = bool(
+        db.scalar(
+            select(func.count())
+            .select_from(Service)
+            .where(Service.organization_id == organization_id, Service.status == "active")
+        )
+    )
+    has_active_cycle_template = bool(
+        db.scalar(
+            select(func.count())
+            .select_from(CycleTemplate)
+            .where(
+                CycleTemplate.organization_id == organization_id,
+                CycleTemplate.status == "active",
+            )
+        )
+    )
+    if not has_active_service or not has_active_cycle_template:
+        message = "Sua rotina ainda está sendo configurada."
+
     return HomeSummaryOut(
         organization_id=organization_id,
         timezone=tz_name,
@@ -1305,6 +1325,8 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         priority_action=priority,
         contextual_hint=None,
         message=message,
+        has_active_service=has_active_service,
+        has_active_cycle_template=has_active_cycle_template,
         **intake_counts,
     )
 

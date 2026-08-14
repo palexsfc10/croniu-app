@@ -230,3 +230,5 @@ class HomeSummaryOut(BaseModel):
     routines_due_today_count: int = 0
     feedbacks_due_count: int = 0
     plans_ending_count: int = 0
+    has_active_service: bool = False
+    has_active_cycle_template: bool = False

@@ -31,6 +31,7 @@ import {
   isOverlappingCycleCode,
 } from "@/components/app/cycle-overlap-alert";
 import { lastInclusiveIso } from "@/lib/date-format";
+import { safeReturnTo } from "@/lib/nomenclature";
 
 function NewIntelligentCycleForm() {
   const router = useRouter();
@@ -43,6 +44,7 @@ function NewIntelligentCycleForm() {
   const [services, setServices] = useState<Service[]>([]);
   const [templates, setTemplates] = useState<CycleTemplate[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [listsReady, setListsReady] = useState(false);
 
   const clientIdFromQuery = search.get("clientId") ?? "";
   const [clientId, setClientId] = useState(clientIdFromQuery);
@@ -75,6 +77,22 @@ function NewIntelligentCycleForm() {
   const template = templates.find((t) => t.id === templateId);
   const service = services.find((s) => s.id === serviceId);
   const client = clients.find((c) => c.id === clientId);
+  const backHref = clientId
+    ? `/app/clients/${clientId}/accompaniment`
+    : "/app/cycles";
+  const cycleReturnPath = (() => {
+    const params = new URLSearchParams();
+    if (clientId) params.set("clientId", clientId);
+    if (serviceId) params.set("serviceId", serviceId);
+    if (templateId) params.set("templateId", templateId);
+    if (startsOn) params.set("startsOn", startsOn);
+    if (weekdays.length) params.set("weekdays", weekdays.join(","));
+    if (renewalRequestId) params.set("renewalRequestId", renewalRequestId);
+    const existingReturn = safeReturnTo(search.get("returnTo"));
+    if (existingReturn) params.set("returnTo", existingReturn);
+    const q = params.toString();
+    return q ? `/app/cycles/new?${q}` : "/app/cycles/new";
+  })();
 
   useEffect(() => {
     void (async () => {
@@ -88,6 +106,7 @@ function NewIntelligentCycleForm() {
       setServices(s.data ?? []);
       setTemplates(t.data ?? []);
       setLocations(l.data ?? []);
+      setListsReady(true);
     })();
   }, []);
 
@@ -233,11 +252,7 @@ function NewIntelligentCycleForm() {
   return (
     <div className="space-y-4 animate-fade-up">
       <BackLink
-        href={
-          clientId
-            ? `/app/clients/${clientId}/accompaniment`
-            : "/app/cycles"
-        }
+        href={backHref}
         label={clientId ? "Voltar ao acompanhamento" : "Ciclos"}
       />
       {client ? (
@@ -299,13 +314,42 @@ function NewIntelligentCycleForm() {
               ))}
             </select>
           </label>
-          {!templates.length ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              Sem modelos.{" "}
-              <Link href="/app/cycle-templates/new" className="font-semibold text-[var(--color-primary)]">
+          {listsReady && !services.length ? (
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3">
+              <p className="text-sm font-semibold text-[var(--color-ink)]">
+                Você precisa de um serviço antes de criar um ciclo.
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                O serviço informa o que será oferecido, sua duração e o valor.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-3">
+                <Link
+                  href={`/app/services/new?returnTo=${encodeURIComponent(cycleReturnPath)}`}
+                  className="text-sm font-semibold text-[var(--color-primary)]"
+                >
+                  Criar serviço
+                </Link>
+                <Link href={backHref} className="text-sm font-medium text-[var(--color-ink-muted)]">
+                  Voltar
+                </Link>
+              </div>
+            </div>
+          ) : null}
+          {listsReady && services.length > 0 && !templates.length ? (
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3">
+              <p className="text-sm font-semibold text-[var(--color-ink)]">
+                Você ainda não criou um modelo de ciclo.
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                Nesta tela, o modelo é necessário para calcular frequência e período do ciclo.
+              </p>
+              <Link
+                href={`/app/cycle-templates/new?returnTo=${encodeURIComponent(cycleReturnPath)}`}
+                className="mt-2 inline-block text-sm font-semibold text-[var(--color-primary)]"
+              >
                 Criar modelo
               </Link>
-            </p>
+            </div>
           ) : null}
           <Button
             fullWidth
