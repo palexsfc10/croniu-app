@@ -1,6 +1,7 @@
 # Exclusive `ends_on` vigency — resolvers and copy
 
 **Branch:** `feature/client-intake-journey`  
+**SHA HML:** `5e133b2c93d2f28c00ed06850d2e9d60f09bb1db`  
 **Base smoke aceito:** `efdfd92`  
 **Não mergeado. Sem Promote. Banco HML não limpo neste passo.**
 
@@ -46,4 +47,11 @@ Também: virada de mês/ano, bissexto, intervalo de 1 dia, legado exclusivo, buc
 
 ## HML
 
-Deploy do SHA deste commit após backup. Reset integral de HML **não** executado aqui — fica para o passo seguinte, depois de comprovada a fronteira.
+- Backup: `/home/palex/ntws/backups/croniu-hml/pre-client-intake_20260814T130816Z.sql.gz`  
+  SHA256 `64097f66d30b13b542d65c6d12b66111f9f2ec649a0849c1b8db1acdc0518da2`
+- `/version`: `environment=hml`, `git_sha=5e133b2c93d2f28c00ed06850d2e9d60f09bb1db`, `build_time=20260814T130816Z`
+- Alembic: `0022_form_template_pin` (head)
+- Recreate: api + web + admin only (db e cloudflared preservados)
+- Reset integral: **não** executado; pronto para o reset controlado no próximo passo
+
+Fronteira 16/09 vs 17/09 coberta em pytest com relógio controlado (`tests/test_cycle_vigency.py`). Não há freeze de calendário da org em HML sem fixture; o contrato está no SHA implantado.
