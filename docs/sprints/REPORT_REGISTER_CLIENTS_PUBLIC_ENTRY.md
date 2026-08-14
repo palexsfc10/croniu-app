@@ -50,9 +50,17 @@ Correção: cache `v4`; **network-first** em navegações; `/` fora do precache;
 - Web: register-form, profession-contract, client-list, PWA v4, public-entry; `tsc` ok
 - E2E Playwright completo / Admin / visual / secret scan: não rodados nesta máquina (pendente no pipeline se houver)
 
-## 15–18. HML (após deploy desta correção)
+## 15–18. HML
 
-Preencher SHA, backup, Alembic `0022_form_template_pin`, serviços api+web+admin.
+- Backup: `/home/palex/ntws/backups/croniu-hml/pre-client-intake_20260814T143150Z.sql.gz`
+- SHA256: `a830a676c591a61f08152fa003bb6c0ce0f66421c31d98b150c6e8e02e0cddce`
+- **SHA HML:** `7b8e799d9866d09b8fad923cec575cbca827d2c9`
+- `/version`: `environment=hml`, `build_time=20260814T143150Z`
+- Alembic: `0022_form_template_pin` (head)
+- Recreate: api + web + admin. DB e tunnel preservados.
+- Smoke API register 201: personal_trainer, private_tutor, consultant, other
+- HTML local web: “Organize seus clientes”, “Seu parceiro de rotina”, 0× `croniu-mark.png`
+- `sw.js` no host: `croniu-static-v4`
 
 ## 19. Evidências humanas
 
