@@ -13,9 +13,8 @@ from app.models.intake import Protocol, ProtocolVersion
 from app.services import domain as domain_svc
 from app.services import journey as journey_svc
 from app.services import plan_cadence as cadence
-from app.services.external_ref import sanitize_content_json
-from app.services import status_labels
 from app.services.auth import AuthError
+from app.services.external_ref import sanitize_content_json
 
 
 def list_protocols(

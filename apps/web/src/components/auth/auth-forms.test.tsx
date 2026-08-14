@@ -48,7 +48,7 @@ describe("Auth forms", () => {
     const fetchSpy = vi.spyOn(global, "fetch");
     await user.click(screen.getByRole("link", { name: "Entrar" }));
     expect(fetchSpy).not.toHaveBeenCalled();
-    await user.click(screen.getByLabelText("Consultor"));
+    await user.click(screen.getByLabelText("Personal trainer"));
     expect(screen.getByText("Sua experiência")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Nutricionista"));
     expect(screen.getByText("Sua experiência")).toBeInTheDocument();

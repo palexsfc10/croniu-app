@@ -13,6 +13,7 @@ export async function apiRegister(
       email: opts.email,
       password: DEFAULT_PASSWORD,
       profession_code: opts.profession ?? "consultant",
+      profession_other: opts.profession === "other" ? "Consultoria independente" : undefined,
       use_cases: ["plans_cycles", "appointments_agenda"],
     },
   });

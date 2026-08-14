@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
-from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.intake import RecurringClientTask
 from app.services import recurrence as rec_svc
+from app.services import routine_occurrences as occ_svc
 from app.services.auth import AuthError
 
 VALID_TASK_TYPES = {
@@ -89,7 +90,21 @@ def preview(
     weekday: int | None,
     today: date,
 ) -> dict[str, Any]:
-    spec = filter_json or {}
+    spec = occ_svc.validate_trigger(filter_json)
+    if spec.get("trigger_type") == "cycle_lifecycle":
+        anchor = spec.get("anchor") or "ends_on"
+        offset = int(spec.get("offset_days") or 0)
+        if anchor == "starts_on":
+            text = (
+                "No início de cada ciclo."
+                if offset == 0
+                else f"{offset} dias após o início de cada ciclo."
+            )
+        elif offset == 0:
+            text = "No dia de renovação de cada ciclo."
+        else:
+            text = f"{offset} dias antes do fim de cada ciclo."
+        return {"next_run_on": None, "preview": text}
     nxt = compute_next(recurrence=recurrence, filter_json=spec, weekday=weekday, today=today)
     return {
         "next_run_on": nxt.isoformat() if nxt else None,
@@ -114,9 +129,10 @@ def create_routine(
     if not name:
         raise AuthError("invalid_name", "Informe o nome da rotina.", 422)
     _validate(task_type, recurrence, weekday)
+    spec = occ_svc.validate_trigger(filter_json)
     day = today or date.today()
     nxt = next_run_on or compute_next(
-        recurrence=recurrence, filter_json=filter_json, weekday=weekday, today=day
+        recurrence=recurrence, filter_json=spec, weekday=weekday, today=day
     )
     row = RecurringClientTask(
         id=uuid.uuid4(),
@@ -126,12 +142,20 @@ def create_routine(
         weekday=weekday,
         recurrence=recurrence,
         lead_days=lead_days or 0,
-        filter_json=filter_json,
+        filter_json=spec,
         next_run_on=nxt,
         status="active",
     )
     db.add(row)
     db.commit()
+    db.refresh(row)
+    occ_svc.ensure_routine_occurrences(
+        db,
+        organization_id=organization_id,
+        range_start=day - timedelta(days=14),
+        range_end=day + timedelta(days=60),
+        commit=True,
+    )
     db.refresh(row)
     return row
 
@@ -163,7 +187,7 @@ def update_routine(
     if "lead_days" in fields and fields["lead_days"] is not None:
         row.lead_days = int(fields["lead_days"])
     if "filter_json" in fields:
-        row.filter_json = fields["filter_json"]
+        row.filter_json = occ_svc.validate_trigger(fields["filter_json"])
     if "next_run_on" in fields:
         row.next_run_on = fields["next_run_on"]
     if "status" in fields and fields["status"] is not None:
@@ -180,6 +204,18 @@ def update_routine(
         )
     db.add(row)
     db.commit()
+    db.refresh(row)
+    persist_day = today or date.today()
+    occ_svc.cancel_future_open(
+        db, organization_id=organization_id, task_id=row.id, today=persist_day
+    )
+    occ_svc.ensure_routine_occurrences(
+        db,
+        organization_id=organization_id,
+        range_start=persist_day,
+        range_end=persist_day + timedelta(days=60),
+        commit=True,
+    )
     db.refresh(row)
     return row
 

@@ -31,7 +31,7 @@ export default function CyclesPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10));
-  const [bucket, setBucket] = useState<CycleBucket>("active");
+  const [bucket, setBucket] = useState<CycleBucket>("renewing");
   const [preset, setPreset] = useState<PeriodPreset>("all");
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(today));
   const [customStart, setCustomStart] = useState("");
@@ -80,9 +80,11 @@ export default function CyclesPage() {
   const counts = useMemo(() => {
     const inPeriod = period ? items.filter((c) => filterCycles([c], { bucket: "all", today, period }).length) : items;
     return {
+      renewing: inPeriod.filter((c) => c.is_nearing_end && cycleBucket(c, today) === "active").length,
       active: inPeriod.filter((c) => cycleBucket(c, today) === "active").length,
       upcoming: inPeriod.filter((c) => cycleBucket(c, today) === "upcoming").length,
       ended: inPeriod.filter((c) => cycleBucket(c, today) === "ended").length,
+      all: inPeriod.length,
     };
   }, [items, today, period]);
 
@@ -103,7 +105,9 @@ export default function CyclesPage() {
   }
 
   const emptyTitle =
-    bucket === "active"
+    bucket === "renewing"
+      ? "Nenhuma renovação próxima neste filtro"
+      : bucket === "active"
       ? "Nenhum ciclo em andamento"
       : period
         ? "Nenhum ciclo encontrado neste período."
@@ -126,7 +130,24 @@ export default function CyclesPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+      <p className="text-sm text-[var(--color-ink-muted)]" role="status">
+        Filtro ativo:{" "}
+        {bucket === "renewing"
+          ? "Próximas renovações"
+          : bucket === "active"
+            ? "Em andamento"
+            : bucket === "upcoming"
+              ? "Próximos"
+              : bucket === "ended"
+                ? "Encerrados"
+                : "Todos"}{" "}
+        · {visible.length} resultado{visible.length === 1 ? "" : "s"}
+      </p>
+      <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-5">
+        <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] px-2 py-2">
+          <p className="font-semibold text-[var(--color-ink)]">{counts.renewing}</p>
+          <p className="text-[var(--color-ink-muted)]">Vencendo</p>
+        </div>
         <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] px-2 py-2">
           <p className="font-semibold text-[var(--color-ink)]">{counts.active}</p>
           <p className="text-[var(--color-ink-muted)]">Ativos</p>
@@ -139,18 +160,24 @@ export default function CyclesPage() {
           <p className="font-semibold text-[var(--color-ink)]">{counts.ended}</p>
           <p className="text-[var(--color-ink-muted)]">Encerrados</p>
         </div>
+        <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] px-2 py-2">
+          <p className="font-semibold text-[var(--color-ink)]">{counts.all}</p>
+          <p className="text-[var(--color-ink-muted)]">Todos</p>
+        </div>
       </div>
 
       <div
         role="tablist"
         aria-label="Situação"
-        className="grid grid-cols-3 gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-0.5"
+        className="grid grid-cols-2 gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-0.5 sm:grid-cols-5"
       >
         {(
           [
+            ["renewing", "Próximas"],
             ["active", "Em andamento"],
             ["upcoming", "Próximos"],
             ["ended", "Encerrados"],
+            ["all", "Todos"],
           ] as const
         ).map(([id, label]) => (
           <button

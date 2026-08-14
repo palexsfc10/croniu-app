@@ -12,7 +12,7 @@ export async function registerProfessional(
   await page.getByLabel("Senha").fill(password);
   await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByText(/Etapa 2 de 2/)).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("radio", { name: "Consultor" }).click();
+  await page.getByRole("radio", { name: "Personal trainer" }).click();
   await page.getByRole("button", { name: "Criar minha conta" }).click();
   await expect(page).toHaveURL(/\/app/, { timeout: 30_000 });
 }

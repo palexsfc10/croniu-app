@@ -537,6 +537,9 @@ def list_day_agenda(
     org = get_organization(db, organization_id)
     tz_name = get_org_timezone(org)
     target = day or org_local_today(org)
+    from app.services import routine_occurrences as occ_svc
+
+    occ_svc.persist_for_day(db, organization_id=organization_id, day=target)
     start_utc, end_utc = day_bounds_utc(target, tz_name)
 
     query = (

@@ -14,6 +14,7 @@ import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { RoutineTemplatesPanel } from "@/app/app/routines/routine-templates-panel";
 
 type Routine = {
   id: string;
@@ -242,6 +243,11 @@ export default function RoutinesPageInner() {
         </p>
       ) : null}
 
+      <RoutineTemplatesPanel
+        enabledNames={new Set(items.filter((r) => r.status === "active").map((r) => r.name))}
+        onChanged={load}
+      />
+
       {board.length ? (
         <section className="space-y-2" aria-label="Pendências">
           {board.map((group) => {
@@ -293,7 +299,7 @@ export default function RoutinesPageInner() {
       ) : null}
 
       <section className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-        <h2 className="text-base font-semibold">Nova rotina</h2>
+        <h2 className="text-base font-semibold">Outra rotina</h2>
         <TextField label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
         <SuggestionChips chips={ROUTINE_NAME_SUGGESTIONS} onSelect={setName} />
         <label className="block space-y-1.5 text-sm">

@@ -27,7 +27,8 @@ from app.services import cycle_guard as cycle_guard_svc
 from app.services import cycle_period as cycle_period_svc
 from app.services.auth import AuthError
 
-NEARING_END_DAYS = 7
+NEARING_END_DAYS = 30
+PORTAL_NEARING_DAYS = 7
 # Ciclo também entra em “encerrando” quando resta no máximo esta quantidade de aulas.
 LESSONS_NEARING_REMAINING = 1
 
@@ -66,8 +67,8 @@ def _cycle_nearing_copy(cycle: CycleOut) -> tuple[str, str]:
     if days is not None and days >= 0:
         when = (
             "hoje"
-            if days == 0
-            else ("amanhã" if days == 1 else f"em {days} dias")
+            if days <= 1
+            else ("em 7 dias" if days <= 7 else f"em {days} dias")
         )
         return (
             "Ciclo chegando ao fim",
@@ -88,11 +89,9 @@ def _attention_cycle_subtitle(cycle: CycleOut) -> str:
     if cycle.days_remaining is not None:
         when = (
             "hoje"
-            if cycle.days_remaining == 0
+            if cycle.days_remaining <= 1
             else (
-                "amanhã"
-                if cycle.days_remaining == 1
-                else f"em {cycle.days_remaining} dias"
+                f"em {cycle.days_remaining} dias"
             )
         )
         return f"Ciclo termina {when} · sem renovação encaminhada"

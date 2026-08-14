@@ -1,7 +1,7 @@
 import type { Cycle } from "@/lib/api";
 import { addDaysIso, endOfMonth, rangesOverlap, startOfMonth } from "@/lib/date-format";
 
-export type CycleBucket = "active" | "upcoming" | "ended" | "all";
+export type CycleBucket = "renewing" | "active" | "upcoming" | "ended" | "all";
 export type PeriodPreset = "all" | "this_month" | "next_30" | "last_30" | "custom" | "month";
 
 export function cycleBucket(cycle: Cycle, today: string): CycleBucket {
@@ -86,7 +86,9 @@ export function filterCycles(
   },
 ): Cycle[] {
   return items.filter((cycle) => {
-    if (opts.bucket !== "all" && cycleBucket(cycle, opts.today) !== opts.bucket) {
+    if (opts.bucket === "renewing") {
+      if (!(cycleBucket(cycle, opts.today) === "active" && cycle.is_nearing_end)) return false;
+    } else if (opts.bucket !== "all" && cycleBucket(cycle, opts.today) !== opts.bucket) {
       return false;
     }
     if (opts.period && !cycleInPeriod(cycle, opts.period.start, opts.period.end)) return false;

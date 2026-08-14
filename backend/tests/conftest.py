@@ -138,6 +138,7 @@ def clean_tables():
                 "agent_audit_logs, agent_pending_actions, agent_tool_calls, agent_runs, "
                 "agent_messages, agent_threads, agent_usage_daily, "
                 "client_evaluation_criteria, client_evaluations, "
+                "operational_occurrences, recurring_client_tasks, protocol_versions, protocols, "
                 "payment_proofs, payment_reports, renewal_requests, "
                 "organization_payment_settings, client_public_accesses, "
                 "appointments, locations, password_reset_tokens, email_verification_tokens, "

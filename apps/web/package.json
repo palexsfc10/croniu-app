@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --config=playwright.config.ts",
-    "test:e2e:functional": "playwright test --config=playwright.config.ts e2e/auth.spec.ts e2e/brand-wordmark.spec.ts e2e/isolation-consistency.spec.ts e2e/accompaniment-journey.spec.ts e2e/routines-journey.spec.ts",
+    "test:e2e:professions": "playwright test --config=playwright.config.ts e2e/professions-os.spec.ts",
     "test:e2e:regression": "playwright test --config=playwright.config.ts e2e/sprint2a.spec.ts e2e/sprint2a-visual.spec.ts e2e/sprint2b.spec.ts e2e/sprint2c.spec.ts e2e/sprint2c1.spec.ts e2e/sprint2d.spec.ts e2e/cycle-integrity.spec.ts",
     "test:e2e:hml": "playwright test --config=playwright.hml.config.ts",
     "test:e2e:prd": "playwright test --config=playwright.prd.config.ts"

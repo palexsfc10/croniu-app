@@ -124,6 +124,7 @@ function AgendaRoutines({ day }: { day: string | null }) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- remote hydrate
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day]);

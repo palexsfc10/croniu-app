@@ -91,14 +91,14 @@ def preview_routine(
     today = routine_svc.local_today(auth.organization.timezone)
     try:
         routine_svc._validate(payload.task_type, payload.recurrence, payload.weekday)
+        return routine_svc.preview(
+            recurrence=payload.recurrence,
+            filter_json=payload.filter_json,
+            weekday=payload.weekday,
+            today=today,
+        )
     except AuthError as exc:
         raise _http(exc) from exc
-    return routine_svc.preview(
-        recurrence=payload.recurrence,
-        filter_json=payload.filter_json,
-        weekday=payload.weekday,
-        today=today,
-    )
 
 
 @router.patch("/{task_id}", response_model=RoutineOut)
@@ -157,6 +157,15 @@ def skip_routine_occurrence(
     except AuthError as exc:
         raise _http(exc) from exc
     return _out(row)
+
+
+@router.get("/templates")
+def list_routine_templates(
+    auth: AuthContext = Depends(get_current_auth),
+) -> dict:
+    from app.services.routine_templates import templates_for
+
+    return {"items": templates_for(auth.organization.profession_code)}
 
 
 @router.get("/board")

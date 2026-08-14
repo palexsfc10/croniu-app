@@ -405,7 +405,7 @@ def _cycle_is_near_end_for_portal(db: Session, *, cycle: Cycle, today: date) -> 
         return True
     if cycle.starts_on > today:
         return False
-    if 0 <= (cycle.ends_on - today).days <= domain_svc.NEARING_END_DAYS:
+    if 0 <= (cycle.ends_on - today).days <= domain_svc.PORTAL_NEARING_DAYS:
         return True
     remaining = remaining_planned_lessons(
         db, cycle, organization_id=cycle.organization_id
@@ -556,7 +556,7 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         status_summary = "proximo"
     elif cycle.ends_on <= today or cycle.status == "ended":
         status_summary = "encerrado"
-    elif (cycle.ends_on - today).days <= domain_svc.NEARING_END_DAYS:
+    elif (cycle.ends_on - today).days <= domain_svc.PORTAL_NEARING_DAYS:
         status_summary = "encerrando"
     elif remaining is not None and remaining <= domain_svc.LESSONS_NEARING_REMAINING:
         # Saldo esgotado ou última aula — mesmo com data ainda longe.

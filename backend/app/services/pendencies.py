@@ -12,9 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.client import Client
-from app.models.intake import OperationalOccurrence, Protocol, RecurringClientTask
+from app.models.intake import OperationalOccurrence, Protocol
 from app.models.organization import Organization
 from app.services import plan_cadence as cadence
+from app.services import routine_occurrences as occ_svc
 from app.services import routines as routine_svc
 from app.services import status_labels
 from app.services.auth import AuthError
@@ -157,17 +158,7 @@ def materialize_protocol(
             db.add(row)
 
 
-TASK_TYPE_TO_OCCURRENCE = {
-    "review_protocol": "plan_review",
-    "swap_training": "plan_review",
-    "send_feedback": "feedback_due",
-    "prepare_renewal": "cycle_renewal",
-    "review_cycle": "cycle_renewal",
-    "review_evaluation": "evaluation_review",
-    "contact_client": "custom_task",
-    "check_payment": "custom_task",
-    "free": "custom_task",
-}
+TASK_TYPE_TO_OCCURRENCE = occ_svc.TASK_TYPE_TO_OCCURRENCE
 
 
 def materialize_routines(
@@ -176,61 +167,13 @@ def materialize_routines(
     organization_id: uuid.UUID,
     today: date,
 ) -> None:
-    """Turn RecurringClientTask.next_run_on into idempotent OperationalOccurrence rows."""
-    tasks = list(
-        db.scalars(
-            select(RecurringClientTask).where(
-                RecurringClientTask.organization_id == organization_id,
-                RecurringClientTask.status == "active",
-                RecurringClientTask.next_run_on.is_not(None),
-            )
-        ).all()
+    occ_svc.ensure_routine_occurrences(
+        db,
+        organization_id=organization_id,
+        range_start=today,
+        range_end=today,
+        commit=False,
     )
-    existing = {
-        row.idempotency_key
-        for row in db.scalars(
-            select(OperationalOccurrence).where(
-                OperationalOccurrence.organization_id == organization_id,
-                OperationalOccurrence.source == "routine",
-            )
-        ).all()
-    }
-    for task in tasks:
-        due = task.next_run_on
-        if due is None:
-            continue
-        key = f"routine:{task.id}:{due.isoformat()}"
-        if key in existing:
-            continue
-        spec = task.filter_json if isinstance(task.filter_json, dict) else {}
-        raw_client = spec.get("client_id")
-        client_id = None
-        if raw_client:
-            try:
-                client_id = uuid.UUID(str(raw_client))
-            except ValueError:
-                client_id = None
-        occ_type = TASK_TYPE_TO_OCCURRENCE.get(task.task_type, "custom_task")
-        db.add(
-            OperationalOccurrence(
-                organization_id=organization_id,
-                client_id=client_id,
-                occurrence_type=occ_type,
-                status="open",
-                due_on=due,
-                operational_date=due,
-                source="routine",
-                idempotency_key=key,
-                meta={
-                    "routine_id": str(task.id),
-                    "task_type": task.task_type,
-                    "name": task.name,
-                    "trigger_type": spec.get("trigger_type") or "calendar",
-                    "time": spec.get("time"),
-                },
-            )
-        )
-        existing.add(key)
 
 
 def materialize_org(db: Session, *, organization_id: uuid.UUID, today: date | None = None) -> date:
@@ -260,7 +203,13 @@ def materialize_org(db: Session, *, organization_id: uuid.UUID, today: date | No
         if client is None or client.status == "archived":
             continue
         materialize_protocol(db, org=org, protocol=protocol, today=today)
-    materialize_routines(db, organization_id=organization_id, today=today)
+    occ_svc.ensure_routine_occurrences(
+        db,
+        organization_id=organization_id,
+        range_start=today - timedelta(days=14),
+        range_end=today + timedelta(days=1),
+        commit=False,
+    )
     db.commit()
     logger.info(
         "pendencies_materialized org=%s count_protocols=%s today=%s",
