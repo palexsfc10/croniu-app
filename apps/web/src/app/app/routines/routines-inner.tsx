@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, type ProfessionProfile } from "@/lib/api";
+import { ROUTINE_NAME_SUGGESTIONS, routineTypes } from "@/lib/form-guidance";
+import { resolveCapabilities } from "@/lib/capabilities";
+import { SuggestionChips } from "@/components/ui/suggestion-chips";
+import { ConditionalField } from "@/components/ui/conditional-field";
+import { FieldHint } from "@/components/ui/field-hint";
 import { safeReturnTo } from "@/lib/nomenclature";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +24,7 @@ type Routine = {
   lead_days: number;
   next_run_on: string | null;
   status: string;
+  filter_json?: Record<string, unknown> | null;
 };
 
 const WEEKDAYS = [
@@ -31,12 +37,14 @@ const WEEKDAYS = [
   "Domingo",
 ];
 
-const TASK_TYPES = [
-  { value: "swap_training", label: "Revisar/trocar treino ou plano" },
-  { value: "send_feedback", label: "Enviar feedback" },
-  { value: "review_evaluation", label: "Revisar avaliação" },
-  { value: "review_cycle", label: "Preparar renovação" },
-  { value: "free", label: "Tarefa livre" },
+const FREQUENCIES = [
+  { value: "weekly", label: "Toda semana" },
+  { value: "biweekly", label: "A cada 2 semanas" },
+  { value: "monthly", label: "Uma vez por mês" },
+  { value: "bimonthly", label: "A cada 2 meses" },
+  { value: "quarterly", label: "A cada 3 meses" },
+  { value: "interval", label: "Intervalo personalizado" },
+  { value: "once", label: "Uma única vez" },
 ];
 
 type BoardItem = {
@@ -80,8 +88,19 @@ export default function RoutinesPageInner() {
   const [items, setItems] = useState<Routine[]>([]);
   const [board, setBoard] = useState<BoardGroup[]>([]);
   const [name, setName] = useState("");
-  const [taskType, setTaskType] = useState("swap_training");
+  const [taskType, setTaskType] = useState("review_protocol");
   const [weekday, setWeekday] = useState(1);
+  const [recurrence, setRecurrence] = useState("weekly");
+  const [startsOn, setStartsOn] = useState("");
+  const [endsOn, setEndsOn] = useState("");
+  const [noEnd, setNoEnd] = useState(true);
+  const [monthMode, setMonthMode] = useState<"dom" | "nth_weekday">("dom");
+  const [monthDay, setMonthDay] = useState(10);
+  const [nth, setNth] = useState(1);
+  const [intervalN, setIntervalN] = useState(2);
+  const [intervalUnit, setIntervalUnit] = useState("weeks");
+  const [preview, setPreview] = useState<string | null>(null);
+  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,16 +112,18 @@ export default function RoutinesPageInner() {
   }, [clientId]);
 
   async function load() {
-    const [routines, groups] = await Promise.all([
+    const [routines, groups, prof] = await Promise.all([
       apiFetch<Routine[]>("/api/v1/routines"),
       apiFetch<{ groups: BoardGroup[] }>(
         `/api/v1/routines/board${boardQuery ? `?${boardQuery}` : ""}`,
       ),
+      apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
     ]);
     if (routines.error) setError(routines.error.message);
     else setItems(routines.data ?? []);
     if (groups.error) setError(groups.error.message);
     else if (groups.data) setBoard(groups.data.groups ?? []);
+    if (prof.data) setProfession(prof.data);
   }
 
   useEffect(() => {
@@ -110,6 +131,35 @@ export default function RoutinesPageInner() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed remount plus clientId filter
   }, [boardQuery]);
+
+  function filterJson() {
+    return {
+      weekdays: [weekday],
+      starts_on: startsOn || null,
+      ends_on: noEnd ? null : endsOn || null,
+      no_end: noEnd,
+      month_mode: monthMode,
+      month_day: monthDay,
+      nth,
+      nth_weekday: weekday,
+      interval_n: intervalN,
+      interval_unit: intervalUnit,
+    };
+  }
+
+  async function refreshPreview() {
+    const result = await apiFetch<{ preview: string }>("/api/v1/routines/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        name: name.trim() || "Rotina",
+        task_type: taskType,
+        recurrence,
+        weekday,
+        filter_json: filterJson(),
+      }),
+    });
+    if (result.data?.preview) setPreview(result.data.preview);
+  }
 
   async function create() {
     if (!name.trim()) {
@@ -123,9 +173,11 @@ export default function RoutinesPageInner() {
       body: JSON.stringify({
         name: name.trim(),
         task_type: taskType,
-        recurrence: "weekly",
+        recurrence,
         weekday,
-        lead_days: taskType === "review_cycle" ? 7 : 0,
+        lead_days: taskType === "review_cycle" || taskType === "prepare_renewal" ? 7 : 0,
+        filter_json: filterJson(),
+        next_run_on: recurrence === "once" && startsOn ? startsOn : null,
       }),
     });
     setBusy(false);
@@ -243,6 +295,7 @@ export default function RoutinesPageInner() {
       <section className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
         <h2 className="text-base font-semibold">Nova rotina</h2>
         <TextField label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
+        <SuggestionChips chips={ROUTINE_NAME_SUGGESTIONS} onSelect={setName} />
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium">Tipo</span>
           <select
@@ -250,27 +303,128 @@ export default function RoutinesPageInner() {
             value={taskType}
             onChange={(e) => setTaskType(e.target.value)}
           >
-            {TASK_TYPES.map((opt) => (
+            {routineTypes(resolveCapabilities(profession?.profession_code, profession?.use_cases).includes("workouts")).map(
+              (opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ),
+            )}
+          </select>
+        </label>
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium">Com que frequência?</span>
+          <select
+            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+            value={recurrence}
+            onChange={(e) => {
+              setRecurrence(e.target.value);
+              void refreshPreview();
+            }}
+          >
+            {FREQUENCIES.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
             ))}
           </select>
         </label>
-        <label className="block space-y-1.5 text-sm">
-          <span className="font-medium">Dia da semana</span>
-          <select
-            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-            value={weekday}
-            onChange={(e) => setWeekday(Number(e.target.value))}
-          >
-            {WEEKDAYS.map((label, idx) => (
-              <option key={label} value={idx}>
-                {label}
-              </option>
-            ))}
-          </select>
+        <ConditionalField when={recurrence !== "interval"}>
+          <label className="block space-y-1.5 text-sm">
+            <span className="font-medium">Dia da semana</span>
+            <select
+              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+              value={weekday}
+              onChange={(e) => setWeekday(Number(e.target.value))}
+            >
+              {WEEKDAYS.map((label, idx) => (
+                <option key={label} value={idx}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </ConditionalField>
+        <ConditionalField when={recurrence === "monthly"}>
+          <label className="block space-y-1.5 text-sm">
+            <span className="font-medium">Como no mês?</span>
+            <select
+              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+              value={monthMode}
+              onChange={(e) => setMonthMode(e.target.value as "dom" | "nth_weekday")}
+            >
+              <option value="dom">Dia fixo do mês</option>
+              <option value="nth_weekday">Posição do dia da semana</option>
+            </select>
+          </label>
+          {monthMode === "dom" ? (
+            <TextField
+              label="Dia do mês"
+              type="number"
+              value={String(monthDay)}
+              onChange={(e) => setMonthDay(Number(e.target.value))}
+            />
+          ) : (
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">Qual ocorrência</span>
+              <select
+                className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                value={nth}
+                onChange={(e) => setNth(Number(e.target.value))}
+              >
+                <option value={1}>Primeira</option>
+                <option value={2}>Segunda</option>
+                <option value={3}>Terceira</option>
+                <option value={4}>Quarta</option>
+                <option value={-1}>Última</option>
+              </select>
+            </label>
+          )}
+        </ConditionalField>
+        <ConditionalField when={recurrence === "interval"}>
+          <div className="grid grid-cols-2 gap-2">
+            <TextField
+              label="A cada"
+              type="number"
+              value={String(intervalN)}
+              onChange={(e) => setIntervalN(Number(e.target.value))}
+            />
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">Unidade</span>
+              <select
+                className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                value={intervalUnit}
+                onChange={(e) => setIntervalUnit(e.target.value)}
+              >
+                <option value="days">dias</option>
+                <option value="weeks">semanas</option>
+                <option value="months">meses</option>
+              </select>
+            </label>
+          </div>
+        </ConditionalField>
+        <TextField
+          label="Data de início"
+          type="date"
+          value={startsOn}
+          onChange={(e) => setStartsOn(e.target.value)}
+        />
+        <label className="flex min-h-11 items-center gap-2 text-sm">
+          <input type="checkbox" checked={noEnd} onChange={(e) => setNoEnd(e.target.checked)} />
+          Sem data final
         </label>
+        <ConditionalField when={!noEnd}>
+          <TextField
+            label="Data de término"
+            type="date"
+            value={endsOn}
+            onChange={(e) => setEndsOn(e.target.value)}
+          />
+        </ConditionalField>
+        <Button type="button" variant="secondary" onClick={() => void refreshPreview()}>
+          Ver próxima ocorrência
+        </Button>
+        {preview ? <FieldHint>{preview}</FieldHint> : null}
         <Button fullWidth disabled={busy} onClick={() => void create()}>
           Salvar rotina
         </Button>
@@ -289,13 +443,27 @@ export default function RoutinesPageInner() {
               </Badge>
             </div>
             <p className="text-sm text-[var(--color-ink-muted)]">
-              {TASK_TYPES.find((t) => t.value === item.task_type)?.label ?? item.task_type}
-              {item.weekday != null ? ` · ${WEEKDAYS[item.weekday] ?? item.weekday}` : ""}
+              {item.recurrence}
               {item.next_run_on ? ` · próxima: ${item.next_run_on}` : ""}
             </p>
-            <Button variant="secondary" disabled={busy} onClick={() => void complete(item.id)}>
-              Marcar concluído
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button variant="secondary" disabled={busy} onClick={() => void complete(item.id)}>
+                Concluir esta ocorrência
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  if (!window.confirm("Arquivar toda a rotina? As próximas ocorrências deixam de ser geradas.")) return;
+                  void apiFetch(`/api/v1/routines/${item.id}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ status: "archived" }),
+                  }).then(() => load());
+                }}
+              >
+                Encerrar toda a rotina
+              </Button>
+            </div>
           </li>
         ))}
       </ul>

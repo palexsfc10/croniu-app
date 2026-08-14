@@ -10,6 +10,9 @@ import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
 import { TextArea } from "@/components/ui/text-area";
 import { TextField } from "@/components/ui/text-field";
+import { planGuidance } from "@/lib/form-guidance";
+import { FormSectionIntro } from "@/components/ui/form-section-intro";
+import { FieldHint } from "@/components/ui/field-hint";
 
 const DURATION_PRESETS = [12, 16, 20, 22];
 const REVIEW_PRESETS = [28, 42, 56];
@@ -27,6 +30,9 @@ export default function PlanEditorPage() {
   const [title, setTitle] = useState("");
   const [objective, setObjective] = useState("");
   const [notes, setNotes] = useState("");
+  const [strategy, setStrategy] = useState("");
+  const [milestones, setMilestones] = useState("");
+  const [externalUrl, setExternalUrl] = useState("");
   const [durationWeeks, setDurationWeeks] = useState<number | "custom" | "none">(16);
   const [customWeeks, setCustomWeeks] = useState("18");
   const [reviewDays, setReviewDays] = useState<number | "none">(28);
@@ -36,6 +42,7 @@ export default function PlanEditorPage() {
   const [loaded, setLoaded] = useState<Protocol | null>(null);
 
   const terms = nomenclatureFor(profession?.profession_code);
+  const guide = planGuidance(profession?.profession_code);
 
   useEffect(() => {
     void (async () => {
@@ -51,8 +58,16 @@ export default function PlanEditorPage() {
           setLoaded(proto.data);
           setTitle(proto.data.title);
           setObjective(proto.data.objective || "");
-          const content = proto.data.versions?.at(-1)?.content_json as { notes?: string } | undefined;
+          const content = proto.data.versions?.at(-1)?.content_json as {
+            notes?: string;
+            strategy?: string;
+            milestones?: string;
+            external_url?: string;
+          } | undefined;
           setNotes(content?.notes || "");
+          setStrategy(content?.strategy || "");
+          setMilestones(content?.milestones || "");
+          setExternalUrl(content?.external_url || "");
           if (proto.data.duration_value && proto.data.duration_unit === "weeks") {
             setDurationWeeks(
               DURATION_PRESETS.includes(proto.data.duration_value)
@@ -88,7 +103,12 @@ export default function PlanEditorPage() {
       protocol_type: "free",
       client_id: params.clientId,
       objective: objective.trim() || null,
-      content_json: { notes: notes.trim() },
+      content_json: {
+        notes: notes.trim(),
+        strategy: strategy.trim() || null,
+        milestones: milestones.trim() || null,
+        external_url: externalUrl.trim() || null,
+      },
       review_recurrence_days: reviewDays === "none" ? null : reviewDays,
       feedback_interval_days: feedbackDays === "none" ? null : feedbackDays,
       ...durationPayload(),
@@ -131,9 +151,11 @@ export default function PlanEditorPage() {
       <BackLink href={returnTo} label="Voltar" />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {loaded ? `Editar ${t(terms, "plan")}` : `Novo ${t(terms, "plan")}`}
+          {loaded ? `Editar ${guide.title.toLowerCase()}` : `Novo ${guide.title.toLowerCase()}`}
         </h1>
-        <p className="text-sm text-[var(--color-ink-muted)]">{client?.full_name}</p>
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          {client?.full_name} · o Croniu organiza o acompanhamento; o conteúdo técnico fica no seu material.
+        </p>
       </header>
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
@@ -141,18 +163,46 @@ export default function PlanEditorPage() {
         </p>
       ) : null}
 
-      <TextField label="Título" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <FormSectionIntro title="Registro do plano" description={guide.title} />
       <TextField
-        label="Objetivo (opcional)"
+        label="Título"
+        value={title}
+        placeholder={guide.titlePlaceholder}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <TextField
+        label="Objetivo principal"
         value={objective}
+        placeholder={guide.objectivePlaceholder}
         onChange={(e) => setObjective(e.target.value)}
       />
       <TextArea
-        label="Descrição"
+        label="Estratégia ou orientação geral"
+        value={strategy}
+        placeholder={guide.strategyPlaceholder}
+        onChange={(e) => setStrategy(e.target.value)}
+        rows={3}
+      />
+      <TextArea
+        label="Marcos esperados"
+        value={milestones}
+        placeholder="Ex.: 4 semanas — consistência; 8 semanas — revisão."
+        onChange={(e) => setMilestones(e.target.value)}
+        rows={3}
+      />
+      <TextArea
+        label="Observação interna (opcional)"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
-        rows={5}
+        rows={3}
       />
+      <TextField
+        label="Material ou plano externo"
+        value={externalUrl}
+        placeholder="https://"
+        onChange={(e) => setExternalUrl(e.target.value)}
+      />
+      <FieldHint>{guide.externalLinkHint}</FieldHint>
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">Por quanto tempo este planejamento será utilizado?</legend>

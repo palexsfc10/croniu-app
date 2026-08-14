@@ -88,7 +88,7 @@ export default function ManualPage() {
     {
       id: "planos",
       title: "Planos",
-      body: `${terms.plan.charAt(0).toUpperCase()}${terms.plan.slice(1)} é o conteúdo do acompanhamento (o que será feito). Não confunda com ciclo comercial nem com rotina. Personal: plano de treino. Professor: plano de aulas. Consultor: plano de acompanhamento.`,
+      body: `${terms.plan.charAt(0).toUpperCase()}${terms.plan.slice(1)} é o registro do acompanhamento — não um editor de treino ou dieta. Personal e professor: plano de acompanhamento ou estratégia do período. Consultor: plano de ação.`,
     },
     {
       id: "ciclos",

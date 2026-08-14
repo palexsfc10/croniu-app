@@ -109,9 +109,9 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "aluno",
             "clients": "alunos",
-            "plan": "plano de treino",
-            "plan_short": "treino",
-            "plan_review": "revisão do treino",
+            "plan": "plano de acompanhamento",
+            "plan_short": "plano",
+            "plan_review": "revisão do plano",
             "session": "treino",
             "evaluation": "avaliação",
             "cycle": "ciclo",
@@ -127,7 +127,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "aluno",
             "clients": "alunos",
-            "plan": "plano de aulas",
+            "plan": "plano de ensino/acompanhamento",
             "plan_short": "plano",
             "plan_review": "revisão do plano",
             "session": "aula",
@@ -145,9 +145,9 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "aluno",
             "clients": "alunos",
-            "plan": "plano de treino",
-            "plan_short": "treino",
-            "plan_review": "revisão do treino",
+            "plan": "estratégia do período",
+            "plan_short": "plano",
+            "plan_review": "revisão do plano",
             "session": "aula",
             "evaluation": "avaliação",
             "cycle": "ciclo",
@@ -163,7 +163,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "cliente",
             "clients": "clientes",
-            "plan": "plano de acompanhamento",
+            "plan": "plano de ação",
             "plan_short": "plano",
             "plan_review": "revisão do plano",
             "session": "atendimento",
@@ -181,7 +181,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "cliente",
             "clients": "clientes",
-            "plan": "plano de acompanhamento",
+            "plan": "plano de ação",
             "plan_short": "plano",
             "plan_review": "revisão do plano",
             "session": "sessão",

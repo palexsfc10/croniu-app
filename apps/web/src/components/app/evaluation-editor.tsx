@@ -1,12 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   apiFetch,
   type ClientEvaluation,
   type EvaluationCriterionInput,
+  type ProfessionProfile,
 } from "@/lib/api";
+import { evaluationGuidance } from "@/lib/form-guidance";
+import { SuggestionChips } from "@/components/ui/suggestion-chips";
+import { FormSectionIntro } from "@/components/ui/form-section-intro";
+import { FieldHint } from "@/components/ui/field-hint";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
 import { TextArea } from "@/components/ui/text-area";
@@ -101,6 +106,19 @@ export function EvaluationEditor({ clientId, evaluationId, initial = null }: Pro
   const [busy, setBusy] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(evaluationId ?? initial?.id ?? null);
+  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
+  const [achievementDraft, setAchievementDraft] = useState("");
+  const guide = evaluationGuidance(profession?.profession_code);
+  const achievementItems = form.achievements
+    ? form.achievements.split("\n").map((row) => row.trim()).filter(Boolean)
+    : [];
+
+  useEffect(() => {
+    void (async () => {
+      const result = await apiFetch<ProfessionProfile>("/api/v1/organization/profession");
+      if (result?.data) setProfession(result.data);
+    })();
+  }, []);
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -147,6 +165,15 @@ export function EvaluationEditor({ clientId, evaluationId, initial = null }: Pro
     if (!payload.title || payload.title.length < 2) {
       setBusy(false);
       setError("Informe um título.");
+      return null;
+    }
+    if (
+      payload.evaluated_from &&
+      payload.evaluated_to &&
+      payload.evaluated_from > payload.evaluated_to
+    ) {
+      setBusy(false);
+      setError("A data inicial do período avaliado precisa ser anterior ou igual à data final.");
       return null;
     }
     const result = currentId
@@ -243,22 +270,30 @@ export function EvaluationEditor({ clientId, evaluationId, initial = null }: Pro
       ) : null}
 
       <section className="space-y-3" aria-label="Visível ao cliente">
-        <h2 className="text-base font-semibold">Visível ao cliente</h2>
+        <FormSectionIntro
+          title="Visível ao cliente"
+          description="O que estiver nesta seção pode ser publicado no portal. Nada é publicado sem o seu toque em Publicar."
+        />
         <TextField
           label="Título"
           value={form.title}
+          placeholder={guide.titlePlaceholder}
           onChange={(e) => updateField("title", e.target.value)}
           required
         />
+        <SuggestionChips
+          chips={guide.titleSuggestions}
+          onSelect={(value) => updateField("title", value)}
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField
-            label="Período — de"
+            label="Período avaliado — início"
             type="date"
             value={form.evaluated_from}
             onChange={(e) => updateField("evaluated_from", e.target.value)}
           />
           <TextField
-            label="Período — até"
+            label="Período avaliado — fim"
             type="date"
             value={form.evaluated_to}
             onChange={(e) => updateField("evaluated_to", e.target.value)}
@@ -267,27 +302,74 @@ export function EvaluationEditor({ clientId, evaluationId, initial = null }: Pro
         <TextArea
           label="Resumo geral"
           value={form.summary}
+          placeholder={guide.summaryPlaceholder}
           onChange={(e) => updateField("summary", e.target.value)}
+          rows={3}
         />
-        <TextArea
-          label="Conquistas"
-          value={form.achievements}
-          onChange={(e) => updateField("achievements", e.target.value)}
+        <SuggestionChips
+          chips={guide.summaryChips}
+          onSelect={(value) => updateField("summary", `${form.summary}${value}`)}
         />
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Conquistas</p>
+          <FieldHint>{guide.achievementsPlaceholder}</FieldHint>
+          <ul className="space-y-1">
+            {achievementItems.map((item, index) => (
+              <li key={`${item}-${index}`} className="flex min-h-11 items-center justify-between gap-2 text-sm">
+                <span>{item}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() =>
+                    updateField(
+                      "achievements",
+                      achievementItems.filter((_, i) => i !== index).join("\n"),
+                    )
+                  }
+                >
+                  Remover
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <TextField
+            label="Nova conquista"
+            value={achievementDraft}
+            placeholder={guide.achievementsPlaceholder}
+            onChange={(e) => setAchievementDraft(e.target.value)}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              const next = achievementDraft.trim();
+              if (!next) return;
+              updateField("achievements", [...achievementItems, next].join("\n"));
+              setAchievementDraft("");
+            }}
+          >
+            Adicionar conquista
+          </Button>
+        </div>
         <TextArea
           label="Pontos de atenção"
           value={form.attention_points}
+          placeholder={guide.attentionPlaceholder}
           onChange={(e) => updateField("attention_points", e.target.value)}
+          rows={3}
         />
         <TextArea
-          label="Próximos objetivos"
+          label="Próximos passos"
           value={form.next_goals}
+          placeholder={guide.nextStepsPlaceholder}
           onChange={(e) => updateField("next_goals", e.target.value)}
+          rows={3}
         />
         <TextArea
           label="Mensagem para o cliente"
           value={form.client_message}
           onChange={(e) => updateField("client_message", e.target.value)}
+          rows={3}
         />
       </section>
 

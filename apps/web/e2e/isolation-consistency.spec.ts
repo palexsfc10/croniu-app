@@ -125,6 +125,15 @@ test.describe("isolation, agenda, register and ficha", () => {
     await page.goto(`/app/clients/${murilo.id}?tab=acompanhamento`);
     await expect(page.getByRole("heading", { name: /Murilo Macedo/i })).toBeVisible();
     await expect(page.getByText("Ana Souza")).toHaveCount(0);
+    const accomp = page.getByRole("tabpanel", { name: "Acompanhamento" });
+    await expect(accomp).toBeVisible();
+    await expect(accomp.getByText("Ciclo atual")).toBeVisible();
+    await expect(accomp.getByText("Avaliações")).toBeVisible();
+    await expect(accomp.getByRole("heading", { name: "Rotinas" })).toBeVisible();
+    await expect(accomp.getByRole("button", { name: "Criar plano" })).toBeVisible();
+    await expect(accomp.getByRole("button", { name: "Criar ciclo" })).toBeVisible();
+    await expect(accomp.getByRole("button", { name: "Nova avaliação" })).toBeVisible();
+    await expect(page.getByText("Criar treino")).toHaveCount(0);
 
     await page.screenshot({ path: path.join(artifacts, "ficha-390.png"), fullPage: true });
     await page.setViewportSize({ width: 360, height: 800 });

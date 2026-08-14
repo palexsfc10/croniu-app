@@ -75,10 +75,29 @@ def create_routine(
             lead_days=payload.lead_days,
             filter_json=payload.filter_json,
             next_run_on=payload.next_run_on,
+            today=routine_svc.local_today(auth.organization.timezone),
         )
     except AuthError as exc:
         raise _http(exc) from exc
     return _out(row)
+
+
+@router.post("/preview")
+def preview_routine(
+    payload: RoutineCreateIn,
+    auth: AuthContext = Depends(get_current_auth),
+) -> dict:
+    today = routine_svc.local_today(auth.organization.timezone)
+    try:
+        routine_svc._validate(payload.task_type, payload.recurrence, payload.weekday)
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return routine_svc.preview(
+        recurrence=payload.recurrence,
+        filter_json=payload.filter_json,
+        weekday=payload.weekday,
+        today=today,
+    )
 
 
 @router.patch("/{task_id}", response_model=RoutineOut)
@@ -108,7 +127,28 @@ def complete_routine(
 ) -> RoutineOut:
     try:
         row = routine_svc.complete_routine(
-            db, organization_id=auth.organization.id, task_id=task_id
+            db,
+            organization_id=auth.organization.id,
+            task_id=task_id,
+            today=routine_svc.local_today(auth.organization.timezone),
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return _out(row)
+
+
+@router.post("/{task_id}/skip", response_model=RoutineOut)
+def skip_routine_occurrence(
+    task_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> RoutineOut:
+    try:
+        row = routine_svc.skip_occurrence(
+            db,
+            organization_id=auth.organization.id,
+            task_id=task_id,
+            today=routine_svc.local_today(auth.organization.timezone),
         )
     except AuthError as exc:
         raise _http(exc) from exc

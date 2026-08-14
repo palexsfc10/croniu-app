@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.intake import RecurringClientTask
+from app.services import recurrence as rec_svc
 from app.services.auth import AuthError
 
 VALID_TASK_TYPES = {
@@ -19,9 +21,16 @@ VALID_TASK_TYPES = {
     "send_feedback",
     "review_evaluation",
     "review_cycle",
+    "prepare_renewal",
+    "contact_client",
+    "check_payment",
     "free",
 }
-VALID_RECURRENCE = {"weekly", "monthly", "once"}
+VALID_RECURRENCE = rec_svc.VALID_RECURRENCE
+
+
+def local_today(timezone: str | None) -> date:
+    return datetime.now(ZoneInfo(timezone or "America/Sao_Paulo")).date()
 
 
 def list_routines(
@@ -49,6 +58,42 @@ def get_routine(
     return row
 
 
+def _validate(task_type: str, recurrence: str, weekday: int | None) -> None:
+    if task_type not in VALID_TASK_TYPES:
+        raise AuthError("invalid_task_type", "Tipo de rotina inválido.", 422)
+    if recurrence not in VALID_RECURRENCE:
+        raise AuthError("invalid_recurrence", "Recorrência inválida.", 422)
+    if weekday is not None and (weekday < 0 or weekday > 6):
+        raise AuthError("invalid_weekday", "Dia da semana deve ser 0–6.", 422)
+
+
+def compute_next(
+    *,
+    recurrence: str,
+    filter_json: dict[str, Any] | None,
+    weekday: int | None,
+    today: date,
+    after: date | None = None,
+) -> date | None:
+    spec = filter_json or {}
+    return rec_svc.next_after(recurrence, spec, weekday=weekday, after=after or today)
+
+
+def preview(
+    *,
+    recurrence: str,
+    filter_json: dict[str, Any] | None,
+    weekday: int | None,
+    today: date,
+) -> dict[str, Any]:
+    spec = filter_json or {}
+    nxt = compute_next(recurrence=recurrence, filter_json=spec, weekday=weekday, today=today)
+    return {
+        "next_run_on": nxt.isoformat() if nxt else None,
+        "preview": rec_svc.preview_text(recurrence, spec, weekday=weekday, next_on=nxt),
+    }
+
+
 def create_routine(
     db: Session,
     *,
@@ -60,17 +105,16 @@ def create_routine(
     lead_days: int = 0,
     filter_json: dict[str, Any] | None = None,
     next_run_on: date | None = None,
+    today: date | None = None,
 ) -> RecurringClientTask:
     name = (name or "").strip()
     if not name:
         raise AuthError("invalid_name", "Informe o nome da rotina.", 422)
-    if task_type not in VALID_TASK_TYPES:
-        raise AuthError("invalid_task_type", "Tipo de rotina inválido.", 422)
-    if recurrence not in VALID_RECURRENCE:
-        raise AuthError("invalid_recurrence", "Recorrência inválida.", 422)
-    if weekday is not None and (weekday < 0 or weekday > 6):
-        raise AuthError("invalid_weekday", "Dia da semana deve ser 0–6.", 422)
-
+    _validate(task_type, recurrence, weekday)
+    day = today or date.today()
+    nxt = next_run_on or compute_next(
+        recurrence=recurrence, filter_json=filter_json, weekday=weekday, today=day
+    )
     row = RecurringClientTask(
         id=uuid.uuid4(),
         organization_id=organization_id,
@@ -80,7 +124,7 @@ def create_routine(
         recurrence=recurrence,
         lead_days=lead_days or 0,
         filter_json=filter_json,
-        next_run_on=next_run_on or date.today(),
+        next_run_on=nxt,
         status="active",
     )
     db.add(row)
@@ -94,6 +138,7 @@ def update_routine(
     *,
     organization_id: uuid.UUID,
     task_id: uuid.UUID,
+    today: date | None = None,
     **fields: Any,
 ) -> RecurringClientTask:
     row = get_routine(db, organization_id=organization_id, task_id=task_id)
@@ -122,38 +167,47 @@ def update_routine(
         if fields["status"] not in {"active", "paused", "archived"}:
             raise AuthError("invalid_status", "Status de rotina inválido.", 422)
         row.status = fields["status"]
+    if fields.get("recompute"):
+        day = today or date.today()
+        row.next_run_on = compute_next(
+            recurrence=row.recurrence,
+            filter_json=row.filter_json,
+            weekday=row.weekday,
+            today=day,
+        )
     db.add(row)
     db.commit()
     db.refresh(row)
     return row
 
 
-def _advance_next_run(row: RecurringClientTask, *, from_day: date) -> date | None:
-    if row.recurrence == "once":
-        return None
-    if row.recurrence == "weekly":
-        return from_day + timedelta(days=7)
-    if row.recurrence == "monthly":
-        month = from_day.month + 1
-        year = from_day.year
-        if month > 12:
-            month = 1
-            year += 1
-        day = min(from_day.day, 28)
-        return date(year, month, day)
-    return from_day + timedelta(days=7)
+def skip_occurrence(
+    db: Session, *, organization_id: uuid.UUID, task_id: uuid.UUID, today: date | None = None
+) -> RecurringClientTask:
+    row = get_routine(db, organization_id=organization_id, task_id=task_id)
+    base = row.next_run_on or today or date.today()
+    row.next_run_on = rec_svc.advance(
+        row.recurrence, row.filter_json or {}, weekday=row.weekday, from_day=base
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def complete_routine(
-    db: Session, *, organization_id: uuid.UUID, task_id: uuid.UUID
+    db: Session, *, organization_id: uuid.UUID, task_id: uuid.UUID, today: date | None = None
 ) -> RecurringClientTask:
     row = get_routine(db, organization_id=organization_id, task_id=task_id)
     now = datetime.now(UTC)
     row.last_completed_at = now
-    base = row.next_run_on or date.today()
-    row.next_run_on = _advance_next_run(row, from_day=base)
+    base = row.next_run_on or today or date.today()
+    row.next_run_on = rec_svc.advance(
+        row.recurrence, row.filter_json or {}, weekday=row.weekday, from_day=base
+    )
     if row.recurrence == "once":
         row.status = "archived"
+        row.next_run_on = None
     db.add(row)
     db.commit()
     db.refresh(row)

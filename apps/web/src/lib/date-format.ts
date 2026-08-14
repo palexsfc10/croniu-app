@@ -75,10 +75,13 @@ export function lastInclusiveIso(endsOn: string): string {
   return addDaysIso(endsOn, -1);
 }
 
-export function formatCycleVigencyCard(startsOn: string, endsOn: string): {
+export function formatCycleVigencyCard(startsOn: string | null | undefined, endsOn: string | null | undefined): {
   range: string;
   renewal: string;
 } {
+  if (!startsOn || !endsOn) {
+    return { range: "Período a definir", renewal: "" };
+  }
   const last = lastInclusiveIso(endsOn);
   return {
     range: formatHumanDateRange(startsOn, last),

@@ -34,6 +34,7 @@ vi.mock("@/lib/api", async () => {
         };
       }
       if (path.includes("/protocols")) {
+        if (path.includes("c2")) return { data: [] };
         return {
           data: [
             {
@@ -53,6 +54,7 @@ vi.mock("@/lib/api", async () => {
         };
       }
       if (path.includes("/cycles")) {
+        if (path.includes("c2")) return { data: [] };
         return {
           data: [
             {
@@ -81,6 +83,7 @@ vi.mock("@/lib/api", async () => {
           ],
         };
       }
+      if (path.includes("/evaluations")) return { data: [] };
       if (path.includes("/public-access")) return { data: { has_active_link: false } };
       if (path.includes("/clients/c2")) {
         return {
@@ -139,6 +142,26 @@ describe("ClientProfile", () => {
     expect(screen.getByRole("button", { name: "Ver plano" })).toBeInTheDocument();
     expect(screen.getByText("Nenhuma avaliação registrada")).toBeInTheDocument();
     expect(screen.getByText(/Registre o ponto de partida/i)).toBeInTheDocument();
+  });
+
+  it("never leaves the accompaniment tab blank for a new client", async () => {
+    nav.tab = "acompanhamento";
+    render(<ClientProfile clientId="c2" />);
+    expect(await screen.findByRole("tabpanel", { name: "Acompanhamento" })).toBeInTheDocument();
+    expect(screen.getByText("Ciclo atual")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Criar ciclo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Criar plano" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nova avaliação" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver rotinas" })).toBeInTheDocument();
+    expect(screen.queryByText("Criar treino")).not.toBeInTheDocument();
+  });
+
+  it("shows next header action inside the accompaniment tab", async () => {
+    nav.tab = "acompanhamento";
+    render(<ClientProfile clientId="c1" />);
+    expect(await screen.findByText("Próxima ação")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver ciclo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver plano" })).toBeInTheDocument();
   });
 
   it("clears previous client name when switching fichas", async () => {

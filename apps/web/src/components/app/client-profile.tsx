@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import {
   apiFetch,
+  type ClientEvaluation,
   type Client,
   type ClientAccess,
   type ClientJourney,
@@ -13,6 +14,7 @@ import {
   type Protocol,
 } from "@/lib/api";
 import { nomenclatureFor, safeReturnTo, t } from "@/lib/nomenclature";
+import { EmptyStateGuide } from "@/components/ui/empty-state-guide";
 import {
   clientStatusLabel,
   formatPhoneBR,
@@ -64,13 +66,17 @@ export function ClientProfile({ clientId }: Props) {
   const [portalNotice, setPortalNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [evaluations, setEvaluations] = useState<ClientEvaluation[]>([]);
   const [todayIso, setTodayIso] = useState("2026-01-01");
 
   const terms = nomenclatureFor(profession?.profession_code);
   const returnAccomp = `/app/clients/${clientId}?tab=acompanhamento`;
 
   const load = useCallback(async () => {
-    const [c, a, j, p, cy, pr, pref] = await Promise.all([
+    setLoading(true);
+    setError(null);
+    const [c, a, j, p, cy, pr, pref, ev] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${clientId}`),
       apiFetch<ClientAccess>(`/api/v1/clients/${clientId}/public-access`),
       apiFetch<ClientJourney>(`/api/v1/clients/${clientId}/journey`),
@@ -78,15 +84,19 @@ export function ClientProfile({ clientId }: Props) {
       apiFetch<Cycle[]>(`/api/v1/cycles?client_id=${clientId}`),
       apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
       apiFetch<{ local_today: string }>("/api/v1/organization/preferences"),
+      apiFetch<ClientEvaluation[]>(`/api/v1/clients/${clientId}/evaluations`),
     ]);
     if (c.error) setError(c.error.message);
     else setItem(c.data ?? null);
     if (a.data) setAccess(a.data);
+    if (j.error && !c.error) setError(j.error.message);
     if (j.data) setJourney(j.data);
     if (p.data) setProtocols(p.data);
     if (cy.data) setCycles(cy.data);
     if (pr.data) setProfession(pr.data);
     if (pref.data?.local_today) setTodayIso(pref.data.local_today);
+    if (ev.data) setEvaluations(ev.data);
+    setLoading(false);
   }, [clientId]);
 
   useEffect(() => {
@@ -351,14 +361,18 @@ export function ClientProfile({ clientId }: Props) {
         ))}
       </div>
 
-      {tab === "resumo" && item ? (
+      {tab === "resumo" ? (
         <section
           id="ficha-panel-resumo"
           role="tabpanel"
           aria-labelledby="ficha-tab-resumo"
-          className="space-y-3"
+          className="min-h-[8rem] space-y-3"
           aria-label="Resumo"
         >
+          {loading && !item ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">Carregando resumo…</p>
+          ) : item ? (
+            <>
           <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
               {next.title}
@@ -384,17 +398,57 @@ export function ClientProfile({ clientId }: Props) {
               {t(terms, "plan")} vigente · {published.title} · {protocolStatusLabel(published.status)}
             </p>
           ) : null}
+            </>
+          ) : (
+            <EmptyStateGuide
+              title="Não foi possível abrir o resumo"
+              body={error || "Tente novamente."}
+              action={
+                <Button type="button" onClick={() => void load()}>
+                  Tentar novamente
+                </Button>
+              }
+            />
+          )}
         </section>
       ) : null}
 
-      {tab === "acompanhamento" && item ? (
+      {tab === "acompanhamento" ? (
         <section
           id="ficha-panel-acompanhamento"
           role="tabpanel"
           aria-labelledby="ficha-tab-acompanhamento"
-          className="space-y-3"
+          className="min-h-[16rem] space-y-3"
           aria-label="Acompanhamento"
         >
+          {error && !item ? (
+            <EmptyStateGuide
+              title="Não foi possível carregar o acompanhamento"
+              body={error}
+              action={
+                <Button type="button" onClick={() => void load()}>
+                  Tentar novamente
+                </Button>
+              }
+            />
+          ) : loading && !item ? (
+            <div className="space-y-3" aria-busy="true">
+              <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+              <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+            </div>
+          ) : (
+            <>
+          {next.cta && next.href ? (
+            <EmptyStateGuide
+              title="Próxima ação"
+              body={next.text}
+              action={
+                <Link href={next.href}>
+                  <Button>{next.cta}</Button>
+                </Link>
+              }
+            />
+          ) : null}
           <AccompanimentCard
             icon={<IconRefreshCw className="h-5 w-5" />}
             title="Ciclo atual"
@@ -466,26 +520,42 @@ export function ClientProfile({ clientId }: Props) {
           <AccompanimentCard
             icon={<IconClipboardList className="h-5 w-5" />}
             title="Avaliações"
-            state="Vazio"
-            summary="Nenhuma avaliação registrada"
-            detail="Registre o ponto de partida quando fizer sentido."
-            primary={{
-              href: `/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`,
-              label: "Nova avaliação",
-              variant: "secondary",
-            }}
+            state={evaluations.length ? `${evaluations.length}` : "Vazio"}
+            summary={
+              evaluations[0]?.title || "Nenhuma avaliação registrada"
+            }
+            detail={
+              evaluations.length
+                ? "A última avaliação aparece aqui. O cliente só vê o que você publicar."
+                : "Registre o ponto de partida quando fizer sentido."
+            }
+            primary={
+              evaluations[0]
+                ? {
+                    href: `/app/clients/${clientId}/evaluations/${evaluations[0].id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                    label: "Ver avaliação",
+                    variant: "secondary",
+                  }
+                : {
+                    href: `/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                    label: "Nova avaliação",
+                    variant: "secondary",
+                  }
+            }
           />
           <AccompanimentCard
             icon={<IconHistory className="h-5 w-5" />}
             title="Rotinas"
             state="Quadro"
-            summary="Rotina configurada no quadro."
+            summary="Defina a recorrência e acompanhe cada ocorrência sem perder as próximas."
             primary={{
               href: `/app/routines?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
               label: "Ver rotinas",
               variant: "secondary",
             }}
           />
+            </>
+          )}
         </section>
       ) : null}
 

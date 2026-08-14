@@ -41,9 +41,9 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   personal_trainer: {
     client: "aluno",
     clients: "alunos",
-    plan: "plano de treino",
-    plan_short: "treino",
-    plan_review: "revisão do treino",
+    plan: "plano de acompanhamento",
+    plan_short: "plano",
+    plan_review: "revisão do plano",
     session: "treino",
     evaluation: "avaliação",
     cycle: "ciclo",
@@ -58,7 +58,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   private_tutor: {
     client: "aluno",
     clients: "alunos",
-    plan: "plano de aulas",
+    plan: "plano de ensino/acompanhamento",
     plan_short: "plano",
     plan_review: "revisão do plano",
     session: "aula",
@@ -75,9 +75,9 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   sports_teacher: {
     client: "aluno",
     clients: "alunos",
-    plan: "plano de treino",
-    plan_short: "treino",
-    plan_review: "revisão do treino",
+    plan: "estratégia do período",
+    plan_short: "plano",
+    plan_review: "revisão do plano",
     session: "aula",
     evaluation: "avaliação",
     cycle: "ciclo",
@@ -109,7 +109,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   consultant: {
     client: "cliente",
     clients: "clientes",
-    plan: "plano de acompanhamento",
+    plan: "plano de ação",
     plan_short: "plano",
     plan_review: "revisão do plano",
     session: "atendimento",
@@ -126,7 +126,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   coach_mentor: {
     client: "cliente",
     clients: "clientes",
-    plan: "plano de acompanhamento",
+    plan: "plano de ação",
     plan_short: "plano",
     plan_review: "revisão do plano",
     session: "sessão",

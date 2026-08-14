@@ -9,8 +9,8 @@ describe("nomenclatureFor", () => {
   it("adapts personal trainer terms", () => {
     const terms = nomenclatureFor("personal_trainer");
     expect(terms.client).toBe("aluno");
-    expect(terms.plan).toBe("plano de treino");
-    expect(terms.plan_review).toBe("revisão do treino");
+    expect(terms.plan).toBe("plano de acompanhamento");
+    expect(terms.plan_review).toBe("revisão do plano");
     expect(terms.plan_ending).toBe("Preparar novo planejamento");
     expect(terms.feedback).toBe("Feedback");
   });
@@ -18,7 +18,7 @@ describe("nomenclatureFor", () => {
   it("adapts private tutor without clinical or workout terms", () => {
     const terms = nomenclatureFor("private_tutor");
     expect(terms.client).toBe("aluno");
-    expect(terms.plan).toBe("plano de aulas");
+    expect(terms.plan).toBe("plano de ensino/acompanhamento");
     expect(terms.session).toBe("aula");
     expect(terms.evaluation).toBe("avaliação");
     expect(terms.intake_form).toBe("questionário");
@@ -28,6 +28,7 @@ describe("nomenclatureFor", () => {
     const terms = nomenclatureFor("consultant");
     expect(terms.client).toBe("cliente");
     expect(terms.session).toBe("atendimento");
+    expect(terms.plan).toBe("plano de ação");
   });
 
   it("falls back safely", () => {
