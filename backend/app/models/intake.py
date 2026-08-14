@@ -325,6 +325,16 @@ class Protocol(Base):
     review_due_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     review_recurrence_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    starts_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    feedback_interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    next_feedback_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_review_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_feedback_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    extension_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     cycle_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("cycles.id", ondelete="SET NULL"),
@@ -407,6 +417,52 @@ class RecurringClientTask(Base):
     last_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class OperationalOccurrence(Base):
+    __tablename__ = "operational_occurrences"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "idempotency_key", name="uq_op_occ_org_idem"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    protocol_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("protocols.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    protocol_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("protocol_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cycles.id", ondelete="SET NULL"), nullable=True
+    )
+    occurrence_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    due_on: Mapped[date] = mapped_column(Date, nullable=False)
+    operational_date: Mapped[date] = mapped_column(Date, nullable=False)
+    deferred_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="computed")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(180), nullable=False)
+    meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

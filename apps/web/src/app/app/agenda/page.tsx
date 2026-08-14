@@ -20,6 +20,52 @@ function shiftDay(isoDay: string, delta: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function AgendaRoutines({ day }: { day: string | null }) {
+  const [groups, setGroups] = useState<
+    Array<{ label: string; count: number; occurrence_type: string }>
+  >([]);
+  useEffect(() => {
+    if (!day) return;
+    void (async () => {
+      const result = await apiFetch<{
+        today: string;
+        groups: Array<{ label: string; count: number; occurrence_type: string }>;
+      }>("/api/v1/routines/board?bucket=today");
+      if (result.data?.today === day) {
+        setGroups(result.data.groups ?? []);
+      } else if (result.data) {
+        setGroups(result.data.groups ?? []);
+      }
+    })();
+  }, [day]);
+  if (!groups.length) return null;
+  return (
+    <section className="space-y-2" aria-label="Rotinas do dia">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        Rotinas
+      </h2>
+      <ul className="space-y-2">
+        {groups.map((g) => (
+          <li
+            key={g.occurrence_type}
+            className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-3"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+              Rotina
+            </p>
+            <p className="font-semibold">
+              {g.label} · {g.count} {g.count === 1 ? "cliente" : "clientes"}
+            </p>
+            <Link href="/app/routines" className="text-sm text-[var(--color-link)]">
+              Abrir lista
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default function AgendaPage() {
   const [prefs, setPrefs] = useState<OrgPreferences | null>(null);
   const [day, setDay] = useState<string | null>(null);
@@ -152,10 +198,14 @@ export default function AgendaPage() {
                   ? ` · ${item.service_name || item.cycle_service_name}`
                   : ""}
               </p>
+              <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Atendimento
+              </p>
             </Link>
           </li>
         ))}
       </ul>
+      <AgendaRoutines day={day} />
     </div>
   );
 }

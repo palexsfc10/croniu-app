@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.intake import Protocol, ProtocolVersion
 from app.services import domain as domain_svc
 from app.services import journey as journey_svc
+from app.services import plan_cadence as cadence
+from app.services import status_labels
 from app.services.auth import AuthError
 
 
@@ -43,6 +45,35 @@ def get_protocol(
     return row
 
 
+def _apply_cadence(protocol: Protocol, fields: dict[str, Any]) -> None:
+    if "objective" in fields:
+        protocol.objective = fields["objective"]
+    if "duration_value" in fields:
+        protocol.duration_value = fields["duration_value"]
+    if "duration_unit" in fields:
+        unit = fields["duration_unit"]
+        if unit is not None and unit not in cadence.DURATION_UNITS:
+            raise AuthError("invalid_duration_unit", "Unidade de duração inválida.", 422)
+        protocol.duration_unit = unit
+    if "starts_on" in fields:
+        protocol.starts_on = fields["starts_on"]
+    if "ends_on" in fields:
+        protocol.ends_on = fields["ends_on"]
+    if "review_recurrence_days" in fields:
+        protocol.review_recurrence_days = fields["review_recurrence_days"]
+    if "feedback_interval_days" in fields:
+        protocol.feedback_interval_days = fields["feedback_interval_days"]
+    start = protocol.starts_on or protocol.effective_from
+    if start and protocol.duration_value and protocol.duration_unit and not protocol.ends_on:
+        protocol.ends_on = cadence.add_duration(
+            start, protocol.duration_value, protocol.duration_unit
+        )
+    if protocol.review_recurrence_days and start and protocol.review_due_on is None:
+        protocol.review_due_on = start + timedelta(days=protocol.review_recurrence_days)
+    if protocol.feedback_interval_days and start:
+        protocol.next_feedback_on = start + timedelta(days=protocol.feedback_interval_days)
+
+
 def create_protocol(
     db: Session,
     *,
@@ -57,6 +88,13 @@ def create_protocol(
     cycle_id: uuid.UUID | None = None,
     effective_from: date | None = None,
     activation_mode: str | None = None,
+    objective: str | None = None,
+    duration_value: int | None = None,
+    duration_unit: str | None = None,
+    starts_on: date | None = None,
+    ends_on: date | None = None,
+    review_recurrence_days: int | None = None,
+    feedback_interval_days: int | None = None,
 ) -> Protocol:
     title = (title or "").strip()
     if not title:
@@ -81,6 +119,18 @@ def create_protocol(
         activation_mode=activation_mode,
         current_version_number=0,
         created_by_user_id=user_id,
+    )
+    _apply_cadence(
+        protocol,
+        {
+            "objective": objective,
+            "duration_value": duration_value,
+            "duration_unit": duration_unit,
+            "starts_on": starts_on,
+            "ends_on": ends_on,
+            "review_recurrence_days": review_recurrence_days,
+            "feedback_interval_days": feedback_interval_days,
+        },
     )
     db.add(protocol)
     db.flush()
@@ -118,6 +168,7 @@ def update_protocol_draft(
     content_json: dict[str, Any] | None = None,
     private_notes: str | None = None,
     protocol_type: str | None = None,
+    **cadence_fields: Any,
 ) -> Protocol:
     protocol = get_protocol(
         db, organization_id=organization_id, protocol_id=protocol_id
@@ -134,6 +185,25 @@ def update_protocol_draft(
         if protocol_type not in {"free", "structured", "phased", "blank", "template"}:
             raise AuthError("invalid_type", "Tipo de protocolo inválido.", 422)
         protocol.protocol_type = protocol_type
+    cadence_keys = {
+        "objective",
+        "duration_value",
+        "duration_unit",
+        "starts_on",
+        "ends_on",
+        "review_recurrence_days",
+        "feedback_interval_days",
+        "cycle_id",
+        "effective_from",
+        "activation_mode",
+    }
+    _apply_cadence(protocol, {k: v for k, v in cadence_fields.items() if k in cadence_keys})
+    if "cycle_id" in cadence_fields:
+        protocol.cycle_id = cadence_fields["cycle_id"]
+    if "effective_from" in cadence_fields:
+        protocol.effective_from = cadence_fields["effective_from"]
+    if "activation_mode" in cadence_fields:
+        protocol.activation_mode = cadence_fields["activation_mode"]
 
     draft = _current_draft(protocol)
     if draft is None:
@@ -192,6 +262,12 @@ def publish_protocol(
     db.add(draft)
     protocol.status = "published"
     protocol.current_version_number = draft.version_number
+    if protocol.starts_on is None:
+        protocol.starts_on = now.date()
+    if protocol.duration_value and protocol.duration_unit and protocol.ends_on is None:
+        protocol.ends_on = cadence.add_duration(
+            protocol.starts_on, protocol.duration_value, protocol.duration_unit
+        )
     db.add(protocol)
 
     if protocol.client_id is not None:

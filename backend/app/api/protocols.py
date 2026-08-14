@@ -11,12 +11,15 @@ from app.db import get_db
 from app.schemas.intake import (
     ProtocolCreateIn,
     ProtocolDuplicateIn,
+    ProtocolExtendIn,
     ProtocolOut,
     ProtocolScheduleIn,
     ProtocolUpdateIn,
     ProtocolVersionOut,
 )
+from app.services import plan_cadence as cadence
 from app.services import protocols as protocol_svc
+from app.services import status_labels
 from app.services.auth import AuthContext, AuthError, get_current_auth
 
 router = APIRouter(prefix="/protocols", tags=["protocols"])
@@ -31,12 +34,27 @@ def _http(exc: AuthError) -> HTTPException:
 
 def _protocol_out(row) -> ProtocolOut:
     versions = sorted(row.versions or [], key=lambda v: v.version_number)
+    start = row.starts_on or row.effective_from
+    marks = []
+    if start:
+        marks = [
+            {"kind": m.kind, "due_on": m.due_on.isoformat(), "index": m.index}
+            for m in cadence.plan_milestones(
+                starts_on=start,
+                duration_value=row.duration_value,
+                duration_unit=row.duration_unit,
+                ends_on=row.ends_on,
+                review_interval_days=row.review_recurrence_days,
+                feedback_interval_days=row.feedback_interval_days,
+            )
+        ]
     return ProtocolOut(
         id=row.id,
         client_id=row.client_id,
         title=row.title,
         protocol_type=row.protocol_type,
         status=row.status,
+        status_label=status_labels.protocol_status_label(row.status),
         is_org_template=row.is_org_template,
         review_due_on=row.review_due_on,
         review_recurrence_days=row.review_recurrence_days,
@@ -44,6 +62,15 @@ def _protocol_out(row) -> ProtocolOut:
         cycle_id=getattr(row, "cycle_id", None),
         effective_from=getattr(row, "effective_from", None),
         activation_mode=getattr(row, "activation_mode", None),
+        objective=getattr(row, "objective", None),
+        duration_value=getattr(row, "duration_value", None),
+        duration_unit=getattr(row, "duration_unit", None),
+        starts_on=getattr(row, "starts_on", None),
+        ends_on=getattr(row, "ends_on", None),
+        feedback_interval_days=getattr(row, "feedback_interval_days", None),
+        next_feedback_on=getattr(row, "next_feedback_on", None),
+        last_review_on=getattr(row, "last_review_on", None),
+        last_feedback_on=getattr(row, "last_feedback_on", None),
         current_version_number=row.current_version_number,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -52,6 +79,7 @@ def _protocol_out(row) -> ProtocolOut:
                 id=v.id,
                 version_number=v.version_number,
                 status=v.status,
+                status_label=status_labels.version_status_label(v.status),
                 content_json=v.content_json or {},
                 private_notes=v.private_notes,
                 published_at=v.published_at,
@@ -59,6 +87,7 @@ def _protocol_out(row) -> ProtocolOut:
             )
             for v in versions
         ],
+        milestones=marks,
     )
 
 
@@ -105,6 +134,13 @@ def create_protocol(
             cycle_id=payload.cycle_id,
             effective_from=payload.effective_from,
             activation_mode=payload.activation_mode,
+            objective=payload.objective,
+            duration_value=payload.duration_value,
+            duration_unit=payload.duration_unit,
+            starts_on=payload.starts_on,
+            ends_on=payload.ends_on,
+            review_recurrence_days=payload.review_recurrence_days,
+            feedback_interval_days=payload.feedback_interval_days,
         )
     except AuthError as exc:
         raise _http(exc) from exc
@@ -142,6 +178,10 @@ def update_protocol(
             content_json=payload.content_json,
             private_notes=payload.private_notes,
             protocol_type=payload.protocol_type,
+            **payload.model_dump(
+                exclude_unset=True,
+                exclude={"title", "content_json", "private_notes", "protocol_type"},
+            ),
         )
     except AuthError as exc:
         raise _http(exc) from exc
@@ -163,10 +203,39 @@ def publish_protocol(
         )
     except AuthError as exc:
         raise _http(exc) from exc
+    from app.services import pendencies as pendency_svc
+
+    try:
+        pendency_svc.materialize_org(db, organization_id=auth.organization.id)
+    except AuthError:
+        pass
     return _protocol_out(row)
 
 
-@router.post("/{protocol_id}/duplicate", response_model=ProtocolOut, status_code=201)
+@router.post("/{protocol_id}/extend", response_model=ProtocolOut)
+def extend_protocol(
+    protocol_id: UUID,
+    payload: ProtocolExtendIn,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> ProtocolOut:
+    from app.services import pendencies as pendency_svc
+
+    try:
+        row = pendency_svc.extend_plan(
+            db,
+            organization_id=auth.organization.id,
+            protocol_id=protocol_id,
+            extra_value=payload.extra_value,
+            extra_unit=payload.extra_unit,
+            note=payload.note,
+        )
+        row = protocol_svc.get_protocol(
+            db, organization_id=auth.organization.id, protocol_id=row.id
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return _protocol_out(row)
 def duplicate_protocol(
     protocol_id: UUID,
     payload: ProtocolDuplicateIn,
@@ -224,6 +293,7 @@ def list_versions(
             id=v.id,
             version_number=v.version_number,
             status=v.status,
+            status_label=status_labels.version_status_label(v.status),
             content_json=v.content_json or {},
             private_notes=v.private_notes,
             published_at=v.published_at,

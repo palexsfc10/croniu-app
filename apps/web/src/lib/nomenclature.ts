@@ -13,7 +13,9 @@ export type NomenclatureKey =
   | "routine"
   | "accompaniment"
   | "new_intake"
-  | "intake_form";
+  | "intake_form"
+  | "plan_ending"
+  | "feedback";
 
 export type Nomenclature = Record<NomenclatureKey, string>;
 
@@ -31,6 +33,8 @@ const GENERIC: Nomenclature = {
   accompaniment: "acompanhamento",
   new_intake: "Novos clientes",
   intake_form: "formulário",
+  plan_ending: "Preparar próximo plano",
+  feedback: "Acompanhamento",
 };
 
 const BY_PROFESSION: Record<string, Nomenclature> = {
@@ -48,6 +52,8 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     accompaniment: "acompanhamento",
     new_intake: "Novos alunos",
     intake_form: "anamnese",
+    plan_ending: "Preparar novo planejamento",
+    feedback: "Feedback",
   },
   private_tutor: {
     client: "aluno",
@@ -63,6 +69,8 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     accompaniment: "acompanhamento",
     new_intake: "Novos alunos",
     intake_form: "questionário",
+    plan_ending: "Preparar próxima etapa",
+    feedback: "Acompanhamento do aluno",
   },
   sports_teacher: {
     client: "aluno",
@@ -78,6 +86,8 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     accompaniment: "acompanhamento",
     new_intake: "Novos alunos",
     intake_form: "formulário",
+    plan_ending: "Preparar nova etapa",
+    feedback: "Feedback",
   },
   consultant: {
     client: "cliente",
@@ -93,6 +103,8 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     accompaniment: "acompanhamento",
     new_intake: "Novos clientes",
     intake_form: "briefing",
+    plan_ending: "Preparar novo planejamento",
+    feedback: "Follow-up",
   },
 };
 

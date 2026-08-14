@@ -36,6 +36,7 @@ class Organization(Base):
     profession_onboarding_done: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    routine_defaults: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     last_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

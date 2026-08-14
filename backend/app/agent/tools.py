@@ -206,6 +206,18 @@ def _list_today_appointments(ctx: ToolContext, args: dict[str, Any]) -> dict[str
 def _get_today_summary(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     EmptyArgs.model_validate(args)
     summary = domain_svc.build_home_summary(ctx.db, organization_id=ctx.organization_id)
+    from app.services import pendencies as pendency_svc
+
+    board = pendency_svc.board(ctx.db, organization_id=ctx.organization_id, bucket="today")
+    groups = [
+        {
+            "type": g["occurrence_type"],
+            "label": g["label"],
+            "count": g["count"],
+            "overdue_count": g["overdue_count"],
+        }
+        for g in board.get("groups", [])
+    ]
     priority = None
     if summary.priority_action is not None:
         priority = {
@@ -239,11 +251,79 @@ def _get_today_summary(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]
         "cycles_ended_unrenewed_count": len(summary.cycles_ended_unrenewed),
         "pending_payments_count": len(summary.pending_payments),
         "attention_count": len(summary.attention_items),
-        "attention_items": [
-            {"kind": i.kind, "title": i.title, "subtitle": i.subtitle}
-            for i in summary.attention_items[:10]
-        ],
+        "routine_groups": groups,
+        "plan_reviews_due": getattr(summary, "protocol_reviews_due_count", 0),
+        "feedbacks_due": getattr(summary, "feedbacks_due_count", 0),
+        "plans_ending": getattr(summary, "plans_ending_count", 0),
     }
+
+
+def _list_plan_pendencies(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    EmptyArgs.model_validate(args)
+    from app.services import pendencies as pendency_svc
+
+    return pendency_svc.board(ctx.db, organization_id=ctx.organization_id)
+
+
+class OccurrenceIdArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    occurrence_id: uuid.UUID
+    deferred_until: date | None = None
+    reason: str | None = None
+
+
+def _propose_complete_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = OccurrenceIdArgs.model_validate(args)
+    from app.services import pendencies as pendency_svc
+
+    row = pendency_svc.get_occurrence(
+        ctx.db, organization_id=ctx.organization_id, occurrence_id=parsed.occurrence_id
+    )
+    return {
+        "needs_confirmation": True,
+        "summary": f"Marcar pendência {row.occurrence_type} como realizada.",
+        "occurrence_id": str(row.id),
+        "occurrence_type": row.occurrence_type,
+    }
+
+
+def execute_complete_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = OccurrenceIdArgs.model_validate(args)
+    from app.services import pendencies as pendency_svc
+
+    row = pendency_svc.decide(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        occurrence_id=parsed.occurrence_id,
+        status="completed",
+        reason=parsed.reason,
+    )
+    return {"id": str(row.id), "status": row.status}
+
+
+def _propose_defer_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = OccurrenceIdArgs.model_validate(args)
+    return {
+        "needs_confirmation": True,
+        "summary": "Adiar esta pendência.",
+        "occurrence_id": str(parsed.occurrence_id),
+        "deferred_until": parsed.deferred_until.isoformat() if parsed.deferred_until else None,
+    }
+
+
+def execute_defer_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = OccurrenceIdArgs.model_validate(args)
+    from app.services import pendencies as pendency_svc
+
+    row = pendency_svc.decide(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        occurrence_id=parsed.occurrence_id,
+        status="deferred",
+        deferred_until=parsed.deferred_until,
+        reason=parsed.reason,
+    )
+    return {"id": str(row.id), "status": row.status}
 
 
 def _list_upcoming_appointments(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -1386,8 +1466,8 @@ TOOLS: dict[str, ToolDefinition] = {
     "get_today_summary": ToolDefinition(
         name="get_today_summary",
         description=(
-            "Resumo do dia: ação prioritária, compromissos futuros/em andamento e "
-            "contagem de pendências que precisam de atenção."
+            "Resumo do dia: compromissos, rotinas agrupadas (revisões, feedbacks, "
+            "planos terminando) e pendências. Diferencia aula de rotina."
         ),
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
         kind="read",
@@ -1432,6 +1512,17 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="read",
         requires_confirmation=False,
         handler=_list_cycles_needing_attention,
+    ),
+    "list_plan_pendencies": ToolDefinition(
+        name="list_plan_pendencies",
+        description=(
+            "Lista pendências de plano: revisões, feedbacks e planejamentos terminando. "
+            "Não mistura com ciclos comerciais nem aulas."
+        ),
+        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+        kind="read",
+        requires_confirmation=False,
+        handler=_list_plan_pendencies,
     ),
     "get_cycle_details": ToolDefinition(
         name="get_cycle_details",
@@ -1932,6 +2023,41 @@ TOOLS: dict[str, ToolDefinition] = {
         handler=_propose_add_milestone,
         risk_class="write_common",
     ),
+    "propose_complete_occurrence": ToolDefinition(
+        name="propose_complete_occurrence",
+        description="Propõe marcar uma pendência de rotina/plano como realizada. Exige confirmação.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "occurrence_id": {"type": "string", "format": "uuid"},
+                "reason": {"type": "string"},
+            },
+            "required": ["occurrence_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_complete_occurrence,
+        risk_class="write_common",
+    ),
+    "propose_defer_occurrence": ToolDefinition(
+        name="propose_defer_occurrence",
+        description="Propõe adiar uma pendência de rotina/plano. Exige confirmação.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "occurrence_id": {"type": "string", "format": "uuid"},
+                "deferred_until": {"type": "string", "format": "date"},
+                "reason": {"type": "string"},
+            },
+            "required": ["occurrence_id", "deferred_until"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_defer_occurrence,
+        risk_class="write_common",
+    ),
 }
 
 
@@ -1944,6 +2070,8 @@ WRITE_EXECUTORS: dict[str, Callable[[ToolContext, dict[str, Any]], dict[str, Any
     "record_payment": execute_record_payment,
     "create_evaluation_draft": execute_create_evaluation_draft,
     "add_milestone": execute_add_milestone,
+    "complete_occurrence": execute_complete_occurrence,
+    "defer_occurrence": execute_defer_occurrence,
 }
 
 

@@ -68,7 +68,7 @@ export default function AccompanimentPreparePage() {
       const done = search.get("done");
       if (done && STEP_ORDER.includes(done as StepKey)) {
         setChecklist({ ...base, [done]: "done" });
-        setInfo(`Etapa atualizada: ${done}`);
+        setInfo("Etapa atualizada.");
       } else {
         setChecklist(base);
       }

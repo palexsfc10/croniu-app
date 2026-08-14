@@ -11,6 +11,8 @@ describe("nomenclatureFor", () => {
     expect(terms.client).toBe("aluno");
     expect(terms.plan).toBe("plano de treino");
     expect(terms.plan_review).toBe("revisão do treino");
+    expect(terms.plan_ending).toBe("Preparar novo planejamento");
+    expect(terms.feedback).toBe("Feedback");
   });
 
   it("adapts consultant terms", () => {

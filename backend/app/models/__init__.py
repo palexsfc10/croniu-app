@@ -49,6 +49,7 @@ from app.models.intake import (
     Protocol,
     ProtocolVersion,
     RecurringClientTask,
+    OperationalOccurrence,
 )
 
 __all__ = [
@@ -99,4 +100,5 @@ __all__ = [
     "Protocol",
     "ProtocolVersion",
     "RecurringClientTask",
+    "OperationalOccurrence",
 ]

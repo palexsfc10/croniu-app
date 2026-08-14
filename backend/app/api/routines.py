@@ -8,7 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.intake import RoutineCreateIn, RoutineOut, RoutineUpdateIn
+from app.schemas.intake import (
+    OccurrenceDecideIn,
+    RoutineCreateIn,
+    RoutineDefaultsIn,
+    RoutineOut,
+    RoutineUpdateIn,
+)
+from app.services import pendencies as pendency_svc
 from app.services import routines as routine_svc
 from app.services.auth import AuthContext, AuthError, get_current_auth
 
@@ -106,3 +113,61 @@ def complete_routine(
     except AuthError as exc:
         raise _http(exc) from exc
     return _out(row)
+
+
+@router.get("/board")
+def routines_board(
+    bucket: str | None = Query(default=None),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        return pendency_svc.board(
+            db, organization_id=auth.organization.id, bucket=bucket
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+
+
+@router.get("/defaults")
+def get_routine_defaults(
+    auth: AuthContext = Depends(get_current_auth),
+) -> dict:
+    return pendency_svc.routine_defaults(auth.organization)
+
+
+@router.patch("/defaults")
+def patch_routine_defaults(
+    payload: RoutineDefaultsIn,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    org = auth.organization
+    current = pendency_svc.routine_defaults(org)
+    current.update({k: v for k, v in payload.model_dump(exclude_unset=True).items()})
+    org.routine_defaults = current
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    return pendency_svc.routine_defaults(org)
+
+
+@router.post("/occurrences/{occurrence_id}/decide")
+def decide_occurrence(
+    occurrence_id: UUID,
+    payload: OccurrenceDecideIn,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        row = pendency_svc.decide(
+            db,
+            organization_id=auth.organization.id,
+            occurrence_id=occurrence_id,
+            status=payload.status,
+            deferred_until=payload.deferred_until,
+            reason=payload.reason,
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return {"id": str(row.id), "status": row.status}

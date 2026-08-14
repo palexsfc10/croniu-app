@@ -26,6 +26,7 @@ from app.schemas.intake import (
 )
 from app.services import intake as intake_svc
 from app.services import journey as journey_svc
+from app.services import status_labels
 from app.services.auth import AuthContext, AuthError, get_current_auth
 
 router = APIRouter(tags=["intake"])
@@ -51,6 +52,7 @@ def _journey_out(row) -> JourneyOut | None:
         requires_professional_attention=row.requires_professional_attention,
         attention_note=row.attention_note,
         next_action=row.next_action,
+        next_action_label=status_labels.next_action_label(row.next_action),
         preparation_status=getattr(row, "preparation_status", None),
         accompaniment_checklist=getattr(row, "accompaniment_checklist", None),
         anamnesis_reviewed_at=getattr(row, "anamnesis_reviewed_at", None),

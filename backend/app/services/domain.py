@@ -1222,10 +1222,21 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         message = "Veja o que precisa da sua atenção hoje."
 
     from app.services import intake as intake_svc
+    from app.services import pendencies as pendency_svc
 
     intake_counts = intake_svc.intake_home_counts(
         db, organization_id=organization_id, today=today
     )
+    try:
+        board = pendency_svc.board(db, organization_id=organization_id, today=today, bucket="today")
+        by_type = {g["occurrence_type"]: g["count"] for g in board.get("groups", [])}
+        intake_counts["protocol_reviews_due_count"] = by_type.get("plan_review", 0)
+        intake_counts["routines_due_today_count"] = sum(by_type.values())
+        intake_counts["feedbacks_due_count"] = by_type.get("feedback_due", 0)
+        intake_counts["plans_ending_count"] = by_type.get("plan_ending", 0)
+    except AuthError:
+        intake_counts.setdefault("feedbacks_due_count", 0)
+        intake_counts.setdefault("plans_ending_count", 0)
     if intake_counts.get("new_submissions_count"):
         attention.insert(
             0,

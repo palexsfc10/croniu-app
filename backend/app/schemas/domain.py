@@ -228,3 +228,5 @@ class HomeSummaryOut(BaseModel):
     protocol_pending_count: int = 0
     protocol_reviews_due_count: int = 0
     routines_due_today_count: int = 0
+    feedbacks_due_count: int = 0
+    plans_ending_count: int = 0

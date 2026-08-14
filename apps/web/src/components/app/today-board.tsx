@@ -323,7 +323,15 @@ export function TodayBoard({ summary }: Props) {
             ) : null}
             {(summary.protocol_reviews_due_count ?? 0) > 0 ? (
               <li>
-                Revisão de treinos · {summary.protocol_reviews_due_count} para revisar
+                Revisão de planos · {summary.protocol_reviews_due_count} para revisar
+              </li>
+            ) : null}
+            {(summary.feedbacks_due_count ?? 0) > 0 ? (
+              <li>Feedbacks · {summary.feedbacks_due_count} para acompanhar</li>
+            ) : null}
+            {(summary.plans_ending_count ?? 0) > 0 ? (
+              <li>
+                Planos terminando · {summary.plans_ending_count} novos planejamentos
               </li>
             ) : null}
             {(summary.routines_due_today_count ?? 0) > 0 ? (

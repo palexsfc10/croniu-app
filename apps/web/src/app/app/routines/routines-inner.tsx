@@ -39,10 +39,26 @@ const TASK_TYPES = [
   { value: "free", label: "Tarefa livre" },
 ];
 
+type BoardGroup = {
+  occurrence_type: string;
+  label: string;
+  count: number;
+  overdue_count: number;
+  items: Array<{
+    id: string;
+    client_name: string | null;
+    plan_title: string | null;
+    due_on: string;
+    overdue: boolean;
+    type_label: string;
+  }>;
+};
+
 export default function RoutinesPageInner() {
   const search = useSearchParams();
   const returnTo = safeReturnTo(search.get("returnTo"));
   const [items, setItems] = useState<Routine[]>([]);
+  const [board, setBoard] = useState<BoardGroup[]>([]);
   const [name, setName] = useState("");
   const [taskType, setTaskType] = useState("swap_training");
   const [weekday, setWeekday] = useState(1);
@@ -51,9 +67,13 @@ export default function RoutinesPageInner() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const result = await apiFetch<Routine[]>("/api/v1/routines");
-    if (result.error) setError(result.error.message);
-    else setItems(result.data ?? []);
+    const [routines, groups] = await Promise.all([
+      apiFetch<Routine[]>("/api/v1/routines"),
+      apiFetch<{ groups: BoardGroup[] }>("/api/v1/routines/board"),
+    ]);
+    if (routines.error) setError(routines.error.message);
+    else setItems(routines.data ?? []);
+    if (groups.data) setBoard(groups.data.groups ?? []);
   }
 
   useEffect(() => {
@@ -107,9 +127,9 @@ export default function RoutinesPageInner() {
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
       <BackLink href={returnTo || "/app"} label={returnTo ? "Voltar" : "Hoje"} />
       <header className="space-y-1">
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Rotinas</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
         <p className="text-sm text-[var(--color-ink-muted)]">
-          Organize dias para revisar planos e enviar feedbacks.
+          Organize os dias em que você revisa planos, acompanha clientes e prepara renovações.
         </p>
       </header>
       {error ? (
@@ -121,6 +141,48 @@ export default function RoutinesPageInner() {
         <p role="status" className="text-sm text-[var(--color-success)]">
           {info}
         </p>
+      ) : null}
+
+      {board.length ? (
+        <section className="space-y-2" aria-label="Pendências">
+          {board.map((group) => (
+            <details
+              key={group.occurrence_type}
+              className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
+            >
+              <summary className="cursor-pointer min-h-11">
+                <span className="font-semibold">{group.label}</span>
+                <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
+                  {group.count} cliente{group.count === 1 ? "" : "s"}
+                  {group.overdue_count ? ` · ${group.overdue_count} atrasado(s)` : ""}
+                </span>
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {group.items.map((item) => (
+                  <li key={item.id} className="text-sm">
+                    <span className="font-medium">{item.client_name || "Cliente"}</span>
+                    {item.plan_title ? ` · ${item.plan_title}` : ""}
+                    {" · "}até {item.due_on}
+                    {item.overdue ? " · atrasado" : ""}
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          void apiFetch(`/api/v1/routines/occurrences/${item.id}/decide`, {
+                            method: "POST",
+                            body: JSON.stringify({ status: "completed" }),
+                          }).then(() => load())
+                        }
+                      >
+                        Marcar realizado
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
+        </section>
       ) : null}
 
       <section className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
@@ -168,7 +230,7 @@ export default function RoutinesPageInner() {
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-semibold">{item.name}</p>
               <Badge tone={item.status === "active" ? "success" : "neutral"}>
-                {item.status}
+                {item.status === "active" ? "Ativa" : "Pausada"}
               </Badge>
             </div>
             <p className="text-sm text-[var(--color-ink-muted)]">

@@ -101,6 +101,8 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "accompaniment": "acompanhamento",
             "new_intake": "Novos alunos",
             "intake_form": "anamnese",
+            "plan_ending": "Preparar novo planejamento",
+            "feedback": "Feedback",
         }
     if code == "private_tutor":
         return {
@@ -117,6 +119,8 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "accompaniment": "acompanhamento",
             "new_intake": "Novos alunos",
             "intake_form": "questionário",
+            "plan_ending": "Preparar próxima etapa",
+            "feedback": "Acompanhamento do aluno",
         }
     if code == "sports_teacher":
         return {
@@ -133,6 +137,8 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "accompaniment": "acompanhamento",
             "new_intake": "Novos alunos",
             "intake_form": "formulário",
+            "plan_ending": "Preparar nova etapa",
+            "feedback": "Feedback",
         }
     if code == "consultant":
         return {
@@ -149,6 +155,8 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "accompaniment": "acompanhamento",
             "new_intake": "Novos clientes",
             "intake_form": "briefing",
+            "plan_ending": "Preparar novo planejamento",
+            "feedback": "Follow-up",
         }
     # Generic + regulated professions: avoid clinical overclaims
     return {
@@ -165,6 +173,8 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         "accompaniment": "acompanhamento",
         "new_intake": "Novos clientes",
         "intake_form": "formulário",
+        "plan_ending": "Preparar próximo plano",
+        "feedback": "Acompanhamento",
     }
 
 

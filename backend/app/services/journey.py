@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.client import Client
 from app.models.intake import ClientJourney
+from app.services import status_labels
 from app.services.auth import AuthError
 
 JOURNEY_LABELS_PT: dict[str, str] = {
@@ -60,7 +61,7 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 
 
 def stage_label(stage: str) -> str:
-    return JOURNEY_LABELS_PT.get(stage, stage)
+    return status_labels.journey_stage_label(stage)
 
 
 def get_journey(

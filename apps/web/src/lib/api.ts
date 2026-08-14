@@ -242,6 +242,8 @@ export type HomeSummary = {
   protocol_pending_count?: number;
   protocol_reviews_due_count?: number;
   routines_due_today_count?: number;
+  feedbacks_due_count?: number;
+  plans_ending_count?: number;
 };
 
 export type AnamnesisQuestion = {
@@ -356,6 +358,7 @@ export type ClientJourney = {
   requires_professional_attention?: boolean;
   attention_note?: string | null;
   next_action?: string | null;
+  next_action_label?: string | null;
   preparation_status?: string | null;
   accompaniment_checklist?: Record<string, string> | null;
   anamnesis_reviewed_at?: string | null;
@@ -486,14 +489,25 @@ export type Protocol = {
   title: string;
   protocol_type: string;
   status: string;
+  status_label?: string;
   is_org_template: boolean;
   review_due_on?: string | null;
   review_recurrence_days?: number | null;
   review_reason?: string | null;
+  objective?: string | null;
+  duration_value?: number | null;
+  duration_unit?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  feedback_interval_days?: number | null;
+  next_feedback_on?: string | null;
+  last_review_on?: string | null;
+  last_feedback_on?: string | null;
   current_version_number: number;
   created_at: string;
   updated_at: string;
   versions?: ProtocolVersion[];
+  milestones?: Array<{ kind: string; due_on: string; index: number }>;
 };
 
 export type ClientAccess = {

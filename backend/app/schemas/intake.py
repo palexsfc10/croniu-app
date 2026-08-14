@@ -136,6 +136,8 @@ class JourneyOut(BaseModel):
     requires_professional_attention: bool = False
     attention_note: str | None = None
     next_action: str | None = None
+    next_action_label: str | None = None
+    next_action_label: str | None = None
     preparation_status: str | None = None
     accompaniment_checklist: dict[str, Any] | None = None
     anamnesis_reviewed_at: datetime | None = None
@@ -250,6 +252,13 @@ class ProtocolCreateIn(BaseModel):
     cycle_id: UUID | None = None
     effective_from: date | None = None
     activation_mode: str | None = None
+    objective: str | None = None
+    duration_value: int | None = Field(default=None, ge=1, le=3650)
+    duration_unit: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    review_recurrence_days: int | None = Field(default=None, ge=1, le=365)
+    feedback_interval_days: int | None = Field(default=None, ge=1, le=365)
 
 
 class ProtocolUpdateIn(BaseModel):
@@ -260,6 +269,13 @@ class ProtocolUpdateIn(BaseModel):
     cycle_id: UUID | None = None
     effective_from: date | None = None
     activation_mode: str | None = None
+    objective: str | None = None
+    duration_value: int | None = Field(default=None, ge=1, le=3650)
+    duration_unit: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    review_recurrence_days: int | None = Field(default=None, ge=1, le=365)
+    feedback_interval_days: int | None = Field(default=None, ge=1, le=365)
 
 
 class ProtocolScheduleIn(BaseModel):
@@ -276,6 +292,7 @@ class ProtocolVersionOut(BaseModel):
     id: UUID
     version_number: int
     status: str
+    status_label: str = ""
     content_json: dict[str, Any]
     private_notes: str | None = None
     published_at: datetime | None = None
@@ -288,6 +305,7 @@ class ProtocolOut(BaseModel):
     title: str
     protocol_type: str
     status: str
+    status_label: str
     is_org_template: bool
     review_due_on: date | None = None
     review_recurrence_days: int | None = None
@@ -295,10 +313,20 @@ class ProtocolOut(BaseModel):
     cycle_id: UUID | None = None
     effective_from: date | None = None
     activation_mode: str | None = None
+    objective: str | None = None
+    duration_value: int | None = None
+    duration_unit: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    feedback_interval_days: int | None = None
+    next_feedback_on: date | None = None
+    last_review_on: date | None = None
+    last_feedback_on: date | None = None
     current_version_number: int
     created_at: datetime
     updated_at: datetime
     versions: list[ProtocolVersionOut] = Field(default_factory=list)
+    milestones: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RoutineCreateIn(BaseModel):
@@ -341,3 +369,26 @@ class PlatformIntakeStatsOut(BaseModel):
     active_intake_links: int
     submissions_by_status: dict[str, int]
     submissions_total: int
+
+
+class RoutineDefaultsIn(BaseModel):
+    review_weekday: int | None = Field(default=None, ge=0, le=6)
+    feedback_weekday: int | None = Field(default=None, ge=0, le=6)
+    review_interval_days: int | None = Field(default=None, ge=1, le=365)
+    feedback_interval_days: int | None = Field(default=None, ge=1, le=365)
+    plan_ending_lead_days: int | None = Field(default=None, ge=0, le=30)
+    renewal_lead_days: int | None = Field(default=None, ge=0, le=30)
+    review_lead_days: int | None = Field(default=None, ge=0, le=30)
+    renewal_weekday: int | None = Field(default=None, ge=0, le=6)
+
+
+class OccurrenceDecideIn(BaseModel):
+    status: str
+    deferred_until: date | None = None
+    reason: str | None = None
+
+
+class ProtocolExtendIn(BaseModel):
+    extra_value: int = Field(ge=1, le=3650)
+    extra_unit: str
+    note: str | None = None
