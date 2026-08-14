@@ -1238,12 +1238,17 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         intake_counts.setdefault("feedbacks_due_count", 0)
         intake_counts.setdefault("plans_ending_count", 0)
     if intake_counts.get("new_submissions_count"):
+        n = int(intake_counts["new_submissions_count"])
         attention.insert(
             0,
             AttentionItemOut(
                 kind="intake_new_submissions",
-                title="Novos alunos",
-                subtitle=f"{intake_counts['new_submissions_count']} cadastro(s) aguardando análise",
+                title="Novos cadastros",
+                subtitle=(
+                    "1 cadastro aguardando análise"
+                    if n == 1
+                    else f"{n} cadastros aguardando análise"
+                ),
                 href="/app/clients/intake",
                 entity_id=organization_id,
                 tone="warning",

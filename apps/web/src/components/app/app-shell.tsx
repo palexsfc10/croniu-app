@@ -357,7 +357,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className={
             assistantActive
               ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
-              : "flex-1 px-4 py-5 pb-28 md:px-6 md:pb-5"
+              : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:px-6 md:pb-5"
           }
         >
           <BillingGate>{children}</BillingGate>

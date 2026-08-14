@@ -160,6 +160,30 @@ describe("UI fundamentals", () => {
     expect(screen.getByText("Agenda de hoje")).toBeInTheDocument();
   });
 
+  it("does not duplicate intake attention as Operação de hoje", () => {
+    render(
+      <TodayBoard
+        summary={{
+          ...emptySummary,
+          new_submissions_count: 1,
+          attention_items: [
+            {
+              kind: "intake_new_submissions",
+              title: "Novos cadastros",
+              subtitle: "1 cadastro aguardando análise",
+              href: "/app/clients/intake",
+              entity_id: "org",
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.queryByText("Operação de hoje")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tudo em dia")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Novos cadastros")).toHaveLength(1);
+    expect(screen.getByText("1 cadastro aguardando análise")).toBeInTheDocument();
+  });
+
   it("shows calm empty day when nothing needs attention", () => {
     render(<TodayBoard summary={emptySummary} />);
     expect(screen.getByText("Tudo organizado")).toBeInTheDocument();

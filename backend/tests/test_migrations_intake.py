@@ -80,10 +80,10 @@ def test_empty_database_upgrade_head_unique(migration_db: str):
     assert heads.returncode == 0, heads.stderr
     lines = [ln for ln in heads.stdout.strip().splitlines() if ln.strip()]
     assert len(lines) == 1
-    assert "0021_plan_cadence" in lines[0]
+    assert "0022_form_template_pin" in lines[0]
 
     current = _run_alembic("current")
-    assert "0021_plan_cadence" in current.stdout
+    assert "0022_form_template_pin" in current.stdout
 
     engine = create_engine(migration_db)
     insp = inspect(engine)
@@ -107,6 +107,7 @@ def test_empty_database_upgrade_head_unique(migration_db: str):
     assert "profession_code" in cols
     link_cols = {c["name"] for c in insp.get_columns("organization_intake_links")}
     assert "form_kind" in link_cols
+    assert "template_version_id" in link_cols
     assert "is_primary" in link_cols
     anam_cols = {c["name"] for c in insp.get_columns("client_anamnesis_responses")}
     assert "questions_snapshot" in anam_cols
@@ -155,7 +156,7 @@ def test_upgrade_from_0018_to_head(migration_db: str):
     to_head = _run_alembic("upgrade", "head")
     assert to_head.returncode == 0, to_head.stdout + to_head.stderr
     heads = _run_alembic("heads")
-    assert "0021_plan_cadence" in heads.stdout
+    assert "0022_form_template_pin" in heads.stdout
     assert len([ln for ln in heads.stdout.strip().splitlines() if ln.strip()]) == 1
 
     engine = create_engine(migration_db)
@@ -194,5 +195,5 @@ def test_upgrade_from_0020_to_0021(migration_db: str):
     to_21 = _run_alembic("upgrade", "head")
     assert to_21.returncode == 0, to_21.stdout + to_21.stderr
     current = _run_alembic("current")
-    assert "0021_plan_cadence" in current.stdout
+    assert "0022_form_template_pin" in current.stdout
 

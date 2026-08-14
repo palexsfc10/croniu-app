@@ -212,15 +212,21 @@ export default function IntakeSubmissionDetailPage() {
           ) : null}
 
           {item.consents?.length ? (
-            <section className="space-y-2">
+            <section className="space-y-3">
               <h2 className="text-base font-semibold">Consentimentos</h2>
-              <ul className="space-y-1 text-sm">
+              <ul className="space-y-2">
                 {item.consents.map((c) => (
-                  <li key={c.consent_key} className="flex justify-between gap-2">
-                    <span>{CONSENT_LABELS_PT[c.consent_key] ?? c.consent_key}</span>
-                    <Badge tone={c.accepted ? "success" : "neutral"}>
-                      {c.accepted ? "Aceito" : "Não"}
-                    </Badge>
+                  <li
+                    key={c.consent_key}
+                    className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+                  >
+                    <p className="text-sm text-[var(--color-ink)]">
+                      {CONSENT_LABELS_PT[c.consent_key] ?? "Consentimento"}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-[var(--color-ink-muted)] whitespace-nowrap">
+                      {c.accepted ? "Aceito" : "Não aceito"}
+                      {c.consent_key === "whatsapp_optional" ? " · Opcional" : ""}
+                    </p>
                   </li>
                 ))}
               </ul>

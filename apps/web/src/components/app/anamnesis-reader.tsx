@@ -163,10 +163,12 @@ export function AnamnesisReader({
               className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-semibold text-[var(--color-ink)]"
               onClick={() => setOpen((prev) => ({ ...prev, [title]: !isOpen }))}
               aria-expanded={isOpen}
+              aria-controls={`anamnesis-section-${title}`}
+              aria-label={isOpen ? `Recolher ${title}` : `Expandir ${title}`}
             >
               <span>{title}</span>
-              <span className="text-xs font-normal text-[var(--color-ink-muted)]">
-                {isOpen ? "Recolher" : "Expandir"}
+              <span className="text-[var(--color-ink-muted)]" aria-hidden>
+                {isOpen ? "▾" : "▸"}
               </span>
             </button>
             {isOpen ? (

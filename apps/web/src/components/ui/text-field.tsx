@@ -5,12 +5,13 @@ import { forwardRef, useId, useState, type InputHTMLAttributes } from "react";
 type Props = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   error?: string;
+  hint?: string;
   /** When true, shows a control to reveal/hide the password value. */
   revealable?: boolean;
 };
 
 export const TextField = forwardRef<HTMLInputElement, Props>(function TextField(
-  { label, error, id, className = "", revealable = false, type, ...props },
+  { label, error, hint, id, className = "", revealable = false, type, ...props },
   ref,
 ) {
   const generatedId = useId();
@@ -37,7 +38,9 @@ export const TextField = forwardRef<HTMLInputElement, Props>(function TextField(
             className,
           ].join(" ")}
           aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${fieldId}-error` : undefined}
+          aria-describedby={
+            error ? `${fieldId}-error` : hint ? `${fieldId}-hint` : undefined
+          }
           {...props}
         />
         {revealable ? (
@@ -52,6 +55,11 @@ export const TextField = forwardRef<HTMLInputElement, Props>(function TextField(
           </button>
         ) : null}
       </div>
+      {hint && !error ? (
+        <span id={`${fieldId}-hint`} className="block text-xs text-[var(--color-ink-muted)]">
+          {hint}
+        </span>
+      ) : null}
       {error ? (
         <span id={`${fieldId}-error`} role="alert" className="block text-sm text-[var(--color-danger)]">
           {error}

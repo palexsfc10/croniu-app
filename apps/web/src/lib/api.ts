@@ -255,6 +255,9 @@ export type AnamnesisQuestion = {
   attention?: boolean;
   section?: string;
   help_text?: string | null;
+  placeholder?: string | null;
+  optional?: boolean;
+  visible_if?: { question_id: string; in: string[] } | null;
   options?: Array<{ value: string; label: string }>;
 };
 

@@ -25,7 +25,7 @@ export const CONSENT_LABELS_PT: Record<string, string> = {
   whatsapp_optional: "Autorizo contato por WhatsApp (opcional).",
 };
 
-const ATTENTION_VALUES = new Set(["sim", "prefiro_detalhar", "yes", "prefer_detail"]);
+const ATTENTION_VALUES = new Set(["sim", "prefiro_detalhar", "yes", "prefer_detail", "as_vezes"]);
 
 export type IntakeStepId =
   | "welcome"
@@ -80,14 +80,37 @@ export function flattenQuestions(
   return anamnesisQuestionSections(schema).flatMap((section) => section.questions ?? []);
 }
 
-function normalizeAnswerValue(raw: unknown): string {
-  if (raw == null) return "";
-  if (typeof raw === "object" && raw !== null) {
-    const obj = raw as { value?: unknown; answer?: unknown };
-    const nested = obj.value ?? obj.answer;
-    return nested == null ? "" : String(nested).trim().toLowerCase();
+function answerValues(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map((v) => String(v).trim().toLowerCase()).filter(Boolean);
+  if (typeof raw === "object") {
+    const obj = raw as { value?: unknown };
+    return answerValues(obj.value);
   }
-  return String(raw).trim().toLowerCase();
+  const s = String(raw).trim().toLowerCase();
+  return s ? [s] : [];
+}
+
+export function isQuestionVisible(
+  question: AnamnesisQuestion,
+  answers: Record<string, unknown>,
+): boolean {
+  const rule = question.visible_if;
+  if (!rule?.question_id || !rule.in?.length) return true;
+  const current = answerValues(answers[rule.question_id]);
+  const wanted = rule.in.map((v) => v.toLowerCase());
+  return current.some((v) => wanted.includes(v));
+}
+
+export function flattenVisibleQuestions(
+  schema: AnamnesisSchema | null | undefined,
+  answers: Record<string, unknown>,
+): AnamnesisQuestion[] {
+  return flattenQuestions(schema).filter((q) => isQuestionVisible(q, answers));
+}
+
+function normalizeAnswerValue(raw: unknown): string {
+  return answerValues(raw)[0] ?? "";
 }
 
 /** True when any attention-marked question has a yes/detail answer. */
@@ -114,10 +137,17 @@ export function missingRequiredQuestions(
 ): string[] {
   return flattenQuestions(schema)
     .filter((q) => q.required)
+    .filter((q) => isQuestionVisible(q, answers))
     .filter((q) => {
       const raw = answers[q.id];
       if (raw == null) return true;
       if (typeof raw === "string") return !raw.trim();
+      if (Array.isArray(raw)) return raw.length === 0;
+      if (typeof raw === "object") {
+        const obj = raw as { value?: unknown };
+        if (obj.value == null || obj.value === "") return true;
+        return false;
+      }
       return false;
     })
     .map((q) => q.id);

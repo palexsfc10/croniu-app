@@ -276,8 +276,39 @@ export function TodayBoard({ summary }: Props) {
       return start <= t && t < end;
     });
 
-  const attention = summary.attention_items ?? [];
-  const hasAttention = attention.length > 0;
+  const attentionBase = summary.attention_items ?? [];
+  const extraAttention: AttentionItem[] = [];
+  if (
+    (summary.protocol_reviews_due_count ?? 0) > 0 &&
+    !attentionBase.some((i) => i.kind === "plan_review" || i.href === "/app/routines")
+  ) {
+    extraAttention.push({
+      kind: "plan_review_group",
+      title: "Revisão de planos",
+      subtitle: `${summary.protocol_reviews_due_count} para revisar`,
+      href: "/app/routines",
+      entity_id: "routines-review",
+    });
+  }
+  if ((summary.feedbacks_due_count ?? 0) > 0) {
+    extraAttention.push({
+      kind: "feedback_group",
+      title: "Feedbacks",
+      subtitle: `${summary.feedbacks_due_count} para acompanhar`,
+      href: "/app/routines",
+      entity_id: "routines-feedback",
+    });
+  }
+  const attention = [...attentionBase, ...extraAttention];
+  const hasIntakeCounts =
+    (summary.new_submissions_count ?? 0) > 0 ||
+    (summary.evaluation_pending_count ?? 0) > 0 ||
+    (summary.protocol_pending_count ?? 0) > 0 ||
+    (summary.routines_due_today_count ?? 0) > 0 ||
+    (summary.protocol_reviews_due_count ?? 0) > 0 ||
+    (summary.feedbacks_due_count ?? 0) > 0 ||
+    (summary.plans_ending_count ?? 0) > 0;
+  const hasAttention = attention.length > 0 || hasIntakeCounts;
   const priority = summary.priority_action;
   const hasAgenda = upcoming.length > 0 || inProgress.length > 0;
   const fullyClear = !priority && !hasAttention && !hasAgenda;
@@ -299,62 +330,6 @@ export function TodayBoard({ summary }: Props) {
         </div>
       </header>
 
-      {(summary.new_submissions_count ?? 0) > 0 ||
-      (summary.evaluation_pending_count ?? 0) > 0 ||
-      (summary.protocol_pending_count ?? 0) > 0 ||
-      (summary.routines_due_today_count ?? 0) > 0 ||
-      (summary.protocol_reviews_due_count ?? 0) > 0 ? (
-        <section
-          aria-label="Cadastros e jornada"
-          className="rounded-[var(--radius-md)] border border-[var(--color-warning)]/20 bg-[var(--color-warning-subtle)]/40 px-3.5 py-3"
-        >
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-warning)]">
-            Operação de hoje
-          </p>
-          <ul className="mt-1 space-y-0.5 text-sm text-[var(--color-ink)]">
-            {(summary.new_submissions_count ?? 0) > 0 ? (
-              <li>{summary.new_submissions_count} cadastro(s) aguardando análise</li>
-            ) : null}
-            {(summary.evaluation_pending_count ?? 0) > 0 ? (
-              <li>{summary.evaluation_pending_count} avaliação(ões) pendente(s)</li>
-            ) : null}
-            {(summary.protocol_pending_count ?? 0) > 0 ? (
-              <li>{summary.protocol_pending_count} plano(s) pendente(s)</li>
-            ) : null}
-            {(summary.protocol_reviews_due_count ?? 0) > 0 ? (
-              <li>
-                Revisão de planos · {summary.protocol_reviews_due_count} para revisar
-              </li>
-            ) : null}
-            {(summary.feedbacks_due_count ?? 0) > 0 ? (
-              <li>Feedbacks · {summary.feedbacks_due_count} para acompanhar</li>
-            ) : null}
-            {(summary.plans_ending_count ?? 0) > 0 ? (
-              <li>
-                Planos terminando · {summary.plans_ending_count} novos planejamentos
-              </li>
-            ) : null}
-            {(summary.routines_due_today_count ?? 0) > 0 ? (
-              <li>
-                Feedbacks e rotinas · {summary.routines_due_today_count} para acompanhar
-              </li>
-            ) : null}
-          </ul>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            <Link href="/app/clients/intake" className="inline-block">
-              <Button className="min-h-10 px-3 text-sm" variant="secondary">
-                Abrir fila
-              </Button>
-            </Link>
-            <Link href="/app/routines" className="inline-block">
-              <Button className="min-h-10 px-3 text-sm" variant="secondary">
-                Rotinas
-              </Button>
-            </Link>
-          </div>
-        </section>
-      ) : null}
-
       {fullyClear ? (
         <EmptyState
           tone="success"
@@ -373,13 +348,14 @@ export function TodayBoard({ summary }: Props) {
           <div className="space-y-4">
             {priority ? (
               <PriorityCard action={priority} />
+            ) : hasAttention ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Revise o que precisa da sua atenção.
+              </p>
             ) : (
               <CalmPriorityLine
                 message={
-                  hasAttention
-                    ? "Revise a lista ao lado quando puder."
-                    : summary.message ||
-                      "Nenhuma pendência operacional no momento."
+                  summary.message || "Nenhuma pendência operacional no momento."
                 }
               />
             )}

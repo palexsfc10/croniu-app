@@ -18,6 +18,7 @@ def _q(
     options: list[dict[str, str]] | None = None,
     section: str = "A",
     help_text: str | None = None,
+    placeholder: str | None = None,
 ) -> dict[str, Any]:
     item: dict[str, Any] = {
         "id": qid,
@@ -32,6 +33,8 @@ def _q(
         item["options"] = options
     if help_text:
         item["help_text"] = help_text
+    if placeholder:
+        item["placeholder"] = placeholder
     return item
 
 
@@ -96,7 +99,14 @@ def build_class_questionnaire_schema() -> dict[str, Any]:
                 "title": "Aulas",
                 "questions": [
                     _q("a_subject", label="Área ou disciplina", required=True, section="A"),
-                    _q("a_primary_goal", label="Objetivo", required=True, section="A"),
+                    _q(
+                        "a_primary_goal",
+                        label="Qual é o seu objetivo?",
+                        required=True,
+                        section="A",
+                        help_text="Descreva o que você gostaria de alcançar nas aulas.",
+                        placeholder="Ex.: melhorar conversação, reforçar matemática ou preparar uma prova.",
+                    ),
                     _q(
                         "a_level",
                         label="Nível atual",
@@ -109,8 +119,40 @@ def build_class_questionnaire_schema() -> dict[str, Any]:
                         ],
                         section="A",
                     ),
-                    _q("a_difficulties", label="Principais dificuldades", section="A"),
-                    _q("c_available_days", label="Disponibilidade", qtype="text", section="A"),
+                    _q(
+                        "a_difficulties",
+                        label="Quais dificuldades você já teve?",
+                        section="A",
+                        help_text="Pode ser sobre conteúdo, rotina ou motivação.",
+                    ),
+                    _q(
+                        "c_available_days",
+                        label="Quais dias costumam funcionar melhor?",
+                        qtype="multi",
+                        options=[
+                            {"value": "seg", "label": "Segunda"},
+                            {"value": "ter", "label": "Terça"},
+                            {"value": "qua", "label": "Quarta"},
+                            {"value": "qui", "label": "Quinta"},
+                            {"value": "sex", "label": "Sexta"},
+                            {"value": "sab", "label": "Sábado"},
+                            {"value": "dom", "label": "Domingo"},
+                            {"value": "ainda_nao_sei", "label": "Ainda não sei"},
+                        ],
+                        section="A",
+                    ),
+                    _q(
+                        "c_available_periods",
+                        label="Quais períodos funcionam melhor?",
+                        qtype="multi",
+                        options=[
+                            {"value": "manha", "label": "Manhã"},
+                            {"value": "tarde", "label": "Tarde"},
+                            {"value": "noite", "label": "Noite"},
+                            {"value": "flexivel", "label": "Horário flexível"},
+                        ],
+                        section="A",
+                    ),
                     _q(
                         "a_format",
                         label="Formato preferido",
@@ -148,7 +190,14 @@ def build_consulting_brief_schema() -> dict[str, Any]:
                 "id": "A",
                 "title": "Briefing",
                 "questions": [
-                    _q("a_primary_goal", label="Objetivo", required=True, section="A"),
+                    _q(
+                        "a_primary_goal",
+                        label="Qual é o seu objetivo?",
+                        required=True,
+                        section="A",
+                        help_text="Descreva o resultado que você busca.",
+                        placeholder="Ex.: organizar processos, aumentar vendas ou estruturar a operação.",
+                    ),
                     _q("a_context", label="Contexto atual", required=True, section="A"),
                     _q("a_challenge", label="Desafio principal", section="A"),
                     _q("a_expected_result", label="Resultado esperado", section="A"),
@@ -163,7 +212,22 @@ def build_consulting_brief_schema() -> dict[str, Any]:
                         ],
                         section="A",
                     ),
-                    _q("c_available_days", label="Disponibilidade", section="A"),
+                    _q(
+                        "c_available_days",
+                        label="Quais dias costumam funcionar melhor?",
+                        qtype="multi",
+                        options=[
+                            {"value": "seg", "label": "Segunda"},
+                            {"value": "ter", "label": "Terça"},
+                            {"value": "qua", "label": "Quarta"},
+                            {"value": "qui", "label": "Quinta"},
+                            {"value": "sex", "label": "Sexta"},
+                            {"value": "sab", "label": "Sábado"},
+                            {"value": "dom", "label": "Domingo"},
+                            {"value": "ainda_nao_sei", "label": "Ainda não sei"},
+                        ],
+                        section="A",
+                    ),
                     _q("h_free_notes", label="Observações", section="A"),
                 ],
             },

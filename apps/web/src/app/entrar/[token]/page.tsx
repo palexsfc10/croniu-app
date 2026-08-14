@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  AnamnesisQuestion,
   IntakeSubmitResult,
   PublicIntakeContext,
 } from "@/lib/api";
@@ -12,13 +11,16 @@ import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { Button } from "@/components/ui/button";
 import { TextArea } from "@/components/ui/text-area";
 import { TextField } from "@/components/ui/text-field";
+import { QuestionField } from "@/components/intake/question-field";
 import {
   ageProofValid,
   anamnesisQuestionSections,
   clearNamePhoneDraft,
   consentsFromSchema,
+  flattenVisibleQuestions,
   hasAttentionAnswers,
   INTAKE_STEPS,
+  isQuestionVisible,
   loadNamePhoneDraft,
   missingRequiredQuestions,
   requiredConsentsAccepted,
@@ -64,73 +66,6 @@ function parsePublicError(body: unknown, fallback: string): string {
   return fallback;
 }
 
-function QuestionField({
-  question,
-  value,
-  onChange,
-}: {
-  question: AnamnesisQuestion;
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  const id = `q-${question.id}`;
-  if (question.type === "single_choice" && question.options?.length) {
-    return (
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium text-[var(--color-ink)]">
-          {question.label}
-          {question.required ? " *" : ""}
-        </legend>
-        {question.help_text ? (
-          <p className="text-xs text-[var(--color-ink-muted)]">{question.help_text}</p>
-        ) : null}
-        <div className="space-y-1.5">
-          {question.options.map((opt) => (
-            <label
-              key={opt.value}
-              className="flex min-h-11 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
-            >
-              <input
-                type="radio"
-                name={id}
-                value={opt.value}
-                checked={value === opt.value}
-                onChange={() => onChange(opt.value)}
-                className="accent-[var(--color-primary)]"
-              />
-              {opt.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-    );
-  }
-
-  if (question.type === "number") {
-    return (
-      <TextField
-        id={id}
-        label={`${question.label}${question.required ? " *" : ""}`}
-        type="number"
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    );
-  }
-
-  return (
-    <TextArea
-      id={id}
-      label={`${question.label}${question.required ? " *" : ""}`}
-      hint={question.help_text ?? undefined}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      rows={2}
-    />
-  );
-}
-
 export default function PublicIntakePage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
@@ -150,7 +85,7 @@ export default function PublicIntakePage() {
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<IntakeStepId>("welcome");
   const [identity, setIdentity] = useState<Identity>(EMPTY_IDENTITY);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [consents, setConsents] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<IntakeSubmitResult | null>(null);
@@ -267,7 +202,13 @@ export default function PublicIntakePage() {
     setBusy(true);
     setError(null);
     const key = ensureIdempotencyKey();
-    const payloadAnswers: Record<string, unknown> = { ...answers };
+    const visible = flattenVisibleQuestions(ctx?.anamnesis_schema, answers);
+    const payloadAnswers: Record<string, unknown> = {};
+    for (const q of visible) {
+      const val = answers[q.id];
+      if (val == null || val === "" || (Array.isArray(val) && val.length === 0)) continue;
+      payloadAnswers[q.id] = val;
+    }
     if (!payloadAnswers.a_primary_goal && identity.primary_goal.trim()) {
       payloadAnswers.a_primary_goal = identity.primary_goal.trim();
     }
@@ -306,13 +247,13 @@ export default function PublicIntakePage() {
   }
 
   return (
-    <div className="min-h-dvh bg-[linear-gradient(165deg,var(--color-bg)_0%,var(--color-progress-subtle)_42%,var(--color-primary-subtle)_100%)]">
+    <div className="min-h-dvh bg-[var(--color-bg)]">
       <main className="mx-auto flex min-h-dvh max-w-md flex-col px-4 py-6">
         <header className="mb-6 flex items-start justify-between gap-3">
           <div>
             <p className="text-sm text-[var(--color-ink-muted)]">Cadastro</p>
             {ctx ? (
-              <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl text-[var(--color-ink)]">
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
                 {ctx.professional_public_name}
               </h1>
             ) : (
@@ -463,7 +404,9 @@ export default function PublicIntakePage() {
                 <h2 className="text-base font-semibold text-[var(--color-ink)]">
                   {section.title}
                 </h2>
-                {(section.questions ?? []).map((q) => (
+                {(section.questions ?? [])
+                  .filter((q) => isQuestionVisible(q, answers))
+                  .map((q) => (
                   <QuestionField
                     key={q.id}
                     question={q}
@@ -491,8 +434,29 @@ export default function PublicIntakePage() {
             <p className="text-sm text-[var(--color-ink-muted)]">
               Leia e marque cada declaração. Os itens obrigatórios precisam ser aceitos.
             </p>
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Consentimentos obrigatórios
+            </p>
             <ul className="space-y-2">
-              {consentDefs.map((c) => (
+              {consentDefs.filter((c) => c.required).map((c) => (
+                <li key={c.key}>
+                  <label className="flex min-h-11 items-start gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 text-sm text-[var(--color-ink)]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-[var(--color-primary)]"
+                      checked={Boolean(consents[c.key])}
+                      onChange={(e) =>
+                        setConsents((prev) => ({ ...prev, [c.key]: e.target.checked }))
+                      }
+                    />
+                    <span>{c.label}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <p className="pt-2 text-sm text-[var(--color-ink-muted)]">Preferências opcionais</p>
+            <ul className="space-y-2">
+              {consentDefs.filter((c) => !c.required).map((c) => (
                 <li key={c.key}>
                   <label className="flex min-h-11 items-start gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 text-sm text-[var(--color-ink)]">
                     <input
@@ -504,8 +468,7 @@ export default function PublicIntakePage() {
                       }
                     />
                     <span>
-                      {c.label}
-                      {c.required ? " *" : " (opcional)"}
+                      {c.label} <span className="text-[var(--color-ink-muted)]">Opcional</span>
                     </span>
                   </label>
                 </li>

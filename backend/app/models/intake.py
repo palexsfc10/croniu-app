@@ -53,6 +53,12 @@ class OrganizationIntakeLink(Base):
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    template_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("anamnesis_template_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
 
 class ClientJourney(Base):

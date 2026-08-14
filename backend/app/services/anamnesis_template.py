@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.intake import AnamnesisTemplate, AnamnesisTemplateVersion
+from app.services.anamnesis_schema_v2 import build_schema_v2
 
 SYSTEM_TEMPLATE_CODE = "croniu_default_physical_activity"
 SYSTEM_TEMPLATE_NAME = "Anamnese de atividade física — padrão Croniu"
@@ -57,7 +58,7 @@ CONSENT_META: dict[str, dict[str, str]] = {
     },
 }
 
-_YES_DETAIL = ["sim", "prefiro_detalhar", "yes", "prefer_detail"]
+_YES_DETAIL = ["sim", "prefiro_detalhar", "yes", "prefer_detail", "as_vezes"]
 
 
 def _q(
@@ -98,373 +99,8 @@ def _triage_options() -> list[dict[str, str]]:
 
 
 def build_default_schema() -> dict[str, Any]:
-    """Structured JSON for sections A–J (no copyrighted instruments)."""
-    sections = [
-        {
-            "id": "A",
-            "title": "Objetivos",
-            "questions": [
-                _q("a_primary_goal", label="Objetivo principal", required=True, section="A"),
-                _q("a_secondary_goals", label="Objetivos secundários", section="A"),
-                _q("a_expectation", label="Expectativa", section="A"),
-                _q("a_timeline", label="Prazo desejado", section="A"),
-                _q("a_prior_experience", label="Experiência anterior", section="A"),
-            ],
-        },
-        {
-            "id": "B",
-            "title": "Histórico de atividade física",
-            "questions": [
-                _q(
-                    "b_currently_active",
-                    label="Pratica atividade física atualmente?",
-                    qtype="single_choice",
-                    options=[
-                        {"value": "sim", "label": "Sim"},
-                        {"value": "nao", "label": "Não"},
-                    ],
-                    section="B",
-                ),
-                _q("b_weekly_frequency", label="Frequência semanal", section="B"),
-                _q("b_session_duration", label="Duração média das sessões", section="B"),
-                _q("b_modalities", label="Modalidades", section="B"),
-                _q("b_time_inactive", label="Tempo sem praticar (se aplicável)", section="B"),
-                _q("b_past_difficulties", label="Dificuldades anteriores", section="B"),
-                _q("b_preferences", label="Preferências", section="B"),
-                _q("b_dislikes", label="Atividades que não gosta", section="B"),
-            ],
-        },
-        {
-            "id": "C",
-            "title": "Rotina e disponibilidade",
-            "questions": [
-                _q("c_available_days", label="Dias disponíveis", section="C"),
-                _q("c_available_times", label="Horários", section="C"),
-                _q("c_location", label="Local preferido", section="C"),
-                _q("c_equipment", label="Equipamentos disponíveis", section="C"),
-                _q(
-                    "c_routine_type",
-                    label="Rotina predominantemente",
-                    qtype="single_choice",
-                    options=[
-                        {"value": "sentada", "label": "Sentada"},
-                        {"value": "em_pe", "label": "Em pé"},
-                        {"value": "ativa", "label": "Ativa"},
-                    ],
-                    section="C",
-                ),
-                _q("c_commute", label="Deslocamentos", section="C"),
-                _q("c_time_limits", label="Limitações de tempo", section="C"),
-            ],
-        },
-        {
-            "id": "D",
-            "title": "Histórico de saúde declarado",
-            "questions": [
-                _q(
-                    "d_cardiovascular",
-                    label="Condição cardiovascular declarada",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_blood_pressure",
-                    label="Pressão arterial",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_respiratory",
-                    label="Condição respiratória",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_metabolic",
-                    label="Diabetes ou alteração metabólica",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_fainting",
-                    label="Desmaios ou tonturas",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_chest_pain",
-                    label="Dor no peito",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_unusual_breathlessness",
-                    label="Falta de ar incomum",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_neurological",
-                    label="Condição neurológica",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_musculoskeletal",
-                    label="Condição musculoesquelética",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="D",
-                ),
-                _q(
-                    "d_other_conditions",
-                    label="Outras condições relevantes",
-                    sensitive=True,
-                    section="D",
-                ),
-                _q(
-                    "d_medical_followup",
-                    label="Acompanhamento médico atual",
-                    sensitive=True,
-                    section="D",
-                ),
-            ],
-        },
-        {
-            "id": "E",
-            "title": "Lesões, cirurgias, dores e limitações",
-            "questions": [
-                _q(
-                    "e_current_injury",
-                    label="Lesão atual",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="E",
-                ),
-                _q(
-                    "e_prior_injury",
-                    label="Lesão anterior relevante",
-                    sensitive=True,
-                    section="E",
-                ),
-                _q("e_surgery", label="Cirurgia", sensitive=True, section="E"),
-                _q(
-                    "e_current_pain",
-                    label="Dor atual",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="E",
-                ),
-                _q("e_pain_region", label="Região da dor", sensitive=True, section="E"),
-                _q(
-                    "e_pain_intensity",
-                    label="Intensidade declarada (opcional)",
-                    qtype="number",
-                    sensitive=True,
-                    section="E",
-                ),
-                _q(
-                    "e_limited_movements",
-                    label="Movimentos limitados",
-                    sensitive=True,
-                    section="E",
-                ),
-                _q(
-                    "e_existing_guidance",
-                    label="Orientação profissional existente",
-                    sensitive=True,
-                    section="E",
-                ),
-            ],
-        },
-        {
-            "id": "F",
-            "title": "Medicamentos declarados",
-            "questions": [
-                _q(
-                    "f_meds_affect_exercise",
-                    label="Usa medicamento que possa afetar o exercício?",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="F",
-                ),
-                _q(
-                    "f_meds_notes",
-                    label="Observações sobre medicamentos (opcional)",
-                    sensitive=True,
-                    section="F",
-                ),
-                _q(
-                    "f_medical_guidance",
-                    label="Orientação médica relevante",
-                    sensitive=True,
-                    section="F",
-                ),
-            ],
-        },
-        {
-            "id": "G",
-            "title": "Triagem de prontidão para atividade",
-            "questions": [
-                _q(
-                    "g_chest_pain_exertion",
-                    label="Sente dor no peito ao se esforçar?",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="G",
-                    help_text="Respostas de atenção serão analisadas pelo profissional.",
-                ),
-                _q(
-                    "g_dizziness_exertion",
-                    label="Sente tontura ou desmaio ao se esforçar?",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="G",
-                ),
-                _q(
-                    "g_bone_joint_problem",
-                    label="Tem problema ósseo ou articular que piore com exercício?",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="G",
-                ),
-                _q(
-                    "g_doctor_advised_limit",
-                    label="Algum profissional de saúde aconselhou limitar atividade física?",
-                    qtype="single_choice",
-                    options=_triage_options(),
-                    sensitive=True,
-                    attention=True,
-                    section="G",
-                ),
-            ],
-        },
-        {
-            "id": "H",
-            "title": "Hábitos e recuperação",
-            "questions": [
-                _q("h_sleep", label="Sono", section="H"),
-                _q("h_stress", label="Percepção de estresse", section="H"),
-                _q("h_hydration", label="Hidratação", section="H"),
-                _q(
-                    "h_smoking",
-                    label="Tabagismo",
-                    qtype="single_choice",
-                    options=[
-                        {"value": "nao", "label": "Não"},
-                        {"value": "sim", "label": "Sim"},
-                        {"value": "prefiro_nao_informar", "label": "Prefiro não informar"},
-                    ],
-                    section="H",
-                ),
-                _q(
-                    "h_alcohol",
-                    label="Consumo de álcool",
-                    qtype="single_choice",
-                    options=[
-                        {"value": "nao", "label": "Não"},
-                        {"value": "sim", "label": "Sim"},
-                        {"value": "prefiro_nao_informar", "label": "Prefiro não informar"},
-                    ],
-                    section="H",
-                ),
-                _q("h_recovery", label="Rotina de recuperação", section="H"),
-                _q("h_free_notes", label="Observação livre", section="H"),
-            ],
-        },
-        {
-            "id": "I",
-            "title": "Preferências de acompanhamento",
-            "questions": [
-                _q("i_desired_frequency", label="Frequência desejada", section="I"),
-                _q("i_contact_preference", label="Preferência de contato", section="I"),
-                _q(
-                    "i_reminders",
-                    label="Receber lembretes",
-                    qtype="single_choice",
-                    options=[
-                        {"value": "sim", "label": "Sim"},
-                        {"value": "nao", "label": "Não"},
-                    ],
-                    section="I",
-                ),
-                _q(
-                    "i_feedback_requests",
-                    label="Receber solicitações de feedback",
-                    qtype="single_choice",
-                    options=[
-                        {"value": "sim", "label": "Sim"},
-                        {"value": "nao", "label": "Não"},
-                    ],
-                    section="I",
-                ),
-                _q("i_best_contact_period", label="Melhor período para contato", section="I"),
-            ],
-        },
-        {
-            "id": "J",
-            "title": "Declarações e consentimentos",
-            "questions": [],
-            "consents": [
-                {
-                    "key": key,
-                    "required": key in REQUIRED_CONSENT_KEYS,
-                    "label": CONSENT_META[key]["label"],
-                    "text_version": CONSENT_TEXT_VERSION,
-                }
-                for key in (*REQUIRED_CONSENT_KEYS, *OPTIONAL_CONSENT_KEYS)
-            ],
-        },
-    ]
-    return {
-        "code": SYSTEM_TEMPLATE_CODE,
-        "name": SYSTEM_TEMPLATE_NAME,
-        "version": 1,
-        "sections": sections,
-        "attention_client_message": (
-            "Suas respostas indicam que alguns pontos precisam ser analisados "
-            "pelo profissional antes do início das atividades."
-        ),
-    }
-
+    """Current default published schema (v2). Historical v1 remains in DB rows."""
+    return build_schema_v2()
 
 def _iter_questions(schema: dict[str, Any]) -> list[dict[str, Any]]:
     questions: list[dict[str, Any]] = []
@@ -501,6 +137,7 @@ def ensure_default_anamnesis_template(db: Session) -> AnamnesisTemplate:
         )
     )
     if existing is not None:
+        ensure_schema_v2(db, existing)
         return existing
 
     template = AnamnesisTemplate(
@@ -516,7 +153,7 @@ def ensure_default_anamnesis_template(db: Session) -> AnamnesisTemplate:
     version = AnamnesisTemplateVersion(
         id=uuid.uuid4(),
         template_id=template.id,
-        version_number=1,
+        version_number=2,
         schema_json=build_default_schema(),
         is_published=True,
     )
@@ -525,8 +162,35 @@ def ensure_default_anamnesis_template(db: Session) -> AnamnesisTemplate:
     return template
 
 
+def ensure_schema_v2(db: Session, template: AnamnesisTemplate) -> None:
+    latest = db.scalar(
+        select(func.max(AnamnesisTemplateVersion.version_number)).where(
+            AnamnesisTemplateVersion.template_id == template.id
+        )
+    )
+    if latest is not None and int(latest) >= 2:
+        return
+    db.add(
+        AnamnesisTemplateVersion(
+            id=uuid.uuid4(),
+            template_id=template.id,
+            version_number=2,
+            schema_json=build_default_schema(),
+            is_published=True,
+        )
+    )
+    db.flush()
+
+
+def get_template_version(
+    db: Session, *, version_id: uuid.UUID
+) -> AnamnesisTemplateVersion | None:
+    return db.get(AnamnesisTemplateVersion, version_id)
+
+
 def get_published_system_version(db: Session) -> AnamnesisTemplateVersion:
-    ensure_default_anamnesis_template(db)
+    template = ensure_default_anamnesis_template(db)
+    ensure_schema_v2(db, template)
     template = db.scalar(
         select(AnamnesisTemplate).where(
             AnamnesisTemplate.organization_id.is_(None),

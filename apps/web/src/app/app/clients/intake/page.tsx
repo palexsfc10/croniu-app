@@ -12,7 +12,7 @@ import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { IconWhatsApp } from "@/components/ui/icons";
+import { IconMoreHorizontal, IconWhatsApp } from "@/components/ui/icons";
 
 export default function ClientsIntakePage() {
   const [link, setLink] = useState<IntakeLink | null>(null);
@@ -22,6 +22,7 @@ export default function ClientsIntakePage() {
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [linkRes, listRes] = await Promise.all([
@@ -167,15 +168,59 @@ export default function ClientsIntakePage() {
       ) : null}
 
       <section
-        aria-label="Convidar aluno"
+        aria-label="Link de cadastro"
         className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
       >
-        <h2 className="text-base font-semibold">Convidar aluno</h2>
-        <p className="text-sm text-[var(--color-ink-muted)]">
-          Link da organização para cadastro com anamnese. Trate como senha compartilhável.
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold">Link de cadastro</h2>
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              Compartilhe este link para receber novos cadastros. Quem tiver o endereço poderá
+              preencher o formulário.
+            </p>
+          </div>
+          {link?.has_active_link ? (
+            <div className="relative">
+              <Button
+                variant="ghost"
+                className="min-h-11 min-w-11 px-2"
+                aria-label="Mais ações do link"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <IconMoreHorizontal className="h-5 w-5" />
+              </Button>
+              {menuOpen ? (
+                <div className="absolute right-0 z-10 mt-1 min-w-44 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-sm">
+                  <button
+                    type="button"
+                    className="block w-full px-3 py-2 text-left text-sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void rotateLink();
+                    }}
+                  >
+                    Regenerar link
+                  </button>
+                  <button
+                    type="button"
+                    className="block w-full px-3 py-2 text-left text-sm text-[var(--color-danger)]"
+                    disabled={busy}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void disableLink();
+                    }}
+                  >
+                    Desativar link
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         <p className="text-sm">
-          {link?.has_active_link ? "Há um link ativo." : "Nenhum link ativo."}
+          {link?.has_active_link ? "Link ativo" : "Nenhum link ativo."}
         </p>
         {!link?.has_active_link ? (
           <Button fullWidth disabled={busy} onClick={() => void createLink()}>
@@ -186,38 +231,15 @@ export default function ClientsIntakePage() {
             <Button fullWidth disabled={busy} onClick={() => void copyLink()}>
               Copiar link
             </Button>
-            {rawToken || link.token || link.public_path ? (
-              <a
-                href={
-                  rawToken
-                    ? `/entrar/${rawToken}`
-                    : link.public_path || (link.token ? `/entrar/${link.token}` : "#")
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
-                <Button fullWidth variant="secondary">
-                  Abrir
-                </Button>
-              </a>
-            ) : null}
             <Button
               fullWidth
               variant="secondary"
               disabled={busy}
               onClick={shareWhatsApp}
+              className="inline-flex items-center justify-center gap-2"
             >
-              <span className="inline-flex items-center gap-2">
-                <IconWhatsApp className="h-4 w-4" aria-hidden />
-                WhatsApp
-              </span>
-            </Button>
-            <Button fullWidth variant="secondary" disabled={busy} onClick={() => void rotateLink()}>
-              Regenerar link
-            </Button>
-            <Button fullWidth variant="danger" disabled={busy} onClick={() => void disableLink()}>
-              Desativar
+              <IconWhatsApp className="h-5 w-5" aria-hidden />
+              Compartilhar no WhatsApp
             </Button>
           </div>
         )}

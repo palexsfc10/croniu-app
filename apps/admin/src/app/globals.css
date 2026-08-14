@@ -30,7 +30,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-manrope);
-  --font-display: var(--font-fraunces);
+  --font-display: var(--font-manrope);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -53,8 +53,9 @@ body {
 
 h1,
 .h-display {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   letter-spacing: -0.02em;
+  font-weight: 700;
 }
 
 :focus-visible {

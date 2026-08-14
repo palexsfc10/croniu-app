@@ -3,6 +3,7 @@ import {
   ageProofValid,
   consentsFromSchema,
   hasAttentionAnswers,
+  isQuestionVisible,
   missingRequiredQuestions,
   requiredConsentsAccepted,
   submissionStatusLabel,
@@ -78,6 +79,36 @@ describe("intake helpers", () => {
       "whatsapp_optional",
     ]);
     expect(consentsFromSchema({}).length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("hides complementary questions until Sim", () => {
+    const injurySchema: AnamnesisSchema = {
+      sections: [
+        {
+          id: "E",
+          title: "Lesões",
+          questions: [
+            {
+              id: "e_prior_injury",
+              label: "Você já teve alguma lesão relevante?",
+              type: "single_choice",
+            },
+            {
+              id: "e_prior_injury_detail",
+              label: "Qual lesão?",
+              type: "text",
+              visible_if: { question_id: "e_prior_injury", in: ["sim"] },
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      isQuestionVisible(injurySchema.sections![0].questions![1], { e_prior_injury: "nao" }),
+    ).toBe(false);
+    expect(
+      isQuestionVisible(injurySchema.sections![0].questions![1], { e_prior_injury: "sim" }),
+    ).toBe(true);
   });
 
   it("labels submission status in Portuguese", () => {

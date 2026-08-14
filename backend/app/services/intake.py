@@ -224,6 +224,7 @@ def create_intake_link(
         form_kind=(form_kind or "physical_anamnesis").strip()[:64],
         is_primary=make_primary,
         created_by_user_id=user_id,
+        template_version_id=anam_svc.get_published_system_version(db).id,
     )
     db.add(row)
     db.commit()
@@ -305,6 +306,7 @@ def rotate_intake_link(
         is_primary=was_primary,
         created_by_user_id=user_id,
         rotated_at=now,
+        template_version_id=anam_svc.get_published_system_version(db).id,
     )
     db.add(row)
     db.commit()
@@ -370,11 +372,19 @@ def _resolve_active_link_by_token(
     return row, org
 
 
+def _schema_for_link(db: Session, link: OrganizationIntakeLink) -> tuple[dict, str, str]:
+    if link.template_version_id:
+        pinned = anam_svc.get_template_version(db, version_id=link.template_version_id)
+        if pinned is not None:
+            schema = dict(pinned.schema_json)
+            schema["form_name"] = schema.get("name") or anam_svc.SYSTEM_TEMPLATE_NAME
+            return schema, str(pinned.id), schema["form_name"]
+    return form_svc.resolve_form_schema(db, form_kind=link.form_kind)
+
+
 def get_public_intake_context(db: Session, *, raw_token: str) -> dict[str, Any]:
     link, org = _resolve_active_link_by_token(db, raw_token=raw_token)
-    schema, template_version_id, form_name = form_svc.resolve_form_schema(
-        db, form_kind=link.form_kind
-    )
+    schema, template_version_id, form_name = _schema_for_link(db, link)
     if template_version_id is None:
         # Persist FK against system template for non-physical forms
         version = anam_svc.get_published_system_version(db)
@@ -524,8 +534,12 @@ def submit_intake(
                 422,
             )
 
-    version = anam_svc.get_published_system_version(db)
-    attention = anam_svc.compute_attention_flag(answers, version.schema_json)
+    schema, template_version_id, _form_name = _schema_for_link(db, link)
+    if template_version_id is None:
+        version = anam_svc.get_published_system_version(db)
+        schema = version.schema_json
+        template_version_id = str(version.id)
+    attention = anam_svc.compute_attention_flag(answers, schema)
 
     dup, archived_match = _find_duplicate(
         db,
@@ -595,18 +609,14 @@ def submit_intake(
     db.add(submission)
     db.flush()
 
-    snapshot = snap_svc.build_questions_snapshot(answers=answers, schema=version.schema_json)
-    # Prefer schema from the intake link form when available
-    form_schema, _, _ = form_svc.resolve_form_schema(db, form_kind=link.form_kind)
-    if form_schema:
-        snapshot = snap_svc.build_questions_snapshot(answers=answers, schema=form_schema)
+    snapshot = snap_svc.build_questions_snapshot(answers=answers, schema=schema)
 
     response = ClientAnamnesisResponse(
         id=uuid.uuid4(),
         organization_id=org.id,
         client_id=client.id,
         submission_id=submission.id,
-        template_version_id=version.id,
+        template_version_id=uuid.UUID(str(template_version_id)),
         answers_json=answers,
         questions_snapshot=snapshot,
         requires_professional_attention=attention,
