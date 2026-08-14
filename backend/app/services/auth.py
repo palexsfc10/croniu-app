@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings, get_settings
@@ -100,17 +101,42 @@ def register_owner(
         organization.profession_onboarding_done = True
     db.add(user)
     db.add(organization)
-    db.flush()
-
-    membership = Membership(user_id=user.id, organization_id=organization.id, role="owner")
-    db.add(membership)
-    db.flush()
+    try:
+        db.flush()
+        membership = Membership(user_id=user.id, organization_id=organization.id, role="owner")
+        db.add(membership)
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise AuthError(
+            "email_taken",
+            "Este e-mail já possui uma conta. Entre ou use outro e-mail.",
+            status.HTTP_409_CONFLICT,
+        ) from exc
 
     from app.billing.service import BillingService
 
-    BillingService(db).create_trial(organization_id=organization.id)
+    try:
+        BillingService(db).create_trial(organization_id=organization.id)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise AuthError(
+            "register_failed",
+            "Não foi possível criar sua conta. Revise as informações ou tente novamente.",
+            status.HTTP_409_CONFLICT,
+        ) from exc
+    except AuthError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise AuthError(
+            "register_failed",
+            "Não foi possível criar sua conta. Tente novamente em instantes.",
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        ) from None
 
-    db.commit()
     db.refresh(user)
     db.refresh(organization)
     db.refresh(membership)

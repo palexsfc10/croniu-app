@@ -86,14 +86,15 @@ describe("PWA icon contract (v3 official Croniu C)", () => {
     expect(readFileSync(icon512).byteLength).toBeGreaterThan(100000);
   });
 
-  it("bumps service worker cache to v3 and precaches only v3 icons", () => {
+  it("bumps service worker cache to v4, precaches v3 icons, and does not cache-first HTML", () => {
     const sw = readFileSync(swPath, "utf8");
-    expect(sw).toContain('croniu-static-v3');
+    expect(sw).toContain("croniu-static-v4");
     expect(sw).toContain("/icons/icon-192-v3.png");
     expect(sw).toContain("/icons/icon-512-v3.png");
     expect(sw).toContain("/icons/icon-512-maskable-v3.png");
     expect(sw).not.toContain("/icons/icon-192.png");
-    expect(sw).not.toContain("croniu-static-v2");
+    expect(sw).not.toContain("croniu-static-v3");
+    expect(sw).toContain("request.mode === \"navigate\"");
   });
 
   it("keeps Next.js app icons generated from the official tile", () => {
