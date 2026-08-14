@@ -364,6 +364,9 @@ export type ClientJourney = {
   next_action_label?: string | null;
   preparation_status?: string | null;
   accompaniment_checklist?: Record<string, string> | null;
+  accompaniment_summaries?: Record<string, string | null> | null;
+  progress_defined?: number | null;
+  progress_total?: number | null;
   anamnesis_reviewed_at?: string | null;
   approved_at?: string | null;
   rejected_at?: string | null;

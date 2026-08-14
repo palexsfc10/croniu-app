@@ -112,25 +112,40 @@ export default function CyclesPage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <BackLink href="/app" label="Hoje" />
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">Ciclos</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            {counts.active} ativos · {counts.upcoming} aguardando · {counts.ended} encerrados
-          </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-ink)]">Ciclos</h1>
         </div>
-        <Link href="/app/cycles/new">
-          <Button>Novo ciclo</Button>
+        <Link href="/app/cycles/new" className="shrink-0">
+          <Button className="whitespace-nowrap">Novo ciclo</Button>
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Situação">
+      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] px-2 py-2">
+          <p className="font-semibold text-[var(--color-ink)]">{counts.active}</p>
+          <p className="text-[var(--color-ink-muted)]">Ativos</p>
+        </div>
+        <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] px-2 py-2">
+          <p className="font-semibold text-[var(--color-ink)]">{counts.upcoming}</p>
+          <p className="text-[var(--color-ink-muted)]">Próximos</p>
+        </div>
+        <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] px-2 py-2">
+          <p className="font-semibold text-[var(--color-ink)]">{counts.ended}</p>
+          <p className="text-[var(--color-ink-muted)]">Encerrados</p>
+        </div>
+      </div>
+
+      <div
+        role="tablist"
+        aria-label="Situação"
+        className="grid grid-cols-3 gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-0.5"
+      >
         {(
           [
-            ["active", `Em andamento ${counts.active}`],
-            ["upcoming", `Próximos ${counts.upcoming}`],
-            ["ended", `Encerrados ${counts.ended}`],
-            ["all", "Todos"],
+            ["active", "Em andamento"],
+            ["upcoming", "Próximos"],
+            ["ended", "Encerrados"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -138,7 +153,7 @@ export default function CyclesPage() {
             type="button"
             role="tab"
             aria-selected={bucket === id}
-            className="min-h-11 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm aria-selected:border-[var(--color-ink)]"
+            className="min-h-11 rounded-[10px] px-2 text-sm font-medium text-[var(--color-ink-muted)] aria-selected:bg-[var(--color-surface)] aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_2px_rgba(15,15,20,0.06)]"
             onClick={() => setBucket(id)}
           >
             {label}
@@ -146,93 +161,86 @@ export default function CyclesPage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-[var(--color-ink-muted)]">Período</span>
-        {(
-          [
-            ["this_month", "Este mês"],
-            ["next_30", "Próximos 30 dias"],
-            ["last_30", "Últimos 30 dias"],
-            ["custom", "Personalizado"],
-            ["month", "Mês"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            className={`min-h-11 rounded-full px-3 text-sm ${
-              preset === id
-                ? "bg-[var(--color-ink)] text-[var(--color-surface)]"
-                : "border border-[var(--color-border)] bg-[var(--color-surface)]"
-            }`}
-            onClick={() => setPreset(id)}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="min-h-11 min-w-11"
+          aria-label="Mês anterior"
+          onClick={() => {
+            setPreset("month");
+            setMonthCursor((m) => shiftMonth(m, -1));
+          }}
+        >
+          <IconChevronLeft className="h-5 w-5" />
+        </button>
+        <p className="text-sm font-medium">{monthTitle(preset === "month" ? monthCursor : startOfMonth(today))}</p>
+        <button
+          type="button"
+          className="min-h-11 min-w-11"
+          aria-label="Mês seguinte"
+          onClick={() => {
+            setPreset("month");
+            setMonthCursor((m) => shiftMonth(m, 1));
+          }}
+        >
+          <IconChevronRight className="h-5 w-5" />
+        </button>
       </div>
-
-      {preset === "month" ? (
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            className="min-h-11 min-w-11"
-            aria-label="Mês anterior"
-            onClick={() => setMonthCursor((m) => shiftMonth(m, -1))}
-          >
-            <IconChevronLeft className="h-5 w-5" />
-          </button>
-          <p className="text-sm font-medium">{monthTitle(monthCursor)}</p>
-          <button
-            type="button"
-            className="min-h-11 min-w-11"
-            aria-label="Mês seguinte"
-            onClick={() => setMonthCursor((m) => shiftMonth(m, 1))}
-          >
-            <IconChevronRight className="h-5 w-5" />
-          </button>
-          <Button variant="ghost" onClick={() => setMonthCursor(startOfMonth(today))}>
-            Hoje
-          </Button>
-        </div>
-      ) : null}
-
-      {preset === "custom" ? (
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="text-sm">
-            Início
-            <input
-              type="date"
-              className="mt-1 block min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border)] px-2"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            Fim
-            <input
-              type="date"
-              className="mt-1 block min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border)] px-2"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-            />
-          </label>
-          <Button variant="ghost" onClick={() => { setCustomStart(""); setCustomEnd(""); setPreset("this_month"); }}>
-            Limpar
-          </Button>
-        </div>
-      ) : null}
-
       <button
         type="button"
-        className="text-sm text-[var(--color-link)]"
+        className="text-sm font-medium text-[var(--color-primary)]"
         onClick={() => setFiltersOpen((v) => !v)}
       >
-        Filtros
+        Alterar período
       </button>
+
       {filtersOpen ? (
-        <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-          <label className="text-sm">
+        <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          {(
+            [
+              ["this_month", "Este mês"],
+              ["next_30", "Próximos 30 dias"],
+              ["last_30", "Últimos 30 dias"],
+              ["month", "Escolher mês"],
+              ["custom", "Intervalo personalizado"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className="block min-h-11 w-full rounded-[var(--radius-md)] px-2 text-left text-sm aria-selected:bg-[var(--color-surface-subtle)]"
+              aria-selected={preset === id}
+              onClick={() => {
+                setPreset(id);
+                if (id !== "custom") setFiltersOpen(false);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          {preset === "custom" ? (
+            <div className="flex flex-wrap items-end gap-2 pt-2">
+              <label className="text-sm">
+                Início
+                <input
+                  type="date"
+                  className="mt-1 block min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border)] px-2"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                />
+              </label>
+              <label className="text-sm">
+                Fim
+                <input
+                  type="date"
+                  className="mt-1 block min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border)] px-2"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+          <label className="block pt-2 text-sm">
             Serviço
             <input
               className="mt-1 block w-full min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border)] px-2"
@@ -240,9 +248,6 @@ export default function CyclesPage() {
               onChange={(e) => setServiceFilter(e.target.value)}
             />
           </label>
-          <Button className="mt-2" variant="ghost" onClick={() => setServiceFilter("")}>
-            Limpar filtros
-          </Button>
         </div>
       ) : null}
 
@@ -257,8 +262,10 @@ export default function CyclesPage() {
           title={emptyTitle}
           description={
             bucket === "active"
-              ? "Crie um ciclo para organizar período, aulas e recebimentos."
-              : "Altere o período ou limpe os filtros."
+              ? "Os ciclos ativos aparecerão aqui."
+              : bucket === "upcoming"
+                ? "Ciclos que ainda não começaram aparecem em Próximos."
+                : "Altere o período ou a situação."
           }
         />
       ) : null}

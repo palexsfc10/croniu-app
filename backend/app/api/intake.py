@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.intake import (
+    AccompanimentStepIn,
     ApproveSubmissionIn,
     EvaluationDecisionIn,
     IntakeLinkCreateIn,
@@ -24,6 +25,7 @@ from app.schemas.intake import (
     AnamnesisQuestionSnapshot,
     ConsentOut,
 )
+from app.services import accompaniment as accomp_svc
 from app.services import intake as intake_svc
 from app.services import journey as journey_svc
 from app.services import status_labels
@@ -39,9 +41,18 @@ def _http(exc: AuthError) -> HTTPException:
     )
 
 
-def _journey_out(row) -> JourneyOut | None:
+def _journey_out(row, db: Session | None = None, organization_id=None) -> JourneyOut | None:
     if row is None:
         return None
+    resolved = None
+    if db is not None and organization_id is not None:
+        resolved = accomp_svc.resolve_accompaniment(
+            db,
+            organization_id=organization_id,
+            client_id=row.client_id,
+            journey=row,
+        )
+    next_action = (resolved["next_action"] if resolved else None) or row.next_action
     return JourneyOut(
         id=row.id,
         client_id=row.client_id,
@@ -51,10 +62,14 @@ def _journey_out(row) -> JourneyOut | None:
         protocol_decision=row.protocol_decision,
         requires_professional_attention=row.requires_professional_attention,
         attention_note=row.attention_note,
-        next_action=row.next_action,
-        next_action_label=status_labels.next_action_label(row.next_action),
+        next_action=next_action,
+        next_action_label=status_labels.next_action_label(next_action),
         preparation_status=getattr(row, "preparation_status", None),
-        accompaniment_checklist=getattr(row, "accompaniment_checklist", None),
+        accompaniment_checklist=(resolved["checklist"] if resolved else None)
+        or getattr(row, "accompaniment_checklist", None),
+        accompaniment_summaries=resolved["summaries"] if resolved else None,
+        progress_defined=resolved["progress_defined"] if resolved else None,
+        progress_total=resolved["progress_total"] if resolved else None,
         anamnesis_reviewed_at=getattr(row, "anamnesis_reviewed_at", None),
         approved_at=row.approved_at,
         rejected_at=row.rejected_at,
@@ -367,7 +382,29 @@ def get_client_journey(
         db.commit()
     except AuthError as exc:
         raise _http(exc) from exc
-    out = _journey_out(row)
+    out = _journey_out(row, db, auth.organization.id)
+    assert out is not None
+    return out
+
+
+@router.patch("/clients/{client_id}/journey/accompaniment-step", response_model=JourneyOut)
+def patch_accompaniment_step(
+    client_id: UUID,
+    payload: AccompanimentStepIn,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> JourneyOut:
+    try:
+        row = accomp_svc.apply_step(
+            db,
+            organization_id=auth.organization.id,
+            client_id=client_id,
+            step=payload.step,
+            status=payload.status,
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    out = _journey_out(row, db, auth.organization.id)
     assert out is not None
     return out
 
@@ -388,7 +425,7 @@ def set_evaluation_decision(
         )
     except AuthError as exc:
         raise _http(exc) from exc
-    out = _journey_out(row)
+    out = _journey_out(row, db, auth.organization.id)
     assert out is not None
     return out
 
@@ -409,7 +446,7 @@ def set_protocol_decision(
         )
     except AuthError as exc:
         raise _http(exc) from exc
-    out = _journey_out(row)
+    out = _journey_out(row, db, auth.organization.id)
     assert out is not None
     return out
 

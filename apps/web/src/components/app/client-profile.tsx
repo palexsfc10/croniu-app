@@ -117,7 +117,41 @@ export function ClientProfile({ clientId }: Props) {
 
   const next = (() => {
     const name = item ? firstName(item.full_name) : terms.client;
-    if (!activeCycle) {
+    const prepareHref = `/app/clients/${clientId}/accompaniment`;
+    const action = journey?.next_action;
+    if (action === "organize_agenda") {
+      return {
+        title: "Próximo passo",
+        text: `Organize a agenda do ciclo de ${name}.`,
+        cta: journey?.next_action_label || "Organizar agenda",
+        href: `/app/agenda?clientId=${clientId}`,
+      };
+    }
+    if (action === "create_cycle") {
+      return {
+        title: "Próximo passo",
+        text: `Configure o ciclo de ${name}.`,
+        cta: "Criar ciclo",
+        href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+      };
+    }
+    if (
+      action === "review_anamnesis" ||
+      action === "register_evaluation" ||
+      action === "create_plan" ||
+      action === "configure_routine" ||
+      action === "activate_accompaniment" ||
+      action === "prepare_accompaniment" ||
+      action === "continue_onboarding"
+    ) {
+      return {
+        title: "Próximo passo",
+        text: `Continue a preparação de ${name}.`,
+        cta: journey?.next_action_label || "Preparar acompanhamento",
+        href: prepareHref,
+      };
+    }
+    if (!activeCycle && action !== "organize_agenda") {
       return {
         title: "Próximo passo",
         text: `Configure o primeiro ciclo de ${name}.`,
@@ -297,7 +331,7 @@ export function ClientProfile({ clientId }: Props) {
         role="tablist"
         aria-label="Ficha"
         onKeyDown={onTabKey}
-        className="grid h-12 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)_minmax(0,1fr)] gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-1 max-[360px]:h-14 max-[360px]:text-[0.8125rem]"
+        className="grid h-12 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1fr)] items-stretch gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-0.5 max-[360px]:h-12"
       >
         {tabs.map((entry) => (
           <button
@@ -308,7 +342,7 @@ export function ClientProfile({ clientId }: Props) {
             aria-selected={tab === entry.id}
             aria-controls={`ficha-panel-${entry.id}`}
             tabIndex={tab === entry.id ? 0 : -1}
-            className="min-h-11 min-w-0 rounded-[var(--radius-sm)] px-1 text-center text-sm font-medium text-[var(--color-ink-muted)] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_2px_rgba(15,15,20,0.06)] max-[360px]:px-0.5 max-[360px]:text-xs"
+            className="flex min-h-11 min-w-0 items-center justify-center rounded-[10px] px-1 text-center text-[13px] font-medium leading-tight text-[var(--color-ink-muted)] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_2px_rgba(15,15,20,0.06)] max-[360px]:text-xs"
             onClick={() => setTab(entry.id)}
           >
             {entry.label}

@@ -75,10 +75,7 @@ export function filterCycles(
   },
 ): Cycle[] {
   return items.filter((cycle) => {
-    if (opts.bucket === "active") {
-      const b = cycleBucket(cycle, opts.today);
-      if (b !== "active" && b !== "upcoming") return false;
-    } else if (opts.bucket !== "all" && cycleBucket(cycle, opts.today) !== opts.bucket) {
+    if (opts.bucket !== "all" && cycleBucket(cycle, opts.today) !== opts.bucket) {
       return false;
     }
     if (opts.period && !cycleInPeriod(cycle, opts.period.start, opts.period.end)) return false;

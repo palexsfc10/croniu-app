@@ -872,7 +872,7 @@ def approve_submission(
         if journey is not None:
             journey.preparation_status = "in_progress"
             journey.accompaniment_checklist = journey.accompaniment_checklist or {
-                "anamnesis": "done",
+                "anamnesis": "todo",
                 "evaluation": "todo",
                 "plan": "todo",
                 "cycle": "todo",

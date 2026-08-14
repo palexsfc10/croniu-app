@@ -60,7 +60,7 @@ describe("selectDisplayCycle", () => {
 });
 
 describe("filterCycles active bucket", () => {
-  it("includes upcoming cycles in em andamento so lists match the ficha", () => {
+  it("keeps upcoming cycles on the Próximos tab, not Em andamento", () => {
     const upcoming = cycle({
       id: "later",
       status: "active",
@@ -68,11 +68,17 @@ describe("filterCycles active bucket", () => {
       ends_on: "2026-09-17",
     });
     expect(cycleBucket(upcoming, "2026-08-13")).toBe("upcoming");
+    const upcomingTab = filterCycles([upcoming], {
+      bucket: "upcoming",
+      today: "2026-08-13",
+      period: { start: "2026-08-01", end: "2026-08-31" },
+    });
+    expect(upcomingTab.map((c) => c.id)).toEqual(["later"]);
     const visible = filterCycles([upcoming], {
       bucket: "active",
       today: "2026-08-13",
       period: { start: "2026-08-01", end: "2026-08-31" },
     });
-    expect(visible.map((c) => c.id)).toEqual(["later"]);
+    expect(visible.map((c) => c.id)).toEqual([]);
   });
 });
