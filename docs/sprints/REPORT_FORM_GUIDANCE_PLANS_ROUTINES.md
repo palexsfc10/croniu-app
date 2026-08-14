@@ -1,48 +1,72 @@
-# Relatório — formulários orientados, plano de acompanhamento e recorrência
+# Relatório — fechamento Playwright, recorrência e SHA único
 
 Data: 2026-08-14  
 Branch: `feature/client-intake-journey`  
-SHA: `4b4f56c`  
-CI: https://github.com/palexsfc10/croniu-app/actions/runs/31827765412 (sucesso)
+SHA: *(preenchido no commit candidato)*  
+CI: *(preenchido após o run no SHA final)*
 
-## 1. Diagnóstico da aba Acompanhamento vazia
+## 1. Inventário das 9 falhas originais (2A–2D + smoke)
 
-Causa combinada:
+Nenhuma foi tratada como “antiga” sem causa. Classificação:
 
-1. O painel só montava com `tab === "acompanhamento" && item`. Troca de aba via `router.replace` podia renderizar a aba nova **antes** do cliente hidratar de novo → painel nulo (cabeçalho ainda visível da pintura anterior / tabs).
-2. `formatCycleVigencyCard(starts_on, ends_on)` chamava `.slice` em `ends_on` nulo e derrubava o render do painel.
+| Teste | Cenário | Último passo ok | Erro | Classe |
+|---|---|---|---|---|
+| `hml-smoke-final` persistência/duplicata | Calcular aulas | `getByText(/Validade/)` | Copy do ciclo | **C** — “Vigência”. Spec movida para `cycle-integrity.spec.ts` (local/candidato) e `playwright.hml.config.ts` (smoke HML). |
+| `sprint2a-visual` | Salvar cliente | heading Cliente Visual | Nome obrigatório / “Adicionar” duplicado | **D/B** |
+| `sprint2a` | Salvar cliente | heading Cliente S2A | Fixture sem nome | **D** |
+| `sprint2b` local/compromisso | Salvar cliente | heading Ana Souza | Fixture sem nome | **D** |
+| `sprint2c` ciclo inteligente | Salvar cliente | heading Ana Souza | Fixture sem nome | **D** |
+| `sprint2c1` ×3 financeiro | Heading novo ciclo | `select` vazio / “Editar valores” | Wizard + `link` vs `button` | **D/B** |
+| `sprint2d` renovação | POST ciclo | `cycle.ok()` false | Sem `starts_time` | **D** |
 
-Correção: painel da aba monta sempre que `tab === acompanhamento` (não exige `item` no mesmo tick); `min-height`; skeleton; erro + “Tentar novamente”; **quatro cards sempre visíveis**; próxima ação do cabeçalho repetida na aba; `formatCycleVigencyCard` tolera `ends_on` nulo.
+Nenhum teste foi removido com skip, timeout inflado do caso, ou assertiva afrouxada. `hml-smoke-final.spec.ts` foi **renomeado/repartido por ambiente**, não descartado.
 
-## 2. Nomenclaturas
+Falhas posteriores nesta rodada (diagnóstico individual):
 
-Removido como promessa de produto: “plano de treino”, “treino” como nome do plano, “Revisar/trocar treino ou plano” como tipo padrão, “Criar treino”.
+- Playwright contra Next em `localhost` IPv6 vs bundle antigo → alvo `127.0.0.1:3000` + `webServer`.
+- Overlay `nextjs-portal` no `next dev` interceptando clique em Hoje → navegação `goto /app` (mesmo destino).
+- Login GET nativo vazava e-mail/senha na query se o JS atrasasse → `method="post"` no form.
+- “Verificando assinatura…” na 3ª rotina → espera de heading 15s (mesmo padrão dos helpers), sem subir o timeout do teste.
+- Título do plano sobrescrito por `profession.nomenclature` da API → UI usa só `nomenclatureFor`.
 
-| Área | Plano |
+## 2. Contrato produto vs teste
+
+- Ciclo: combobox `Cliente`/`Serviço`/`Modelo` com `aria-label`; copy “recalcula vigência”.
+- Serviço: label estável `Valor (R$)`.
+- Financeiro: ação `Editar valores` via `getByRole("button")` (link+Button).
+- Acompanhamento: `data-testid="accompaniment-plan-card"`; copy “plano de acompanhamento”; skeleton; erro + “Tentar novamente”.
+- Rotina: `data-testid="routine-frequency"`; recorrência em `recurrence` + `filter_json` (sem migration).
+
+## 3. Suítes por ambiente (`apps/web`)
+
+| Comando | Alvo |
 |---|---|
-| Fallback / nutri / personal | Plano de acompanhamento |
-| Professor de esportes | Estratégia do período |
-| Professor particular | Plano de ensino/acompanhamento |
-| Consultor / mentor | Plano de ação |
+| `npm run test:e2e` / `test:e2e:functional` / `test:e2e:regression` | Candidato local (`playwright.config.ts`, `127.0.0.1:3000`, ignora `prd-smoke`) |
+| `npm run test:e2e:hml` | `playwright.hml.config.ts` + `HML_BASE_URL` — só após deploy do **mesmo** SHA |
+| `npm run test:e2e:prd` | `playwright.prd.config.ts` — não mistura com o gate do branch |
 
-Sessão do personal continua podendo se chamar “treino” (o atendimento), sem editor interno.
+Gate do código: Playwright local 25/25 nesta máquina (2026-08-14). Smoke HML **não** entra no verde do candidato.
 
-## 3. Recorrência
+## 4. Cobertura das novas jornadas (Playwright)
 
-Persistida em `recurrence` + `filter_json` (sem migration). Tipos: weekly, biweekly, monthly, bimonthly, quarterly, interval, once.
+`accompaniment-journey.spec.ts`: aba, quatro cards vazios, erro/retry, parcial (ciclo sem plano), completo (plano+avaliação), copy sem “Criar treino”, viewports 360/390/412, reload + logout/login.
 
-Concluir ocorrência avança `next_run_on` e **não** arquiva a série (exceto `once`). Encerrar a série = `status=archived`. Preview humano via `POST /routines/preview`. TZ da organização.
+`routines-journey.spec.ts`: weekly, biweekly, monthly dia fixo, monthly n-ésimo/última segunda, intervalo, once; complete avança `next_run_on`; once arquiva; reload + login; persistência `filter_json`.
 
-## 4. Exemplos por profissão
+## 5. Bordas de recorrência (sem migration)
 
-Centralizados em `apps/web/src/lib/form-guidance.ts` (`evaluationGuidance`, `planGuidance`, `routineTypes`).
+Persistência: colunas existentes `routines.recurrence` + `routines.filter_json` (`month_mode`, `month_day`, `nth`, `nth_weekday`, `starts_on`, `no_end`, `last_occurrence_completed`).
 
-## 5. Persistência
+Provas: `backend/tests/test_recurrence_edges.py` (31/30/29, fev bissexto/não, última segunda, 5ª inexistente, TZ `America/Sao_Paulo`, edição da regra, complete idempotente, concorrência, `no_end`, sem duplicar linha) e e2e API no spec de rotinas.
 
-Testes: `test_weekly_complete_advances_without_archiving` (uma linha, duas conclusões, sem duplicar); ocorrência única arquiva.
+## 6. Gates locais (antes do commit)
 
-## Riscos
+- Backend pytest: 331 passed  
+- Web lint: 0 errors (warnings pré-existentes)  
+- typecheck: ok  
+- vitest: 174 passed  
+- Playwright local: 25 passed, 0 skipped  
 
-- Recorrência quinzenal/mensal por posição depende de `starts_on` bem preenchido.
-- Playwright da suíte 2A–2D antiga continua frágil em rótulos.
-- Sem deploy HML nesta rodada até CI.
+## 7. HML
+
+Bloqueado até CI verde neste SHA. Depois: backup HML; deploy só api+web+admin; `/version` = SHA; Alembic; `npm run test:e2e:hml`; prints/traces. Sem merge, Promote ou reset.

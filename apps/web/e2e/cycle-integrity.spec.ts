@@ -44,22 +44,22 @@ async function createCycleViaUi(
   },
 ) {
   await page.goto("/app/cycles/new");
-  await page.locator("select").nth(0).selectOption(opts.clientId);
-  await page.locator("select").nth(1).selectOption(opts.serviceId);
-  await page.locator("select").nth(2).selectOption({ index: 1 });
+  await page.getByRole("combobox", { name: "Cliente", exact: true }).selectOption(opts.clientId);
+  await page.getByRole("combobox", { name: "Serviço", exact: true }).selectOption(opts.serviceId);
+  await page.getByRole("combobox", { name: "Modelo de ciclo", exact: true }).selectOption({ index: 1 });
   await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByLabel("Data de início do ciclo").fill(opts.startsOn);
   for (const day of opts.days ?? ["Seg", "Qua"]) {
     await page.getByRole("button", { name: day, exact: true }).click();
   }
   await page.getByRole("button", { name: "Calcular aulas" }).click();
-  await expect(page.getByText(/Validade/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Vigência/)).toBeVisible({ timeout: 15_000 });
   if (opts.time) {
     await page.getByLabel("Horário").fill(opts.time);
   }
 }
 
-test.describe("HML final browser smoke", () => {
+test.describe("cycle integrity local candidate", () => {
   test.describe.configure({ timeout: 240_000 });
 
   test("persistence, duplicate, overlap, sequential, conflict", async ({ page }) => {
@@ -129,7 +129,9 @@ test.describe("HML final browser smoke", () => {
     expect(beforeRec).toEqual([]);
 
     await page.goto(`/app/clients/${clientId}/accompaniment`);
-    await expect(page.getByRole("heading", { name: /Preparar/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Preparar/ })).toBeVisible({
+      timeout: 20_000,
+    });
     await page.getByRole("button", { name: "Marcar como analisada" }).click();
     await expect(page.getByText("Concluído").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Marcar como analisada" })).toHaveCount(0);
@@ -146,7 +148,7 @@ test.describe("HML final browser smoke", () => {
     await expect(page.getByRole("button", { name: "Marcar como analisada" })).toHaveCount(0);
     await page.screenshot({ path: shot("03-anamnese-apos-login.png"), fullPage: true });
 
-    async function markOption(title: string, option: "Não se aplica" | "Fazer depois") {
+    async function markOption(title: string | RegExp, option: "Não se aplica" | "Fazer depois") {
       const row = page.locator("li").filter({ has: page.getByRole("heading", { name: title }) });
       await row.getByRole("button", { name: "Outras opções" }).click();
       await page.getByRole("button", { name: option }).click();
@@ -155,19 +157,17 @@ test.describe("HML final browser smoke", () => {
 
     await markOption("Avaliação", "Não se aplica");
     await page.screenshot({ path: shot("04-avaliacao-na.png"), fullPage: true });
-    await markOption("Plano de acompanhamento", "Não se aplica");
+    await markOption(/^Plano de /, "Não se aplica");
     await page.reload();
     await expect(page.locator("li").filter({ hasText: "Avaliação" }).getByText("Não se aplica")).toBeVisible();
-    await expect(
-      page.locator("li").filter({ hasText: "Plano de acompanhamento" }).getByText("Não se aplica"),
-    ).toBeVisible();
+    await expect(page.locator("li").filter({ hasText: /Plano de / }).getByText("Não se aplica")).toBeVisible();
 
     await page.locator("li").filter({ has: page.getByRole("heading", { name: "Avaliação" }) }).getByRole("button", { name: "Alterar decisão" }).click();
     await page.getByRole("button", { name: "Reconsiderar" }).click();
     await markOption("Avaliação", "Fazer depois");
-    await page.locator("li").filter({ has: page.getByRole("heading", { name: "Plano de acompanhamento" }) }).getByRole("button", { name: "Alterar decisão" }).click();
+    await page.locator("li").filter({ has: page.getByRole("heading", { name: /^Plano de / }) }).getByRole("button", { name: "Alterar decisão" }).click();
     await page.getByRole("button", { name: "Reconsiderar" }).click();
-    await markOption("Plano de acompanhamento", "Fazer depois");
+    await markOption(/^Plano de /, "Fazer depois");
     await markOption("Rotina", "Não se aplica");
     await page.locator("li").filter({ has: page.getByRole("heading", { name: "Rotina" }) }).getByRole("button", { name: "Alterar decisão" }).click();
     await page.getByRole("button", { name: "Reconsiderar" }).click();
@@ -176,7 +176,7 @@ test.describe("HML final browser smoke", () => {
 
     await page.reload();
     await expect(page.locator("li").filter({ hasText: "Avaliação" }).getByText("Adiado")).toBeVisible();
-    await expect(page.locator("li").filter({ hasText: "Plano de acompanhamento" }).getByText("Adiado")).toBeVisible();
+    await expect(page.locator("li").filter({ hasText: /Plano de / }).getByText("Adiado")).toBeVisible();
     await expect(page.locator("li").filter({ hasText: "Rotina" }).getByText("Adiado")).toBeVisible();
 
     await logoutAndLogin(page, email);
@@ -191,7 +191,7 @@ test.describe("HML final browser smoke", () => {
       startsOn: "2026-08-17",
       time: "09:00",
     });
-    await expect(page.getByText(/até antes de/)).toBeVisible();
+    await expect(page.getByText(/Data de renovação/)).toBeVisible();
     await page.screenshot({ path: shot("07-preview-ends-on-exclusivo.png"), fullPage: true });
     const dupWait = page.waitForResponse((r) => r.url().includes("/cycles/intelligent") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Confirmar ciclo" }).click();
@@ -245,7 +245,7 @@ test.describe("HML final browser smoke", () => {
     await page.getByRole("button", { name: "Ajustar período" }).click();
     await page.getByLabel("Data de início do ciclo").fill(endsOn);
     await page.getByRole("button", { name: "Recalcular ciclo e valores" }).click();
-    await expect(page.getByText(/Validade/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Vigência/)).toBeVisible({ timeout: 15_000 });
     const seqP = page.waitForResponse((r) => r.url().includes("/cycles/intelligent") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Confirmar ciclo" }).click();
     const seqRes = await seqP;

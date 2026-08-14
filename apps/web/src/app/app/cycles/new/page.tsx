@@ -265,9 +265,11 @@ function NewIntelligentCycleForm() {
 
       {step === 1 ? (
         <div className="space-y-4">
-          <label className="block space-y-1.5">
+          <label className="block space-y-1.5" htmlFor="cycle-client">
             <span className="text-sm font-medium">Cliente</span>
             <select
+              id="cycle-client"
+              aria-label="Cliente"
               className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
@@ -281,9 +283,11 @@ function NewIntelligentCycleForm() {
               ))}
             </select>
           </label>
-          <label className="block space-y-1.5">
+          <label className="block space-y-1.5" htmlFor="cycle-service">
             <span className="text-sm font-medium">Serviço</span>
             <select
+              id="cycle-service"
+              aria-label="Serviço"
               className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
               value={serviceId}
               onChange={(e) => setServiceId(e.target.value)}
@@ -296,9 +300,11 @@ function NewIntelligentCycleForm() {
               ))}
             </select>
           </label>
-          <label className="block space-y-1.5">
+          <label className="block space-y-1.5" htmlFor="cycle-template">
             <span className="text-sm font-medium">Modelo de ciclo</span>
             <select
+              id="cycle-template"
+              aria-label="Modelo de ciclo"
               className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
               value={templateId}
               onChange={(e) => {
@@ -466,7 +472,7 @@ function NewIntelligentCycleForm() {
             required
           />
           <p className="text-sm text-[var(--color-ink-muted)]">
-            Alterar a data recalcula validade, renovação e lista de aulas.
+            Alterar a data recalcula vigência, renovação e lista de aulas.
           </p>
 
           <TextField

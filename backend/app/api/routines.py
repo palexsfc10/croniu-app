@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -112,6 +113,7 @@ def update_routine(
             db,
             organization_id=auth.organization.id,
             task_id=task_id,
+            today=routine_svc.local_today(auth.organization.timezone),
             **payload.model_dump(exclude_unset=True),
         )
     except AuthError as exc:
@@ -122,6 +124,7 @@ def update_routine(
 @router.post("/{task_id}/complete", response_model=RoutineOut)
 def complete_routine(
     task_id: UUID,
+    occurrence_on: date | None = Query(default=None),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> RoutineOut:
@@ -131,6 +134,7 @@ def complete_routine(
             organization_id=auth.organization.id,
             task_id=task_id,
             today=routine_svc.local_today(auth.organization.timezone),
+            occurrence_on=occurrence_on,
         )
     except AuthError as exc:
         raise _http(exc) from exc

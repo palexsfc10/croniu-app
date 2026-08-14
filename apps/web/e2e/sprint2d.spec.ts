@@ -74,8 +74,10 @@ test.describe("Sprint 2D Meu Ciclo", () => {
         client_id: clientId,
         service_id: serviceId,
         cycle_template_id: templateId,
-        starts_on: "2026-08-01",
+        starts_on: "2026-07-14",
         weekdays: [1, 3],
+        starts_time: "09:00:00",
+        generate_appointments: true,
         idempotency_key: `e2e-${Date.now()}`,
       },
     });
@@ -87,11 +89,11 @@ test.describe("Sprint 2D Meu Ciclo", () => {
     const portal = await context.newPage();
     await portal.goto(`/c/${token}`);
     await expect(portal.getByText(/Olá, Renata/i)).toBeVisible();
-    await expect(portal.getByText(/aulas previstas/i)).toBeVisible();
+    await expect(portal.getByText(/no ciclo|restantes/i)).toBeVisible();
 
-    await portal.getByRole("button", { name: "Quero renovar" }).click();
-    await portal.getByRole("button", { name: "Confirmar interesse" }).click();
-    await expect(portal.getByText(/Interesse enviado/i)).toBeVisible();
+    await portal.getByRole("button", { name: "Quero continuar" }).click();
+    await portal.getByRole("button", { name: "Enviar interesse" }).click();
+    await expect(portal.getByText(/interesse foi enviado/i)).toBeVisible();
     const r1 = await portal.request.post(`/api/v1/public/my-cycle/${token}/renewal`);
     const r2 = await portal.request.post(`/api/v1/public/my-cycle/${token}/renewal`);
     expect(r1.ok()).toBeTruthy();

@@ -97,10 +97,12 @@ function NewAppointmentForm() {
       <BackLink href="/app/agenda" label="Agenda" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo compromisso</h1>
 
-      <label className="block space-y-1.5">
+      <label className="block space-y-1.5" htmlFor="appointment-client">
         <span className="text-sm font-medium">Cliente</span>
         <select
+          id="appointment-client"
           required
+          aria-label="Cliente"
           className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
@@ -114,9 +116,11 @@ function NewAppointmentForm() {
         </select>
       </label>
 
-      <label className="block space-y-1.5">
+      <label className="block space-y-1.5" htmlFor="appointment-location">
         <span className="text-sm font-medium">Local (opcional)</span>
         <select
+          id="appointment-location"
+          aria-label="Local (opcional)"
           className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
           value={locationId}
           onChange={(e) => setLocationId(e.target.value)}

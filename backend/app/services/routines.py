@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm import Session
 
 from app.models.intake import RecurringClientTask
@@ -48,10 +49,12 @@ def get_routine(
     db: Session, *, organization_id: uuid.UUID, task_id: uuid.UUID
 ) -> RecurringClientTask:
     row = db.scalar(
-        select(RecurringClientTask).where(
+        select(RecurringClientTask)
+        .where(
             RecurringClientTask.id == task_id,
             RecurringClientTask.organization_id == organization_id,
         )
+        .with_for_update()
     )
     if row is None:
         raise AuthError("routine_not_found", "Rotina não encontrada.", 404)
@@ -196,14 +199,25 @@ def skip_occurrence(
 
 
 def complete_routine(
-    db: Session, *, organization_id: uuid.UUID, task_id: uuid.UUID, today: date | None = None
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    task_id: uuid.UUID,
+    today: date | None = None,
+    occurrence_on: date | None = None,
 ) -> RecurringClientTask:
     row = get_routine(db, organization_id=organization_id, task_id=task_id)
     now = datetime.now(UTC)
+    spec = dict(row.filter_json or {})
+    target = occurrence_on or row.next_run_on or today or date.today()
+    if spec.get("last_occurrence_completed") == target.isoformat():
+        return row
+    spec["last_occurrence_completed"] = target.isoformat()
+    row.filter_json = spec
+    flag_modified(row, "filter_json")
     row.last_completed_at = now
-    base = row.next_run_on or today or date.today()
     row.next_run_on = rec_svc.advance(
-        row.recurrence, row.filter_json or {}, weekday=row.weekday, from_day=base
+        row.recurrence, spec, weekday=row.weekday, from_day=target
     )
     if row.recurrence == "once":
         row.status = "archived"

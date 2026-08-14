@@ -357,6 +357,7 @@ class RoutineUpdateIn(BaseModel):
     filter_json: dict[str, Any] | None = None
     next_run_on: date | None = None
     status: str | None = None
+    recompute: bool | None = None
 
 
 class RoutineOut(BaseModel):

@@ -80,11 +80,15 @@ test.describe("isolation, agenda, register and ficha", () => {
     expect(registerPosts).toEqual([]);
 
     await expect(page.getByRole("heading", { name: "Entrar", exact: true })).toBeVisible();
-    await page.getByRole("textbox", { name: "E-mail" }).fill(email);
-    await expect(page.getByRole("textbox", { name: "E-mail" })).toHaveValue(email);
-    await page.getByRole("textbox", { name: "Senha" }).fill(password);
+    await page.getByLabel("E-mail").fill(email);
+    await expect(page.getByLabel("E-mail")).toHaveValue(email);
+    await page.getByLabel("Senha").fill(password);
+    await expect(page.getByLabel("Senha")).toHaveValue(password);
     await page.getByRole("button", { name: "Entrar" }).click();
-    await expect(page).toHaveURL(/\/app/, { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page).toHaveURL(/\/app/);
     const cookies = await page.context().cookies();
     expect(cookies.some((c) => c.name.includes("session") || c.name.includes("croniu"))).toBeTruthy();
 

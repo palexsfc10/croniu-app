@@ -95,6 +95,7 @@ export function ClientProfile({ clientId }: Props) {
     if (cy.data) setCycles(cy.data);
     if (pr.data) setProfession(pr.data);
     if (pref.data?.local_today) setTodayIso(pref.data.local_today);
+    if (ev.error && !c.error) setError(ev.error.message);
     if (ev.data) setEvaluations(ev.data);
     setLoading(false);
   }, [clientId]);
@@ -421,7 +422,14 @@ export function ClientProfile({ clientId }: Props) {
           className="min-h-[16rem] space-y-3"
           aria-label="Acompanhamento"
         >
-          {error && !item ? (
+          {loading && !item ? (
+            <div className="space-y-3" aria-busy="true" data-testid="accompaniment-skeleton">
+              <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+              <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+            </div>
+          ) : (
+            <>
+          {error ? (
             <EmptyStateGuide
               title="Não foi possível carregar o acompanhamento"
               body={error}
@@ -431,13 +439,7 @@ export function ClientProfile({ clientId }: Props) {
                 </Button>
               }
             />
-          ) : loading && !item ? (
-            <div className="space-y-3" aria-busy="true">
-              <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
-              <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
-            </div>
-          ) : (
-            <>
+          ) : null}
           {next.cta && next.href ? (
             <EmptyStateGuide
               title="Próxima ação"
@@ -479,6 +481,7 @@ export function ClientProfile({ clientId }: Props) {
           />
           <AccompanimentCard
             icon={<IconLayers className="h-5 w-5" />}
+            testId="accompaniment-plan-card"
             title={t(terms, "plan")}
             state={published || draft ? protocolStatusLabel((published || draft)?.status) : "Vazio"}
             summary={(published || draft)?.title || "Plano ainda não criado"}

@@ -299,6 +299,7 @@ export default function RoutinesPageInner() {
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium">Tipo</span>
           <select
+            aria-label="Tipo"
             className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
             value={taskType}
             onChange={(e) => setTaskType(e.target.value)}
@@ -312,9 +313,12 @@ export default function RoutinesPageInner() {
             )}
           </select>
         </label>
-        <label className="block space-y-1.5 text-sm">
+        <label className="block space-y-1.5 text-sm" htmlFor="routine-frequency">
           <span className="font-medium">Com que frequência?</span>
           <select
+            id="routine-frequency"
+            data-testid="routine-frequency"
+            aria-label="Com que frequência?"
             className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
             value={recurrence}
             onChange={(e) => {
@@ -333,6 +337,7 @@ export default function RoutinesPageInner() {
           <label className="block space-y-1.5 text-sm">
             <span className="font-medium">Dia da semana</span>
             <select
+              aria-label="Dia da semana"
               className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
               value={weekday}
               onChange={(e) => setWeekday(Number(e.target.value))}
@@ -349,6 +354,7 @@ export default function RoutinesPageInner() {
           <label className="block space-y-1.5 text-sm">
             <span className="font-medium">Como no mês?</span>
             <select
+              aria-label="Como no mês?"
               className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
               value={monthMode}
               onChange={(e) => setMonthMode(e.target.value as "dom" | "nth_weekday")}
@@ -368,6 +374,7 @@ export default function RoutinesPageInner() {
             <label className="block space-y-1.5 text-sm">
               <span className="font-medium">Qual ocorrência</span>
               <select
+                aria-label="Qual ocorrência"
                 className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
                 value={nth}
                 onChange={(e) => setNth(Number(e.target.value))}
@@ -376,6 +383,7 @@ export default function RoutinesPageInner() {
                 <option value={2}>Segunda</option>
                 <option value={3}>Terceira</option>
                 <option value={4}>Quarta</option>
+                <option value={5}>Quinta</option>
                 <option value={-1}>Última</option>
               </select>
             </label>
@@ -392,6 +400,7 @@ export default function RoutinesPageInner() {
             <label className="block space-y-1.5 text-sm">
               <span className="font-medium">Unidade</span>
               <select
+                aria-label="Unidade"
                 className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
                 value={intervalUnit}
                 onChange={(e) => setIntervalUnit(e.target.value)}

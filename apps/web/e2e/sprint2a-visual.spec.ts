@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
-import { registerProfessional } from "./register-flow";
+import { apiRegister, confirmIntelligentCycle, createServiceUi, createTemplateUi, saveClient } from "./helpers";
 
 const shotDir = path.join(__dirname, "artifacts", "sprint2a");
 
@@ -9,50 +9,33 @@ test.describe("sprint 2a visual QA", () => {
   test("capture key screens mobile and desktop", async ({ page }) => {
     mkdirSync(shotDir, { recursive: true });
     const suffix = Date.now();
-    const email = `viz_${suffix}@example.com`;
-    const password = "SenhaForte1!";
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await registerProfessional(page, {
+    await apiRegister(page, {
       name: "Visual QA",
       org: `Studio Viz ${suffix}`,
-      email,
-      password,
-    });
-    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible({
-      timeout: 15_000,
+      email: `viz_${suffix}@example.com`,
     });
     await page.screenshot({ path: path.join(shotDir, "hoje-empty-390.png"), fullPage: true });
 
     await page.getByRole("link", { name: "Clientes" }).click();
     await page.screenshot({ path: path.join(shotDir, "clientes-empty-390.png"), fullPage: true });
-    await page.getByRole("link", { name: /Adicionar / }).click();
-    await page.getByLabel("Telefone (WhatsApp)").fill("11966665555");
-    await page.getByRole("button", { name: "Salvar cliente" }).click();
-    await expect(page.getByRole("heading", { name: "Cliente Visual" })).toBeVisible({
-      timeout: 15_000,
-    });
+    await saveClient(page, "Cliente Visual", "11966665555");
 
-    await page.getByRole("link", { name: "Mais" }).click();
-    await page.getByRole("link", { name: "Serviços e planos" }).click();
-    await page.getByRole("link", { name: "Novo" }).click();
-    await page.getByLabel("Nome").fill("Mensal Visual");
-    await page.getByLabel("Valor (R$)").fill("280,00");
-    await page.getByRole("button", { name: "Salvar serviço" }).click();
-    await expect(page.getByText("Mensal Visual")).toBeVisible({ timeout: 15_000 });
+    await createServiceUi(page, "Mensal Visual", "280,00");
     await page.screenshot({ path: path.join(shotDir, "servicos-390.png"), fullPage: true });
+    await createTemplateUi(page, "2x por semana — mensal");
 
     await page.getByRole("link", { name: "Ciclos" }).click();
-    await page.getByRole("link", { name: "Novo" }).click();
+    await page.getByRole("link", { name: /Novo ciclo/ }).click();
     await page.screenshot({ path: path.join(shotDir, "ciclo-novo-390.png"), fullPage: true });
-    await page.locator("select").nth(0).selectOption({ label: "Cliente Visual" });
-    await page.locator("select").nth(1).selectOption({ label: "Mensal Visual" });
-    const start = new Date();
-    const end = new Date();
-    end.setDate(end.getDate() + 2);
-    await page.getByLabel("Início").fill(start.toISOString().slice(0, 10));
-    await page.getByLabel("Fim").fill(end.toISOString().slice(0, 10));
-    await page.getByRole("button", { name: "Criar ciclo" }).click();
+    await confirmIntelligentCycle(page, {
+      client: "Cliente Visual",
+      service: "Mensal Visual",
+      template: "2x por semana — mensal",
+      startsOn: "2026-08-01",
+      days: ["Ter", "Qui"],
+    });
     await expect(page.getByRole("heading", { name: "Cliente Visual" })).toBeVisible({
       timeout: 15_000,
     });
@@ -66,10 +49,10 @@ test.describe("sprint 2a visual QA", () => {
     await page.getByRole("link", { name: /R\$/ }).first().click();
     await page.screenshot({ path: path.join(shotDir, "recebimento-pendente-390.png"), fullPage: true });
     await page.getByRole("button", { name: "Marcar como pago" }).click();
-    await expect(page.getByText(/Pago em/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Recebido em/)).toBeVisible({ timeout: 15_000 });
     await page.screenshot({ path: path.join(shotDir, "recebimento-pago-390.png"), fullPage: true });
 
-    await page.getByRole("link", { name: "Hoje", exact: true }).click();
+    await page.goto("/app");
     await page.screenshot({ path: path.join(shotDir, "hoje-com-dados-390.png"), fullPage: true });
 
     await page.setViewportSize({ width: 1280, height: 800 });

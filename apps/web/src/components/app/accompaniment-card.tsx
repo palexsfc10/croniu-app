@@ -11,6 +11,7 @@ export type AccompanimentAction = {
 type Props = {
   icon: ReactNode;
   title: string;
+  testId?: string;
   state?: string | null;
   summary: string;
   detail?: string | null;
@@ -22,6 +23,7 @@ type Props = {
 export function AccompanimentCard({
   icon,
   title,
+  testId,
   state,
   summary,
   detail,
@@ -33,7 +35,10 @@ export function AccompanimentCard({
   const twoCol = actions.length === 2 && actions.every((a) => a.label.length <= 16);
 
   return (
-    <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+    <article
+      data-testid={testId}
+      className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
+    >
       <div className="flex items-start gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
           {icon}

@@ -83,6 +83,8 @@ function LoginFormInner() {
 
   return (
     <form
+      method="post"
+      action="/login"
       onSubmit={(event) => {
         event.preventDefault();
         const synced = valuesFromForm(event.currentTarget);
@@ -104,6 +106,7 @@ function LoginFormInner() {
         ) : null}
         <TextField
           label="E-mail"
+          id="login-email"
           type="email"
           autoComplete="email"
           inputMode="email"
@@ -115,6 +118,7 @@ function LoginFormInner() {
         />
         <TextField
           label="Senha"
+          id="login-password"
           type="password"
           autoComplete="current-password"
           enterKeyHint="done"

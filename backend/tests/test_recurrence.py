@@ -17,7 +17,9 @@ def test_monthly_fixed_and_nth_weekday():
     spec = {"month_mode": "dom", "month_day": 10, "starts_on": "2026-09-01"}
     nxt = next_after("monthly", spec, weekday=1, after=date(2026, 8, 14))
     assert nxt == date(2026, 9, 10)
+    assert nxt is not None
     nth = nth_weekday(2026, 9, 1, 1)
+    assert nth is not None
     assert nth.weekday() == 1
     spec2 = {"month_mode": "nth_weekday", "nth": 1, "nth_weekday": 1, "starts_on": "2026-09-01"}
     first_tue = next_after("monthly", spec2, weekday=1, after=date(2026, 8, 14))

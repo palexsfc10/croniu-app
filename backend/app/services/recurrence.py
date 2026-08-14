@@ -46,17 +46,17 @@ def _add_months(day: date, months: int, keep_day: int | None = None) -> date:
     return date(year, month, min(target_day, last))
 
 
-def nth_weekday(year: int, month: int, weekday: int, nth: int) -> date:
-    """weekday: 0=Mon … 6=Sun. nth: 1–4 or -1 (last)."""
+def nth_weekday(year: int, month: int, weekday: int, nth: int) -> date | None:
+    """weekday: 0=Mon … 6=Sun. nth: 1–5 or -1 (last). Missing 5th week → None."""
     cal = calendar.Calendar(firstweekday=0)
     days = [d for d in cal.itermonthdates(year, month) if d.month == month and d.weekday() == weekday]
     if not days:
-        raise ValueError("no weekday in month")
+        return None
     if nth == -1:
         return days[-1]
     idx = nth - 1
     if idx < 0 or idx >= len(days):
-        return days[-1]
+        return None
     return days[idx]
 
 
@@ -112,7 +112,7 @@ def next_after(recurrence: str, spec: dict[str, Any], *, weekday: int | None, af
             else:
                 keep = int(spec.get("month_day") or start.day)
                 candidate = date(y, m, min(keep, calendar.monthrange(y, m)[1]))
-            if candidate >= after and candidate >= start:
+            if candidate is not None and candidate >= after and candidate >= start:
                 return clamp(candidate)
             cursor_month = _add_months(cursor_month, months, 1)
         return None
