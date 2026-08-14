@@ -62,7 +62,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     plan_short: "plano",
     plan_review: "revisão do plano",
     session: "aula",
-    evaluation: "diagnóstico inicial",
+    evaluation: "avaliação",
     cycle: "ciclo",
     agenda: "agenda",
     routine: "rotina",
@@ -165,7 +165,7 @@ export function t(terms: Nomenclature, key: NomenclatureKey): string {
   return terms[key] ?? GENERIC[key];
 }
 
-const PHYSICAL_SPORTS = new Set(["musculacao", "funcional", "luta", "pilates", "corrida"]);
+const PHYSICAL_SPORTS = new Set(["musculacao"]);
 
 export function recommendedFormKind(
   professionCode: string | null | undefined,

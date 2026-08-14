@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BrandMark, BrandWordmark } from "@/components/brand";
+import { BrandWordmark } from "@/components/brand";
 import { ProductPreview } from "@/components/marketing/product-preview";
 import {
   IconCalendarDays,
@@ -32,8 +32,7 @@ export function PublicEntryHero({ next = null }: Props) {
         <div className="absolute -right-16 top-40 h-72 w-72 rounded-full bg-[color-mix(in_srgb,var(--violet-200)_35%,transparent)] blur-3xl" />
       </div>
 
-      <header className="mx-auto flex w-full max-w-6xl items-center gap-3 px-5 pb-2 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8">
-        <BrandMark size="sm" decorative />
+      <header className="mx-auto flex w-full max-w-6xl items-center px-5 pb-2 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8">
         <BrandWordmark size="lg" surface="light" />
       </header>
 

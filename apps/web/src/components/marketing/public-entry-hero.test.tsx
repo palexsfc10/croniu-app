@@ -24,7 +24,7 @@ describe("authHref", () => {
 
 describe("PublicEntryHero", () => {
   it("renders modern copy, CTAs, logo and a single H1", () => {
-    render(<PublicEntryHero />);
+    const { container } = render(<PublicEntryHero />);
 
     const headings = screen.getAllByRole("heading", { level: 1 });
     expect(headings).toHaveLength(1);
@@ -42,6 +42,7 @@ describe("PublicEntryHero", () => {
     expect(login).toHaveAttribute("href", "/login");
 
     expect(screen.getByRole("img", { name: "Croniu" })).toBeInTheDocument();
+    expect(container.querySelector('img[src="/brand/croniu-mark.png"]')).toBeNull();
     expect(screen.queryByText(/Sua rotina\. Seus ciclos/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Começar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Entrar" })).not.toBeInTheDocument();

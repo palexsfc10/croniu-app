@@ -15,6 +15,15 @@ describe("nomenclatureFor", () => {
     expect(terms.feedback).toBe("Feedback");
   });
 
+  it("adapts private tutor without clinical or workout terms", () => {
+    const terms = nomenclatureFor("private_tutor");
+    expect(terms.client).toBe("aluno");
+    expect(terms.plan).toBe("plano de aulas");
+    expect(terms.session).toBe("aula");
+    expect(terms.evaluation).toBe("avaliação");
+    expect(terms.intake_form).toBe("questionário");
+  });
+
   it("adapts consultant terms", () => {
     const terms = nomenclatureFor("consultant");
     expect(terms.client).toBe("cliente");

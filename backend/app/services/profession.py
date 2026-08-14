@@ -79,7 +79,7 @@ def recommended_form_kind(profession_code: str | None, specialty: str | None = N
     if code == "private_tutor":
         return "class_questionnaire"
     if code == "sports_teacher":
-        if specialty in {"musculacao", "funcional", "luta", "pilates", "corrida"}:
+        if specialty in {"musculacao"}:
             return "physical_anamnesis"
         return "sports_questionnaire"
     if code in {"consultant", "coach_mentor"}:
@@ -131,7 +131,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "plan_short": "plano",
             "plan_review": "revisão do plano",
             "session": "aula",
-            "evaluation": "diagnóstico inicial",
+            "evaluation": "avaliação",
             "cycle": "ciclo",
             "agenda": "agenda",
             "routine": "rotina",

@@ -72,6 +72,23 @@ Dockerfile já tinha `ARG/ENV GIT_SHA`. O deploy HML **não** passava `--build-a
 
 `DEPLOY_MARKER.txt` permanece.
 
-## 6–20. Entrega operacional
+## 6–20. Entrega operacional (HML)
 
-Preenchido após CI verde, deploy HML e smoke no navegador (Playwright + passagem visual). Alembic: sem migration nova; head permanece `0022_form_template_pin`.
+| Item | Valor |
+|---|---|
+| SHA candidato / HML | `efdfd92dd6492a8b1bca128e77de087ebd765609` |
+| CI | https://github.com/palexsfc10/croniu-app/actions/runs/31772063649 SUCCESS (admin, backend, web, migrations, image-build, secret-scan, compose, package-bundle) |
+| Backup | `/home/palex/ntws/backups/croniu-hml/pre-client-intake_20260814T051301Z.sql.gz` |
+| SHA256 | `9e5cc90d088c65b859881a442f1d36c1f4f252dedeb3de893b37a11a03726d5b` |
+| Marker | `efdfd92…` `deployed_at=20260814T051301Z` |
+| `/version` | `environment=hml` `git_sha=efdfd92dd6492a8b1bca128e77de087ebd765609` `build_time=20260814T051301Z` |
+| Alembic | `0022_form_template_pin` (head) |
+| Recreate | api + web + admin; db e tunnel preservados |
+| Murilo | registros **não** removidos |
+
+Smoke **API** do deploy: health 200; `/version` com SHA real.
+
+Smoke **navegador real** (Playwright + persistência visual + duplicata na UI): **não executado nesta rodada** — falta sessão autenticada no browser contra HML. Não declarar a rodada aceita até essa passagem.
+
+Riscos residuais: os dois ciclos de Murilo continuam ativos até reset controlado; sem smoke visual não há prova de persistência pós-reload/login nesta implantação.
+
