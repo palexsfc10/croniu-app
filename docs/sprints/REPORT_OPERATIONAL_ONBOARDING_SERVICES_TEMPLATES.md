@@ -68,7 +68,14 @@ Flags no `HomeSummary` contam só `organization_id` da sessão + `status=active`
 
 ## 17–18. Backup / SHA HML
 
-Preencher após o deploy HML desta entrega.
+- Backup: `/home/palex/ntws/backups/croniu-hml/pre-client-intake_20260814T140225Z.sql.gz`
+- SHA256: `82aa974947a6a68d515e80a9aedd50e9ffe9c0eb2a226c13cb7031136408a15b`
+- SHA anterior: `76b60022d66daf3435d975fcf2795a2ea9af5dda`
+- **SHA HML desta entrega:** `99489eb188cb9bbd132c5ef5650df7880f50b061`
+- `/version`: `environment=hml`, `build_time=20260814T140225Z`
+- Alembic: `0022_form_template_pin` (head) — sem migration nova
+- Recreate: api + web + admin. DB e cloudflared preservados. health=200
+- Login API das contas sintéticas retornou 401 (e-mail não verificado no reset) — smoke de flags fica para revisão humana no browser.
 
 ## 19. Evidências para revisão humana
 
