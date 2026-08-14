@@ -271,6 +271,51 @@ export function IconX({ className = "", ...props }: IconProps) {
   );
 }
 
+export function IconTarget({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="1" />
+    </svg>
+  );
+}
+
+export function IconActivity({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M3 12h4l2.5-6 4 12 2.5-6H21" />
+    </svg>
+  );
+}
+
+export function IconPhone({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M7 3h4l1.5 4-2 1.5a12 12 0 0 0 5 5L17 12l4 1.5V18a2 2 0 0 1-2.2 2A16 16 0 0 1 4 6.2 2 2 0 0 1 6 4Z" />
+    </svg>
+  );
+}
+
+export function IconClipboardList({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <rect x="6" y="4" width="12" height="16" rx="2" />
+      <path d="M9 4.5h6v2H9zM9 11h6M9 15h4" />
+    </svg>
+  );
+}
+
+export function IconHistory({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M4 12a8 8 0 1 0 2.3-5.7" />
+      <path d="M4 5v4h4" />
+      <path d="M12 8v5l3 2" />
+    </svg>
+  );
+}
+
 export function IconCalendarPlus({ className = "", ...props }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>

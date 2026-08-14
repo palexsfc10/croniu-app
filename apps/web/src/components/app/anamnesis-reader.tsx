@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { IconAlertCircle, IconChevronDown, IconShieldCheck } from "@/components/ui/icons";
 
 export type AnamnesisSnapshotItem = {
   id: string;
@@ -34,13 +35,14 @@ type Props = {
   requiresAttention?: boolean;
   summary?: AnamnesisSummary | null;
   questions: AnamnesisSnapshotItem[];
+  compact?: boolean;
 };
 
 function looksLikeTechnicalKey(value: string): boolean {
   return /^[a-z]_[a-z0-9_]+$/i.test(value);
 }
 
-function formatAnswer(item: AnamnesisSnapshotItem): string {
+export function formatAnamnesisAnswer(item: AnamnesisSnapshotItem): string {
   if (item.answer_label) return item.answer_label;
   const raw = item.answer;
   if (raw == null || raw === "") return "—";
@@ -71,12 +73,12 @@ export function AnamnesisReader({
   requiresAttention,
   summary,
   questions,
+  compact = false,
 }: Props) {
   const sections = useMemo(() => {
     const map = new Map<string, AnamnesisSnapshotItem[]>();
     for (const q of questions) {
       const title = q.section_title || "Respostas";
-      // Never use technical key as visible title
       const label = looksLikeTechnicalKey(q.label) ? "Resposta" : q.label;
       const item = { ...q, label };
       const list = map.get(title) ?? [];
@@ -87,72 +89,45 @@ export function AnamnesisReader({
   }, [questions]);
 
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(sections.map(([title], idx) => [title, idx < 2])),
+    Object.fromEntries(
+      sections.map(([title, items], idx) => {
+        const hasAttention = items.some((q) => q.attention);
+        return [title, idx === 0 || hasAttention];
+      }),
+    ),
   );
 
   const attentionCount =
-    summary?.attention_count ??
-    questions.filter((q) => q.attention && isYesNo(formatAnswer(q)) === "yes").length;
+    summary?.attention_count ?? questions.filter((q) => q.attention).length;
 
   return (
     <div className="space-y-3">
-      <header className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold text-[var(--color-ink)]">
-            {formName || "Formulário"}
-          </h2>
-          {statusLabel ? <Badge tone="neutral">{statusLabel}</Badge> : null}
-          {versionNumber != null ? (
-            <Badge tone="neutral">v{versionNumber}</Badge>
-          ) : null}
-        </div>
-        {submittedAt ? (
-          <p className="text-xs text-[var(--color-ink-muted)]">
-            Enviado em {new Date(submittedAt).toLocaleString("pt-BR")}
-          </p>
-        ) : null}
-        {requiresAttention || attentionCount > 0 ? (
-          <div className="rounded-[var(--radius-sm)] border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-2 text-sm text-[var(--color-ink)]">
-            <p className="font-medium">Atenção antes do início</p>
-            <p className="text-[var(--color-ink-muted)]">
-              O aluno informou {attentionCount || "um"} ponto
-              {attentionCount === 1 ? "" : "s"} que precisa{attentionCount === 1 ? "" : "m"}{" "}
-              ser analisado{attentionCount === 1 ? "" : "s"} antes do início das atividades.
-            </p>
+      {!compact ? (
+        <header className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-[var(--color-ink)]">
+              {formName || "Formulário"}
+            </h2>
+            {statusLabel ? <Badge tone="neutral">{statusLabel}</Badge> : null}
+            {versionNumber != null ? <Badge tone="neutral">v{versionNumber}</Badge> : null}
           </div>
-        ) : null}
-        {summary ? (
-          <dl className="grid gap-2 text-sm sm:grid-cols-2">
-            {summary.primary_goal ? (
-              <div>
-                <dt className="text-xs text-[var(--color-ink-muted)]">Objetivo principal</dt>
-                <dd>{summary.primary_goal}</dd>
-              </div>
-            ) : null}
-            {summary.modalities ? (
-              <div>
-                <dt className="text-xs text-[var(--color-ink-muted)]">Modalidade</dt>
-                <dd>{summary.modalities}</dd>
-              </div>
-            ) : null}
-            {summary.availability ? (
-              <div>
-                <dt className="text-xs text-[var(--color-ink-muted)]">Disponibilidade</dt>
-                <dd>{summary.availability}</dd>
-              </div>
-            ) : null}
-            {summary.experience ? (
-              <div>
-                <dt className="text-xs text-[var(--color-ink-muted)]">Experiência</dt>
-                <dd>{summary.experience}</dd>
-              </div>
-            ) : null}
-          </dl>
-        ) : null}
-      </header>
+          {submittedAt ? (
+            <p className="text-xs text-[var(--color-ink-muted)]">
+              Enviado em {new Date(submittedAt).toLocaleString("pt-BR")}
+            </p>
+          ) : null}
+          {requiresAttention || attentionCount > 0 ? (
+            <p className="text-sm text-[var(--color-ink)]">
+              {attentionCount} ponto{attentionCount === 1 ? "" : "s"} para revisar
+            </p>
+          ) : null}
+        </header>
+      ) : null}
 
       {sections.map(([title, items]) => {
         const isOpen = open[title] ?? false;
+        const panelId = `anamnesis-section-${title.replace(/\s+/g, "-").toLowerCase()}`;
+        const attentionInSection = items.filter((q) => q.attention).length;
         return (
           <section
             key={title}
@@ -160,29 +135,40 @@ export function AnamnesisReader({
           >
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-semibold text-[var(--color-ink)]"
+              className="flex w-full items-center justify-between gap-2 px-3 py-3 text-left"
               onClick={() => setOpen((prev) => ({ ...prev, [title]: !isOpen }))}
               aria-expanded={isOpen}
-              aria-controls={`anamnesis-section-${title}`}
-              aria-label={isOpen ? `Recolher ${title}` : `Expandir ${title}`}
+              aria-controls={panelId}
             >
-              <span>{title}</span>
-              <span className="text-[var(--color-ink-muted)]" aria-hidden>
-                {isOpen ? "▾" : "▸"}
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-[var(--color-ink)]">{title}</span>
+                <span className="mt-0.5 block text-xs text-[var(--color-ink-muted)]">
+                  {attentionInSection > 0
+                    ? `${attentionInSection} ponto${attentionInSection === 1 ? "" : "s"} para revisar`
+                    : `${items.length} resposta${items.length === 1 ? "" : "s"}`}
+                </span>
+              </span>
+              <span className="flex items-center gap-2">
+                {attentionInSection > 0 ? (
+                  <IconAlertCircle className="h-[18px] w-[18px] text-amber-700" />
+                ) : (
+                  <IconShieldCheck className="h-[18px] w-[18px] text-[var(--color-ink-muted)]" />
+                )}
+                <IconChevronDown
+                  className={`h-5 w-5 text-[var(--color-ink-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`}
+                />
               </span>
             </button>
             {isOpen ? (
-              <ul className="space-y-3 border-t border-[var(--color-border)] px-3 py-3">
+              <ul id={panelId} className="space-y-3 border-t border-[var(--color-border)] px-3 py-3">
                 {items.map((item) => {
-                  const answer = formatAnswer(item);
+                  const answer = formatAnamnesisAnswer(item);
                   const yn = isYesNo(answer);
                   return (
                     <li key={item.id} className="space-y-1 text-sm">
                       <p className="font-medium text-[var(--color-ink)]">{item.label}</p>
                       {yn ? (
-                        <Badge
-                          tone={yn === "yes" ? "warning" : yn === "no" ? "success" : "neutral"}
-                        >
+                        <Badge tone={yn === "yes" ? "warning" : yn === "no" ? "success" : "neutral"}>
                           {answer}
                         </Badge>
                       ) : item.type === "multi" || answer.includes(",") ? (

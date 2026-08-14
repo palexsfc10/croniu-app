@@ -20,9 +20,17 @@ import {
   nextActionLabel,
   protocolStatusLabel,
 } from "@/lib/status-labels";
+import { formatHumanDateRange } from "@/lib/date-format";
+import { cycleListStatus } from "@/lib/cycle-period";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  IconClipboardList,
+  IconHistory,
+  IconLayers,
+  IconRefreshCw,
+} from "@/components/ui/icons";
 
 type Tab = "resumo" | "acompanhamento" | "dados";
 
@@ -52,7 +60,7 @@ export function ClientProfile({ clientId }: Props) {
   const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [rawToken, setRawToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [portalNotice, setPortalNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [todayIso, setTodayIso] = useState("2026-01-01");
@@ -179,7 +187,7 @@ export function ClientProfile({ clientId }: Props) {
     }
     setAccess(result.data ?? null);
     setRawToken(result.data?.token ?? null);
-    setInfo("Acesso gerado. Copie agora — o token completo não será mostrado novamente.");
+    setPortalNotice("Acesso gerado. Copie agora — o token completo não será mostrado novamente.");
   }
 
   async function copyAccess() {
@@ -187,11 +195,11 @@ export function ClientProfile({ clientId }: Props) {
       ? access?.public_url || `${window.location.origin}/c/${rawToken}`
       : null;
     if (!url) {
-      setInfo("Gere um novo acesso para copiar o endereço completo.");
+      setPortalNotice("Gere um novo acesso para copiar o endereço completo.");
       return;
     }
     await navigator.clipboard.writeText(url);
-    setInfo("Acesso copiado.");
+    setPortalNotice("Acesso copiado.");
   }
 
   function shareWhatsApp() {
@@ -257,7 +265,12 @@ export function ClientProfile({ clientId }: Props) {
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
             {item.full_name}
           </h1>
-          <Badge tone="info">{clientStatusLabel(item.status) || stageLabel}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="info">{clientStatusLabel(item.status) || stageLabel}</Badge>
+            {next.cta ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
+            ) : null}
+          </div>
         </header>
       ) : (
         <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
@@ -266,11 +279,6 @@ export function ClientProfile({ clientId }: Props) {
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}
-        </p>
-      ) : null}
-      {info ? (
-        <p role="status" className="text-sm text-[var(--color-ink-muted)]">
-          {info}
         </p>
       ) : null}
 
@@ -308,8 +316,8 @@ export function ClientProfile({ clientId }: Props) {
           </div>
           {activeCycle ? (
             <p className="text-sm text-[var(--color-ink-muted)]">
-              Ciclo atual · {activeCycle.service_name || "Serviço"} · {activeCycle.starts_on} →{" "}
-              {activeCycle.ends_on}
+              Ciclo atual · {activeCycle.service_name || "Serviço"} ·{" "}
+              {formatHumanDateRange(activeCycle.starts_on, activeCycle.ends_on)}
             </p>
           ) : null}
           {published ? (
@@ -321,77 +329,148 @@ export function ClientProfile({ clientId }: Props) {
       ) : null}
 
       {tab === "acompanhamento" && item ? (
-        <section className="space-y-4" aria-label="Acompanhamento">
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold">Ciclo</h2>
-            {activeCycle ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                {activeCycle.starts_on} → {activeCycle.ends_on}
-                {activeCycle.service_name ? ` · ${activeCycle.service_name}` : ""}
-              </p>
-            ) : (
-              <p className="text-sm text-[var(--color-ink-muted)]">Nenhum ciclo ainda.</p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {activeCycle ? (
-                <Link href={`/app/cycles/${activeCycle.id}`}>
-                  <Button variant="secondary">Ver ciclo</Button>
-                </Link>
-              ) : (
+        <section className="space-y-3" aria-label="Acompanhamento">
+          <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
+                <IconRefreshCw className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm font-semibold">Ciclo atual</h2>
+                    <p className="text-sm text-[var(--color-ink)]">
+                      {activeCycle?.service_name || "Sem ciclo"}
+                    </p>
+                  </div>
+                  {activeCycle ? (
+                    <Badge tone="neutral">{cycleListStatus(activeCycle, todayIso)}</Badge>
+                  ) : null}
+                </div>
+                {activeCycle ? (
+                  <>
+                    <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                      {formatHumanDateRange(activeCycle.starts_on, activeCycle.ends_on)}
+                    </p>
+                    {activeCycle.lesson_count != null ? (
+                      <p className="text-sm text-[var(--color-ink-muted)]">
+                        {activeCycle.lessons_completed ?? 0} de {activeCycle.lesson_count} aulas
+                        realizadas
+                      </p>
+                    ) : null}
+                    <Link href={`/app/cycles/${activeCycle.id}`} className="mt-2 inline-block">
+                      <Button variant="secondary">Ver ciclo</Button>
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Nenhum ciclo ainda.</p>
+                    <Link
+                      href={`/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`}
+                      className="mt-2 inline-block"
+                    >
+                      <Button>Criar ciclo</Button>
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
+                <IconLayers className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-semibold">{t(terms, "plan")}</h2>
+                {published || draft ? (
+                  <>
+                    <p className="text-sm text-[var(--color-ink)]">{(published || draft)?.title}</p>
+                    <p className="text-sm text-[var(--color-ink-muted)]">
+                      {protocolStatusLabel((published || draft)?.status)}
+                      {(published || draft)?.duration_value
+                        ? ` · ${(published || draft)?.duration_value} semanas`
+                        : ""}
+                    </p>
+                    {draft ? (
+                      <Link
+                        href={`/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`}
+                        className="mt-2 inline-block"
+                      >
+                        <Button variant="secondary">Continuar rascunho</Button>
+                      </Link>
+                    ) : published ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`}
+                        >
+                          <Button variant="secondary">Ver plano</Button>
+                        </Link>
+                        <details>
+                          <summary className="cursor-pointer text-sm text-[var(--color-ink-muted)]">
+                            Mais
+                          </summary>
+                          <Link
+                            href={`/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`}
+                            className="mt-1 block text-sm"
+                          >
+                            Nova versão
+                          </Link>
+                        </details>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-[var(--color-ink-muted)]">Plano ainda não criado</p>
+                    <Link
+                      href={`/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`}
+                      className="mt-2 inline-block"
+                    >
+                      <Button>Criar plano</Button>
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
+                <IconClipboardList className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-semibold">Avaliações</h2>
+                <p className="text-sm text-[var(--color-ink)]">Nenhuma avaliação registrada</p>
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  Registre o ponto de partida quando fizer sentido.
+                </p>
                 <Link
-                  href={`/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`}
+                  href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`}
+                  className="mt-2 inline-block"
                 >
-                  <Button>Criar ciclo</Button>
+                  <Button variant="secondary">Nova avaliação</Button>
                 </Link>
-              )}
+              </div>
             </div>
-          </div>
+          </article>
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold">{t(terms, "plan")}</h2>
-            {published || draft ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                {(published || draft)?.title} ·{" "}
-                {protocolStatusLabel((published || draft)?.status)}
-                {(published || draft)?.duration_value
-                  ? ` · ${(published || draft)?.duration_value} ${(published || draft)?.duration_unit === "weeks" ? "semanas" : (published || draft)?.duration_unit}`
-                  : ""}
-              </p>
-            ) : (
-              <p className="text-sm text-[var(--color-ink-muted)]">Nenhum plano ainda.</p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {draft ? (
-                <Link href={`/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`}>
-                  <Button variant="secondary">Continuar rascunho</Button>
+          <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
+                <IconHistory className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-semibold">Rotinas</h2>
+                <p className="text-sm text-[var(--color-ink-muted)]">Rotina configurada no quadro.</p>
+                <Link href={`/app/routines?returnTo=${encodeURIComponent(returnAccomp)}`} className="mt-2 inline-block">
+                  <Button variant="secondary">Ver rotinas</Button>
                 </Link>
-              ) : null}
-              {published ? (
-                <Link href={`/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`}>
-                  <Button variant="secondary">Ver plano</Button>
-                </Link>
-              ) : null}
-              <Link href={`/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`}>
-                <Button variant={published || draft ? "ghost" : "primary"}>
-                  Criar {t(terms, "plan_short")}
-                </Button>
-              </Link>
+              </div>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold">Avaliações</h2>
-            <Link href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`}>
-              <Button variant="secondary">Nova avaliação</Button>
-            </Link>
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold">Rotinas</h2>
-            <Link href={`/app/routines?returnTo=${encodeURIComponent(returnAccomp)}`}>
-              <Button variant="secondary">Ver rotinas</Button>
-            </Link>
-          </div>
+          </article>
         </section>
       ) : null}
 
@@ -426,6 +505,11 @@ export function ClientProfile({ clientId }: Props) {
 
           <div className="space-y-2">
             <h2 className="text-sm font-semibold">Portal do cliente</h2>
+            {portalNotice ? (
+              <p role="status" className="text-sm text-[var(--color-ink-muted)]">
+                {portalNotice}
+              </p>
+            ) : null}
             <p className="text-sm text-[var(--color-ink-muted)]">
               Compartilhe este acesso para que o cliente acompanhe agenda, ciclo e conteúdos
               publicados.
