@@ -31,7 +31,7 @@ from app.services.environment_label import normalize_croniu_env
 from app.services.profession import PROFESSION_OPTIONS
 from app.services.platform_pilot_ops import list_cycle_agenda_integrity
 
-_PROFESSION_LABEL = {item["code"]: item["label"] for item in PROFESSION_OPTIONS}}
+_PROFESSION_LABEL = {item["code"]: item["label"] for item in PROFESSION_OPTIONS}
 
 
 def _plan_ops_counts(db: Session, organization_id: uuid.UUID) -> tuple[int, int, int]:
