@@ -120,7 +120,8 @@ describe("ClientProfile", () => {
     nav.tab = "acompanhamento";
     render(<ClientProfile clientId="c1" />);
     expect(await screen.findByText("Ciclo atual")).toBeInTheDocument();
-    expect(screen.getByText("17 ago. a 17 set.")).toBeInTheDocument();
+    expect(screen.getByText("17 ago. a 16 set.")).toBeInTheDocument();
+    expect(screen.getByText("Renovação em 17 set.")).toBeInTheDocument();
     expect(screen.queryByText(/2026-08-17/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver ciclo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver plano" })).toBeInTheDocument();

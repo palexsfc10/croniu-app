@@ -38,6 +38,28 @@ describe("selectDisplayCycle", () => {
     expect(selectDisplayCycle([upcoming, current], "2026-08-14")?.id).toBe("now");
   });
 
+  it("treats sequential boundary as a single current cycle", () => {
+    const prev = cycle({
+      id: "prev",
+      status: "active",
+      starts_on: "2026-08-17",
+      ends_on: "2026-09-17",
+    });
+    const next = cycle({
+      id: "next",
+      status: "active",
+      starts_on: "2026-09-17",
+      ends_on: "2026-10-17",
+    });
+    expect(selectDisplayCycle([prev, next], "2026-09-16")?.id).toBe("prev");
+    expect(cycleBucket(prev, "2026-09-16")).toBe("active");
+    expect(cycleBucket(next, "2026-09-16")).toBe("upcoming");
+    expect(selectDisplayCycle([prev, next], "2026-09-17")?.id).toBe("next");
+    expect(cycleBucket(prev, "2026-09-17")).toBe("ended");
+    expect(cycleBucket(next, "2026-09-17")).toBe("active");
+    expect(cycleBucket(next, "2026-10-17")).toBe("ended");
+  });
+
   it("shows upcoming as the display cycle when nothing has started", () => {
     const upcoming = cycle({
       id: "later",

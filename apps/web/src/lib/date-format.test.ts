@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatHumanDateRange, rangesOverlap } from "@/lib/date-format";
+import { formatCycleDetailLines, formatCycleVigencyCard, formatHumanDateRange, lastInclusiveIso, rangesOverlap } from "@/lib/date-format";
 import { filterCycles, type CycleBucket } from "@/lib/cycle-period";
 import type { Cycle } from "@/lib/api";
 
@@ -27,6 +27,17 @@ describe("date-format", () => {
     const text = formatHumanDateRange("2026-08-17", "2026-09-17");
     expect(text).toBe("17 ago. a 17 set.");
     expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    const card = formatCycleVigencyCard("2026-08-17", "2026-09-17");
+    expect(card.range).toBe("17 ago. a 16 set.");
+    expect(card.renewal).toBe("Renovação em 17 set.");
+    expect(lastInclusiveIso("2026-09-17")).toBe("2026-09-16");
+    expect(lastInclusiveIso("2026-03-01")).toBe("2026-02-28");
+    expect(lastInclusiveIso("2024-03-01")).toBe("2024-02-29");
+    expect(lastInclusiveIso("2027-01-01")).toBe("2026-12-31");
+    const detail = formatCycleDetailLines("2026-08-17", "2026-09-17");
+    expect(detail.vigency).toBe("Vigência: 17/08 a 16/09");
+    expect(detail.lessonsUntil).toBe("Aulas até 16/09");
+    expect(detail.renewal).toBe("Renovação em 17/09");
   });
 
   it("detects overlap across the full period", () => {

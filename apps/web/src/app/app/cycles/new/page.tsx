@@ -30,6 +30,7 @@ import {
   isDuplicateCycleCode,
   isOverlappingCycleCode,
 } from "@/components/app/cycle-overlap-alert";
+import { lastInclusiveIso } from "@/lib/date-format";
 
 function NewIntelligentCycleForm() {
   const router = useRouter();
@@ -326,8 +327,8 @@ function NewIntelligentCycleForm() {
             required
           />
           <p className="text-sm text-[var(--color-ink-muted)]">
-            Escolha quando o ciclo começa. Não precisa ser o dia de hoje — use a primeira aula
-            combinada com o cliente.
+            Escolha quando o ciclo começa. A data de renovação é calculada pelo modelo; o ciclo
+            atual fica vigente até o dia anterior.
           </p>
           {error && step === 2 ? (
             <p role="alert" className="text-sm text-[var(--color-danger)]">
@@ -381,11 +382,15 @@ function NewIntelligentCycleForm() {
               <span className="text-[var(--color-ink-muted)]">Serviço</span> · {service?.name}
             </p>
             <p>
-              <span className="text-[var(--color-ink-muted)]">Validade</span> ·{" "}
-              {formatDateBR(preview.starts_on)} até antes de {formatDateBR(preview.ends_on)}
+              <span className="text-[var(--color-ink-muted)]">Vigência</span> ·{" "}
+              {formatDateBR(preview.starts_on)} a {formatDateBR(lastInclusiveIso(preview.ends_on))}
             </p>
             <p>
-              <span className="text-[var(--color-ink-muted)]">Renovação</span> ·{" "}
+              <span className="text-[var(--color-ink-muted)]">Aulas até</span> ·{" "}
+              {formatDateBR(lastInclusiveIso(preview.ends_on))}
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Data de renovação</span> ·{" "}
               {formatDateBR(preview.ends_on)}
             </p>
             <p>

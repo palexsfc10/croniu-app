@@ -20,7 +20,7 @@ import {
   nextActionLabel,
   protocolStatusLabel,
 } from "@/lib/status-labels";
-import { formatHumanDateRange } from "@/lib/date-format";
+import { formatCycleVigencyCard } from "@/lib/date-format";
 import { cycleListStatus, selectDisplayCycle } from "@/lib/cycle-period";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
@@ -372,7 +372,10 @@ export function ClientProfile({ clientId }: Props) {
           {activeCycle ? (
             <p className="text-sm text-[var(--color-ink-muted)]">
               Ciclo atual · {activeCycle.service_name || "Serviço"} ·{" "}
-              {formatHumanDateRange(activeCycle.starts_on, activeCycle.ends_on)}
+              {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).range}
+              <span className="block">
+                {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).renewal}
+              </span>
             </p>
           ) : null}
           {published ? (
@@ -411,7 +414,10 @@ export function ClientProfile({ clientId }: Props) {
                 {activeCycle ? (
                   <>
                     <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                      {formatHumanDateRange(activeCycle.starts_on, activeCycle.ends_on)}
+                      {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).range}
+                    </p>
+                    <p className="text-sm text-[var(--color-ink-muted)]">
+                      {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).renewal}
                     </p>
                     {activeCycle.lesson_count != null ? (
                       <p className="text-sm text-[var(--color-ink-muted)]">

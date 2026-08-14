@@ -27,6 +27,43 @@ export function formatHumanDate(iso: string): string {
   return `${p.d} ${MONTHS[p.m - 1]}`;
 }
 
+export function formatIsoDayMonth(iso: string): string {
+  const p = parseIsoDate(iso);
+  if (!p) return iso;
+  return `${String(p.d).padStart(2, "0")}/${String(p.m).padStart(2, "0")}`;
+}
+
+export function lastInclusiveIso(endsOn: string): string {
+  return addDaysIso(endsOn, -1);
+}
+
+export function formatCycleVigencyCard(startsOn: string, endsOn: string): {
+  range: string;
+  renewal: string;
+} {
+  const last = lastInclusiveIso(endsOn);
+  return {
+    range: formatHumanDateRange(startsOn, last),
+    renewal: `Renovação em ${formatHumanDate(endsOn)}`,
+  };
+}
+
+export function formatCycleDetailLines(startsOn: string, endsOn: string): {
+  vigency: string;
+  lessonsUntil: string;
+  renewal: string;
+} {
+  const last = lastInclusiveIso(endsOn);
+  const startLabel = formatIsoDayMonth(startsOn);
+  const lastLabel = formatIsoDayMonth(last);
+  const renewLabel = formatIsoDayMonth(endsOn);
+  return {
+    vigency: `Vigência: ${startLabel} a ${lastLabel}`,
+    lessonsUntil: `Aulas até ${lastLabel}`,
+    renewal: `Renovação em ${renewLabel}`,
+  };
+}
+
 export function formatHumanDateRange(startIso: string, endIso: string): string {
   const a = parseIsoDate(startIso);
   const b = parseIsoDate(endIso);

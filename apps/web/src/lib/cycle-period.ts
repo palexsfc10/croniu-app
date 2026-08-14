@@ -8,17 +8,24 @@ export function cycleBucket(cycle: Cycle, today: string): CycleBucket {
   if (cycle.status === "ended" || cycle.status === "completed" || cycle.status === "cancelled") {
     return "ended";
   }
+  if (cycle.ends_on <= today) return "ended";
   if (cycle.starts_on > today) return "upcoming";
   return "active";
 }
 
-/** Operational cycle for ficha, preparação and lists: current, else upcoming. */
+/** Operational cycle for ficha, preparação and lists: current exclusive window, else upcoming. */
+export function isCycleCurrent(startsOn: string, endsOn: string, today: string): boolean {
+  return startsOn <= today && today < endsOn;
+}
+
 export function selectDisplayCycle(cycles: Cycle[], today: string): Cycle | null {
   const operational = cycles.filter(
     (c) => c.status === "active" || c.status === "paused",
   );
-  const current = operational.find((c) => c.starts_on <= today && c.ends_on >= today);
-  if (current) return current;
+  const current = operational.filter((c) => isCycleCurrent(c.starts_on, c.ends_on, today));
+  if (current.length) {
+    return [...current].sort((a, b) => a.starts_on.localeCompare(b.starts_on))[0];
+  }
   const upcoming = operational
     .filter((c) => c.starts_on > today)
     .sort((a, b) => a.starts_on.localeCompare(b.starts_on))[0];
@@ -60,6 +67,7 @@ export function cycleListStatus(cycle: Cycle, today: string): string {
   if (cycle.status === "cancelled") return "Cancelado";
   if (cycle.status === "ended" || cycle.status === "completed") return "Encerrado";
   if (cycle.starts_on > today) return "Aguardando início";
+  if (cycle.ends_on <= today) return "Encerrado";
   if (cycle.is_nearing_end) return "Termina em breve";
   if (cycle.status === "paused") return "Pausado";
   if (!cycle.weekdays?.length && !cycle.default_starts_time) return "Sem agenda";

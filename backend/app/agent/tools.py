@@ -27,6 +27,7 @@ from app.models.client_evaluation import ClientEvaluation
 from app.models.cycle import Cycle
 from app.schemas.evaluations import EvaluationCreate
 from app.services import agenda as agenda_svc
+from app.services import cycle_period as cycle_period_svc
 from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
 from app.services import evaluations as eval_svc
@@ -60,6 +61,18 @@ class ToolDefinition:
 # --------------------------------------------------------------------------
 # Read tools — argument schemas
 # --------------------------------------------------------------------------
+
+
+def _tool_today(ctx: ToolContext) -> date:
+    if ctx.today is not None:
+        return ctx.today
+    org = agenda_svc.get_organization(ctx.db, ctx.organization_id)
+    return agenda_svc.org_local_today(org)
+
+
+def _operational_cycle_outs(rows: list, today: date) -> list:
+    picked = cycle_period_svc.pick_operational_cycle(rows, today)
+    return [picked] if picked is not None else []
 
 
 class EmptyArgs(BaseModel):
@@ -361,7 +374,7 @@ def _list_ending_cycles(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
             .where(
                 Cycle.organization_id == ctx.organization_id,
                 Cycle.status == "active",
-                Cycle.ends_on >= today,
+                Cycle.ends_on > today,
                 Cycle.ends_on <= horizon,
             )
             .options(selectinload(Cycle.client), selectinload(Cycle.service))
@@ -652,6 +665,7 @@ def _get_client_cycle_status(ctx: ToolContext, args: dict[str, Any]) -> dict[str
         client_id=parsed.client_id,
         status="active",
     )
+    picked = _operational_cycle_outs(active, _tool_today(ctx))
     return {
         "client": {"id": str(client.id), "full_name": client.full_name},
         "active_cycles": [
@@ -664,9 +678,9 @@ def _get_client_cycle_status(ctx: ToolContext, args: dict[str, Any]) -> dict[str
                 "weekly_frequency": c.weekly_frequency,
                 "lesson_count": c.lesson_count,
             }
-            for c in active
+            for c in picked
         ],
-        "has_active_cycle": len(active) > 0,
+        "has_active_cycle": len(picked) > 0,
     }
 
 
@@ -749,7 +763,7 @@ def _get_client_overview(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
                 "ends_on": c.ends_on.isoformat(),
                 "is_nearing_end": c.is_nearing_end,
             }
-            for c in active_cycles
+            for c in _operational_cycle_outs(active_cycles, _tool_today(ctx))
         ],
         "pending_receivables_count": len(pending_receivables),
         "evaluations_count": len(evaluations),
@@ -1112,11 +1126,9 @@ def _propose_create_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
     service = domain_svc.get_service(
         ctx.db, organization_id=ctx.organization_id, service_id=parsed.service_id
     )
-    last_day = parsed.ends_on - timedelta(days=1)
+    last_day = cycle_period_svc.last_inclusive_on(parsed.ends_on)
     period = (
-        f"{parsed.starts_on.isoformat()} → {parsed.ends_on.isoformat()}"
-        if parsed.weekly_frequency is None
-        else f"{cycle_prep._fmt_date(parsed.starts_on)} a {cycle_prep._fmt_date(last_day)}"
+        f"{cycle_prep._fmt_date(parsed.starts_on)} a {cycle_prep._fmt_date(last_day)}"
     )
     value = parsed.value_cents
     if value is None:

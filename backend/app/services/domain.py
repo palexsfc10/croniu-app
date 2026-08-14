@@ -24,6 +24,7 @@ from app.schemas.domain import (
     WhatsAppPrepOut,
 )
 from app.services import cycle_guard as cycle_guard_svc
+from app.services import cycle_period as cycle_period_svc
 from app.services.auth import AuthError
 
 NEARING_END_DAYS = 7
@@ -95,7 +96,7 @@ def _attention_cycle_subtitle(cycle: CycleOut) -> str:
             )
         )
         return f"Ciclo termina {when} · sem renovação encaminhada"
-    return f"Ciclo encerra em {cycle.ends_on.isoformat()} · sem renovação encaminhada"
+    return f"Ciclo encerra em {cycle_period_svc.last_inclusive_on(cycle.ends_on).isoformat()} · renovação em {cycle.ends_on.isoformat()} · sem renovação encaminhada"
 
 
 def cycles_suppressed_from_home_attention(
@@ -442,10 +443,17 @@ def _cycle_out(
 ) -> CycleOut:
     today = today or date.today()
     days_remaining = (cycle.ends_on - today).days
+    current = cycle_period_svc.is_current(
+        starts_on=cycle.starts_on, ends_on=cycle.ends_on, today=today
+    )
     lessons_remaining = None
     if cycle.lesson_count is not None:
         lessons_remaining = max(0, int(cycle.lesson_count) - int(lessons_completed))
-    nearing_by_date = cycle.status == "active" and 0 <= days_remaining <= NEARING_END_DAYS
+    nearing_by_date = (
+        cycle.status == "active"
+        and current
+        and 1 <= days_remaining <= NEARING_END_DAYS
+    )
     nearing_by_lessons = (
         cycle.status == "active"
         and lessons_remaining is not None
@@ -508,6 +516,13 @@ def _cycle_out(
     )
 
 
+def _org_today(db: Session, organization_id: uuid.UUID) -> date:
+    from app.services import agenda as agenda_svc
+
+    org = agenda_svc.get_organization(db, organization_id)
+    return agenda_svc.org_local_today(org)
+
+
 def list_cycles(
     db: Session,
     *,
@@ -525,12 +540,14 @@ def list_cycles(
     if client_id:
         query = query.where(Cycle.client_id == client_id)
     rows = list(db.scalars(query.order_by(Cycle.ends_on.asc())).all())
+    today = _org_today(db, organization_id)
     progress = map_lesson_progress(
         db, organization_id=organization_id, cycle_ids=[row.id for row in rows]
     )
     return [
         _cycle_out(
             row,
+            today,
             lessons_completed=progress.get(row.id, (0, 0))[0],
             lessons_no_show=progress.get(row.id, (0, 0))[1],
         )
@@ -648,7 +665,8 @@ def prepare_whatsapp_renewal(
     service_name = cycle.service.name if cycle.service else "seu pacote"
     message = (
         f"Olá {client.full_name}! Seu ciclo de {service_name} "
-        f"encerra em {cycle.ends_on.strftime('%d/%m/%Y')}. "
+        f"encerra em {cycle_period_svc.last_inclusive_on(cycle.ends_on).strftime('%d/%m/%Y')} "
+        f"(renovação em {cycle.ends_on.strftime('%d/%m/%Y')}). "
         "Podemos conversar sobre a renovação?"
     )
     digits = phone_digits(client.phone)
@@ -1033,7 +1051,9 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         ).all()
     )
     # Active rows past ends_on also count as ended-without-renewal candidates.
-    past_due_active = [row for row in active_rows if row.ends_on < today]
+    past_due_active = [
+        row for row in active_rows if cycle_period_svc.is_elapsed(ends_on=row.ends_on, today=today)
+    ]
     ended_candidates = ended_rows + past_due_active
 
     progress = map_lesson_progress(
@@ -1296,6 +1316,8 @@ def cycle_to_out(db: Session, cycle: Cycle, today: date | None = None) -> CycleO
     no_show = count_lessons_no_show(
         db, organization_id=cycle.organization_id, cycle_id=cycle.id
     )
+    if today is None:
+        today = _org_today(db, cycle.organization_id)
     return _cycle_out(
         cycle, today, lessons_completed=completed, lessons_no_show=no_show
     )

@@ -31,6 +31,7 @@ from app.models.organization import Organization
 from app.services import evaluations as eval_svc
 from app.services import journey as journey_svc
 from app.services import protocols as proto_svc
+from app.services import cycle_period as cycle_period_svc
 from app.services.auth import AuthError
 
 STEP_KEYS = (
@@ -69,18 +70,7 @@ def _today(db: Session, organization_id: uuid.UUID) -> date:
 def _pick_cycle(
     rows: list[Cycle], today: date
 ) -> Cycle | None:
-    operational = [c for c in rows if c.status in {"active", "paused"}]
-    current = [
-        c
-        for c in operational
-        if c.starts_on <= today and c.ends_on >= today
-    ]
-    if current:
-        return sorted(current, key=lambda c: c.starts_on)[0]
-    upcoming = [c for c in operational if c.starts_on > today]
-    if upcoming:
-        return sorted(upcoming, key=lambda c: c.starts_on)[0]
-    return None
+    return cycle_period_svc.pick_operational_cycle(rows, today)
 
 
 def count_cycle_agenda_slots(
@@ -202,8 +192,9 @@ def resolve_accompaniment(
         summaries["evaluation"] = "Registro existente"
     if cycle is not None:
         service = cycle.service.name if cycle.service else "Ciclo"
+        last = cycle_period_svc.last_inclusive_on(cycle.ends_on)
         summaries["cycle"] = (
-            f"{service} · {cycle.starts_on.strftime('%d/%m')} a {cycle.ends_on.strftime('%d/%m')}"
+            f"{service} · {cycle.starts_on.strftime('%d/%m')} a {last.strftime('%d/%m')}"
         )
         if agenda_complete:
             summaries["agenda"] = f"{appt_count} aulas na agenda"

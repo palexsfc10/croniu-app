@@ -37,6 +37,7 @@ from app.schemas.my_cycle import (
 )
 from app.security.passwords import generate_session_token, hash_session_token
 from app.services import agenda as agenda_svc
+from app.services import cycle_period as cycle_period_svc
 from app.services import domain as domain_svc
 from app.services import evaluations as eval_svc
 from app.services import proof_storage
@@ -338,21 +339,22 @@ def select_relevant_cycle(
             .order_by(Cycle.starts_on.desc())
         ).all()
     )
-    upcoming = [
-        c
-        for c in cycles
-        if c.status == "active" and c.starts_on > today
-    ]
-    if upcoming:
-        return min(upcoming, key=lambda c: c.starts_on)
-
     current = [
         c
         for c in cycles
-        if c.status == "active" and c.starts_on <= today < c.ends_on
+        if c.status == "active"
+        and cycle_period_svc.is_current(starts_on=c.starts_on, ends_on=c.ends_on, today=today)
     ]
     if current:
-        return max(current, key=lambda c: c.starts_on)
+        return min(current, key=lambda c: c.starts_on)
+
+    upcoming = [
+        c
+        for c in cycles
+        if c.status == "active" and cycle_period_svc.is_upcoming(starts_on=c.starts_on, today=today)
+    ]
+    if upcoming:
+        return min(upcoming, key=lambda c: c.starts_on)
 
     ended = [c for c in cycles if c.ends_on <= today or c.status == "ended"]
     if ended:

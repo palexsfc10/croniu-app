@@ -19,7 +19,7 @@ import {
   type PeriodPreset,
 } from "@/lib/cycle-period";
 import {
-  formatHumanDateRange,
+  formatCycleVigencyCard,
   monthTitle,
   shiftMonth,
   startOfMonth,
@@ -285,7 +285,10 @@ export default function CyclesPage() {
               </div>
               <p className="text-sm text-[var(--color-ink)]">{item.service_name}</p>
               <p className="text-sm text-[var(--color-ink-muted)]">
-                {formatHumanDateRange(item.starts_on, item.ends_on)}
+                {formatCycleVigencyCard(item.starts_on, item.ends_on).range}
+              </p>
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                {formatCycleVigencyCard(item.starts_on, item.ends_on).renewal}
               </p>
               <p className="mt-1 text-sm text-[var(--color-ink)]">
                 {item.lesson_count != null

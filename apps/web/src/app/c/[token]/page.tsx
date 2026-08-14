@@ -4,10 +4,10 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   formatBRL,
-  formatDateBR,
   type PortalIntakeStatus,
   type PublicMyCycle,
 } from "@/lib/api";
+import { formatCycleDetailLines } from "@/lib/date-format";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { EvolutionEntry } from "@/components/app/evolution-entry";
 import { Button } from "@/components/ui/button";
@@ -266,13 +266,14 @@ export default function PublicMyCyclePage() {
                   </div>
                   <p className="text-sm text-[var(--color-ink-muted)]">{data.cycle.service_name}</p>
                   <p className="text-sm">
-                    {formatDateBR(data.cycle.starts_on)} → {formatDateBR(data.cycle.ends_on)}
+                    {formatCycleDetailLines(data.cycle.starts_on, data.cycle.ends_on).vigency}
                   </p>
-                  {data.cycle.renewal_on ? (
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      Renovação prevista · {formatDateBR(data.cycle.renewal_on)}
-                    </p>
-                  ) : null}
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    {formatCycleDetailLines(data.cycle.starts_on, data.cycle.ends_on).lessonsUntil}
+                  </p>
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    {formatCycleDetailLines(data.cycle.starts_on, data.cycle.ends_on).renewal}
+                  </p>
                 </section>
 
                 <section className="space-y-2">

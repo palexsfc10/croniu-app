@@ -10,6 +10,7 @@ import {
   type Cycle,
   type CyclePreview,
 } from "@/lib/api";
+import { lastInclusiveIso } from "@/lib/date-format";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
@@ -181,8 +182,8 @@ export default function EditCyclePage() {
               </Button>
               {preview ? (
                 <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
-                  {preview.lesson_count} aulas · {formatBRL(preview.final_cents)} · até{" "}
-                  {preview.ends_on}
+                  {preview.lesson_count} aulas · {formatBRL(preview.final_cents)} · vigência até{" "}
+                  {lastInclusiveIso(preview.ends_on)} · renovação {preview.ends_on}
                 </p>
               ) : null}
             </>
