@@ -1,7 +1,9 @@
 # Relatório — formulários orientados, plano de acompanhamento e recorrência
 
 Data: 2026-08-14  
-Branch: `feature/client-intake-journey`
+Branch: `feature/client-intake-journey`  
+SHA: `4b4f56c`  
+CI: https://github.com/palexsfc10/croniu-app/actions/runs/31827765412 (sucesso)
 
 ## 1. Diagnóstico da aba Acompanhamento vazia
 
