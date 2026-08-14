@@ -282,7 +282,7 @@ def test_create_rolls_back_on_conflict(client, register_payload):
             )
             raise AssertionError("expected conflict")
         except AuthError as exc:
-            assert exc.code == "appointment_conflict"
+            assert exc.code == "SCHEDULE_CONFLICT"
             assert exc.details and exc.details.get("suggestions") is not None
         # No cycle with that idempotency key
         from sqlalchemy import select

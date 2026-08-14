@@ -25,6 +25,7 @@ from app.schemas.cycle_intelligence import (
 )
 from app.schemas.domain import CycleOut
 from app.services import agenda as agenda_svc
+from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
 from app.services.auth import AuthError
 from app.services.cycle_calc import compose_financial, compute_renewal_on, enumerate_lesson_dates
@@ -269,13 +270,13 @@ def create_intelligent_cycle(
     payload: IntelligentCycleCreate,
 ) -> Cycle:
     if payload.idempotency_key:
-        existing = db.scalar(
-            select(Cycle).where(
-                Cycle.organization_id == organization_id,
-                Cycle.idempotency_key == payload.idempotency_key,
-            )
+        replay = schedule_svc.replay_or_release_idempotent_cycle(
+            db,
+            organization_id=organization_id,
+            idempotency_key=payload.idempotency_key,
         )
-        if existing is not None:
+        if replay is not None:
+            existing, _appts = replay
             return domain_svc.get_cycle(
                 db, organization_id=organization_id, cycle_id=existing.id
             )
@@ -367,8 +368,6 @@ def create_intelligent_cycle(
         )
     assert payload.starts_time is not None
     tz = _org_tz(db, organization_id)
-    from app.services import cycle_schedule as schedule_svc
-
     slots = schedule_svc.slots_from_payload(
         payload.weekdays, starts_time=payload.starts_time
     )
@@ -430,11 +429,11 @@ def create_intelligent_cycle(
             tz=tz,
             preferred=payload.starts_time,
         )
-        raise AuthError(
-            "appointment_conflict",
-            "Há conflito de horário. Nenhuma aula foi criada.",
-            status_code=409,
-            details={"conflicts": all_conflicts, "suggestions": alts},
+        schedule_svc.raise_schedule_conflict(
+            conflicts=all_conflicts,
+            conflict_count=len(hits),
+            occurrence_count=len(occurrences),
+            suggestions=alts,
         )
 
     cycle = Cycle(
@@ -479,6 +478,7 @@ def create_intelligent_cycle(
         )
 
     if len(planned) != int(preview.lesson_count):
+        db.rollback()
         raise AuthError(
             "agenda_incomplete",
             "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
@@ -531,6 +531,35 @@ def create_intelligent_cycle(
             for appt in future_open:
                 appt.status = "cancelled"
                 db.add(appt)
+
+    db.flush()
+    hits_final = schedule_svc.find_occurrence_conflicts(
+        db,
+        organization_id=organization_id,
+        occurrences=occurrences,
+        exclude_cycle_id=cycle.id,
+    )
+    if hits_final:
+        flat: list[dict] = []
+        tz = _org_tz(db, organization_id)
+        for hit in hits_final:
+            for row in hit.conflicting:
+                flat.append(
+                    {
+                        "id": str(row.id),
+                        "client_name": row.client.full_name if row.client else None,
+                        "starts_at": row.starts_at.isoformat(),
+                        "ends_at": row.ends_at.isoformat(),
+                        "status": row.status,
+                        "occurrence": schedule_svc.format_occurrence_label(hit.occurrence, tz),
+                    }
+                )
+        db.rollback()
+        schedule_svc.raise_schedule_conflict(
+            conflicts=flat,
+            conflict_count=len(hits_final),
+            occurrence_count=len(occurrences),
+        )
 
     db.commit()
     return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)

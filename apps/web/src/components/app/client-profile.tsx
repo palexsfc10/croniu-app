@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import {
   apiFetch,
   type Client,
@@ -21,7 +21,7 @@ import {
   protocolStatusLabel,
 } from "@/lib/status-labels";
 import { formatHumanDateRange } from "@/lib/date-format";
-import { cycleListStatus } from "@/lib/cycle-period";
+import { cycleListStatus, selectDisplayCycle } from "@/lib/cycle-period";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -97,9 +97,20 @@ export function ClientProfile({ clientId }: Props) {
     router.replace(`/app/clients/${clientId}?tab=${next}`);
   }
 
+  function onTabKey(event: KeyboardEvent<HTMLDivElement>) {
+    const idx = tabs.findIndex((entry) => entry.id === tab);
+    if (idx < 0) return;
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      const delta = event.key === "ArrowRight" ? 1 : -1;
+      const next = tabs[(idx + delta + tabs.length) % tabs.length];
+      setTab(next.id);
+    }
+  }
+
   const published = protocols.find((p) => p.status === "published");
   const draft = protocols.find((p) => p.status === "draft");
-  const activeCycle = cycles.find((c) => c.status === "active") ?? cycles[0];
+  const activeCycle = selectDisplayCycle(cycles, todayIso);
   const stageLabel = journeyStageLabel(journey?.stage);
   const actionLabel =
     journey?.next_action_label || nextActionLabel(journey?.next_action);
@@ -285,15 +296,19 @@ export function ClientProfile({ clientId }: Props) {
       <div
         role="tablist"
         aria-label="Ficha"
-        className="grid grid-cols-3 gap-1 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-1"
+        onKeyDown={onTabKey}
+        className="grid h-12 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)_minmax(0,1fr)] gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-1 max-[360px]:h-14 max-[360px]:text-[0.8125rem]"
       >
         {tabs.map((entry) => (
           <button
             key={entry.id}
             type="button"
             role="tab"
+            id={`ficha-tab-${entry.id}`}
             aria-selected={tab === entry.id}
-            className="min-h-11 rounded-[var(--radius-sm)] px-2 text-sm font-medium text-[var(--color-ink-muted)] aria-selected:bg-[var(--color-surface)] aria-selected:text-[var(--color-ink)]"
+            aria-controls={`ficha-panel-${entry.id}`}
+            tabIndex={tab === entry.id ? 0 : -1}
+            className="min-h-11 min-w-0 rounded-[var(--radius-sm)] px-1 text-center text-sm font-medium text-[var(--color-ink-muted)] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_2px_rgba(15,15,20,0.06)] max-[360px]:px-0.5 max-[360px]:text-xs"
             onClick={() => setTab(entry.id)}
           >
             {entry.label}
@@ -302,7 +317,13 @@ export function ClientProfile({ clientId }: Props) {
       </div>
 
       {tab === "resumo" && item ? (
-        <section className="space-y-3" aria-label="Resumo">
+        <section
+          id="ficha-panel-resumo"
+          role="tabpanel"
+          aria-labelledby="ficha-tab-resumo"
+          className="space-y-3"
+          aria-label="Resumo"
+        >
           <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
               {next.title}
@@ -329,7 +350,13 @@ export function ClientProfile({ clientId }: Props) {
       ) : null}
 
       {tab === "acompanhamento" && item ? (
-        <section className="space-y-3" aria-label="Acompanhamento">
+        <section
+          id="ficha-panel-acompanhamento"
+          role="tabpanel"
+          aria-labelledby="ficha-tab-acompanhamento"
+          className="space-y-3"
+          aria-label="Acompanhamento"
+        >
           <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
             <div className="flex items-start gap-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]">
@@ -475,7 +502,13 @@ export function ClientProfile({ clientId }: Props) {
       ) : null}
 
       {tab === "dados" && item ? (
-        <section className="space-y-4" aria-label="Dados">
+        <section
+          id="ficha-panel-dados"
+          role="tabpanel"
+          aria-labelledby="ficha-tab-dados"
+          className="space-y-4"
+          aria-label="Dados"
+        >
           <dl className="space-y-2 text-sm">
             <div>
               <dt className="text-[var(--color-ink-muted)]">Telefone</dt>

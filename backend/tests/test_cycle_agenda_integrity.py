@@ -394,7 +394,7 @@ def test_conflict_leaves_no_active_cycle(client, register_payload):
         },
     )
     assert res.status_code == 409
-    assert res.json()["code"] == "appointment_conflict"
+    assert res.json()["code"] == "SCHEDULE_CONFLICT"
     assert client.get("/api/v1/cycles").json() == []
 
 

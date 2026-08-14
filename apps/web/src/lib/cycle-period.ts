@@ -12,6 +12,19 @@ export function cycleBucket(cycle: Cycle, today: string): CycleBucket {
   return "active";
 }
 
+/** Operational cycle for ficha, preparação and lists: current, else upcoming. */
+export function selectDisplayCycle(cycles: Cycle[], today: string): Cycle | null {
+  const operational = cycles.filter(
+    (c) => c.status === "active" || c.status === "paused",
+  );
+  const current = operational.find((c) => c.starts_on <= today && c.ends_on >= today);
+  if (current) return current;
+  const upcoming = operational
+    .filter((c) => c.starts_on > today)
+    .sort((a, b) => a.starts_on.localeCompare(b.starts_on))[0];
+  return upcoming ?? null;
+}
+
 export function periodBounds(
   preset: PeriodPreset,
   today: string,
@@ -62,7 +75,12 @@ export function filterCycles(
   },
 ): Cycle[] {
   return items.filter((cycle) => {
-    if (opts.bucket !== "all" && cycleBucket(cycle, opts.today) !== opts.bucket) return false;
+    if (opts.bucket === "active") {
+      const b = cycleBucket(cycle, opts.today);
+      if (b !== "active" && b !== "upcoming") return false;
+    } else if (opts.bucket !== "all" && cycleBucket(cycle, opts.today) !== opts.bucket) {
+      return false;
+    }
     if (opts.period && !cycleInPeriod(cycle, opts.period.start, opts.period.end)) return false;
     return true;
   });

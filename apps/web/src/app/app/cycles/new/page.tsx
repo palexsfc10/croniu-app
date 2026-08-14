@@ -8,7 +8,6 @@ import {
   WEEKDAY_OPTIONS,
   apiFetch,
   formatBRL,
-  formatConflictLines,
   formatDateBR,
   reaisToCents,
   type Client,
@@ -21,6 +20,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { useAuth } from "@/components/auth/auth-provider";
+import {
+  ScheduleConflictAlert,
+  isScheduleConflictCode,
+  type ScheduleConflictItem,
+} from "@/components/app/schedule-conflict-alert";
 
 function NewIntelligentCycleForm() {
   const router = useRouter();
@@ -54,7 +58,8 @@ function NewIntelligentCycleForm() {
   const [startsTime, setStartsTime] = useState("09:00");
   const [preview, setPreview] = useState<CyclePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [conflicts, setConflicts] = useState<string[]>([]);
+  const [conflicts, setConflicts] = useState<ScheduleConflictItem[]>([]);
+  const [conflictCount, setConflictCount] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const template = templates.find((t) => t.id === templateId);
@@ -87,6 +92,7 @@ function NewIntelligentCycleForm() {
   async function loadPreview() {
     setError(null);
     setConflicts([]);
+    setConflictCount(0);
     if (!startsOn) {
       setError("Informe a data de início do ciclo.");
       return false;
@@ -145,6 +151,7 @@ function NewIntelligentCycleForm() {
     setSaving(true);
     setError(null);
     setConflicts([]);
+    setConflictCount(0);
     const body: Record<string, unknown> = {
       client_id: clientId,
       service_id: serviceId,
@@ -172,16 +179,19 @@ function NewIntelligentCycleForm() {
     });
     setSaving(false);
     if (result.error) {
-      setError(
-        result.error.code === "appointment_conflict"
-          ? "Não foi possível adicionar as aulas à agenda"
-          : result.error.message,
-      );
       const details = result.error.details as
-        | { conflicts?: { client_name?: string; starts_at: string }[] }
+        | {
+            conflicts?: ScheduleConflictItem[];
+            conflict_count?: number;
+          }
         | undefined;
-      if (details?.conflicts?.length) {
-        setConflicts(formatConflictLines(details.conflicts, orgTz));
+      const items = details?.conflicts ?? [];
+      setConflicts(items);
+      setConflictCount(details?.conflict_count ?? items.length);
+      if (isScheduleConflictCode(result.error.code)) {
+        setError("schedule_conflict");
+      } else {
+        setError(result.error.message);
       }
       return;
     }
@@ -440,27 +450,22 @@ function NewIntelligentCycleForm() {
             </label>
           </div>
 
-          {error ? (
+          {error === "schedule_conflict" ? (
+            <ScheduleConflictAlert
+              conflicts={conflicts}
+              conflictCount={conflictCount}
+              timeZone={orgTz}
+              onAdjust={() => {
+                setError(null);
+                setStep(2);
+              }}
+            />
+          ) : error ? (
             <div
               role="alert"
               className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)] px-3 py-3"
             >
               <p className="text-sm font-semibold text-[var(--color-danger)]">{error}</p>
-              {conflicts.length ? (
-                <>
-                  <p className="text-sm text-[var(--color-ink)]">
-                    Já existem compromissos nestes horários:
-                  </p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-ink)]">
-                    {conflicts.map((c) => (
-                      <li key={c}>{c}</li>
-                    ))}
-                  </ul>
-                  <p className="text-sm text-[var(--color-ink-muted)]">
-                    Ajuste o horário ou os dias da semana e tente novamente.
-                  </p>
-                </>
-              ) : null}
             </div>
           ) : null}
 

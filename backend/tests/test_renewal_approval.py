@@ -244,4 +244,4 @@ def test_renewal_same_slot_excludes_source_but_keeps_external_conflicts(
         },
     )
     assert blocked.status_code == 409, blocked.text
-    assert blocked.json()["code"] == "appointment_conflict"
+    assert blocked.json()["code"] == "SCHEDULE_CONFLICT"

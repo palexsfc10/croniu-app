@@ -359,6 +359,9 @@ def find_conflicts(
         .options(selectinload(Appointment.client))
         .order_by(Appointment.starts_at.asc())
     )
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        query = query.with_for_update()
     if exclude_appointment_id is not None:
         query = query.where(Appointment.id != exclude_appointment_id)
     if exclude_cycle_id is not None:
