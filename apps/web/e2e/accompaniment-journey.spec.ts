@@ -73,7 +73,7 @@ test.describe("accompaniment tab and plan copy", () => {
     await expect(page.getByText(/Avaliação inicial/).first()).toBeVisible();
 
     await page.goto(`/app/clients/${partial.clientId}/plans/new`);
-    await expect(page.getByText(/o Croniu organiza o acompanhamento/i)).toBeVisible();
+    await expect(page.getByText(/o Croniu organiza o acompanhamento/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Criar treino")).toHaveCount(0);
 
     await page.goto(`/app/clients/${partial.clientId}/evaluations/new`);

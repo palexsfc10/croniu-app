@@ -183,7 +183,7 @@ test.describe("isolation, agenda, register and ficha", () => {
     expect(nextBody.date).toBeTruthy();
 
     await page.goto(`/app/agenda?day=2026-08-14`);
-    await expect(page.getByText(/Nenhuma aula em 14 ago/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Nenhum compromisso em 14 ago/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Próxima aula:/i)).toBeVisible();
     await page.getByRole("link", { name: "Ver próxima aula" }).click();
     await expect(page).toHaveURL(new RegExp(`/app/agenda\\?day=${nextBody.date}`));

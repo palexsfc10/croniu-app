@@ -24,6 +24,10 @@ for (const profile of PROFILES) {
     await page.goto("/app/routines");
     await expect(page.getByRole("heading", { name: /Escolha o que o Croniu/i })).toBeVisible();
     await expect(page.getByText(profile.template, { exact: true }).first()).toBeVisible();
+    await page.getByRole("switch", { name: `Ativar ${profile.template}` }).click();
+    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(page.getByRole("switch", { name: `Ativar ${profile.template}` })).toBeDisabled();
+    await expect(page.getByText("Ativa").first()).toBeVisible();
     await page.goto("/app/profile");
     await expect(page.getByRole("link", { name: /Ciclos e renovações/i })).toBeVisible();
     await page.getByRole("link", { name: /Ciclos e renovações/i }).click();

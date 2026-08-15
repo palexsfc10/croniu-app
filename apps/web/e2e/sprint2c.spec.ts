@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
-import { confirmIntelligentCycle, createServiceUi, createTemplateUi, nav, saveClient } from "./helpers";
+import { confirmIntelligentCycle, createServiceUi, createTemplateUi, saveClient } from "./helpers";
 import { registerProfessional } from "./register-flow";
 
 const artifacts = path.join("e2e", "artifacts", "sprint2c");
@@ -20,7 +20,7 @@ test.describe("Sprint 2C cycle intelligence", () => {
 
     await saveClient(page, "Ana Souza");
 
-    await nav(page, "Ciclos").click();
+    await page.goto("/app/cycles");
     await page.getByRole("link", { name: /Novo ciclo/ }).click();
     await confirmIntelligentCycle(page, {
       client: "Ana Souza",

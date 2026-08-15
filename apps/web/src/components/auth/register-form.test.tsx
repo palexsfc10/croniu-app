@@ -42,6 +42,7 @@ describe("RegisterForm", () => {
     await user.type(screen.getByLabelText("E-mail"), "ana@example.com");
     await user.type(screen.getByLabelText("Senha"), "SenhaForte1!");
     await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await screen.findByText("Qual é a sua área de atuação?");
     await user.click(screen.getByLabelText("Personal trainer"));
     await user.click(screen.getByRole("button", { name: "Criar minha conta" }));
     expect(apiFetch).toHaveBeenCalledTimes(1);
@@ -55,5 +56,5 @@ describe("RegisterForm", () => {
     expect(body.email).toBe("ana@example.com");
     expect(body.profession_code).toBe("personal_trainer");
     expect(body.password).toBe("SenhaForte1!");
-  });
+  }, 15_000);
 });

@@ -112,10 +112,7 @@ def test_client_lifecycle_trigger_rejected(client, register_payload):
     assert res.status_code == 422
 
 
-def test_cycle_lifecycle_prepares_renewal(client, register_payload):
-    client.post("/api/v1/auth/register", json=register_payload)
-    prefs = client.get("/api/v1/organization/preferences")
-    today = date.fromisoformat(prefs.json()["local_today"])
+def _create_cycle(client, starts_on: str, duration_days: int = 30, key: str = "life-cycle-1"):
     cid = client.post("/api/v1/clients", json={"full_name": "Ana", "phone": "11911112222"}).json()["id"]
     svc = client.post(
         "/api/v1/services",
@@ -123,7 +120,7 @@ def test_cycle_lifecycle_prepares_renewal(client, register_payload):
     ).json()
     tpl = client.post(
         "/api/v1/cycle-templates",
-        json={"name": "Mensal", "weekly_frequency": 1, "duration_type": "calendar_months", "duration_value": 1},
+        json={"name": "Mensal", "weekly_frequency": 1, "duration_type": "fixed_days", "duration_value": duration_days},
     ).json()
     cycle = client.post(
         "/api/v1/cycles/intelligent",
@@ -131,16 +128,68 @@ def test_cycle_lifecycle_prepares_renewal(client, register_payload):
             "client_id": cid,
             "service_id": svc["id"],
             "cycle_template_id": tpl["id"],
-            "starts_on": today.isoformat(),
-            "weekdays": [today.weekday()],
+            "starts_on": starts_on,
+            "weekdays": [date.fromisoformat(starts_on).weekday()],
             "starts_time": "09:00:00",
             "generate_appointments": True,
             "create_receivable": False,
-            "idempotency_key": "life-cycle-1",
+            "idempotency_key": key,
         },
     )
     assert cycle.status_code == 201, cycle.text
-    ends = date.fromisoformat(cycle.json()["ends_on"])
+    return cycle.json()
+
+
+def test_cycle_lifecycle_after_starts_on(client, register_payload):
+    client.post("/api/v1/auth/register", json=register_payload)
+    prefs = client.get("/api/v1/organization/preferences")
+    today = date.fromisoformat(prefs.json()["local_today"])
+    cycle = _create_cycle(client, today.isoformat(), duration_days=40, key="life-starts")
+    due = date.fromisoformat(cycle["starts_on"]) + timedelta(days=7)
+    created = client.post(
+        "/api/v1/routines",
+        json={
+            "name": "Check-in pós início",
+            "task_type": "review_evaluation",
+            "recurrence": "once",
+            "filter_json": {"trigger_type": "cycle_lifecycle", "anchor": "starts_on", "offset_days": 7},
+        },
+    )
+    assert created.status_code == 201, created.text
+    client.get(f"/api/v1/agenda/day?day={due.isoformat()}")
+    board = client.get(f"/api/v1/routines/board?on={due.isoformat()}")
+    items = [i for g in board.json()["groups"] for i in g.get("items", [])]
+    assert any(i.get("name") == "Check-in pós início" for i in items)
+
+
+def test_cycle_lifecycle_on_ends_on(client, register_payload):
+    client.post("/api/v1/auth/register", json=register_payload)
+    prefs = client.get("/api/v1/organization/preferences")
+    today = date.fromisoformat(prefs.json()["local_today"])
+    cycle = _create_cycle(client, today.isoformat(), duration_days=14, key="life-ends")
+    ends = date.fromisoformat(cycle["ends_on"])
+    created = client.post(
+        "/api/v1/routines",
+        json={
+            "name": "Encerrar ciclo",
+            "task_type": "prepare_renewal",
+            "recurrence": "once",
+            "filter_json": {"trigger_type": "cycle_lifecycle", "anchor": "ends_on", "offset_days": 0},
+        },
+    )
+    assert created.status_code == 201, created.text
+    client.get(f"/api/v1/agenda/day?day={ends.isoformat()}")
+    board = client.get(f"/api/v1/routines/board?on={ends.isoformat()}")
+    items = [i for g in board.json()["groups"] for i in g.get("items", [])]
+    assert any(i.get("name") == "Encerrar ciclo" for i in items)
+
+
+def test_cycle_lifecycle_prepares_renewal(client, register_payload):
+    client.post("/api/v1/auth/register", json=register_payload)
+    prefs = client.get("/api/v1/organization/preferences")
+    today = date.fromisoformat(prefs.json()["local_today"])
+    cycle = _create_cycle(client, today.isoformat(), duration_days=30, key="life-cycle-1")
+    ends = date.fromisoformat(cycle["ends_on"])
     due = ends - timedelta(days=7)
     created = client.post(
         "/api/v1/routines",

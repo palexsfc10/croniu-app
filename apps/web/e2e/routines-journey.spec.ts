@@ -6,7 +6,7 @@ async function createRoutineUi(
   opts: { name: string; frequency: string; extra?: () => Promise<void> },
 ) {
   await page.goto("/app/routines");
-  await expect(page.getByRole("heading", { name: "Nova rotina" })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Outra rotina" })).toBeVisible({
     timeout: 15_000,
   });
   await page.getByLabel("Nome", { exact: true }).fill(opts.name);
@@ -73,12 +73,12 @@ test.describe("routine recurrence journeys", () => {
     expect((await onceDone.json()).status).toBe("archived");
 
     await page.reload();
-    await expect(page.getByText("Revisar planos do mês")).toBeVisible();
+    await expect(page.getByText("Revisar planos do mês").first()).toBeVisible();
     await page.goto("/app");
     await logoutUi(page);
     await loginUi(page, email);
     await page.goto("/app/routines");
-    await expect(page.getByText("Revisar planos do mês")).toBeVisible();
+    await expect(page.getByText("Revisar planos do mês").first()).toBeVisible();
     const after = await (await page.request.get("/api/v1/routines")).json();
     expect(after.filter((r: { name: string }) => r.name === "Revisar planos do mês")).toHaveLength(1);
   });

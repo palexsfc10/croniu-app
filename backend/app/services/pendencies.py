@@ -262,6 +262,8 @@ def board(
     on: date | None = None,
 ) -> dict[str, Any]:
     today = materialize_org(db, organization_id=organization_id, today=today)
+    if on is not None:
+        occ_svc.persist_for_day(db, organization_id=organization_id, day=on)
     if client_id is not None:
         owned = db.scalar(
             select(Client).where(
