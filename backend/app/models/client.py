@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,7 +12,10 @@ from app.db import Base
 
 class Client(Base):
     __tablename__ = "clients"
-    __table_args__ = (UniqueConstraint("organization_id", "email", name="uq_clients_org_email"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "email", name="uq_clients_org_email"),
+        Index("ix_clients_status", "status"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(

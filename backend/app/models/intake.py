@@ -10,6 +10,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -26,6 +27,9 @@ class OrganizationIntakeLink(Base):
     """Permanent public intake link per organization (hash only; raw shown once)."""
 
     __tablename__ = "organization_intake_links"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_organization_intake_links_token_hash"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -34,7 +38,7 @@ class OrganizationIntakeLink(Base):
         nullable=False,
         index=True,
     )
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     purpose: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -65,7 +69,10 @@ class ClientJourney(Base):
     """Explicit client operational journey stage (one row per client)."""
 
     __tablename__ = "client_journeys"
-    __table_args__ = (UniqueConstraint("client_id", name="uq_client_journeys_client_id"),)
+    __table_args__ = (
+        UniqueConstraint("client_id", name="uq_client_journeys_client_id"),
+        Index("ix_client_journeys_org_stage", "organization_id", "stage"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -78,7 +85,6 @@ class ClientJourney(Base):
         UUID(as_uuid=True),
         ForeignKey("clients.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
     stage: Mapped[str] = mapped_column(String(64), nullable=False)
     evaluation_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -112,6 +118,7 @@ class ClientIntakeSubmission(Base):
             "idempotency_key",
             name="uq_client_intake_submissions_org_idempotency",
         ),
+        Index("ix_client_intake_submissions_org_status", "organization_id", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -258,7 +265,6 @@ class ClientAnamnesisResponse(Base):
         UUID(as_uuid=True),
         ForeignKey("client_intake_submissions.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
     template_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -310,6 +316,7 @@ class ConsentRecord(Base):
 
 class Protocol(Base):
     __tablename__ = "protocols"
+    __table_args__ = (Index("ix_protocols_org_status", "organization_id", "status"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -435,6 +442,10 @@ class OperationalOccurrence(Base):
     __tablename__ = "operational_occurrences"
     __table_args__ = (
         UniqueConstraint("organization_id", "idempotency_key", name="uq_op_occ_org_idem"),
+        Index("ix_op_occ_org_id", "organization_id"),
+        Index("ix_op_occ_org_opdate", "organization_id", "operational_date"),
+        Index("ix_op_occ_client_id", "client_id"),
+        Index("ix_op_occ_protocol_id", "protocol_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -442,16 +453,14 @@ class OperationalOccurrence(Base):
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     client_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=True
     )
     protocol_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("protocols.id", ondelete="CASCADE"),
         nullable=True,
-        index=True,
     )
     protocol_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("protocol_versions.id", ondelete="SET NULL"), nullable=True

@@ -36,17 +36,20 @@ uq_op_occ_org_idem | UNIQUE (organization_id, idempotency_key)
 
 `0021_plan_cadence` cria a tabela com a unique. `0022` não a altera.
 
-## Alembic check (drift)
+## Alembic check (metadata alinhado ao schema canônico)
 
 `alembic current` / `heads`: `0022_form_template_pin` (único head).  
-`alembic check` **falha** no autogenerate.
+`alembic check`: **No new upgrade operations detected** (banco vazio upgradado e banco local `croniu`).
 
-Classificação (reconciliado, sem 0023):
+Nenhuma migration 0023. Nenhum DDL. `uq_op_occ_org_idem` preservada.
 
-- **Não é ausência da unique** `uq_op_occ_org_idem` (presente no modelo, em 0021, no probe e no HML).
-- Drift é **nomeação de índices** (`ix_op_occ_*` no SQL vs `ix_operational_occurrences_*` gerado por `index=True`) e representação UniqueConstraint vs unique Index em tokens/billing/renewals.
-- Cosmético de metadata SQLAlchemy vs nomes explícitos das revisões. Uma 0023 só para rename de índices mudaria HML sem ganho de regra.
-- Pytest de concorrência prova a unique em runtime.
+Metadata SQLAlchemy passou a declarar os mesmos objetos que as migrations já criaram:
+
+- `Index` com nomes canônicos (`ix_op_occ_*`, compostos `ix_*_org_status`, etc.);
+- `UniqueConstraint` onde o Postgres tem constraint UNIQUE;
+- `Index(..., unique=True, postgresql_where=...)` onde a migration criou unique index (parcial ou não), não constraint.
+
+Sem `include_object`, sem silenciar `alembic check`.
 
 ## Serviço canônico
 
@@ -70,7 +73,8 @@ API `127.0.0.1:8010` `/health` ok; Web Playwright `127.0.0.1:3000`; Postgres `cr
 - Typecheck Web: ok.
 - Vitest: 174 passed.
 - Build Web produção: ok. Admin não afetado.
-- Pytest rotinas/external_ref: 13 passed.
+- Pytest completo: 344 passed.
+- Playwright suíte completa: 40 passed, 0 skipped.
 - API `http://127.0.0.1:8010/health` `{"status":"ok","database":true}`.
 - Playwright `test:e2e:professions`: 6 passed (personal_trainer, private_tutor, aesthetics, physiotherapist, nutritionist, other + switch de template).
 - Playwright `test:e2e:functional`: 15 passed.

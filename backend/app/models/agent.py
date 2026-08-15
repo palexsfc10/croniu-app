@@ -11,10 +11,12 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -24,6 +26,9 @@ from app.db import Base
 
 class AgentThread(Base):
     __tablename__ = "agent_threads"
+    __table_args__ = (
+        Index("ix_agent_threads_org_user_status", "organization_id", "user_id", "status"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -159,6 +164,7 @@ class AgentToolCall(Base):
 
 class AgentUsageDaily(Base):
     __tablename__ = "agent_usage_daily"
+    __table_args__ = (Index("ix_agent_usage_daily_day", "day"),)
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -181,6 +187,16 @@ class AgentUsageDaily(Base):
 
 class AgentPendingAction(Base):
     __tablename__ = "agent_pending_actions"
+    __table_args__ = (
+        Index("ix_agent_pending_actions_org_user_status", "organization_id", "user_id", "status"),
+        Index(
+            "uq_agent_pending_actions_idempotency_key_pending",
+            "organization_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("status = 'pending' AND idempotency_key IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(

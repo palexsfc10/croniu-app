@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,7 @@ class Receivable(Base):
     """Manual payment / receivable associated with a cycle (no payment gateway)."""
 
     __tablename__ = "receivables"
+    __table_args__ = (Index("ix_receivables_status", "status"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -29,7 +30,6 @@ class Receivable(Base):
         UUID(as_uuid=True),
         ForeignKey("clients.id", ondelete="RESTRICT"),
         nullable=False,
-        index=True,
     )
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     due_on: Mapped[date] = mapped_column(Date, nullable=False)
