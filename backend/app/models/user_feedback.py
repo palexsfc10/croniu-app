@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,16 @@ from app.db import Base
 
 class UserFeedback(Base):
     __tablename__ = "user_feedbacks"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('suggestion','problem','question','praise','other')",
+            name="ck_user_feedbacks_category",
+        ),
+        CheckConstraint(
+            "status IN ('new','reviewing','resolved','archived')",
+            name="ck_user_feedbacks_status",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(

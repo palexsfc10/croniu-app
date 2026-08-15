@@ -7,6 +7,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -29,6 +30,10 @@ class OrganizationIntakeLink(Base):
     __tablename__ = "organization_intake_links"
     __table_args__ = (
         UniqueConstraint("token_hash", name="uq_organization_intake_links_token_hash"),
+        CheckConstraint(
+            "status IN ('active', 'disabled')",
+            name="ck_organization_intake_links_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -119,6 +124,10 @@ class ClientIntakeSubmission(Base):
             name="uq_client_intake_submissions_org_idempotency",
         ),
         Index("ix_client_intake_submissions_org_status", "organization_id", "status"),
+        CheckConstraint(
+            "status IN ('pending_review', 'approved', 'rejected', 'changes_requested')",
+            name="ck_client_intake_submissions_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -316,7 +325,13 @@ class ConsentRecord(Base):
 
 class Protocol(Base):
     __tablename__ = "protocols"
-    __table_args__ = (Index("ix_protocols_org_status", "organization_id", "status"),)
+    __table_args__ = (
+        Index("ix_protocols_org_status", "organization_id", "status"),
+        CheckConstraint(
+            "status IN ('draft', 'ready', 'published', 'superseded', 'archived')",
+            name="ck_protocols_status",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(

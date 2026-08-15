@@ -5,8 +5,8 @@ description = "Croniu API — NTWS Labs"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi[standard]>=0.140.0",
-  "sqlalchemy[asyncio]>=2.0.51",
-  "alembic>=1.18.5",
+  "sqlalchemy[asyncio]==2.0.51",
+  "alembic==1.19.1",
   "pydantic-settings>=2.14.0",
   "pwdlib[argon2]>=0.3.0",
   "psycopg[binary]>=3.3.0",

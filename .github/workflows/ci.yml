@@ -137,7 +137,12 @@ jobs:
       - name: Migrate empty database through HML head to current
         run: |
           set -euo pipefail
-          # Simulate prior HML head (0018), then upgrade this branch tip.
+          python -c "import alembic,sqlalchemy; print('alembic', alembic.__version__); print('sqlalchemy', sqlalchemy.__version__)"
+          python -c "import alembic; assert alembic.__version__ == '1.19.1', alembic.__version__"
+          python -c "import sqlalchemy; assert sqlalchemy.__version__ == '2.0.51', sqlalchemy.__version__"
+          grep -F 'alembic==1.19.1' requirements.txt Dockerfile
+          grep -F 'sqlalchemy==2.0.51' requirements.txt Dockerfile
+          ! grep -E 'alembic>=|sqlalchemy>=' Dockerfile
           alembic upgrade 0018_email_verification
           alembic current | tee /tmp/alembic-at-hml-head.txt
           grep -q "0018_email_verification" /tmp/alembic-at-hml-head.txt
@@ -147,6 +152,9 @@ jobs:
           test "$(wc -l < /tmp/alembic-heads.txt)" -eq 1
           grep -q "0022_form_template_pin" /tmp/alembic-heads.txt
           grep -q "0022_form_template_pin" /tmp/alembic-current.txt
+          alembic check | tee /tmp/alembic-check.txt
+          grep -q "No new upgrade operations detected" /tmp/alembic-check.txt
+          python scripts/assert_canonical_constraints.py
         env:
           PYTHONPATH: .
           DATABASE_URL: postgresql+psycopg://croniu:croniu_dev_password_change_me@localhost:5433/croniu

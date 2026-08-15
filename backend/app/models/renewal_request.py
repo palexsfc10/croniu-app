@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,6 +15,10 @@ class RenewalRequest(Base):
 
     __tablename__ = "renewal_requests"
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('requested', 'acknowledged', 'payment_reported', 'resolved', 'dismissed')",
+            name="ck_renewal_requests_status",
+        ),
         Index("ix_renewal_requests_org_status", "organization_id", "status"),
         Index(
             "uq_renewal_requests_active",

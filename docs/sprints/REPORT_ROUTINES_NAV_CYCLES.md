@@ -39,15 +39,45 @@ uq_op_occ_org_idem | UNIQUE (organization_id, idempotency_key)
 ## Alembic check (metadata alinhado ao schema canônico)
 
 `alembic current` / `heads`: `0022_form_template_pin` (único head).  
-`alembic check`: **No new upgrade operations detected** (banco vazio upgradado e banco local `croniu`).
+`alembic check`: **No new upgrade operations detected**.
 
 Nenhuma migration 0023. Nenhum DDL. `uq_op_occ_org_idem` preservada.
 
-Metadata SQLAlchemy passou a declarar os mesmos objetos que as migrations já criaram:
+### Versões Alembic (causa raiz HML)
 
-- `Index` com nomes canônicos (`ix_op_occ_*`, compostos `ix_*_org_status`, etc.);
-- `UniqueConstraint` onde o Postgres tem constraint UNIQUE;
-- `Index(..., unique=True, postgresql_where=...)` onde a migration criou unique index (parcial ou não), não constraint.
+| Ambiente | Antes | Depois (pin) |
+|---|---|---|
+| Local / `requirements.txt` / CI `pip -r` | 1.18.5 + SQLAlchemy 2.0.51 | **alembic 1.19.1** + SQLAlchemy **2.0.51** |
+| Imagem API (Dockerfile `>=`) / HML `3749d21` | alembic **1.19.1**, SQLAlchemy **2.0.52** | mesmas pins `==` no Dockerfile |
+| `migrations-check` | 1.18.5, sem `alembic check` | 1.19.1 + `alembic check` + inspeção de constraints |
+
+O job CI e a imagem de deploy instalam a mesma versão pinada. Sem `>=` para Alembic/SQLAlchemy.
+
+### 18 CHECKs que faltavam no metadata (HML, validados, não deferrable)
+
+Fonte da expressão: migrations 0005–0019 (head 0021/0015 para status finais). HML confirmou o objeto físico.
+
+| Tabela | Nome | Migration (expressão canônica) |
+|---|---|---|
+| agent_messages | ck_agent_messages_message_type | 0013 `message_type IN ('text', 'pending_card', 'system')` |
+| agent_messages | ck_agent_messages_role | 0013 `role IN ('user', 'assistant', 'system', 'tool')` |
+| agent_pending_actions | ck_agent_pending_actions_risk_class | 0013 `risk_class IN ('read', 'write_common', 'write_sensitive', 'forbidden')` |
+| agent_pending_actions | ck_agent_pending_actions_status | 0015 `... 'executing' ...` |
+| agent_threads | ck_agent_threads_status | 0013 `status IN ('active', 'archived')` |
+| agent_tool_calls | ck_agent_tool_calls_risk_class | 0013 (mesmo conjunto de risk_class) |
+| appointments | ck_appointments_ends_after_starts | 0005 `ends_at > starts_at` |
+| client_intake_submissions | ck_client_intake_submissions_status | 0019 |
+| organization_intake_links | ck_organization_intake_links_status | 0019 |
+| organization_payment_settings | ck_org_payment_pix_key_type | 0007 |
+| payment_proofs | ck_payment_proofs_mime / size | 0007 |
+| payment_reports | ck_payment_reports_status / amount | 0007 |
+| protocols | ck_protocols_status | 0019 |
+| renewal_requests | ck_renewal_requests_status | 0011 (inclui `payment_reported`) |
+| user_feedbacks | ck_user_feedbacks_category / status | 0017 |
+
+Já alinhados e preservados: `cycle_templates.*`, `client_evaluations.*`.
+
+Reprodução: banco A `croniu_alembic_fresh` (`upgrade head`) e banco B restore local do backup pré-deploy (não no Git, não no HML). Ambos: `No new upgrade operations detected.`
 
 Sem `include_object`, sem silenciar `alembic check`.
 
@@ -73,7 +103,7 @@ API `127.0.0.1:8010` `/health` ok; Web Playwright `127.0.0.1:3000`; Postgres `cr
 - Typecheck Web: ok.
 - Vitest: 174 passed.
 - Build Web produção: ok. Admin não afetado.
-- Pytest completo: 344 passed.
+- Pytest completo: 354 passed.
 - Playwright suíte completa: 40 passed, 0 skipped.
 - API `http://127.0.0.1:8010/health` `{"status":"ok","database":true}`.
 - Playwright `test:e2e:professions`: 6 passed (personal_trainer, private_tutor, aesthetics, physiotherapist, nutritionist, other + switch de template).
