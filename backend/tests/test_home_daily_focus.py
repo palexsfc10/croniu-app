@@ -24,12 +24,15 @@ def _upcoming_slot_on_local_day(
         # Keep the slot on local today when +N minutes would roll past midnight.
         start = datetime.combine(today, time(23, 50), tzinfo=tz)
     if start <= now_local or start.date() != today:
-        # Last resort: a few minutes ahead still on today, else mid-afternoon past slot.
         candidate = now_local + timedelta(minutes=5)
         if candidate.date() == today and candidate > now_local:
             start = candidate
         else:
-            start = datetime.combine(today, time(15, 0), tzinfo=tz)
+            # Near local midnight: keep a window covering now so Today still lists it.
+            day_start = datetime.combine(today, time(0, 0), tzinfo=tz)
+            day_end = datetime.combine(today, time(23, 59, 59), tzinfo=tz)
+            start = max(now_local - timedelta(minutes=10), day_start)
+            return start, day_end
     end = start + timedelta(hours=1)
     if end.date() != today:
         end = datetime.combine(today, time(23, 59, 59), tzinfo=tz)
