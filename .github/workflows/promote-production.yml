@@ -268,6 +268,14 @@ jobs:
           rsync -az -e "ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519" \
             --exclude '.env*' --exclude 'backups/' --exclude 'RELEASE_*' \
             deploy-bundle/deploy/ "$remote:/srv/docker/croniu-prd/deploy/"
+          # Bundle scripts are git 100644; restore execute bits before deploy.sh.
+          # Do not chmod the PRD tree recursively and do not touch .env/ownership.
+          ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$remote" \
+            "set -euo pipefail; release_dir=/srv/docker/croniu-prd/deploy/release; \
+             test -d \"\$release_dir\"; chmod 750 \"\$release_dir\"/*.sh; \
+             for required in deploy.sh preflight.sh backup.sh rollback.sh smoke_public.sh; do \
+               test -x \"\$release_dir/\$required\" || { echo REQUIRED_SCRIPT_NOT_EXECUTABLE=\$required; exit 1; }; \
+             done; echo RELEASE_SCRIPTS_EXECUTABLE=yes"
           ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$remote" \
             "cd /srv/docker/croniu-prd && RELEASE_OPERATOR='github:${{ github.actor }}' \
              deploy/release/deploy.sh --environment prd --sha '${IMAGE_SHA}' \
