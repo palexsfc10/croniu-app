@@ -116,13 +116,19 @@ Correção exclusiva de fixture:
 - Testes CHECK (`test_canonical_check_constraints.py`): 10 passed; cada rejeição é o CHECK nomeado.
 - Lint Web: 0 errors (warnings pré-existentes).
 - Typecheck Web: ok.
-- Vitest: 174 passed.
+- Vitest: 176 passed.
 - Build Web produção: ok. Admin não afetado.
-- Pytest completo: 359 passed.
+- Pytest completo: 364 passed.
 - API `http://127.0.0.1:8010/health` `{"status":"ok","database":true}`.
-- Playwright local `127.0.0.1:3000` → API `127.0.0.1:8010` (não HML): **48 passed**, 0 skipped.
+- Playwright local `127.0.0.1:3000` → API `127.0.0.1:8010` (não HML): **50 passed**, 0 skipped. Portal do plano: personal + professor.
 - Seis profissões (`professions-os` + `intake-profession`): personal_trainer, private_tutor, aesthetics, physiotherapist, nutritionist, other.
 - Tutor + `form_kind=physical_anamnesis` → 422 `incompatible_form_kind`.
+
+## Portal do cliente — plano publicado
+
+Causa: `POST /protocols/{id}/publish` persistia `status=published` e `published_at` na versão; o GET público ` /public/my-cycle/{token}` só devolvia ciclo e avaliações. O portal `/c/[token]` não tinha seção de plano.
+
+Correção (sem migration): o GET seleciona o plano publicado do cliente da sessão do token (tenant pelo `organization_id` do acesso). Prefere vigente (`ends_on` nulo não descarta), senão o próximo, senão o publicado mais recente. Rascunho não entra; a última versão publicada permanece visível durante edição. Payload público: título adaptado (`nomenclature` / `plan_section_title`), resumo, período, marcos e link só se `visible_to_client`. Sem notas internas, ids ou controles do profissional.
 
 ## Simplificação visual de Rotinas (MVP)
 

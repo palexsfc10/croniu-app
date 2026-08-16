@@ -40,6 +40,7 @@ from app.services import agenda as agenda_svc
 from app.services import cycle_period as cycle_period_svc
 from app.services import domain as domain_svc
 from app.services import evaluations as eval_svc
+from app.services import protocols as proto_svc
 from app.services import proof_storage
 from app.services.auth import AuthError
 from app.services.cycle_calc import compute_renewal_on
@@ -509,6 +510,13 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
             client_id=access.client_id,
         )
     ]
+    published_plan = proto_svc.select_published_plan(
+        db,
+        organization_id=access.organization_id,
+        client_id=access.client_id,
+        today=today,
+        profession_code=org.profession_code,
+    )
 
     if cycle is None:
         return PublicMyCycleOut(
@@ -523,6 +531,7 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
             can_report_payment=False,
             can_declare_renewal_payment=False,
             evaluations=published_evals,
+            plan=published_plan,
         )
 
     renewal = _active_renewal(db, client_id=client.id, cycle_id=cycle.id)
@@ -630,6 +639,7 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         can_report_payment=can_pay,
         can_declare_renewal_payment=can_declare,
         evaluations=published_evals,
+        plan=published_plan,
     )
 
 

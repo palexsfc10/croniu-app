@@ -12,6 +12,10 @@ def test_nomenclature_personal_vs_consultant():
     generic = profession_svc.nomenclature_for(None)
     assert personal["client"] == "aluno"
     assert personal["plan"] == "plano de acompanhamento"
+    assert profession_svc.nomenclature_for("private_tutor")["plan"] == "plano de aprendizagem"
+    assert profession_svc.nomenclature_for("physiotherapist")["plan"] == "plano de cuidado/acompanhamento"
+    assert profession_svc.plan_section_title("personal_trainer") == "Plano de acompanhamento"
+    assert profession_svc.plan_section_title("private_tutor") == "Plano de aprendizagem"
     assert consultant["plan"] == "plano de ação"
     assert generic["client"] == "cliente"
 

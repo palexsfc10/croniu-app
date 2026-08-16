@@ -121,7 +121,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "aluno",
             "clients": "alunos",
-            "plan": "plano de ensino/acompanhamento",
+            "plan": "plano de aprendizagem",
             "plan_short": "plano",
             "plan_review": "revisão do plano",
             "session": "aula",
@@ -139,7 +139,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "aluno",
             "clients": "alunos",
-            "plan": "estratégia do período",
+            "plan": "plano de aprendizagem",
             "plan_short": "plano",
             "plan_review": "revisão do plano",
             "session": "aula",
@@ -193,7 +193,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "cliente",
             "clients": "clientes",
-            "plan": "plano de atendimento",
+            "plan": "plano de acompanhamento",
             "plan_short": "plano",
             "plan_review": "revisão do plano",
             "session": "sessão",
@@ -211,7 +211,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         return {
             "client": "cliente",
             "clients": "clientes",
-            "plan": "plano de acompanhamento",
+            "plan": "plano de cuidado/acompanhamento",
             "plan_short": "plano",
             "plan_review": "revisão do plano",
             "session": "sessão",
@@ -261,6 +261,13 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
         "plan_ending": "Preparar próximo plano",
         "feedback": "Acompanhamento",
     }
+
+
+def plan_section_title(profession_code: str | None) -> str:
+    noun = nomenclature_for(profession_code)["plan"]
+    if not noun:
+        return "Plano de acompanhamento"
+    return noun[0].upper() + noun[1:]
 
 
 def validate_profession_payload(

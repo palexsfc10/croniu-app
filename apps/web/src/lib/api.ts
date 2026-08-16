@@ -593,6 +593,19 @@ export type PublicMyCycle = {
   can_report_payment: boolean;
   can_declare_renewal_payment?: boolean;
   evaluations?: PublicEvaluation[];
+  plan?: PublicPlan | null;
+};
+
+export type PublicPlan = {
+  section_title: string;
+  title: string;
+  summary?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  milestones: string[];
+  external_url?: string | null;
+  external_title?: string | null;
+  published_at?: string | null;
 };
 
 export type EvaluationCriterionInput = {

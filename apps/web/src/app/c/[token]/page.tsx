@@ -7,7 +7,7 @@ import {
   type PortalIntakeStatus,
   type PublicMyCycle,
 } from "@/lib/api";
-import { formatCycleDetailLines } from "@/lib/date-format";
+import { formatCycleDetailLines, formatHumanDate } from "@/lib/date-format";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { EvolutionEntry } from "@/components/app/evolution-entry";
 import { Button } from "@/components/ui/button";
@@ -529,6 +529,48 @@ export default function PublicMyCyclePage() {
                 ) : null}
               </>
             )}
+
+            {data.plan ? (
+              <section aria-label={data.plan.section_title} className="space-y-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--color-ink)]">
+                    {data.plan.section_title}
+                  </h2>
+                  <p className="mt-0.5 text-sm font-medium text-[var(--color-ink)]">
+                    {data.plan.title}
+                  </p>
+                </div>
+                {data.plan.summary ? (
+                  <p className="text-sm text-[var(--color-ink)]">{data.plan.summary}</p>
+                ) : null}
+                {data.plan.starts_on || data.plan.ends_on ? (
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    {data.plan.starts_on && data.plan.ends_on
+                      ? `${formatHumanDate(data.plan.starts_on)} — ${formatHumanDate(data.plan.ends_on)}`
+                      : data.plan.starts_on
+                        ? `A partir de ${formatHumanDate(data.plan.starts_on)}`
+                        : `Até ${formatHumanDate(data.plan.ends_on!)}`}
+                  </p>
+                ) : null}
+                {data.plan.milestones.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-ink)]">
+                    {data.plan.milestones.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {data.plan.external_url ? (
+                  <a
+                    href={data.plan.external_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-11 items-center text-sm text-[var(--color-link)]"
+                  >
+                    {data.plan.external_title || "Abrir material"}
+                  </a>
+                ) : null}
+              </section>
+            ) : null}
 
             <section aria-label="Sua evolução" className="space-y-4">
               <div>

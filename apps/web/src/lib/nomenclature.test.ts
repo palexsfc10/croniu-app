@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { planTitle } from "@/lib/capabilities";
 import {
   nomenclatureFor,
   recommendedFormKind,
@@ -18,7 +19,7 @@ describe("nomenclatureFor", () => {
   it("adapts private tutor without clinical or workout terms", () => {
     const terms = nomenclatureFor("private_tutor");
     expect(terms.client).toBe("aluno");
-    expect(terms.plan).toBe("plano de ensino/acompanhamento");
+    expect(terms.plan).toBe("plano de aprendizagem");
     expect(terms.session).toBe("aula");
     expect(terms.evaluation).toBe("avaliação");
     expect(terms.intake_form).toBe("cadastro inicial");
@@ -29,6 +30,13 @@ describe("nomenclatureFor", () => {
     expect(terms.client).toBe("cliente");
     expect(terms.session).toBe("atendimento");
     expect(terms.plan).toBe("plano de ação");
+  });
+
+  it("adapts physio and aesthetics plan titles", () => {
+    expect(nomenclatureFor("physiotherapist").plan).toBe("plano de cuidado/acompanhamento");
+    expect(nomenclatureFor("aesthetics").plan).toBe("plano de acompanhamento");
+    expect(planTitle("personal_trainer")).toBe("Plano de acompanhamento");
+    expect(planTitle("private_tutor")).toBe("Plano de aprendizagem");
   });
 
   it("falls back safely", () => {

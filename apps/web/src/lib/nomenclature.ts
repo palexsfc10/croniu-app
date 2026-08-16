@@ -58,7 +58,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   private_tutor: {
     client: "aluno",
     clients: "alunos",
-    plan: "plano de ensino/acompanhamento",
+    plan: "plano de aprendizagem",
     plan_short: "plano",
     plan_review: "revisão do plano",
     session: "aula",
@@ -75,7 +75,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   sports_teacher: {
     client: "aluno",
     clients: "alunos",
-    plan: "estratégia do período",
+    plan: "plano de aprendizagem",
     plan_short: "plano",
     plan_review: "revisão do plano",
     session: "aula",
@@ -109,7 +109,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   physiotherapist: {
     client: "cliente",
     clients: "clientes",
-    plan: "plano de acompanhamento",
+    plan: "plano de cuidado/acompanhamento",
     plan_short: "plano",
     plan_review: "revisão do plano",
     session: "sessão",
@@ -160,7 +160,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
   aesthetics: {
     client: "cliente",
     clients: "clientes",
-    plan: "plano de atendimento",
+    plan: "plano de acompanhamento",
     plan_short: "plano",
     plan_review: "revisão do plano",
     session: "sessão",
@@ -197,6 +197,12 @@ export function nomenclatureFor(professionCode: string | null | undefined): Nome
 
 export function t(terms: Nomenclature, key: NomenclatureKey): string {
   return terms[key] ?? GENERIC[key];
+}
+
+export function displayTerm(term: string): string {
+  const value = (term || "").trim();
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export function recommendedFormKind(

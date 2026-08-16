@@ -1,6 +1,6 @@
 /** Central profession/capability config. Screens should read this, not branch on profession. */
 
-import { canonicalProfessionCode, nomenclatureFor } from "@/lib/nomenclature";
+import { canonicalProfessionCode, displayTerm, nomenclatureFor } from "@/lib/nomenclature";
 
 export type CapabilityId =
   | "people"
@@ -53,6 +53,10 @@ export function resolveCapabilities(
     ordered.push(cap);
   }
   return ordered;
+}
+
+export function planTitle(professionCode: string | null | undefined): string {
+  return displayTerm(nomenclatureFor(professionCode).plan);
 }
 
 function labelFor(cap: CapabilityId, professionCode: string | null | undefined): string {

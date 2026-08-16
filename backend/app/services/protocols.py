@@ -10,11 +10,132 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.intake import Protocol, ProtocolVersion
+from app.schemas.my_cycle import PublicPlanOut
 from app.services import domain as domain_svc
 from app.services import journey as journey_svc
 from app.services import plan_cadence as cadence
+from app.services import profession as profession_svc
 from app.services.auth import AuthError
 from app.services.external_ref import sanitize_content_json
+
+
+def _published_version(protocol: Protocol) -> ProtocolVersion | None:
+    published = [v for v in protocol.versions if v.status == "published"]
+    if not published:
+        return None
+    return max(published, key=lambda v: (v.version_number, v.published_at or datetime.min.replace(tzinfo=UTC)))
+
+
+def _milestone_lines(content: dict[str, Any]) -> list[str]:
+    raw = content.get("milestones")
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    return [line.strip() for line in str(raw).splitlines() if line.strip()]
+
+
+def _public_external(content: dict[str, Any]) -> tuple[str | None, str | None]:
+    extra = content.get("external")
+    if not isinstance(extra, dict) or not extra.get("visible_to_client"):
+        return None, None
+    url = extra.get("url") or content.get("external_url")
+    if not url:
+        return None, None
+    title = extra.get("title")
+    return str(url), (str(title).strip() if title else None)
+
+
+def _is_current(protocol: Protocol, today: date) -> bool:
+    start = protocol.starts_on or protocol.effective_from
+    if start is not None and start > today:
+        return False
+    if protocol.ends_on is None:
+        return True
+    return protocol.ends_on >= today
+
+
+def _is_upcoming(protocol: Protocol, today: date) -> bool:
+    start = protocol.starts_on or protocol.effective_from
+    return start is not None and start > today
+
+
+def select_published_plan(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    client_id: uuid.UUID,
+    today: date,
+    profession_code: str | None,
+) -> PublicPlanOut | None:
+    rows = list(
+        db.scalars(
+            select(Protocol)
+            .where(
+                Protocol.organization_id == organization_id,
+                Protocol.client_id == client_id,
+                Protocol.is_org_template.is_(False),
+                Protocol.status != "archived",
+            )
+            .options(selectinload(Protocol.versions))
+        ).all()
+    )
+    candidates: list[tuple[Protocol, ProtocolVersion]] = []
+    for protocol in rows:
+        version = _published_version(protocol)
+        if version is None:
+            continue
+        candidates.append((protocol, version))
+    if not candidates:
+        return None
+
+    current = [(p, v) for p, v in candidates if _is_current(p, today)]
+    upcoming = [(p, v) for p, v in candidates if _is_upcoming(p, today)]
+    if current:
+        protocol, version = max(
+            current,
+            key=lambda item: (
+                item[1].published_at or datetime.min.replace(tzinfo=UTC),
+                item[0].updated_at,
+            ),
+        )
+    elif upcoming:
+        protocol, version = min(
+            upcoming,
+            key=lambda item: item[0].starts_on or item[0].effective_from or date.max,
+        )
+    else:
+        protocol, version = max(
+            candidates,
+            key=lambda item: item[1].published_at or datetime.min.replace(tzinfo=UTC),
+        )
+    return protocol_to_public(protocol, version, profession_code=profession_code)
+
+
+def protocol_to_public(
+    protocol: Protocol,
+    version: ProtocolVersion,
+    *,
+    profession_code: str | None,
+) -> PublicPlanOut:
+    content = dict(version.content_json or {})
+    strategy = content.get("strategy")
+    summary = (
+        (str(strategy).strip() if strategy else None)
+        or (protocol.objective.strip() if protocol.objective else None)
+    )
+    external_url, external_title = _public_external(content)
+    return PublicPlanOut(
+        section_title=profession_svc.plan_section_title(profession_code),
+        title=protocol.title,
+        summary=summary,
+        starts_on=protocol.starts_on or protocol.effective_from,
+        ends_on=protocol.ends_on,
+        milestones=_milestone_lines(content),
+        external_url=external_url,
+        external_title=external_title,
+        published_at=version.published_at,
+    )
 
 
 def list_protocols(
