@@ -10,6 +10,12 @@ const apiProxyTarget = (
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  async redirects() {
+    return [
+      { source: "/cycles", destination: "/app/cycles", permanent: false },
+      { source: "/cycles/:path*", destination: "/app/cycles/:path*", permanent: false },
+    ];
+  },
   async rewrites() {
     return [
       {
@@ -32,8 +38,8 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/sw.js",
-        headers: [{ key: "Cache-Control", value: "no-cache" }],
+        source: "/",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
       },
     ];
   },

@@ -130,6 +130,18 @@ class PublicCycleBlock(BaseModel):
     payment_report_status: str | None = None
 
 
+class PublicPlanOut(BaseModel):
+    section_title: str
+    title: str
+    summary: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    milestones: list[str] = Field(default_factory=list)
+    external_url: str | None = None
+    external_title: str | None = None
+    published_at: datetime | None = None
+
+
 class PublicMyCycleOut(BaseModel):
     professional_display_name: str
     client_first_name: str
@@ -144,6 +156,7 @@ class PublicMyCycleOut(BaseModel):
     can_report_payment: bool = False
     can_declare_renewal_payment: bool = False
     evaluations: list[PublicEvaluationOut] = Field(default_factory=list)
+    plan: PublicPlanOut | None = None
 
 
 class PublicRenewalOut(BaseModel):

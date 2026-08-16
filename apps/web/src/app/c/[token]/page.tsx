@@ -2,7 +2,12 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { formatBRL, formatDateBR, type PublicMyCycle } from "@/lib/api";
+import {
+  formatBRL,
+  type PortalIntakeStatus,
+  type PublicMyCycle,
+} from "@/lib/api";
+import { formatCycleDetailLines, formatHumanDate } from "@/lib/date-format";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { EvolutionEntry } from "@/components/app/evolution-entry";
 import { Button } from "@/components/ui/button";
@@ -44,6 +49,7 @@ export default function PublicMyCyclePage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
   const [data, setData] = useState<PublicMyCycle | null>(null);
+  const [intakeStatus, setIntakeStatus] = useState<PortalIntakeStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [renewConfirm, setRenewConfirm] = useState(false);
@@ -56,13 +62,31 @@ export default function PublicMyCyclePage() {
     let cancelled = false;
     void (async () => {
       setError(null);
-      const res = await fetch(`/api/v1/public/my-cycle/${token}`, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
+      const [res, intakeRes] = await Promise.all([
+        fetch(`/api/v1/public/my-cycle/${token}`, {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        }),
+        fetch(`/api/v1/public/intake/portal/${token}/status`, {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        }),
+      ]);
       const body = await res.json();
       if (cancelled) return;
+      if (intakeRes.ok) {
+        const intakeBody = (await intakeRes.json()) as PortalIntakeStatus;
+        if (!cancelled) setIntakeStatus(intakeBody);
+      } else if (!cancelled) {
+        setIntakeStatus(null);
+      }
       if (!res.ok) {
+        // Pré-aprovação: portal de intake pode existir sem ciclo ainda.
+        if (intakeRes.ok) {
+          setData(null);
+          setError(null);
+          return;
+        }
         setError(body.message || "Este acesso não está disponível.");
         setData(null);
         return;
@@ -152,9 +176,9 @@ export default function PublicMyCyclePage() {
         <header className="mb-8 flex items-start justify-between gap-3">
           <div>
             <p className="text-sm text-[var(--color-ink-muted)]">Meu Ciclo</p>
-            {data ? (
+            {data || intakeStatus?.client_first_name ? (
               <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl text-[var(--color-ink)]">
-                Olá, {data.client_first_name}
+                Olá, {data?.client_first_name || intakeStatus?.client_first_name}
               </h1>
             ) : (
               <h1 className="mt-1 text-2xl text-[var(--color-ink)]">Acesso</h1>
@@ -180,8 +204,36 @@ export default function PublicMyCyclePage() {
           </p>
         ) : null}
 
-        {!data && !error ? (
+        {!data && !intakeStatus && !error ? (
           <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
+        ) : null}
+
+        {intakeStatus &&
+        (intakeStatus.journey_stage === "pending_review" ||
+          intakeStatus.submission_status === "pending_review" ||
+          !data) ? (
+          <section className="mb-5 space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold text-[var(--color-ink)]">Seu cadastro</h2>
+              <Badge tone="warning">{intakeStatus.journey_label}</Badge>
+            </div>
+            {intakeStatus.message_to_client ? (
+              <p className="text-sm text-[var(--color-ink)]">{intakeStatus.message_to_client}</p>
+            ) : (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Seu profissional está analisando as informações. Assim que houver novidade, você
+                verá aqui.
+              </p>
+            )}
+            {intakeStatus.requires_professional_attention && intakeStatus.attention_message ? (
+              <p className="text-sm text-[var(--color-ink)]">{intakeStatus.attention_message}</p>
+            ) : null}
+            {!data && intakeStatus.professional_public_name ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Com {intakeStatus.professional_public_name}
+              </p>
+            ) : null}
+          </section>
         ) : null}
 
         {data ? (
@@ -214,13 +266,14 @@ export default function PublicMyCyclePage() {
                   </div>
                   <p className="text-sm text-[var(--color-ink-muted)]">{data.cycle.service_name}</p>
                   <p className="text-sm">
-                    {formatDateBR(data.cycle.starts_on)} → {formatDateBR(data.cycle.ends_on)}
+                    {formatCycleDetailLines(data.cycle.starts_on, data.cycle.ends_on).vigency}
                   </p>
-                  {data.cycle.renewal_on ? (
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      Renovação prevista · {formatDateBR(data.cycle.renewal_on)}
-                    </p>
-                  ) : null}
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    {formatCycleDetailLines(data.cycle.starts_on, data.cycle.ends_on).lessonsUntil}
+                  </p>
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    {formatCycleDetailLines(data.cycle.starts_on, data.cycle.ends_on).renewal}
+                  </p>
                 </section>
 
                 <section className="space-y-2">
@@ -476,6 +529,48 @@ export default function PublicMyCyclePage() {
                 ) : null}
               </>
             )}
+
+            {data.plan ? (
+              <section aria-label={data.plan.section_title} className="space-y-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--color-ink)]">
+                    {data.plan.section_title}
+                  </h2>
+                  <p className="mt-0.5 text-sm font-medium text-[var(--color-ink)]">
+                    {data.plan.title}
+                  </p>
+                </div>
+                {data.plan.summary ? (
+                  <p className="text-sm text-[var(--color-ink)]">{data.plan.summary}</p>
+                ) : null}
+                {data.plan.starts_on || data.plan.ends_on ? (
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    {data.plan.starts_on && data.plan.ends_on
+                      ? `${formatHumanDate(data.plan.starts_on)} — ${formatHumanDate(data.plan.ends_on)}`
+                      : data.plan.starts_on
+                        ? `A partir de ${formatHumanDate(data.plan.starts_on)}`
+                        : `Até ${formatHumanDate(data.plan.ends_on!)}`}
+                  </p>
+                ) : null}
+                {data.plan.milestones.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-ink)]">
+                    {data.plan.milestones.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {data.plan.external_url ? (
+                  <a
+                    href={data.plan.external_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-11 items-center text-sm text-[var(--color-link)]"
+                  >
+                    {data.plan.external_title || "Abrir material"}
+                  </a>
+                ) : null}
+              </section>
+            ) : null}
 
             <section aria-label="Sua evolução" className="space-y-4">
               <div>

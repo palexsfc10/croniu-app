@@ -6,24 +6,32 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-    full_name: str = Field(min_length=2, max_length=200)
-    organization_name: str = Field(min_length=2, max_length=200)
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=1, max_length=128)
-
-
 class OrganizationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     name: str
     timezone: str = "America/Sao_Paulo"
+    profession_code: str | None = None
+    profession_specialty: str | None = None
+    profession_other: str | None = None
+    profession_onboarding_done: bool = False
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str = Field(min_length=2, max_length=200)
+    organization_name: str = Field(min_length=2, max_length=200)
+    profession_code: str | None = None
+    profession_specialty: str | None = None
+    profession_other: str | None = None
+    use_cases: list[str] | None = None
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
 
 
 class UserOut(BaseModel):

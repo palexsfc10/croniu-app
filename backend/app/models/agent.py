@@ -8,13 +8,16 @@ from datetime import date, datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -24,6 +27,10 @@ from app.db import Base
 
 class AgentThread(Base):
     __tablename__ = "agent_threads"
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'archived')", name="ck_agent_threads_status"),
+        Index("ix_agent_threads_org_user_status", "organization_id", "user_id", "status"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -51,6 +58,16 @@ class AgentThread(Base):
 
 class AgentMessage(Base):
     __tablename__ = "agent_messages"
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('user', 'assistant', 'system', 'tool')",
+            name="ck_agent_messages_role",
+        ),
+        CheckConstraint(
+            "message_type IN ('text', 'pending_card', 'system')",
+            name="ck_agent_messages_message_type",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     thread_id: Mapped[uuid.UUID] = mapped_column(
@@ -126,6 +143,12 @@ class AgentRun(Base):
 
 class AgentToolCall(Base):
     __tablename__ = "agent_tool_calls"
+    __table_args__ = (
+        CheckConstraint(
+            "risk_class IN ('read', 'write_common', 'write_sensitive', 'forbidden')",
+            name="ck_agent_tool_calls_risk_class",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID] = mapped_column(
@@ -159,6 +182,7 @@ class AgentToolCall(Base):
 
 class AgentUsageDaily(Base):
     __tablename__ = "agent_usage_daily"
+    __table_args__ = (Index("ix_agent_usage_daily_day", "day"),)
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -181,6 +205,24 @@ class AgentUsageDaily(Base):
 
 class AgentPendingAction(Base):
     __tablename__ = "agent_pending_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'confirmed', 'executing', 'cancelled', 'expired', 'executed', 'failed')",
+            name="ck_agent_pending_actions_status",
+        ),
+        CheckConstraint(
+            "risk_class IN ('read', 'write_common', 'write_sensitive', 'forbidden')",
+            name="ck_agent_pending_actions_risk_class",
+        ),
+        Index("ix_agent_pending_actions_org_user_status", "organization_id", "user_id", "status"),
+        Index(
+            "uq_agent_pending_actions_idempotency_key_pending",
+            "organization_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("status = 'pending' AND idempotency_key IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(

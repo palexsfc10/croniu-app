@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
 
+import { registerProfessional } from "./register-flow";
+
 async function register(page: import("@playwright/test").Page, prefix: string) {
   const email = `${prefix}_${Date.now()}@example.com`;
-  await page.goto("/register");
-  await page.getByLabel("Seu nome").fill(`Pro ${prefix}`);
-  await page.getByLabel("Nome do negócio / organização").fill(`Studio ${prefix}`);
-  await page.getByLabel("E-mail").fill(email);
-  await page.locator("#password").fill("SenhaForte1!");
-  await page.getByRole("button", { name: "Criar conta" }).click();
-  await expect(page).toHaveURL(/\/app/, { timeout: 30000 });
+  await registerProfessional(page, {
+    name: `Pro ${prefix}`,
+    org: `Studio ${prefix}`,
+    email,
+  });
   return email;
 }
 
@@ -21,14 +21,13 @@ test.describe("Sprint 2D Meu Ciclo", () => {
     expect(client.ok()).toBeTruthy();
     const clientId = (await client.json()).id;
 
-    await page.goto(`/app/clients/${clientId}`);
-    await page.getByRole("button", { name: "Criar link" }).click();
-    await expect(page.getByText(/Link gerado/i)).toBeVisible();
-    const open = page.getByRole("link", { name: "Abrir" });
-    const href = await open.getAttribute("href");
-    expect(href).toMatch(/^\/c\//);
-
-    await page.goto(href!);
+    await page.goto(`/app/clients/${clientId}?tab=dados`);
+    await page.getByRole("button", { name: "Criar acesso" }).click();
+    await expect(page.getByText(/Acesso gerado/i)).toBeVisible();
+    const rotated = await page.request.post(`/api/v1/clients/${clientId}/public-access/rotate`);
+    expect(rotated.ok()).toBeTruthy();
+    const token = (await rotated.json()).token as string;
+    await page.goto(`/c/${token}`);
     await expect(page.getByText(/Olá, Renata/i)).toBeVisible();
     await expect(page.getByText(/ainda não disponibilizou/i)).toBeVisible();
   });
@@ -75,8 +74,10 @@ test.describe("Sprint 2D Meu Ciclo", () => {
         client_id: clientId,
         service_id: serviceId,
         cycle_template_id: templateId,
-        starts_on: "2026-08-01",
+        starts_on: "2026-07-14",
         weekdays: [1, 3],
+        starts_time: "09:00:00",
+        generate_appointments: true,
         idempotency_key: `e2e-${Date.now()}`,
       },
     });
@@ -88,11 +89,11 @@ test.describe("Sprint 2D Meu Ciclo", () => {
     const portal = await context.newPage();
     await portal.goto(`/c/${token}`);
     await expect(portal.getByText(/Olá, Renata/i)).toBeVisible();
-    await expect(portal.getByText(/aulas previstas/i)).toBeVisible();
+    await expect(portal.getByText(/no ciclo|restantes/i)).toBeVisible();
 
-    await portal.getByRole("button", { name: "Quero renovar" }).click();
-    await portal.getByRole("button", { name: "Confirmar interesse" }).click();
-    await expect(portal.getByText(/Interesse enviado/i)).toBeVisible();
+    await portal.getByRole("button", { name: "Quero continuar" }).click();
+    await portal.getByRole("button", { name: "Enviar interesse" }).click();
+    await expect(portal.getByText(/interesse foi enviado/i)).toBeVisible();
     const r1 = await portal.request.post(`/api/v1/public/my-cycle/${token}/renewal`);
     const r2 = await portal.request.post(`/api/v1/public/my-cycle/${token}/renewal`);
     expect(r1.ok()).toBeTruthy();

@@ -59,6 +59,7 @@ def preview_cycle(
             db, organization_id=auth.organization.id, payload=payload
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
 
 
@@ -77,6 +78,7 @@ def create_intelligent_cycle(
             db, organization_id=auth.organization.id, payload=payload
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
     return domain_svc.cycle_to_out(db, cycle)
 
@@ -101,6 +103,7 @@ def create_cycle(
             receivable_due_on=payload.receivable_due_on,
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
     return domain_svc.cycle_to_out(db, cycle)
 
@@ -120,6 +123,7 @@ def update_intelligent_cycle(
             payload=payload,
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
     return domain_svc.cycle_to_out(db, cycle)
 
@@ -139,6 +143,7 @@ def update_cycle_financial(
             payload=payload,
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
     return domain_svc.cycle_to_out(db, cycle)
 
@@ -152,6 +157,7 @@ def get_cycle(
     try:
         cycle = domain_svc.get_cycle(db, organization_id=auth.organization.id, cycle_id=cycle_id)
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
     return domain_svc.cycle_to_out(db, cycle)
 
@@ -167,6 +173,7 @@ def whatsapp_prep(
             db, organization_id=auth.organization.id, cycle_id=cycle_id
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
 
 
@@ -185,6 +192,7 @@ def confirm_contact(
             note=payload.note,
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
 
 
@@ -199,6 +207,7 @@ def cancel_cycle(
             db, organization_id=auth.organization.id, cycle_id=cycle_id
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
     return domain_svc.cycle_to_out(db, cycle)
 
@@ -215,5 +224,6 @@ def delete_cycle(
             db, organization_id=auth.organization.id, cycle_id=cycle_id
         )
     except AuthError as exc:
+        db.rollback()
         raise _http(exc) from exc
     return domain_svc.cycle_to_out(db, cycle)

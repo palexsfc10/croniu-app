@@ -42,17 +42,27 @@ from app.models import (  # noqa: F401
     BillingPlan,
     BillingPrice,
     BillingWebhookEvent,
+    AnamnesisTemplate,
+    AnamnesisTemplateVersion,
     Client,
+    ClientAnamnesisResponse,
     ClientEvaluation,
     ClientEvaluationCriterion,
+    ClientIntakeSubmission,
+    ClientJourney,
     ClientPublicAccess,
+    ConsentRecord,
     Cycle,
     CycleTemplate,
     EmailVerificationToken,
     Location,
     Membership,
     Organization,
+    OrganizationIntakeLink,
     OrganizationPaymentSettings,
+    Protocol,
+    ProtocolVersion,
+    RecurringClientTask,
     PasswordResetToken,
     PaymentProof,
     PaymentReport,
@@ -128,6 +138,7 @@ def clean_tables():
                 "agent_audit_logs, agent_pending_actions, agent_tool_calls, agent_runs, "
                 "agent_messages, agent_threads, agent_usage_daily, "
                 "client_evaluation_criteria, client_evaluations, "
+                "operational_occurrences, recurring_client_tasks, protocol_versions, protocols, "
                 "payment_proofs, payment_reports, renewal_requests, "
                 "organization_payment_settings, client_public_accesses, "
                 "appointments, locations, password_reset_tokens, email_verification_tokens, "
@@ -177,3 +188,37 @@ def db_session():
         yield db
     finally:
         db.close()
+
+
+@pytest.fixture
+def seeded_org_user(db_session):
+    """Commit org+user on a separate session so a later rollback cannot undo them."""
+    from app.security.passwords import hash_password
+
+    seed = TestingSessionLocal()
+    try:
+        org = Organization(
+            id=uuid.uuid4(),
+            name=f"CK Org {uuid.uuid4().hex[:8]}",
+            status="active",
+            plan_code="trial",
+        )
+        user = User(
+            id=uuid.uuid4(),
+            email=f"ck_{uuid.uuid4().hex[:8]}@example.com",
+            full_name="CK User",
+            password_hash=hash_password("SenhaForte1!"),
+            account_status="active",
+        )
+        seed.add(org)
+        seed.add(user)
+        seed.commit()
+        org_id, user_id = org.id, user.id
+    finally:
+        seed.close()
+
+    org = db_session.get(Organization, org_id)
+    user = db_session.get(User, user_id)
+    assert org is not None, "organization fixture did not persist before dependent inserts"
+    assert user is not None, "user fixture did not persist before dependent inserts"
+    return org, user

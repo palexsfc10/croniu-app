@@ -15,9 +15,12 @@ from app.models.appointment import Appointment
 from app.models.cycle import Cycle
 from app.models.receivable import Receivable
 from app.services import agenda as agenda_svc
+from app.services import cycle_guard as cycle_guard_svc
 from app.services import domain as domain_svc
 from app.services.auth import AuthError
 from app.services.cycle_calc import compose_financial, compute_renewal_on, enumerate_lesson_dates
+
+SCHEDULE_CONFLICT = "SCHEDULE_CONFLICT"
 
 WEEKDAY_LABELS_PT = (
     "segunda",
@@ -137,6 +140,13 @@ def build_occurrences(
     duration_minutes: int,
     tz: ZoneInfo,
 ) -> list[Occurrence]:
+    """One occurrence per lesson day. A cycle never emits two rows with the same starts_at.
+
+    Duplicate `starts_at` on the same cycle is treated as data corruption, not two
+    legitimate simultaneous sessions. Agenda completeness therefore uses
+    count(distinct starts_at). If the domain later allows two sessions at the same
+    instant, switch the identity to appointment id (or session key), not distinct time.
+    """
     weekdays = [s.weekday for s in slots]
     times = {s.weekday: s.starts_time for s in slots}
     days = enumerate_lesson_dates(starts_on=starts_on, ends_on=ends_on, weekdays=weekdays)
@@ -153,6 +163,13 @@ def build_occurrences(
                 ends_at=start_at + duration,
                 index=i,
             )
+        )
+    instants = [o.starts_at for o in out]
+    if len(instants) != len(set(instants)):
+        raise AuthError(
+            "invalid_schedule",
+            "A programação gerou duas aulas no mesmo horário.",
+            422,
         )
     return out
 
@@ -182,6 +199,60 @@ def find_occurrence_conflicts(
                 hits.append(ConflictHit(occurrence=a, conflicting=[]))
                 break
     return hits
+
+
+def raise_schedule_conflict(
+    *,
+    conflicts: list[dict[str, Any]],
+    conflict_count: int,
+    occurrence_count: int,
+    suggestions: list[str] | None = None,
+) -> None:
+    raise AuthError(
+        SCHEDULE_CONFLICT,
+        "Há conflito de horário. Nenhum ciclo, recebível ou aula foi criado.",
+        status_code=409,
+        details={
+            "code": SCHEDULE_CONFLICT,
+            "conflicts": conflicts,
+            "conflict_count": conflict_count,
+            "occurrence_count": occurrence_count,
+            "suggestions": suggestions or [],
+        },
+    )
+
+
+def replay_or_release_idempotent_cycle(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    idempotency_key: str,
+) -> tuple[Cycle, list[Appointment]] | None:
+    existing = db.scalar(
+        select(Cycle).where(
+            Cycle.organization_id == organization_id,
+            Cycle.idempotency_key == idempotency_key,
+        )
+    )
+    if existing is None:
+        return None
+    appts = list(
+        db.scalars(
+            select(Appointment).where(
+                Appointment.organization_id == organization_id,
+                Appointment.cycle_id == existing.id,
+            )
+        ).all()
+    )
+    expected = int(existing.lesson_count or 0)
+    incomplete = existing.status == "active" and expected > 0 and len(appts) < expected
+    if incomplete:
+        existing.status = "cancelled"
+        existing.idempotency_key = None
+        db.add(existing)
+        db.flush()
+        return None
+    return existing, appts
 
 
 def format_time_range(starts_at: datetime, ends_at: datetime, tz: ZoneInfo) -> str:
@@ -315,21 +386,11 @@ def create_cycle_with_schedule(
             422,
         )
     if idempotency_key:
-        existing = db.scalar(
-            select(Cycle).where(
-                Cycle.organization_id == organization_id,
-                Cycle.idempotency_key == idempotency_key,
-            )
+        replay = replay_or_release_idempotent_cycle(
+            db, organization_id=organization_id, idempotency_key=idempotency_key
         )
-        if existing is not None:
-            appts = list(
-                db.scalars(
-                    select(Appointment).where(
-                        Appointment.organization_id == organization_id,
-                        Appointment.cycle_id == existing.id,
-                    )
-                ).all()
-            )
+        if replay is not None:
+            existing, appts = replay
             return (
                 domain_svc.get_cycle(
                     db, organization_id=organization_id, cycle_id=existing.id
@@ -394,6 +455,16 @@ def create_cycle_with_schedule(
             422,
         )
 
+    cycle_guard_svc.assert_no_duplicate_or_overlap(
+        db,
+        organization_id=organization_id,
+        client_id=client.id,
+        service_id=service.id,
+        starts_on=starts_on,
+        ends_on=ends_on,
+        lesson_count=len(occurrences),
+    )
+
     unit = unit_price_cents if unit_price_cents is not None else (service.default_price_cents or 0)
     # Prefer explicit package total from assistant when provided as value_cents/final_cents
     money_final = final_cents if final_cents is not None else value_cents
@@ -419,25 +490,30 @@ def create_cycle_with_schedule(
             db, organization_id=organization_id, occurrences=occurrences
         )
         if hits:
-            details = []
+            flat: list[dict[str, Any]] = []
             for hit in hits:
-                details.append(
-                    {
-                        "occurrence": format_occurrence_label(hit.occurrence, tz),
-                        "starts_at": hit.occurrence.starts_at.isoformat(),
-                        "ends_at": hit.occurrence.ends_at.isoformat(),
-                        "conflicts": [
-                            {
-                                "id": str(c.id),
-                                "client_name": c.client.full_name if c.client else None,
-                                "starts_at": c.starts_at.isoformat(),
-                                "ends_at": c.ends_at.isoformat(),
-                                "status": c.status,
-                            }
-                            for c in hit.conflicting
-                        ],
-                    }
-                )
+                for c in hit.conflicting:
+                    flat.append(
+                        {
+                            "id": str(c.id),
+                            "client_name": c.client.full_name if c.client else None,
+                            "starts_at": c.starts_at.isoformat(),
+                            "ends_at": c.ends_at.isoformat(),
+                            "status": c.status,
+                            "occurrence": format_occurrence_label(hit.occurrence, tz),
+                        }
+                    )
+                if not hit.conflicting:
+                    flat.append(
+                        {
+                            "id": None,
+                            "client_name": None,
+                            "starts_at": hit.occurrence.starts_at.isoformat(),
+                            "ends_at": hit.occurrence.ends_at.isoformat(),
+                            "status": "planned_batch",
+                            "occurrence": format_occurrence_label(hit.occurrence, tz),
+                        }
+                    )
             preferred = slots[0].starts_time
             alts = suggest_recurring_times(
                 db,
@@ -449,16 +525,11 @@ def create_cycle_with_schedule(
                 tz=tz,
                 preferred=preferred,
             )
-            raise AuthError(
-                "appointment_conflict",
-                "Há conflito de horário. Nenhum ciclo ou aula foi criado.",
-                status_code=409,
-                details={
-                    "conflicts": details,
-                    "conflict_count": len(hits),
-                    "occurrence_count": len(occurrences),
-                    "suggestions": alts,
-                },
+            raise_schedule_conflict(
+                conflicts=flat,
+                conflict_count=len(hits),
+                occurrence_count=len(occurrences),
+                suggestions=alts,
             )
 
     default_time = slots[0].starts_time if slots else None
@@ -527,6 +598,30 @@ def create_cycle_with_schedule(
             "agenda_incomplete",
             "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
             500,
+        )
+
+    hits_final = find_occurrence_conflicts(
+        db,
+        organization_id=organization_id,
+        occurrences=occurrences,
+        exclude_cycle_id=cycle.id,
+    )
+    if hits_final:
+        db.rollback()
+        raise_schedule_conflict(
+            conflicts=[
+                {
+                    "id": str(c.id) if c.id else None,
+                    "client_name": c.client.full_name if c.client else None,
+                    "starts_at": c.starts_at.isoformat(),
+                    "ends_at": c.ends_at.isoformat(),
+                    "status": c.status,
+                }
+                for hit in hits_final
+                for c in (hit.conflicting or [])
+            ],
+            conflict_count=len(hits_final),
+            occurrence_count=len(occurrences),
         )
 
     db.commit()

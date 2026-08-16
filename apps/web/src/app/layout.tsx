@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Manrope } from "next/font/google";
+import { Manrope } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import "@/components/brand/brand-wordmark.css";
 import "./globals.css";
@@ -10,18 +10,13 @@ const manrope = Manrope({
   display: "swap",
 });
 
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-  display: "swap",
-});
-
 export const metadata: Metadata = {
   title: {
     default: "Croniu",
     template: "%s · Croniu",
   },
-  description: "Sua rotina. Seus ciclos. Tudo sob controle.",
+  description:
+    "Organize seus clientes. Simplifique sua rotina. Cadastros, agenda, planos, ciclos e acompanhamentos — com IA no dia a dia.",
   applicationName: "Croniu",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -48,7 +43,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className={`${manrope.variable} ${fraunces.variable} h-full`}>
+    <html lang="pt-BR" className={`${manrope.variable} h-full`}>
       <body className="min-h-full antialiased">
         {children}
         <ServiceWorkerRegister />

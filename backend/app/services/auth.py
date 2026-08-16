@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings, get_settings
@@ -58,6 +59,10 @@ def register_owner(
     password: str,
     full_name: str,
     organization_name: str,
+    profession_code: str | None = None,
+    profession_specialty: str | None = None,
+    profession_other: str | None = None,
+    use_cases: list[str] | None = None,
 ) -> tuple[User, Organization, Membership]:
     normalized_email = email.strip().lower()
     existing = db.scalar(select(User).where(User.email == normalized_email))
@@ -68,25 +73,70 @@ def register_owner(
             status.HTTP_409_CONFLICT,
         )
 
+    cleaned = None
+    if profession_code:
+        from app.services import profession as profession_svc
+
+        try:
+            cleaned = profession_svc.validate_profession_payload(
+                profession_code=profession_code,
+                profession_specialty=profession_specialty,
+                profession_other=profession_other,
+                use_cases=use_cases,
+            )
+        except ValueError as exc:
+            raise AuthError("invalid_profession", str(exc), 422) from exc
+
     user = User(
         email=normalized_email,
         password_hash=hash_password(password),
         full_name=full_name.strip(),
     )
     organization = Organization(name=organization_name.strip())
+    if cleaned:
+        organization.profession_code = cleaned["profession_code"]
+        organization.profession_specialty = cleaned["profession_specialty"]
+        organization.profession_other = cleaned["profession_other"]
+        organization.use_cases = cleaned["use_cases"]
+        organization.profession_onboarding_done = True
     db.add(user)
     db.add(organization)
-    db.flush()
-
-    membership = Membership(user_id=user.id, organization_id=organization.id, role="owner")
-    db.add(membership)
-    db.flush()
+    try:
+        db.flush()
+        membership = Membership(user_id=user.id, organization_id=organization.id, role="owner")
+        db.add(membership)
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise AuthError(
+            "email_taken",
+            "Este e-mail já possui uma conta. Entre ou use outro e-mail.",
+            status.HTTP_409_CONFLICT,
+        ) from exc
 
     from app.billing.service import BillingService
 
-    BillingService(db).create_trial(organization_id=organization.id)
+    try:
+        BillingService(db).create_trial(organization_id=organization.id)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise AuthError(
+            "register_failed",
+            "Não foi possível criar sua conta. Revise as informações ou tente novamente.",
+            status.HTTP_409_CONFLICT,
+        ) from exc
+    except AuthError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise AuthError(
+            "register_failed",
+            "Não foi possível criar sua conta. Tente novamente em instantes.",
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        ) from None
 
-    db.commit()
     db.refresh(user)
     db.refresh(organization)
     db.refresh(membership)

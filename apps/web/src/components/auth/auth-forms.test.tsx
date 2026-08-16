@@ -35,20 +35,64 @@ describe("Auth forms", () => {
     searchParams = new URLSearchParams();
   });
 
+  it("walks two steps before creating the account", async () => {
+    const user = userEvent.setup();
+    render(<RegisterForm />);
+    await user.type(screen.getByLabelText("Seu nome"), "Ana Consultora");
+    await user.type(screen.getByLabelText(/Nome do negócio/i), "Studio Ana");
+    await user.type(screen.getByLabelText("E-mail"), "ana@example.com");
+    await user.type(screen.getByLabelText("Senha"), "senha12345");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    expect(screen.getByText(/Etapa 2 de 2/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/login");
+    const fetchSpy = vi.spyOn(global, "fetch");
+    await user.click(screen.getByRole("link", { name: "Entrar" }));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await user.click(screen.getByLabelText("Personal trainer"));
+    expect(screen.getByText("Sua experiência")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Nutricionista"));
+    expect(screen.getByText("Sua experiência")).toBeInTheDocument();
+    expect(screen.queryByText(/Seu Croniu será preparado para/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/anamnese de atividade física/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Criar minha conta" })).toBeInTheDocument();
+  }, 15_000);
+
+  it("opens login from registration step 1 without submitting the form", async () => {
+    const user = userEvent.setup();
+    render(<RegisterForm />);
+    const link = screen.getByTestId("register-login-link");
+    expect(link).toHaveAttribute("href", "/login");
+    expect(link.closest("form")).toBeNull();
+    const fetchSpy = vi.spyOn(global, "fetch");
+    await user.click(link);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByText(/Etapa 1 de 2/)).toBeInTheDocument();
+  });
+
   it("shows validation errors on empty register submit", async () => {
     const user = userEvent.setup();
     render(<RegisterForm />);
-    await user.click(screen.getByRole("button", { name: "Criar conta" }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(await screen.findAllByRole("alert")).not.toHaveLength(0);
   });
 
   it("shows API error on login failure", async () => {
     const user = userEvent.setup();
-    vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ code: "invalid_credentials", message: "E-mail ou senha inválidos." }),
-    } as Response);
+    vi.spyOn(global, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/auth/me") && (!init || !init.method || init.method === "GET")) {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({ code: "unauthenticated", message: "Não autenticado." }),
+        } as Response;
+      }
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({ code: "invalid_credentials", message: "E-mail ou senha inválidos." }),
+      } as Response;
+    });
 
     render(<LoginForm />);
     await user.type(screen.getByLabelText("E-mail"), "a@b.com");
@@ -58,18 +102,30 @@ describe("Auth forms", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("E-mail ou senha inválidos.");
     });
+    expect(screen.queryByRole("link", { name: "Abrir verificação" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Reenviar verificação" })).toBeInTheDocument();
   });
 
   it("links unverified login to verify-email", async () => {
     const user = userEvent.setup();
-    vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: false,
-      status: 403,
-      json: async () => ({
-        code: "email_unverified",
-        message: "Confirme seu e-mail antes de entrar.",
-      }),
-    } as Response);
+    vi.spyOn(global, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/auth/me") && (!init || !init.method || init.method === "GET")) {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({ code: "unauthenticated", message: "Não autenticado." }),
+        } as Response;
+      }
+      return {
+        ok: false,
+        status: 403,
+        json: async () => ({
+          code: "email_unverified",
+          message: "Confirme seu e-mail antes de entrar.",
+        }),
+      } as Response;
+    });
 
     render(<LoginForm />);
     expect(screen.getByLabelText("Senha")).toHaveValue("");
@@ -78,7 +134,7 @@ describe("Auth forms", () => {
     await user.click(screen.getByRole("button", { name: "Entrar" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Confirme seu e-mail");
+      expect(screen.getByRole("alert")).toHaveTextContent("ainda não foi verificado");
     });
     expect(screen.getByRole("link", { name: "Abrir verificação" })).toHaveAttribute(
       "href",
@@ -102,9 +158,9 @@ describe("Auth forms", () => {
     render(<LoginForm />);
     const password = screen.getByLabelText("Senha");
     expect(password).toHaveAttribute("type", "password");
-    await user.click(screen.getByRole("button", { name: "Mostrar senha" }));
+    await user.click(screen.getByRole("button", { name: "Mostrar valor" }));
     expect(password).toHaveAttribute("type", "text");
-    await user.click(screen.getByRole("button", { name: "Ocultar senha" }));
+    await user.click(screen.getByRole("button", { name: "Ocultar valor" }));
     expect(password).toHaveAttribute("type", "password");
   });
 

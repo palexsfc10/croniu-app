@@ -26,6 +26,7 @@ from app.schemas.agenda import (
 )
 from app.services.auth import AuthError
 
+AGENDA_VISIBLE_STATUSES = ("scheduled", "completed", "no_show")
 MAX_AGENDA_RANGE_DAYS = 31
 
 
@@ -359,6 +360,9 @@ def find_conflicts(
         .options(selectinload(Appointment.client))
         .order_by(Appointment.starts_at.asc())
     )
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        query = query.with_for_update()
     if exclude_appointment_id is not None:
         query = query.where(Appointment.id != exclude_appointment_id)
     if exclude_cycle_id is not None:
@@ -533,6 +537,9 @@ def list_day_agenda(
     org = get_organization(db, organization_id)
     tz_name = get_org_timezone(org)
     target = day or org_local_today(org)
+    from app.services import routine_occurrences as occ_svc
+
+    occ_svc.persist_for_day(db, organization_id=organization_id, day=target)
     start_utc, end_utc = day_bounds_utc(target, tz_name)
 
     query = (
@@ -623,6 +630,33 @@ def list_upcoming_appointments(
         ).all()
     )
     return [_appointment_out(row) for row in rows]
+
+
+def next_visible_appointment_after(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    after_day: date,
+) -> Appointment | None:
+    org = get_organization(db, organization_id)
+    tz_name = get_org_timezone(org)
+    _start, end_utc = day_bounds_utc(after_day, tz_name)
+    return db.scalar(
+        select(Appointment)
+        .where(
+            Appointment.organization_id == organization_id,
+            Appointment.status.in_(AGENDA_VISIBLE_STATUSES),
+            Appointment.starts_at >= end_utc,
+        )
+        .options(
+            selectinload(Appointment.client),
+            selectinload(Appointment.service),
+            selectinload(Appointment.location),
+            selectinload(Appointment.cycle).selectinload(Cycle.service),
+        )
+        .order_by(Appointment.starts_at.asc())
+        .limit(1)
+    )
 
 
 def next_upcoming_appointment(

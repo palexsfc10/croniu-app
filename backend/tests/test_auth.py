@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.config import get_settings
+
 
 def test_health_ok(client):
     response = client.get("/health")
@@ -27,6 +29,26 @@ def test_liveness_readiness_and_version(client):
     }
 
 
+def test_version_uses_injected_build_metadata(monkeypatch):
+    monkeypatch.setenv("GIT_SHA", "3922da876514a5484f738d6ab0140b8a86c16090")
+    monkeypatch.setenv("BUILD_TIME", "20260814T120000Z")
+    monkeypatch.setenv("CRONIU_ENV", "hml")
+    monkeypatch.setenv("APP_VERSION", "client-intake-hml")
+    get_settings.cache_clear()
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    with TestClient(create_app()) as local:
+        body = local.get("/version").json()
+    get_settings.cache_clear()
+    assert body["environment"] == "hml"
+    assert body["git_sha"] == "3922da876514a5484f738d6ab0140b8a86c16090"
+    assert body["git_sha"] != "unknown"
+    assert body["build_time"] == "20260814T120000Z"
+    assert body["status"] == "ok"
+
+
 def test_register_valid(client, register_payload):
     response = client.post("/api/v1/auth/register", json=register_payload)
     assert response.status_code == 201
@@ -35,6 +57,20 @@ def test_register_valid(client, register_payload):
     assert body["organization"]["name"] == register_payload["organization_name"]
     assert body["role"] == "owner"
     assert "croniu_session" in response.cookies
+
+
+def test_register_with_profession(client, register_payload):
+    payload = {
+        **register_payload,
+        "email": "consultor@example.com",
+        "profession_code": "consultant",
+        "use_cases": ["consulting", "periodic_feedback"],
+    }
+    response = client.post("/api/v1/auth/register", json=payload)
+    assert response.status_code == 201
+    org = response.json()["organization"]
+    assert org["profession_code"] == "consultant"
+    assert org["profession_onboarding_done"] is True
 
 
 def test_register_duplicate_email(client, register_payload):

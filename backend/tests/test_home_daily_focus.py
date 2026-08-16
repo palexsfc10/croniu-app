@@ -24,12 +24,15 @@ def _upcoming_slot_on_local_day(
         # Keep the slot on local today when +N minutes would roll past midnight.
         start = datetime.combine(today, time(23, 50), tzinfo=tz)
     if start <= now_local or start.date() != today:
-        # Last resort: a few minutes ahead still on today, else mid-afternoon past slot.
         candidate = now_local + timedelta(minutes=5)
         if candidate.date() == today and candidate > now_local:
             start = candidate
         else:
-            start = datetime.combine(today, time(15, 0), tzinfo=tz)
+            # Near local midnight: keep a window covering now so Today still lists it.
+            day_start = datetime.combine(today, time(0, 0), tzinfo=tz)
+            day_end = datetime.combine(today, time(23, 59, 59), tzinfo=tz)
+            start = max(now_local - timedelta(minutes=10), day_start)
+            return start, day_end
     end = start + timedelta(hours=1)
     if end.date() != today:
         end = datetime.combine(today, time(23, 59, 59), tzinfo=tz)
@@ -330,18 +333,20 @@ def test_home_successor_cycle_suppresses_exhausted_source(client, register_paylo
     home_before = client.get("/api/v1/home/summary").json()
     assert home_before["priority_action"]["entity_id"] == old["id"]
 
-    # Manual renewal: newer active cycle same client+service
-    client.post(
+    # Manual successor: sequential period (no overlap). Same client+service.
+    successor = client.post(
         "/api/v1/cycles",
         json={
             "client_id": person["id"],
             "service_id": service["id"],
-            "starts_on": day.isoformat(),
-            "ends_on": (day + timedelta(days=30)).isoformat(),
+            "starts_on": old["ends_on"],
+            "ends_on": (day + timedelta(days=32)).isoformat(),
             "value_cents": 40000,
             "create_receivable": False,
         },
     )
+    assert successor.status_code == 201, successor.text
+    assert successor.json()["id"] != old["id"]
 
     home = client.get("/api/v1/home/summary").json()
     assert not any(
@@ -420,7 +425,13 @@ def test_home_empty_day_message(client, register_payload):
     assert home["attention_items"] == []
     assert home["upcoming_appointments"] == []
     assert home["contextual_hint"] is None
-    assert "pendência" in home["message"].lower() or "organizado" in home["message"].lower()
+    msg = home["message"].lower()
+    assert (
+        "pendência" in msg
+        or "organizado" in msg
+        or "configurada" in msg
+    )
+    assert home["has_active_service"] is False
 
 
 def test_home_summary_tenant_isolation(client, register_payload):

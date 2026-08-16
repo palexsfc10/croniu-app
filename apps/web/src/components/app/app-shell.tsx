@@ -20,7 +20,7 @@ import {
   IconLayoutGrid,
   IconLifeBuoy,
   IconLogOut,
-  IconRefreshCw,
+  IconClipboardList,
   IconUser,
   IconUsersRound,
 } from "@/components/ui/icons";
@@ -35,7 +35,7 @@ const navItems: {
   { href: "/app", label: "Hoje", Icon: IconHome },
   { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
   { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
-  { href: "/app/cycles", label: "Ciclos", Icon: IconRefreshCw },
+  { href: "/app/routines", label: "Rotinas", Icon: IconClipboardList },
   { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
 ];
 
@@ -357,7 +357,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className={
             assistantActive
               ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
-              : "flex-1 px-4 py-5 pb-28 md:px-6 md:pb-5"
+              : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:px-6 md:pb-5"
           }
         >
           <BillingGate>{children}</BillingGate>

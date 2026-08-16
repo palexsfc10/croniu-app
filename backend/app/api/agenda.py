@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -152,6 +153,29 @@ def agenda_day(
         day=target,
         include_cancelled=include_cancelled,
     )
+
+
+@router.get("/agenda/next")
+def agenda_next(
+    after: date | None = Query(default=None),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    org = agenda_svc.get_organization(db, auth.organization.id)
+    tz_name = agenda_svc.get_org_timezone(org)
+    today = agenda_svc.org_local_today(org)
+    after_day = after or today
+    row = agenda_svc.next_visible_appointment_after(
+        db, organization_id=auth.organization.id, after_day=after_day
+    )
+    if row is None:
+        return {"date": None, "timezone": tz_name, "appointment": None}
+    local_day = row.starts_at.astimezone(ZoneInfo(tz_name)).date()
+    return {
+        "date": local_day.isoformat(),
+        "timezone": tz_name,
+        "appointment": agenda_svc.appointment_to_out(row).model_dump(mode="json"),
+    }
 
 
 @router.post("/appointments", response_model=AppointmentOut, status_code=status.HTTP_201_CREATED)

@@ -15,6 +15,10 @@ export type MeResponse = {
     id: string;
     name: string;
     timezone?: string;
+    profession_code?: string | null;
+    profession_specialty?: string | null;
+    profession_other?: string | null;
+    profession_onboarding_done?: boolean;
   };
   role: string;
 };
@@ -232,6 +236,294 @@ export type HomeSummary = {
   priority_action: PriorityAction | null;
   contextual_hint: string | null;
   message: string;
+  new_submissions_count?: number;
+  anamnesis_pending_count?: number;
+  evaluation_pending_count?: number;
+  protocol_pending_count?: number;
+  protocol_reviews_due_count?: number;
+  routines_due_today_count?: number;
+  feedbacks_due_count?: number;
+  plans_ending_count?: number;
+  has_active_service?: boolean;
+  has_active_cycle_template?: boolean;
+};
+
+export type AnamnesisQuestion = {
+  id: string;
+  label: string;
+  type?: string;
+  required?: boolean;
+  sensitive?: boolean;
+  attention?: boolean;
+  section?: string;
+  help_text?: string | null;
+  placeholder?: string | null;
+  optional?: boolean;
+  visible_if?: { question_id: string; in: string[] } | null;
+  options?: Array<{ value: string; label: string }>;
+};
+
+export type AnamnesisConsentDef = {
+  key: string;
+  required?: boolean;
+  label: string;
+  text_version?: string;
+};
+
+export type AnamnesisSection = {
+  id: string;
+  title: string;
+  questions?: AnamnesisQuestion[];
+  consents?: AnamnesisConsentDef[];
+};
+
+export type AnamnesisSchema = {
+  code?: string;
+  name?: string;
+  version?: number;
+  sections?: AnamnesisSection[];
+  attention_client_message?: string;
+};
+
+export type PublicIntakeContext = {
+  professional_public_name: string;
+  welcome_message: string;
+  process_summary: string;
+  anamnesis_schema: AnamnesisSchema;
+  template_version_id: string;
+  attention_client_message: string;
+  form_kind?: string | null;
+  form_name?: string | null;
+  nomenclature?: Record<string, string>;
+};
+
+export type IntakeSubmitPayload = {
+  full_name: string;
+  phone: string;
+  email?: string | null;
+  birth_date?: string | null;
+  age_band?: string | null;
+  primary_goal: string;
+  occupation?: string | null;
+  emergency_contact?: string | null;
+  initial_notes?: string | null;
+  answers: Record<string, unknown>;
+  consents: Record<string, boolean>;
+  idempotency_key: string;
+};
+
+export type IntakeSubmitResult = {
+  submission_id: string;
+  client_id?: string | null;
+  status: string;
+  requires_professional_attention: boolean;
+  attention_message?: string | null;
+  idempotent_replay?: boolean;
+  portal_token?: string | null;
+  portal_path?: string | null;
+  portal_url?: string | null;
+  duplicate_alert?: boolean;
+  archived_match?: boolean;
+};
+
+export type IntakeLink = {
+  has_active_link: boolean;
+  id?: string | null;
+  status?: string | null;
+  name?: string | null;
+  purpose?: string | null;
+  form_kind?: string | null;
+  is_primary?: boolean;
+  submissions_count?: number;
+  created_at?: string | null;
+  rotated_at?: string | null;
+  last_used_at?: string | null;
+  token?: string | null;
+  public_path?: string | null;
+  public_url?: string | null;
+  wa_message_url?: string | null;
+};
+
+export type IntakeSubmissionListItem = {
+  id: string;
+  client_id: string | null;
+  status: string;
+  full_name: string;
+  submitted_at: string | null;
+  requires_professional_attention: boolean;
+  duplicate_alert: boolean;
+  archived_match: boolean;
+  primary_goal: string;
+};
+
+export type ClientJourney = {
+  id: string;
+  client_id: string;
+  stage: string;
+  stage_label: string;
+  evaluation_decision?: string | null;
+  protocol_decision?: string | null;
+  requires_professional_attention?: boolean;
+  attention_note?: string | null;
+  next_action?: string | null;
+  next_action_label?: string | null;
+  preparation_status?: string | null;
+  accompaniment_checklist?: Record<string, string> | null;
+  accompaniment_summaries?: Record<string, string | null> | null;
+  progress_defined?: number | null;
+  progress_total?: number | null;
+  anamnesis_reviewed_at?: string | null;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  activated_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProfessionProfile = {
+  profession_code: string | null;
+  profession_specialty: string | null;
+  profession_other: string | null;
+  use_cases: string[] | null;
+  profession_onboarding_done: boolean;
+  recommended_form_kind: string;
+  nomenclature: Record<string, string>;
+  catalog: Record<string, unknown>;
+  form_title?: string;
+  queue_received?: string;
+  queue_analyze?: string;
+  intake_template_code?: string | null;
+  collects_health?: boolean;
+};
+
+export type IntakeConsent = {
+  consent_key: string;
+  text_version: string;
+  accepted: boolean;
+  purpose: string;
+  legal_basis: string;
+  accepted_at: string;
+};
+
+export type IntakeAnamnesisQuestion = {
+  id: string;
+  label: string;
+  section?: string | null;
+  section_title?: string | null;
+  type?: string;
+  order?: number;
+  answer?: unknown;
+  answer_label?: string | null;
+  attention?: boolean;
+  sensitive?: boolean;
+  help_text?: string | null;
+};
+
+export type IntakeAnamnesis = {
+  id: string;
+  template_version_id: string;
+  answers_json: Record<string, unknown>;
+  questions_snapshot?: IntakeAnamnesisQuestion[];
+  form_name?: string | null;
+  template_version_number?: number | null;
+  summary?: {
+    primary_goal?: string | null;
+    modalities?: string | null;
+    availability?: string | null;
+    experience?: string | null;
+    attention_count?: number;
+    attention_labels?: string[];
+  } | null;
+  requires_professional_attention: boolean;
+  created_at: string;
+};
+
+export type IntakeSubmissionDetail = {
+  id: string;
+  client_id: string | null;
+  status: string;
+  full_name: string;
+  phone_normalized: string;
+  email: string | null;
+  birth_date: string | null;
+  primary_goal: string;
+  occupation: string | null;
+  emergency_contact: string | null;
+  initial_notes: string | null;
+  duplicate_client_id: string | null;
+  duplicate_alert: boolean;
+  archived_match: boolean;
+  requires_professional_attention: boolean;
+  rejection_internal_reason: string | null;
+  message_to_client: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  anamnesis?: IntakeAnamnesis | null;
+  consents?: IntakeConsent[];
+  journey?: ClientJourney | null;
+};
+
+export type PrepareStartResult = {
+  journey_stage: string;
+  evaluation_decision?: string | null;
+  protocol_decision?: string | null;
+  evaluation_ok: boolean;
+  protocol_ok: boolean;
+  attention_cleared: boolean;
+  ready: boolean;
+};
+
+export type PortalIntakeStatus = {
+  professional_public_name?: string | null;
+  client_first_name?: string | null;
+  journey_stage: string;
+  journey_label: string;
+  submission_status?: string | null;
+  message_to_client?: string | null;
+  requires_professional_attention?: boolean;
+  attention_message?: string | null;
+  protocol?: {
+    title?: string;
+    content_json?: Record<string, unknown>;
+    published_at?: string | null;
+  } | null;
+};
+
+export type ProtocolVersion = {
+  id: string;
+  version_number: number;
+  status: string;
+  content_json: Record<string, unknown>;
+  private_notes?: string | null;
+  published_at?: string | null;
+  created_at: string;
+};
+
+export type Protocol = {
+  id: string;
+  client_id: string | null;
+  title: string;
+  protocol_type: string;
+  status: string;
+  status_label?: string;
+  is_org_template: boolean;
+  review_due_on?: string | null;
+  review_recurrence_days?: number | null;
+  review_reason?: string | null;
+  objective?: string | null;
+  duration_value?: number | null;
+  duration_unit?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  feedback_interval_days?: number | null;
+  next_feedback_on?: string | null;
+  last_review_on?: string | null;
+  last_feedback_on?: string | null;
+  current_version_number: number;
+  created_at: string;
+  updated_at: string;
+  versions?: ProtocolVersion[];
+  milestones?: Array<{ kind: string; due_on: string; index: number }>;
 };
 
 export type ClientAccess = {
@@ -301,6 +593,19 @@ export type PublicMyCycle = {
   can_report_payment: boolean;
   can_declare_renewal_payment?: boolean;
   evaluations?: PublicEvaluation[];
+  plan?: PublicPlan | null;
+};
+
+export type PublicPlan = {
+  section_title: string;
+  title: string;
+  summary?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  milestones: string[];
+  external_url?: string | null;
+  external_title?: string | null;
+  published_at?: string | null;
 };
 
 export type EvaluationCriterionInput = {

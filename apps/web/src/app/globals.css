@@ -167,7 +167,7 @@
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
   --font-sans: var(--font-manrope);
-  --font-display: var(--font-fraunces);
+  --font-display: var(--font-manrope);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -190,11 +190,7 @@
 }
 
 body {
-  background:
-    radial-gradient(1200px 500px at 8% -12%, rgb(99 102 241 / 10%), transparent 55%),
-    radial-gradient(900px 420px at 92% 0%, rgb(124 58 237 / 6%), transparent 50%),
-    radial-gradient(700px 360px at 50% 100%, rgb(15 118 110 / 5%), transparent 45%),
-    var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-manrope), system-ui, sans-serif;
   min-height: 100dvh;
@@ -202,9 +198,11 @@ body {
 
 h1,
 h2,
+h3,
 .h-display {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   letter-spacing: -0.02em;
+  font-weight: 700;
 }
 
 :focus-visible {
@@ -229,6 +227,45 @@ h2,
 
 .animate-fade-up-delay {
   animation: fade-up var(--duration-normal) var(--ease-out) 80ms both;
+}
+
+@keyframes public-entry-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.public-entry-card {
+  animation: public-entry-card-in var(--duration-normal) var(--ease-out) both;
+}
+
+.public-entry-card:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.public-entry-card:nth-child(3) {
+  animation-delay: 100ms;
+}
+
+.public-entry-card--offset {
+  transform: none;
+}
+
+@media (min-width: 640px) {
+  .public-entry-card--offset {
+    transform: translateY(0.35rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-entry-card {
+    animation: none;
+  }
 }
 
 /* —— Button variants —— */

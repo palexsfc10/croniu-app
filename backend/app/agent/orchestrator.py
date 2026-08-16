@@ -422,10 +422,25 @@ def run_turn(
     entities_block = format_entities_prompt_block(entity_refs)
     turn_entities: list[dict[str, str]] = []
 
+    org = db.get(Organization, organization_id)
+    profession_block = None
+    if org is not None:
+        from app.services import profession as profession_svc
+
+        cases = org.use_cases if isinstance(org.use_cases, list) else None
+        profession_block = profession_svc.assistant_nomenclature_block(
+            org.profession_code,
+            specialty=org.profession_specialty,
+            use_cases=cases,
+        )
     messages: list[LLMMessage] = [
         LLMMessage(
             role="system",
-            content=get_system_prompt(temporal=temporal, entities_block=entities_block or None),
+            content=get_system_prompt(
+                temporal=temporal,
+                entities_block=entities_block or None,
+                profession_block=profession_block,
+            ),
         )
     ]
     for row in history:

@@ -23,9 +23,12 @@ from app.schemas.domain import (
     ReceivableOut,
     WhatsAppPrepOut,
 )
+from app.services import cycle_guard as cycle_guard_svc
+from app.services import cycle_period as cycle_period_svc
 from app.services.auth import AuthError
 
-NEARING_END_DAYS = 7
+NEARING_END_DAYS = 30
+PORTAL_NEARING_DAYS = 7
 # Ciclo também entra em “encerrando” quando resta no máximo esta quantidade de aulas.
 LESSONS_NEARING_REMAINING = 1
 
@@ -64,8 +67,8 @@ def _cycle_nearing_copy(cycle: CycleOut) -> tuple[str, str]:
     if days is not None and days >= 0:
         when = (
             "hoje"
-            if days == 0
-            else ("amanhã" if days == 1 else f"em {days} dias")
+            if days <= 1
+            else ("em 7 dias" if days <= 7 else f"em {days} dias")
         )
         return (
             "Ciclo chegando ao fim",
@@ -86,15 +89,13 @@ def _attention_cycle_subtitle(cycle: CycleOut) -> str:
     if cycle.days_remaining is not None:
         when = (
             "hoje"
-            if cycle.days_remaining == 0
+            if cycle.days_remaining <= 1
             else (
-                "amanhã"
-                if cycle.days_remaining == 1
-                else f"em {cycle.days_remaining} dias"
+                f"em {cycle.days_remaining} dias"
             )
         )
         return f"Ciclo termina {when} · sem renovação encaminhada"
-    return f"Ciclo encerra em {cycle.ends_on.isoformat()} · sem renovação encaminhada"
+    return f"Ciclo encerra em {cycle_period_svc.last_inclusive_on(cycle.ends_on).isoformat()} · renovação em {cycle.ends_on.isoformat()} · sem renovação encaminhada"
 
 
 def cycles_suppressed_from_home_attention(
@@ -441,10 +442,17 @@ def _cycle_out(
 ) -> CycleOut:
     today = today or date.today()
     days_remaining = (cycle.ends_on - today).days
+    current = cycle_period_svc.is_current(
+        starts_on=cycle.starts_on, ends_on=cycle.ends_on, today=today
+    )
     lessons_remaining = None
     if cycle.lesson_count is not None:
         lessons_remaining = max(0, int(cycle.lesson_count) - int(lessons_completed))
-    nearing_by_date = cycle.status == "active" and 0 <= days_remaining <= NEARING_END_DAYS
+    nearing_by_date = (
+        cycle.status == "active"
+        and current
+        and 1 <= days_remaining <= NEARING_END_DAYS
+    )
     nearing_by_lessons = (
         cycle.status == "active"
         and lessons_remaining is not None
@@ -507,6 +515,13 @@ def _cycle_out(
     )
 
 
+def _org_today(db: Session, organization_id: uuid.UUID) -> date:
+    from app.services import agenda as agenda_svc
+
+    org = agenda_svc.get_organization(db, organization_id)
+    return agenda_svc.org_local_today(org)
+
+
 def list_cycles(
     db: Session,
     *,
@@ -524,12 +539,14 @@ def list_cycles(
     if client_id:
         query = query.where(Cycle.client_id == client_id)
     rows = list(db.scalars(query.order_by(Cycle.ends_on.asc())).all())
+    today = _org_today(db, organization_id)
     progress = map_lesson_progress(
         db, organization_id=organization_id, cycle_ids=[row.id for row in rows]
     )
     return [
         _cycle_out(
             row,
+            today,
             lessons_completed=progress.get(row.id, (0, 0))[0],
             lessons_no_show=progress.get(row.id, (0, 0))[1],
         )
@@ -578,6 +595,16 @@ def create_cycle(
         raise AuthError("service_archived", "Não é possível criar ciclo com serviço arquivado.")
     if ends_on < starts_on:
         raise AuthError("invalid_dates", "A data de fim deve ser igual ou posterior ao início.")
+
+    cycle_guard_svc.assert_no_duplicate_or_overlap(
+        db,
+        organization_id=organization_id,
+        client_id=client.id,
+        service_id=service.id,
+        starts_on=starts_on,
+        ends_on=ends_on,
+        lesson_count=lesson_count,
+    )
 
     if cycle_template_id is not None:
         tmpl = db.scalar(
@@ -637,7 +664,8 @@ def prepare_whatsapp_renewal(
     service_name = cycle.service.name if cycle.service else "seu pacote"
     message = (
         f"Olá {client.full_name}! Seu ciclo de {service_name} "
-        f"encerra em {cycle.ends_on.strftime('%d/%m/%Y')}. "
+        f"encerra em {cycle_period_svc.last_inclusive_on(cycle.ends_on).strftime('%d/%m/%Y')} "
+        f"(renovação em {cycle.ends_on.strftime('%d/%m/%Y')}). "
         "Podemos conversar sobre a renovação?"
     )
     digits = phone_digits(client.phone)
@@ -1022,7 +1050,9 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         ).all()
     )
     # Active rows past ends_on also count as ended-without-renewal candidates.
-    past_due_active = [row for row in active_rows if row.ends_on < today]
+    past_due_active = [
+        row for row in active_rows if cycle_period_svc.is_elapsed(ends_on=row.ends_on, today=today)
+    ]
     ended_candidates = ended_rows + past_due_active
 
     progress = map_lesson_progress(
@@ -1221,6 +1251,61 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     else:
         message = "Veja o que precisa da sua atenção hoje."
 
+    from app.services import intake as intake_svc
+    from app.services import pendencies as pendency_svc
+
+    intake_counts = intake_svc.intake_home_counts(
+        db, organization_id=organization_id, today=today
+    )
+    try:
+        board = pendency_svc.board(db, organization_id=organization_id, today=today, bucket="today")
+        by_type = {g["occurrence_type"]: g["count"] for g in board.get("groups", [])}
+        intake_counts["protocol_reviews_due_count"] = by_type.get("plan_review", 0)
+        intake_counts["routines_due_today_count"] = sum(by_type.values())
+        intake_counts["feedbacks_due_count"] = by_type.get("feedback_due", 0)
+        intake_counts["plans_ending_count"] = by_type.get("plan_ending", 0)
+    except AuthError:
+        intake_counts.setdefault("feedbacks_due_count", 0)
+        intake_counts.setdefault("plans_ending_count", 0)
+    if intake_counts.get("new_submissions_count"):
+        n = int(intake_counts["new_submissions_count"])
+        attention.insert(
+            0,
+            AttentionItemOut(
+                kind="intake_new_submissions",
+                title="Novos cadastros",
+                subtitle=(
+                    "1 cadastro aguardando análise"
+                    if n == 1
+                    else f"{n} cadastros aguardando análise"
+                ),
+                href="/app/clients/intake",
+                entity_id=organization_id,
+                tone="warning",
+            ),
+        )
+        message = "Veja o que precisa da sua atenção hoje."
+
+    has_active_service = bool(
+        db.scalar(
+            select(func.count())
+            .select_from(Service)
+            .where(Service.organization_id == organization_id, Service.status == "active")
+        )
+    )
+    has_active_cycle_template = bool(
+        db.scalar(
+            select(func.count())
+            .select_from(CycleTemplate)
+            .where(
+                CycleTemplate.organization_id == organization_id,
+                CycleTemplate.status == "active",
+            )
+        )
+    )
+    if not has_active_service or not has_active_cycle_template:
+        message = "Sua rotina ainda está sendo configurada."
+
     return HomeSummaryOut(
         organization_id=organization_id,
         timezone=tz_name,
@@ -1239,6 +1324,9 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         priority_action=priority,
         contextual_hint=None,
         message=message,
+        has_active_service=has_active_service,
+        has_active_cycle_template=has_active_cycle_template,
+        **intake_counts,
     )
 
 
@@ -1249,6 +1337,8 @@ def cycle_to_out(db: Session, cycle: Cycle, today: date | None = None) -> CycleO
     no_show = count_lessons_no_show(
         db, organization_id=cycle.organization_id, cycle_id=cycle.id
     )
+    if today is None:
+        today = _org_today(db, cycle.organization_id)
     return _cycle_out(
         cycle, today, lessons_completed=completed, lessons_no_show=no_show
     )

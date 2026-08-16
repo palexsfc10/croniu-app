@@ -10,6 +10,7 @@ import {
   type Receivable,
   type WhatsAppPrep,
 } from "@/lib/api";
+import { formatCycleDetailLines } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
 import { ContextualBar } from "@/components/app/contextual-bar";
 import { BackLink } from "@/components/app/back-link";
@@ -112,8 +113,12 @@ export default function CycleDetailPage() {
         <>
           <h1 className="h-display text-3xl text-[var(--color-ink)]">{cycle.client_name}</h1>
           <p className="text-sm text-[var(--color-ink-muted)]">
-            {cycle.service_name} · {cycle.starts_on} → {cycle.ends_on}
+            {cycle.service_name} · {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).vigency}
             {cycle.is_legacy ? " · ciclo legado" : ""}
+          </p>
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).lessonsUntil} ·{" "}
+            {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).renewal}
           </p>
           {cycle.lesson_count != null ? (
             <p className="text-sm">

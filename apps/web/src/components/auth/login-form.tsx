@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiFetch, type MeResponse } from "@/lib/api";
@@ -23,26 +23,54 @@ function LoginFormInner() {
   const searchParams = useSearchParams();
   const verified = searchParams.get("verified") === "1";
   const [formError, setFormError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const me = await apiFetch<MeResponse>("/api/v1/auth/me");
+      if (cancelled || !me.data) return;
+      router.replace("/app");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
   const {
     register,
-    handleSubmit,
     setValue,
-    formState: { errors, isSubmitting },
+    setError,
+    formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
+  const [submitting, setSubmitting] = useState(false);
 
-  const onSubmit = handleSubmit(async (values) => {
+  async function authenticate(values: LoginValues) {
+    const parsed = loginSchema.safeParse(values);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0];
+        if (field === "email" || field === "password") {
+          setError(field, { message: issue.message });
+        }
+      }
+      return;
+    }
     setFormError(null);
+    setErrorCode(null);
+    setSubmitting(true);
     const result = await apiFetch<MeResponse>("/api/v1/auth/login", {
       method: "POST",
-      body: JSON.stringify(values),
+      body: JSON.stringify(parsed.data),
     });
+    setSubmitting(false);
     if (result.error) {
+      setErrorCode(result.error.code);
       if (result.error.code === "email_unverified") {
         setFormError(
-          "Confirme seu e-mail antes de entrar. Você pode reenviar o link na tela de verificação.",
+          "Seu e-mail ainda não foi verificado. Você pode verificar ou reenviar o link.",
         );
         return;
       }
@@ -51,15 +79,18 @@ function LoginFormInner() {
     }
     router.replace("/app");
     router.refresh();
-  });
+  }
 
   return (
     <form
+      method="post"
+      action="/login"
       onSubmit={(event) => {
+        event.preventDefault();
         const synced = valuesFromForm(event.currentTarget);
         setValue("email", synced.email, { shouldValidate: false });
         setValue("password", synced.password, { shouldValidate: false });
-        void onSubmit(event);
+        void authenticate(synced);
       }}
       className="flex flex-1 flex-col gap-4"
       noValidate
@@ -75,6 +106,7 @@ function LoginFormInner() {
         ) : null}
         <TextField
           label="E-mail"
+          id="login-email"
           type="email"
           autoComplete="email"
           inputMode="email"
@@ -86,6 +118,7 @@ function LoginFormInner() {
         />
         <TextField
           label="Senha"
+          id="login-password"
           type="password"
           autoComplete="current-password"
           enterKeyHint="done"
@@ -112,19 +145,24 @@ function LoginFormInner() {
             role="alert"
             className="rounded-[var(--radius-sm)] bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
           >
-            {formError}{" "}
-            <Link
-              href="/verify-email"
-              className="font-semibold underline underline-offset-2"
-            >
-              Abrir verificação
-            </Link>
+            {formError}
+            {errorCode === "email_unverified" ? (
+              <>
+                {" "}
+                <Link
+                  href="/verify-email"
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Abrir verificação
+                </Link>
+              </>
+            ) : null}
           </p>
         ) : null}
       </div>
       <div className="mt-auto space-y-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <Button type="submit" variant="brand" fullWidth disabled={isSubmitting}>
-          {isSubmitting ? "Entrando…" : "Entrar"}
+        <Button type="submit" variant="brand" fullWidth disabled={submitting}>
+          {submitting ? "Entrando…" : "Entrar"}
         </Button>
         <p className="text-center text-sm text-[var(--color-ink-muted)]">
           Novo no Croniu?{" "}

@@ -39,6 +39,16 @@ describe("Public Meu Ciclo page", () => {
           payment_instructions: { configured: false },
           can_request_renewal: true,
           can_report_payment: true,
+          plan: {
+            section_title: "Plano de acompanhamento",
+            title: "Estratégia do período",
+            summary: "Foco em consistência",
+            starts_on: "2026-08-01",
+            ends_on: "2026-11-21",
+            milestones: ["4 semanas — consistência"],
+            external_url: "https://example.com/treino",
+            external_title: "Material do período",
+          },
           evaluations: [
             {
               title: "Evolução de julho",
@@ -60,6 +70,20 @@ describe("Public Meu Ciclo page", () => {
     expect(screen.getByText(/Personal/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Quero continuar/i })).toBeInTheDocument();
     expect(screen.queryByText(/organization/i)).not.toBeInTheDocument();
+  });
+
+  it("renders published plan without draft or internal fields", async () => {
+    render(<PublicMyCyclePage />);
+    expect(await screen.findByRole("heading", { name: "Plano de acompanhamento" })).toBeInTheDocument();
+    expect(screen.getByText("Estratégia do período")).toBeInTheDocument();
+    expect(screen.getByText("Foco em consistência")).toBeInTheDocument();
+    expect(screen.getByText("4 semanas — consistência")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Material do período" })).toHaveAttribute(
+      "href",
+      "https://example.com/treino",
+    );
+    expect(screen.queryByText(/rascunho/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/organization_id/i)).not.toBeInTheDocument();
   });
 
   it("renders published evolution without private notes", async () => {

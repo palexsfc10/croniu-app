@@ -188,12 +188,52 @@ def test_generate_appointments_atomic_conflict(client, register_payload):
         },
     )
     assert res.status_code == 409, res.text
-    assert res.json()["code"] == "appointment_conflict"
+    assert res.json()["code"] == "SCHEDULE_CONFLICT"
     assert client.get("/api/v1/cycles").json() == []
     assert client.get("/api/v1/receivables").json() == []
     appts = client.get("/api/v1/agenda/day", params={"day": "2026-08-04"})
     # only the blocker
     assert len(appts.json()["appointments"]) == 1
+
+    retry_same = client.post(
+        "/api/v1/cycles/intelligent",
+        json={
+            "client_id": ids["client_id"],
+            "service_id": ids["service_id"],
+            "cycle_template_id": ids["template_id"],
+            "starts_on": "2026-08-01",
+            "weekdays": [1, 3],
+            "starts_time": "09:00:00",
+            "generate_appointments": True,
+            "create_receivable": True,
+            "idempotency_key": "conflict-1",
+        },
+    )
+    assert retry_same.status_code == 409, retry_same.text
+    assert retry_same.json()["code"] == "SCHEDULE_CONFLICT"
+    assert client.get("/api/v1/cycles").json() == []
+
+    ok = client.post(
+        "/api/v1/cycles/intelligent",
+        json={
+            "client_id": ids["client_id"],
+            "service_id": ids["service_id"],
+            "cycle_template_id": ids["template_id"],
+            "starts_on": "2026-08-01",
+            "weekdays": [1, 3],
+            "starts_time": "11:00:00",
+            "generate_appointments": True,
+            "create_receivable": True,
+            "idempotency_key": "conflict-1-retry",
+        },
+    )
+    assert ok.status_code == 201, ok.text
+    cycles = client.get("/api/v1/cycles").json()
+    assert len(cycles) == 1
+    recs = client.get("/api/v1/receivables").json()
+    assert len(recs) == 1
+    listed = client.get("/api/v1/cycles", params={"client_id": ids["client_id"]})
+    assert listed.json()[0]["id"] == cycles[0]["id"]
 
 
 def test_generate_appointments_success(client, register_payload):

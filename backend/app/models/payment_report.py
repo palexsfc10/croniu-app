@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,31 +14,41 @@ class PaymentReport(Base):
     """Client-reported payment awaiting professional confirmation."""
 
     __tablename__ = "payment_reports"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_review', 'confirmed', 'rejected')",
+            name="ck_payment_reports_status",
+        ),
+        CheckConstraint("amount_cents >= 0", name="ck_payment_reports_amount"),
+        Index("ix_payment_reports_org_status", "organization_id", "status"),
+        Index(
+            "uq_payment_reports_active",
+            "receivable_id",
+            unique=True,
+            postgresql_where=text("status = 'pending_review'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     client_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("clients.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     cycle_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("cycles.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     receivable_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("receivables.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_review")
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)

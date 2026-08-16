@@ -1,0 +1,161 @@
+# Relatório — rotinas na operação, ciclos no cliente
+
+Data: 2026-08-14  
+Sprint: `docs/sprints/SPRINT_ROUTINES_NAV_CYCLES.md`  
+Diagnóstico: `docs/sprints/DIAGNOSIS_ROUTINES_AGENDA_CYCLES.md`
+
+## Constraint de idempotência
+
+Nome: `uq_op_occ_org_idem`  
+Definição: `UNIQUE (organization_id, idempotency_key)`  
+Origem Alembic: `0021_plan_cadence` (`op.create_table(..., UniqueConstraint(..., name="uq_op_occ_org_idem"))`).  
+Head atual: `0022_form_template_pin`.
+
+Não foi criada migration nesta rodada: a constraint **já existe** em bancos upgradados até o head. Não afirmar “nenhuma migration no produto”; afirmar que **0021 já a institui**.
+
+### Banco de teste recriado do zero (Alembic, não `create_all`)
+
+Base vazia `croniu_constraint_probe` → `alembic upgrade head` → `0022_form_template_pin`.
+
+```
+conname            | pg_get_constraintdef
+uq_op_occ_org_idem | UNIQUE (organization_id, idempotency_key)
+indexname          | CREATE UNIQUE INDEX uq_op_occ_org_idem ON public.operational_occurrences USING btree (organization_id, idempotency_key)
+```
+
+### Schema HML (somente leitura)
+
+`croniu-hml-db` / `croniu_hml` / Alembic `0022_form_template_pin`:
+
+```
+conname            | pg_get_constraintdef
+uq_op_occ_org_idem | UNIQUE (organization_id, idempotency_key)
+```
+
+### Histórico Alembic
+
+`0021_plan_cadence` cria a tabela com a unique. `0022` não a altera.
+
+## Alembic check (metadata alinhado ao schema canônico)
+
+`alembic current` / `heads`: `0022_form_template_pin` (único head).  
+`alembic check`: **No new upgrade operations detected**.
+
+Nenhuma migration 0023. Nenhum DDL. `uq_op_occ_org_idem` preservada.
+
+### Versões Alembic (causa raiz HML)
+
+| Ambiente | Antes | Depois (pin) |
+|---|---|---|
+| Local / `requirements.txt` / CI `pip -r` | 1.18.5 + SQLAlchemy 2.0.51 | **alembic 1.19.1** + SQLAlchemy **2.0.51** |
+| Imagem API (Dockerfile `>=`) / HML `3749d21` | alembic **1.19.1**, SQLAlchemy **2.0.52** | mesmas pins `==` no Dockerfile |
+| `migrations-check` | 1.18.5, sem `alembic check` | 1.19.1 + `alembic check` + inspeção de constraints |
+
+O job CI e a imagem de deploy instalam a mesma versão pinada. Sem `>=` para Alembic/SQLAlchemy.
+
+### 18 CHECKs que faltavam no metadata (HML, validados, não deferrable)
+
+Fonte da expressão: migrations 0005–0019 (head 0021/0015 para status finais). HML confirmou o objeto físico.
+
+| Tabela | Nome | Migration (expressão canônica) |
+|---|---|---|
+| agent_messages | ck_agent_messages_message_type | 0013 `message_type IN ('text', 'pending_card', 'system')` |
+| agent_messages | ck_agent_messages_role | 0013 `role IN ('user', 'assistant', 'system', 'tool')` |
+| agent_pending_actions | ck_agent_pending_actions_risk_class | 0013 `risk_class IN ('read', 'write_common', 'write_sensitive', 'forbidden')` |
+| agent_pending_actions | ck_agent_pending_actions_status | 0015 `... 'executing' ...` |
+| agent_threads | ck_agent_threads_status | 0013 `status IN ('active', 'archived')` |
+| agent_tool_calls | ck_agent_tool_calls_risk_class | 0013 (mesmo conjunto de risk_class) |
+| appointments | ck_appointments_ends_after_starts | 0005 `ends_at > starts_at` |
+| client_intake_submissions | ck_client_intake_submissions_status | 0019 |
+| organization_intake_links | ck_organization_intake_links_status | 0019 |
+| organization_payment_settings | ck_org_payment_pix_key_type | 0007 |
+| payment_proofs | ck_payment_proofs_mime / size | 0007 |
+| payment_reports | ck_payment_reports_status / amount | 0007 |
+| protocols | ck_protocols_status | 0019 |
+| renewal_requests | ck_renewal_requests_status | 0011 (inclui `payment_reported`) |
+| user_feedbacks | ck_user_feedbacks_category / status | 0017 |
+
+Já alinhados e preservados: `cycle_templates.*`, `client_evaluations.*`.
+
+Reprodução: banco A `croniu_alembic_fresh` (`upgrade head`) e banco B restore local do backup pré-deploy (não no Git, não no HML). Ambos: `No new upgrade operations detected.`
+
+Sem `include_object`, sem silenciar `alembic check`.
+
+## Serviço canônico
+
+`ensure_routine_occurrences` em `backend/app/services/routine_occurrences.py`. Lazy. Unique + savepoint; `IntegrityError` ignorada.
+
+`trigger_type`: `calendar` | `cycle_lifecycle`. `client_lifecycle` / `manual` → 422.
+
+Âncoras `cycle_lifecycle`: após `starts_on`, antes de `ends_on` (offset), no `ends_on` (offset 0).
+
+## Gates Web
+
+Lint, typecheck e Vitest completos; build de produção Web. Admin não afetado.
+
+## Stack local
+
+API `127.0.0.1:8010` `/health` ok; Web Playwright `127.0.0.1:3000`; Postgres `croniu-dev-db:5433`; testes em `croniu_test`; app em `croniu`; head `0022`; sem HML.
+
+## Infraestrutura dos testes CHECK (sem reduzir cobertura)
+
+Causa dos 3 falhas pós-`b6edc8b`: o `rollback()` após `IntegrityError` desfazia a org criada na mesma sessão; o INSERT seguinte falhava por FK de `organization_id` inexistente, não pelo CHECK.
+
+Correção exclusiva de fixture:
+
+- `seeded_org_user` commita org+user numa sessão separada antes dos registros dependentes.
+- Clientes/ciclos/receivables dos testes CHECK também persistem em sessão própria.
+- `_assert_check` exige `psycopg.errors.CheckViolation` e o nome da constraint; rejeita `ForeignKeyViolation` anterior.
+- INSERTs raw incluem colunas NOT NULL obrigatórias para o CHECK ser alcançado.
+- Sem mock, sem remoção de FK/CHECK/assert.
+
+## Gates (local, SHA candidato seguinte a este relatório)
+
+- `alembic current` / `heads`: `0022_form_template_pin` (único head).
+- `alembic check`: No new upgrade operations detected.
+- Testes CHECK (`test_canonical_check_constraints.py`): 10 passed; cada rejeição é o CHECK nomeado.
+- Lint Web: 0 errors (warnings pré-existentes).
+- Typecheck Web: ok.
+- Vitest: 176 passed.
+- Build Web produção: ok. Admin não afetado.
+- Pytest completo: 364 passed.
+- API `http://127.0.0.1:8010/health` `{"status":"ok","database":true}`.
+- Playwright local `127.0.0.1:3000` → API `127.0.0.1:8010` (não HML): **50 passed**, 0 skipped. Portal do plano: personal + professor.
+- Seis profissões (`professions-os` + `intake-profession`): personal_trainer, private_tutor, aesthetics, physiotherapist, nutritionist, other.
+- Tutor + `form_kind=physical_anamnesis` → 422 `incompatible_form_kind`.
+
+## Portal do cliente — plano publicado
+
+Causa: `POST /protocols/{id}/publish` persistia `status=published` e `published_at` na versão; o GET público ` /public/my-cycle/{token}` só devolvia ciclo e avaliações. O portal `/c/[token]` não tinha seção de plano.
+
+Correção (sem migration): o GET seleciona o plano publicado do cliente da sessão do token (tenant pelo `organization_id` do acesso). Prefere vigente (`ends_on` nulo não descarta), senão o próximo, senão o publicado mais recente. Rascunho não entra; a última versão publicada permanece visível durante edição. Payload público: título adaptado (`nomenclature` / `plan_section_title`), resumo, período, marcos e link só se `visible_to_client`. Sem notas internas, ids ou controles do profissional.
+
+## Simplificação visual de Rotinas (MVP)
+
+Sem mudança de modelo, migration ou regras de materialização.
+
+- Cards de sugestão com switch, selo Ativa e frequência.
+- Ciclo relativo ativa com o padrão; calendário abre sheet só com frequência.
+- Seção “Suas rotinas” acima das sugestões; formulário personalizado recolhido em “Criar rotina personalizada” / “Nova rotina”.
+- Frequências existentes preservadas (rótulo “A cada 15 dias” = `biweekly`).
+
+## Formulários por profissão (correção crítica)
+
+Causa: `create_intake_link` pinava sempre `croniu_default_physical_activity`. Professor recebia “Anamnese de atividade física”.
+
+Correção:
+
+- Registry `profession_profile` (labels, capabilities, template, consents).
+- Pin no backend: `template_id`/`template_version` pela profissão da sessão.
+- Incompatível → 422, sem fallback silencioso para anamnese física.
+- Sem template compatível → Cadastro inicial genérico (sem saúde).
+- **FORMULÁRIOS ESPECIALIZADOS NUNCA SÃO FALLBACK.**
+- Links ativos com pin errado são corrigidos de forma auditável; respostas históricas não são reescritas.
+- Consentimentos acompanham o schema servido.
+
+HML permanece congelado até os seis fluxos + fallback genérico + Alembic check + regressão completa no SHA candidato.
+
+## Rollback
+
+
+Reverter o SHA candidato. Sem DROP. Unique `uq_op_occ_org_idem` permanece via `0021_plan_cadence` em qualquer banco já upgradado. Não fazer downgrade de 0021 em HML (droparia `operational_occurrences`). Sem deploy HML, merge, Promote ou alteração de PRD neste SHA.

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { Appointment, AttentionItem, HomeSummary, PriorityAction } from "@/lib/api";
-import { formatOrgDateTime } from "@/lib/api";
+import { apiFetch, formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,11 +13,19 @@ import {
   IconRefreshCw,
 } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
+import { ProfessionNudge } from "@/components/app/profession-nudge";
+import { InitialSetupCard } from "@/components/app/initial-setup-card";
 import {
   firstName,
   greetingForHour,
   hourInTimeZone,
 } from "@/lib/greeting";
+import {
+  getInitialSetupCollapsed,
+  setInitialSetupCollapsed,
+  SETUP_CELEBRATE_KEY,
+  subscribeInitialSetupCollapse,
+} from "@/lib/setup-copy";
 
 type Props = {
   summary: HomeSummary;
@@ -250,13 +258,98 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
   );
 }
 
+function subscribeSetupStorage(onStoreChange: () => void) {
+  return subscribeInitialSetupCollapse(onStoreChange);
+}
+
+function TodayActions() {
+  const [items, setItems] = useState<
+    Array<{
+      id: string;
+      name?: string | null;
+      type_label: string;
+      client_name?: string | null;
+      client_id?: string | null;
+      overdue?: boolean;
+      due_on: string;
+      occurrence_type: string;
+    }>
+  >([]);
+  useEffect(() => {
+    void (async () => {
+      const result = await apiFetch<{
+        groups: Array<{ items: typeof items }>;
+      }>("/api/v1/routines/board?bucket=today");
+      const flat = (result.data?.groups ?? []).flatMap((g) => g.items ?? []);
+      setItems(flat);
+    })();
+  }, []);
+  if (!items.length) return null;
+  return (
+    <section aria-label="Suas ações de hoje" className="space-y-2">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        Suas ações de hoje
+      </h2>
+      <ul className="space-y-2">
+        {items.map((item) => (
+          <li
+            key={item.id}
+            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+              {item.overdue ? "Atrasada" : "Hoje"}
+            </p>
+            <p className="font-semibold">{item.name || item.type_label}</p>
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              {item.client_name || "Grupo de clientes"} · prazo {item.due_on}
+            </p>
+            <Link
+              href={item.client_id ? `/app/clients/${item.client_id}` : "/app/routines"}
+              className="mt-1 inline-block text-sm font-medium text-[var(--color-link)]"
+            >
+              {item.client_id ? "Abrir cliente" : "Ver rotinas"}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function TodayBoard({ summary }: Props) {
   const { me } = useAuth();
   const [now, setNow] = useState(() => new Date());
+  const setupCollapsed = useSyncExternalStore(
+    subscribeSetupStorage,
+    getInitialSetupCollapsed,
+    () => false,
+  );
+  const [setupCelebrate, setSetupCelebrate] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let hideTimer = 0;
+    try {
+      if (sessionStorage.getItem(SETUP_CELEBRATE_KEY) !== "1") return;
+      sessionStorage.removeItem(SETUP_CELEBRATE_KEY);
+      hideTimer = window.setTimeout(() => {
+        if (!cancelled) setSetupCelebrate(true);
+        hideTimer = window.setTimeout(() => {
+          if (!cancelled) setSetupCelebrate(false);
+        }, 3500);
+      }, 0);
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      cancelled = true;
+      window.clearTimeout(hideTimer);
+    };
   }, []);
 
   const hour = hourInTimeZone(now, summary.timezone);
@@ -276,11 +369,46 @@ export function TodayBoard({ summary }: Props) {
       return start <= t && t < end;
     });
 
-  const attention = summary.attention_items ?? [];
-  const hasAttention = attention.length > 0;
+  const attentionBase = summary.attention_items ?? [];
+  const extraAttention: AttentionItem[] = [];
+  if (
+    (summary.protocol_reviews_due_count ?? 0) > 0 &&
+    !attentionBase.some((i) => i.kind === "plan_review" || i.href === "/app/routines")
+  ) {
+    extraAttention.push({
+      kind: "plan_review_group",
+      title: "Revisão de planos",
+      subtitle: `${summary.protocol_reviews_due_count} para revisar`,
+      href: "/app/routines",
+      entity_id: "routines-review",
+    });
+  }
+  if ((summary.feedbacks_due_count ?? 0) > 0) {
+    extraAttention.push({
+      kind: "feedback_group",
+      title: "Feedbacks",
+      subtitle: `${summary.feedbacks_due_count} para acompanhar`,
+      href: "/app/routines",
+      entity_id: "routines-feedback",
+    });
+  }
+  const attention = [...attentionBase, ...extraAttention];
+  const hasIntakeCounts =
+    (summary.new_submissions_count ?? 0) > 0 ||
+    (summary.evaluation_pending_count ?? 0) > 0 ||
+    (summary.protocol_pending_count ?? 0) > 0 ||
+    (summary.routines_due_today_count ?? 0) > 0 ||
+    (summary.protocol_reviews_due_count ?? 0) > 0 ||
+    (summary.feedbacks_due_count ?? 0) > 0 ||
+    (summary.plans_ending_count ?? 0) > 0;
+  const hasAttention = attention.length > 0 || hasIntakeCounts;
   const priority = summary.priority_action;
   const hasAgenda = upcoming.length > 0 || inProgress.length > 0;
-  const fullyClear = !priority && !hasAttention && !hasAgenda;
+  const setupIncomplete =
+    summary.has_active_service === false || summary.has_active_cycle_template === false;
+  const showSetupCard = setupIncomplete && !setupCollapsed;
+  const fullyClear = !priority && !hasAttention && !hasAgenda && !setupIncomplete;
+  const showCalmLine = !priority && hasAgenda && !hasAttention && !setupIncomplete;
 
   return (
     <div className="space-y-4 animate-fade-up md:space-y-5">
@@ -298,6 +426,25 @@ export function TodayBoard({ summary }: Props) {
           </Link>
         </div>
       </header>
+
+      <ProfessionNudge />
+
+      {showSetupCard ? (
+        <InitialSetupCard
+          compact
+          professionCode={me?.organization.profession_code}
+          hasService={Boolean(summary.has_active_service)}
+          hasTemplate={Boolean(summary.has_active_cycle_template)}
+          returnTo="/app"
+          onDismissLater={() => setInitialSetupCollapsed(true)}
+        />
+      ) : null}
+
+      {setupCelebrate && !setupIncomplete ? (
+        <p role="status" className="text-sm text-[var(--color-ink-muted)]">
+          Configuração inicial concluída
+        </p>
+      ) : null}
 
       {fullyClear ? (
         <EmptyState
@@ -317,16 +464,22 @@ export function TodayBoard({ summary }: Props) {
           <div className="space-y-4">
             {priority ? (
               <PriorityCard action={priority} />
-            ) : (
+            ) : hasAttention ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Revise o que precisa da sua atenção.
+              </p>
+            ) : showCalmLine ? (
               <CalmPriorityLine
                 message={
-                  hasAttention
-                    ? "Revise a lista ao lado quando puder."
-                    : summary.message ||
-                      "Nenhuma pendência operacional no momento."
+                  summary.message || "Nenhuma pendência operacional no momento."
                 }
               />
-            )}
+            ) : setupIncomplete && !hasAgenda ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Sua rotina ainda está sendo configurada.
+              </p>
+            ) : null}
+            <TodayActions />
             <DayTimeline
               inProgress={inProgress}
               upcoming={upcoming}

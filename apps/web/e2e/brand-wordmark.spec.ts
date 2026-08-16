@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
+import { registerProfessional } from "./register-flow";
 
 const shotDir = path.join(__dirname, "artifacts", "brand-wordmark");
 
@@ -32,7 +33,7 @@ test.describe("brand wordmark QA", () => {
     await page.goto("/register");
     await expect(page.getByRole("link", { name: "Voltar" })).toBeVisible();
     await expect(page.getByRole("img", { name: "Croniu" })).toHaveCount(1);
-    await expect(page.getByRole("heading", { name: "Criar conta", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Crie sua conta", exact: true })).toBeVisible();
     await page.screenshot({
       path: path.join(shotDir, "register-390.png"),
       fullPage: true,
@@ -53,13 +54,13 @@ test.describe("brand wordmark QA", () => {
     const password = "SenhaForte1!";
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/register");
-    await page.getByLabel("Seu nome").fill("Brand QA");
-    await page.getByLabel("Nome do negócio / organização").fill(`Studio ${suffix}`);
-    await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Senha").fill(password);
-    await page.getByRole("button", { name: "Criar conta" }).click();
-    await expect(page.getByRole("heading", { name: "Hoje", exact: true })).toBeVisible({
+    await registerProfessional(page, {
+      name: "Brand QA",
+      org: `Studio ${suffix}`,
+      email,
+      password,
+    });
+    await expect(page.getByRole("heading", { name: /Hoje|Bom |Boa / })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByRole("img", { name: "Croniu" })).toHaveCount(1);

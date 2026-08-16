@@ -104,6 +104,28 @@ export default function OrganizationDetailPage() {
           </dd>
         </div>
         <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Profissão</dt>
+          <dd>{data.profession_label ?? "Não preenchida"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Especialidade</dt>
+          <dd>{data.profession_specialty ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Onboarding profissional</dt>
+          <dd>{data.profession_onboarding_done ? "Concluído" : "Pendente"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Formulário recomendado</dt>
+          <dd>{data.recommended_form_kind ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Planos / publicados / ocorrências atrasadas</dt>
+          <dd>
+            {data.plans_count ?? 0} / {data.published_plans_count ?? 0} / {data.overdue_occurrences_count ?? 0}
+          </dd>
+        </div>
+        <div>
           <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Uso do Assistente</dt>
           <dd>{data.assistant_threads_count ?? 0} conversa(s)</dd>
         </div>

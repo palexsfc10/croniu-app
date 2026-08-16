@@ -8,7 +8,6 @@ import {
   WEEKDAY_OPTIONS,
   apiFetch,
   formatBRL,
-  formatConflictLines,
   formatDateBR,
   reaisToCents,
   type Client,
@@ -21,6 +20,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { useAuth } from "@/components/auth/auth-provider";
+import {
+  ScheduleConflictAlert,
+  isScheduleConflictCode,
+  type ScheduleConflictItem,
+} from "@/components/app/schedule-conflict-alert";
+import {
+  CycleOverlapAlert,
+  isDuplicateCycleCode,
+  isOverlappingCycleCode,
+} from "@/components/app/cycle-overlap-alert";
+import { lastInclusiveIso } from "@/lib/date-format";
+import { safeReturnTo } from "@/lib/nomenclature";
 
 function NewIntelligentCycleForm() {
   const router = useRouter();
@@ -33,8 +44,10 @@ function NewIntelligentCycleForm() {
   const [services, setServices] = useState<Service[]>([]);
   const [templates, setTemplates] = useState<CycleTemplate[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [listsReady, setListsReady] = useState(false);
 
-  const [clientId, setClientId] = useState(search.get("clientId") ?? "");
+  const clientIdFromQuery = search.get("clientId") ?? "";
+  const [clientId, setClientId] = useState(clientIdFromQuery);
   const [serviceId, setServiceId] = useState(search.get("serviceId") ?? "");
   const [templateId, setTemplateId] = useState(search.get("templateId") ?? "");
   // Never default to "today" — the professional must choose when the cycle starts.
@@ -53,12 +66,33 @@ function NewIntelligentCycleForm() {
   const [startsTime, setStartsTime] = useState("09:00");
   const [preview, setPreview] = useState<CyclePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [conflicts, setConflicts] = useState<string[]>([]);
+  const [conflicts, setConflicts] = useState<ScheduleConflictItem[]>([]);
+  const [conflictCount, setConflictCount] = useState(0);
+  const [cycleGuardCode, setCycleGuardCode] = useState<
+    "DUPLICATE_CYCLE" | "OVERLAPPING_CYCLE" | null
+  >(null);
+  const [existingCycleId, setExistingCycleId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const template = templates.find((t) => t.id === templateId);
   const service = services.find((s) => s.id === serviceId);
   const client = clients.find((c) => c.id === clientId);
+  const backHref = clientId
+    ? `/app/clients/${clientId}/accompaniment`
+    : "/app/cycles";
+  const cycleReturnPath = (() => {
+    const params = new URLSearchParams();
+    if (clientId) params.set("clientId", clientId);
+    if (serviceId) params.set("serviceId", serviceId);
+    if (templateId) params.set("templateId", templateId);
+    if (startsOn) params.set("startsOn", startsOn);
+    if (weekdays.length) params.set("weekdays", weekdays.join(","));
+    if (renewalRequestId) params.set("renewalRequestId", renewalRequestId);
+    const existingReturn = safeReturnTo(search.get("returnTo"));
+    if (existingReturn) params.set("returnTo", existingReturn);
+    const q = params.toString();
+    return q ? `/app/cycles/new?${q}` : "/app/cycles/new";
+  })();
 
   useEffect(() => {
     void (async () => {
@@ -72,6 +106,7 @@ function NewIntelligentCycleForm() {
       setServices(s.data ?? []);
       setTemplates(t.data ?? []);
       setLocations(l.data ?? []);
+      setListsReady(true);
     })();
   }, []);
 
@@ -86,6 +121,7 @@ function NewIntelligentCycleForm() {
   async function loadPreview() {
     setError(null);
     setConflicts([]);
+    setConflictCount(0);
     if (!startsOn) {
       setError("Informe a data de início do ciclo.");
       return false;
@@ -144,6 +180,9 @@ function NewIntelligentCycleForm() {
     setSaving(true);
     setError(null);
     setConflicts([]);
+    setConflictCount(0);
+    setCycleGuardCode(null);
+    setExistingCycleId(null);
     const body: Record<string, unknown> = {
       client_id: clientId,
       service_id: serviceId,
@@ -171,17 +210,33 @@ function NewIntelligentCycleForm() {
     });
     setSaving(false);
     if (result.error) {
-      setError(
-        result.error.code === "appointment_conflict"
-          ? "Não foi possível adicionar as aulas à agenda"
-          : result.error.message,
-      );
       const details = result.error.details as
-        | { conflicts?: { client_name?: string; starts_at: string }[] }
+        | {
+            conflicts?: ScheduleConflictItem[];
+            conflict_count?: number;
+            existing_cycle_id?: string;
+          }
         | undefined;
-      if (details?.conflicts?.length) {
-        setConflicts(formatConflictLines(details.conflicts, orgTz));
+      const items = details?.conflicts ?? [];
+      setConflicts(items);
+      setConflictCount(details?.conflict_count ?? items.length);
+      if (isScheduleConflictCode(result.error.code)) {
+        setError("schedule_conflict");
+      } else if (
+        isDuplicateCycleCode(result.error.code) ||
+        isOverlappingCycleCode(result.error.code)
+      ) {
+        setCycleGuardCode(result.error.code as "DUPLICATE_CYCLE" | "OVERLAPPING_CYCLE");
+        setExistingCycleId(details?.existing_cycle_id ?? null);
+        setError(result.error.message);
+      } else {
+        setError(result.error.message);
       }
+      return;
+    }
+    const returnTo = search.get("returnTo");
+    if (returnTo && returnTo.startsWith("/app/") && !returnTo.includes("://")) {
+      router.replace(`${returnTo}?done=cycle`);
       return;
     }
     router.replace(`/app/cycles/${result.data!.id}`);
@@ -196,15 +251,25 @@ function NewIntelligentCycleForm() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <BackLink href="/app/cycles" label="Ciclos" />
+      <BackLink
+        href={backHref}
+        label={clientId ? "Voltar ao acompanhamento" : "Ciclos"}
+      />
+      {client ? (
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          Ciclo para <strong className="text-[var(--color-ink)]">{client.full_name}</strong>
+        </p>
+      ) : null}
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo ciclo</h1>
       <p className="text-sm text-[var(--color-ink-muted)]">Passo {step} de 4</p>
 
       {step === 1 ? (
         <div className="space-y-4">
-          <label className="block space-y-1.5">
+          <label className="block space-y-1.5" htmlFor="cycle-client">
             <span className="text-sm font-medium">Cliente</span>
             <select
+              id="cycle-client"
+              aria-label="Cliente"
               className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
@@ -218,9 +283,11 @@ function NewIntelligentCycleForm() {
               ))}
             </select>
           </label>
-          <label className="block space-y-1.5">
+          <label className="block space-y-1.5" htmlFor="cycle-service">
             <span className="text-sm font-medium">Serviço</span>
             <select
+              id="cycle-service"
+              aria-label="Serviço"
               className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
               value={serviceId}
               onChange={(e) => setServiceId(e.target.value)}
@@ -233,9 +300,11 @@ function NewIntelligentCycleForm() {
               ))}
             </select>
           </label>
-          <label className="block space-y-1.5">
+          <label className="block space-y-1.5" htmlFor="cycle-template">
             <span className="text-sm font-medium">Modelo de ciclo</span>
             <select
+              id="cycle-template"
+              aria-label="Modelo de ciclo"
               className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
               value={templateId}
               onChange={(e) => {
@@ -251,13 +320,42 @@ function NewIntelligentCycleForm() {
               ))}
             </select>
           </label>
-          {!templates.length ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              Sem modelos.{" "}
-              <Link href="/app/cycle-templates/new" className="font-semibold text-[var(--color-primary)]">
+          {listsReady && !services.length ? (
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3">
+              <p className="text-sm font-semibold text-[var(--color-ink)]">
+                Você precisa de um serviço antes de criar um ciclo.
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                O serviço informa o que será oferecido, sua duração e o valor.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-3">
+                <Link
+                  href={`/app/services/new?returnTo=${encodeURIComponent(cycleReturnPath)}`}
+                  className="text-sm font-semibold text-[var(--color-primary)]"
+                >
+                  Criar serviço
+                </Link>
+                <Link href={backHref} className="text-sm font-medium text-[var(--color-ink-muted)]">
+                  Voltar
+                </Link>
+              </div>
+            </div>
+          ) : null}
+          {listsReady && services.length > 0 && !templates.length ? (
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3">
+              <p className="text-sm font-semibold text-[var(--color-ink)]">
+                Você ainda não criou um modelo de ciclo.
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                Nesta tela, o modelo é necessário para calcular frequência e período do ciclo.
+              </p>
+              <Link
+                href={`/app/cycle-templates/new?returnTo=${encodeURIComponent(cycleReturnPath)}`}
+                className="mt-2 inline-block text-sm font-semibold text-[var(--color-primary)]"
+              >
                 Criar modelo
               </Link>
-            </p>
+            </div>
           ) : null}
           <Button
             fullWidth
@@ -279,8 +377,8 @@ function NewIntelligentCycleForm() {
             required
           />
           <p className="text-sm text-[var(--color-ink-muted)]">
-            Escolha quando o ciclo começa. Não precisa ser o dia de hoje — use a primeira aula
-            combinada com o cliente.
+            Escolha quando o ciclo começa. A data de renovação é calculada pelo modelo; o ciclo
+            atual fica vigente até o dia anterior.
           </p>
           {error && step === 2 ? (
             <p role="alert" className="text-sm text-[var(--color-danger)]">
@@ -334,11 +432,15 @@ function NewIntelligentCycleForm() {
               <span className="text-[var(--color-ink-muted)]">Serviço</span> · {service?.name}
             </p>
             <p>
-              <span className="text-[var(--color-ink-muted)]">Validade</span> ·{" "}
-              {formatDateBR(preview.starts_on)} até antes de {formatDateBR(preview.ends_on)}
+              <span className="text-[var(--color-ink-muted)]">Vigência</span> ·{" "}
+              {formatDateBR(preview.starts_on)} a {formatDateBR(lastInclusiveIso(preview.ends_on))}
             </p>
             <p>
-              <span className="text-[var(--color-ink-muted)]">Renovação</span> ·{" "}
+              <span className="text-[var(--color-ink-muted)]">Aulas até</span> ·{" "}
+              {formatDateBR(lastInclusiveIso(preview.ends_on))}
+            </p>
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Data de renovação</span> ·{" "}
               {formatDateBR(preview.ends_on)}
             </p>
             <p>
@@ -370,7 +472,7 @@ function NewIntelligentCycleForm() {
             required
           />
           <p className="text-sm text-[var(--color-ink-muted)]">
-            Alterar a data recalcula validade, renovação e lista de aulas.
+            Alterar a data recalcula vigência, renovação e lista de aulas.
           </p>
 
           <TextField
@@ -422,27 +524,38 @@ function NewIntelligentCycleForm() {
             </label>
           </div>
 
-          {error ? (
+          {error === "schedule_conflict" ? (
+            <ScheduleConflictAlert
+              conflicts={conflicts}
+              conflictCount={conflictCount}
+              timeZone={orgTz}
+              onAdjust={() => {
+                setError(null);
+                setStep(2);
+              }}
+            />
+          ) : cycleGuardCode ? (
+            <CycleOverlapAlert
+              code={cycleGuardCode}
+              message={error || ""}
+              existingCycleId={existingCycleId}
+              clientId={clientId}
+              onAdjustPeriod={() => {
+                setError(null);
+                setCycleGuardCode(null);
+              }}
+              onCancel={() => {
+                router.replace(
+                  clientId ? `/app/clients/${clientId}` : "/app/cycles"
+                );
+              }}
+            />
+          ) : error ? (
             <div
               role="alert"
               className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)] px-3 py-3"
             >
               <p className="text-sm font-semibold text-[var(--color-danger)]">{error}</p>
-              {conflicts.length ? (
-                <>
-                  <p className="text-sm text-[var(--color-ink)]">
-                    Já existem compromissos nestes horários:
-                  </p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-ink)]">
-                    {conflicts.map((c) => (
-                      <li key={c}>{c}</li>
-                    ))}
-                  </ul>
-                  <p className="text-sm text-[var(--color-ink-muted)]">
-                    Ajuste o horário ou os dias da semana e tente novamente.
-                  </p>
-                </>
-              ) : null}
             </div>
           ) : null}
 

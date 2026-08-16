@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 export default function RegisterPage() {
   return (
     <AuthScreen
-      title="Criar conta"
-      subtitle="Sua organização começa com você como administrador."
+      title="Crie sua conta"
+      subtitle="Comece organizando sua rotina profissional."
       backHref="/"
     >
       <RegisterForm />

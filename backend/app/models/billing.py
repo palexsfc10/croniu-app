@@ -11,11 +11,13 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -82,14 +84,16 @@ class BillingCheckoutStatus(str, enum.Enum):
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
-    __table_args__ = (UniqueConstraint("organization_id", name="uq_subscriptions_organization_id"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", name="uq_subscriptions_organization_id"),
+        Index("ix_subscriptions_provider_subscription", "provider", "provider_subscription_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
     plan_code: Mapped[str] = mapped_column(String(100), nullable=False)
     plan_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -144,9 +148,10 @@ class Subscription(Base):
 
 class BillingPlan(Base):
     __tablename__ = "billing_plans"
+    __table_args__ = (UniqueConstraint("code", name="billing_plans_code_key"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
@@ -160,6 +165,9 @@ class BillingPlan(Base):
 
 class BillingPrice(Base):
     __tablename__ = "billing_prices"
+    __table_args__ = (
+        Index("ix_billing_prices_lookup", "provider", "country_code", "currency", "active"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     plan_id: Mapped[uuid.UUID] = mapped_column(
@@ -193,6 +201,22 @@ class BillingCheckout(Base):
     """Asaas hosted checkout session. No card or customerData payloads stored."""
 
     __tablename__ = "billing_checkouts"
+    __table_args__ = (
+        Index("uq_billing_checkouts_external_reference", "external_reference", unique=True),
+        Index(
+            "uq_billing_checkouts_provider_checkout_id",
+            "provider",
+            "provider_checkout_id",
+            unique=True,
+            postgresql_where=text("provider_checkout_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_billing_checkouts_org_open",
+            "organization_id",
+            unique=True,
+            postgresql_where=text("status IN ('PENDING', 'ACTIVE')"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -243,6 +267,7 @@ class BillingWebhookEvent(Base):
             "external_event_id",
             name="uq_billing_webhook_provider_event",
         ),
+        Index("ix_billing_webhook_events_status", "processing_status", "received_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -8,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -28,6 +29,8 @@ class ClientEvaluation(Base):
             "status IN ('draft', 'published', 'archived')",
             name="ck_client_evaluations_status",
         ),
+        Index("ix_client_evaluations_org_client_status", "organization_id", "client_id", "status"),
+        Index("ix_client_evaluations_published_at", "published_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

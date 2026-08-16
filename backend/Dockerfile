@@ -22,19 +22,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
+COPY requirements.txt ./
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
+COPY scripts ./scripts
 
+# Pins must match requirements.txt (CI + image + HML). No floating >= for Alembic/SQLAlchemy.
 RUN pip install --no-cache-dir \
-    "fastapi[standard]>=0.140.0" \
-    "sqlalchemy>=2.0.51" \
-    "alembic>=1.18.5" \
-    "pydantic-settings>=2.14.0" \
-    "pwdlib[argon2]>=0.3.0" \
-    "psycopg[binary]>=3.3.0" \
-    "email-validator>=2.3.0" \
-    "python-dotenv>=1.2.0"
+    "fastapi[standard]==0.140.0" \
+    "sqlalchemy==2.0.51" \
+    "alembic==1.19.1" \
+    "pydantic-settings==2.14.2" \
+    "pwdlib[argon2]==0.3.0" \
+    "psycopg[binary]==3.3.4" \
+    "email-validator==2.3.0" \
+    "python-dotenv==1.2.2"
 
 EXPOSE 8000
 
