@@ -168,12 +168,12 @@ jobs:
           )"
           ssh_rc=$?
           set -e
-          printf '%s\n' "$ssh_out" | python3 - <<'PY'
-          import sys
-          text = sys.stdin.read().lower()
+          SSH_OUT="$ssh_out" python3 - <<'PY'
+          import os
+          text = (os.environ.get("SSH_OUT") or "").lower()
           def has(*needles):
               return any(n in text for n in needles)
-          if has("connection timed out", "operation timed out", "connection timed out"):
+          if has("connection timed out", "operation timed out"):
               print("SSH_LAYER=tcp_timeout")
           elif has("could not resolve", "name or service not known", "no address associated"):
               print("SSH_LAYER=dns")
