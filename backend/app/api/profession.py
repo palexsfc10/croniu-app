@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.schemas.intake import ProfessionOut, ProfessionUpdateIn
 from app.services import profession as profession_svc
+from app.services import profession_profile as profiles
 from app.services.auth import AuthContext, AuthError, get_current_auth
 
 router = APIRouter(tags=["profession"])
@@ -28,6 +29,7 @@ def _http(exc: AuthError | ValueError) -> HTTPException:
 def _out(org) -> ProfessionOut:
     code = org.profession_code
     use_cases = org.use_cases if isinstance(org.use_cases, list) else None
+    profile = profiles.profile_for(code)
     return ProfessionOut(
         profession_code=code,
         profession_specialty=org.profession_specialty,
@@ -39,6 +41,11 @@ def _out(org) -> ProfessionOut:
         ),
         nomenclature=profession_svc.nomenclature_for(code),
         catalog=profession_svc.profession_catalog(),
+        form_title=profile["form_title"],
+        queue_received=profile["queue_received"],
+        queue_analyze=profile["queue_analyze"],
+        intake_template_code=profile["intake_template_code"],
+        collects_health=bool(profile["collects_health"]),
     )
 
 

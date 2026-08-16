@@ -56,6 +56,9 @@ FORM_KIND_OPTIONS: list[dict[str, str]] = [
     {"code": "class_questionnaire", "label": "Cadastro + questionário de aulas"},
     {"code": "sports_questionnaire", "label": "Cadastro + questionário esportivo"},
     {"code": "consulting_brief", "label": "Cadastro + briefing"},
+    {"code": "aesthetics_intake", "label": "Ficha inicial de atendimento"},
+    {"code": "physio_intake", "label": "Ficha inicial de fisioterapia"},
+    {"code": "nutrition_intake", "label": "Ficha inicial de acompanhamento nutricional"},
     {"code": "custom", "label": "Formulário personalizado"},
 ]
 
@@ -73,18 +76,9 @@ _VALID_USE_CASES = {u["code"] for u in USE_CASE_OPTIONS}
 
 
 def recommended_form_kind(profession_code: str | None, specialty: str | None = None) -> str:
-    code = _canonical(profession_code)
-    if code == "personal_trainer":
-        return "physical_anamnesis"
-    if code == "private_tutor":
-        return "class_questionnaire"
-    if code == "sports_teacher":
-        if specialty in {"musculacao"}:
-            return "physical_anamnesis"
-        return "sports_questionnaire"
-    if code in {"consultant", "coach_mentor"}:
-        return "consulting_brief"
-    return "simple_registration"
+    from app.services.profession_profile import recommended_form_kind as _rk
+
+    return _rk(profession_code, specialty)
 
 
 _CODE_ALIASES = {
@@ -137,7 +131,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "routine": "rotina",
             "accompaniment": "acompanhamento",
             "new_intake": "Novos alunos",
-            "intake_form": "questionário",
+            "intake_form": "cadastro inicial",
             "plan_ending": "Preparar próxima etapa",
             "feedback": "Acompanhamento do aluno",
         }
@@ -155,7 +149,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "routine": "rotina",
             "accompaniment": "acompanhamento",
             "new_intake": "Novos alunos",
-            "intake_form": "formulário",
+            "intake_form": "cadastro inicial",
             "plan_ending": "Preparar nova etapa",
             "feedback": "Feedback",
         }
@@ -173,7 +167,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "routine": "rotina",
             "accompaniment": "acompanhamento",
             "new_intake": "Novos clientes",
-            "intake_form": "briefing",
+            "intake_form": "cadastro",
             "plan_ending": "Preparar novo planejamento",
             "feedback": "Follow-up",
         }
@@ -191,7 +185,7 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "routine": "rotina",
             "accompaniment": "acompanhamento",
             "new_intake": "Novos clientes",
-            "intake_form": "briefing",
+            "intake_form": "cadastro",
             "plan_ending": "Preparar novo planejamento",
             "feedback": "Acompanhamento",
         }
@@ -209,7 +203,43 @@ def nomenclature_for(profession_code: str | None) -> dict[str, str]:
             "routine": "rotina",
             "accompaniment": "acompanhamento",
             "new_intake": "Novos clientes",
-            "intake_form": "cadastro",
+            "intake_form": "ficha de atendimento",
+            "plan_ending": "Preparar próximo plano",
+            "feedback": "Retorno",
+        }
+    if code == "physiotherapist":
+        return {
+            "client": "cliente",
+            "clients": "clientes",
+            "plan": "plano de acompanhamento",
+            "plan_short": "plano",
+            "plan_review": "revisão do plano",
+            "session": "sessão",
+            "evaluation": "avaliação",
+            "cycle": "ciclo",
+            "agenda": "agenda",
+            "routine": "rotina",
+            "accompaniment": "acompanhamento",
+            "new_intake": "Novos clientes",
+            "intake_form": "ficha inicial",
+            "plan_ending": "Preparar próximo plano",
+            "feedback": "Acompanhamento",
+        }
+    if code == "nutritionist":
+        return {
+            "client": "cliente",
+            "clients": "clientes",
+            "plan": "plano de acompanhamento",
+            "plan_short": "plano",
+            "plan_review": "revisão do plano",
+            "session": "consulta",
+            "evaluation": "avaliação",
+            "cycle": "ciclo",
+            "agenda": "agenda",
+            "routine": "rotina",
+            "accompaniment": "acompanhamento",
+            "new_intake": "Novos clientes",
+            "intake_form": "ficha nutricional",
             "plan_ending": "Preparar próximo plano",
             "feedback": "Retorno",
         }
@@ -290,7 +320,8 @@ def assistant_nomenclature_block(
         f"- sessão: {terms['session']}\n"
         f"- feedback: {terms['feedback']}\n"
         "Use esses termos. Não fale em treino/aluno se o vocabulário for cliente/atendimento. "
-        "Não sugira anamnese física fora do contexto de atividade física. "
+        "Use o nome da ficha da profissão. Não chame cadastro educacional de anamnese. "
+        "Não sugira condição física, treino ou anamnese fora de Personal trainer. "
         "Não use códigos técnicos na resposta ao usuário."
     )
 

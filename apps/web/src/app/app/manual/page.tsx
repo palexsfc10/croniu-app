@@ -71,7 +71,7 @@ export default function ManualPage() {
     {
       id: "formularios",
       title: "Formulários",
-      body: `O formulário de entrada depende da profissão. Anamnese física automática vale para personal trainer e, em esportes, para musculação. Professor particular usa questionário. Consultor não recebe anamnese de treino. O ${terms.intake_form} não é diagnóstico.`,
+      body: `O formulário de entrada é determinado pela profissão da organização e fica pinado no convite. Formulários de saúde nunca são fallback. Sem template compatível, usa-se o cadastro inicial genérico. O ${terms.intake_form} não é diagnóstico.`,
     },
     {
       id: "analisar",

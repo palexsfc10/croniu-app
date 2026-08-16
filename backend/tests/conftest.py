@@ -188,3 +188,37 @@ def db_session():
         yield db
     finally:
         db.close()
+
+
+@pytest.fixture
+def seeded_org_user(db_session):
+    """Commit org+user on a separate session so a later rollback cannot undo them."""
+    from app.security.passwords import hash_password
+
+    seed = TestingSessionLocal()
+    try:
+        org = Organization(
+            id=uuid.uuid4(),
+            name=f"CK Org {uuid.uuid4().hex[:8]}",
+            status="active",
+            plan_code="trial",
+        )
+        user = User(
+            id=uuid.uuid4(),
+            email=f"ck_{uuid.uuid4().hex[:8]}@example.com",
+            full_name="CK User",
+            password_hash=hash_password("SenhaForte1!"),
+            account_status="active",
+        )
+        seed.add(org)
+        seed.add(user)
+        seed.commit()
+        org_id, user_id = org.id, user.id
+    finally:
+        seed.close()
+
+    org = db_session.get(Organization, org_id)
+    user = db_session.get(User, user_id)
+    assert org is not None, "organization fixture did not persist before dependent inserts"
+    assert user is not None, "user fixture did not persist before dependent inserts"
+    return org, user

@@ -6,7 +6,8 @@ async function createRoutineUi(
   opts: { name: string; frequency: string; extra?: () => Promise<void> },
 ) {
   await page.goto("/app/routines");
-  await expect(page.getByRole("heading", { name: "Outra rotina" })).toBeVisible({
+  await page.getByRole("button", { name: /Criar rotina personalizada/i }).click();
+  await expect(page.getByRole("heading", { name: "Nova rotina" })).toBeVisible({
     timeout: 15_000,
   });
   await page.getByLabel("Nome", { exact: true }).fill(opts.name);
@@ -28,7 +29,7 @@ test.describe("routine recurrence journeys", () => {
     });
 
     await createRoutineUi(page, { name: "Revisar planos do mês", frequency: "Toda semana" });
-    await createRoutineUi(page, { name: "Pedir feedback", frequency: "A cada 2 semanas" });
+    await createRoutineUi(page, { name: "Pedir feedback", frequency: "A cada 15 dias" });
     await createRoutineUi(page, {
       name: "Avaliação mensal",
       frequency: "Uma vez por mês",
@@ -48,7 +49,7 @@ test.describe("routine recurrence journeys", () => {
     });
     await createRoutineUi(page, {
       name: "Intervalo 10 dias",
-      frequency: "Intervalo personalizado",
+      frequency: "Personalizado",
       extra: async () => {
         await page.getByLabel("A cada").fill("10");
         await page.getByLabel("Unidade").selectOption("dias");

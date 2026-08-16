@@ -32,7 +32,7 @@ const GENERIC: Nomenclature = {
   routine: "rotina",
   accompaniment: "acompanhamento",
   new_intake: "Novos clientes",
-  intake_form: "formulário",
+  intake_form: "cadastro",
   plan_ending: "Preparar próximo plano",
   feedback: "Acompanhamento",
 };
@@ -68,7 +68,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     routine: "rotina",
     accompaniment: "acompanhamento",
     new_intake: "Novos alunos",
-    intake_form: "questionário",
+    intake_form: "cadastro inicial",
     plan_ending: "Preparar próxima etapa",
     feedback: "Acompanhamento do aluno",
   },
@@ -85,7 +85,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     routine: "rotina",
     accompaniment: "acompanhamento",
     new_intake: "Novos alunos",
-    intake_form: "formulário",
+    intake_form: "cadastro inicial",
     plan_ending: "Preparar nova etapa",
     feedback: "Feedback",
   },
@@ -102,9 +102,26 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     routine: "rotina",
     accompaniment: "acompanhamento",
     new_intake: "Novos clientes",
-    intake_form: "anamnese",
+    intake_form: "ficha nutricional",
     plan_ending: "Preparar próximo plano",
     feedback: "Retorno",
+  },
+  physiotherapist: {
+    client: "cliente",
+    clients: "clientes",
+    plan: "plano de acompanhamento",
+    plan_short: "plano",
+    plan_review: "revisão do plano",
+    session: "sessão",
+    evaluation: "avaliação",
+    cycle: "ciclo",
+    agenda: "agenda",
+    routine: "rotina",
+    accompaniment: "acompanhamento",
+    new_intake: "Novos clientes",
+    intake_form: "ficha inicial",
+    plan_ending: "Preparar próximo plano",
+    feedback: "Acompanhamento",
   },
   consultant: {
     client: "cliente",
@@ -119,7 +136,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     routine: "rotina",
     accompaniment: "acompanhamento",
     new_intake: "Novos clientes",
-    intake_form: "briefing",
+    intake_form: "cadastro",
     plan_ending: "Preparar novo planejamento",
     feedback: "Follow-up",
   },
@@ -136,7 +153,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     routine: "rotina",
     accompaniment: "acompanhamento",
     new_intake: "Novos clientes",
-    intake_form: "briefing",
+    intake_form: "cadastro",
     plan_ending: "Preparar novo planejamento",
     feedback: "Acompanhamento",
   },
@@ -153,7 +170,7 @@ const BY_PROFESSION: Record<string, Nomenclature> = {
     routine: "rotina",
     accompaniment: "acompanhamento",
     new_intake: "Novos clientes",
-    intake_form: "cadastro",
+    intake_form: "ficha de atendimento",
     plan_ending: "Preparar próximo plano",
     feedback: "Retorno",
   },
@@ -182,21 +199,16 @@ export function t(terms: Nomenclature, key: NomenclatureKey): string {
   return terms[key] ?? GENERIC[key];
 }
 
-const PHYSICAL_SPORTS = new Set(["musculacao"]);
-
 export function recommendedFormKind(
   professionCode: string | null | undefined,
-  specialty?: string | null,
+  _specialty?: string | null,
 ): string {
   const code = canonicalProfessionCode(professionCode);
   if (code === "personal_trainer") return "physical_anamnesis";
-  if (code === "private_tutor") return "class_questionnaire";
-  if (code === "sports_teacher") {
-    return specialty && PHYSICAL_SPORTS.has(specialty)
-      ? "physical_anamnesis"
-      : "sports_questionnaire";
-  }
-  if (code === "consultant" || code === "coach_mentor") return "consulting_brief";
+  if (code === "private_tutor" || code === "sports_teacher") return "class_questionnaire";
+  if (code === "aesthetics") return "aesthetics_intake";
+  if (code === "physiotherapist") return "physio_intake";
+  if (code === "nutritionist") return "nutrition_intake";
   return "simple_registration";
 }
 
@@ -206,6 +218,9 @@ export const FORM_KIND_LABELS: Record<string, string> = {
   class_questionnaire: "Cadastro + questionário de aulas",
   sports_questionnaire: "Cadastro + questionário esportivo",
   consulting_brief: "Cadastro + briefing",
+  aesthetics_intake: "Ficha inicial de atendimento",
+  physio_intake: "Ficha inicial de fisioterapia",
+  nutrition_intake: "Ficha inicial de acompanhamento nutricional",
   custom: "Formulário personalizado",
 };
 

@@ -97,19 +97,59 @@ Lint, typecheck e Vitest completos; build de produção Web. Admin não afetado.
 
 API `127.0.0.1:8010` `/health` ok; Web Playwright `127.0.0.1:3000`; Postgres `croniu-dev-db:5433`; testes em `croniu_test`; app em `croniu`; head `0022`; sem HML.
 
-## Gates (local, SHA seguinte a este relatório)
+## Infraestrutura dos testes CHECK (sem reduzir cobertura)
 
+Causa dos 3 falhas pós-`b6edc8b`: o `rollback()` após `IntegrityError` desfazia a org criada na mesma sessão; o INSERT seguinte falhava por FK de `organization_id` inexistente, não pelo CHECK.
+
+Correção exclusiva de fixture:
+
+- `seeded_org_user` commita org+user numa sessão separada antes dos registros dependentes.
+- Clientes/ciclos/receivables dos testes CHECK também persistem em sessão própria.
+- `_assert_check` exige `psycopg.errors.CheckViolation` e o nome da constraint; rejeita `ForeignKeyViolation` anterior.
+- INSERTs raw incluem colunas NOT NULL obrigatórias para o CHECK ser alcançado.
+- Sem mock, sem remoção de FK/CHECK/assert.
+
+## Gates (local, SHA candidato seguinte a este relatório)
+
+- `alembic current` / `heads`: `0022_form_template_pin` (único head).
+- `alembic check`: No new upgrade operations detected.
+- Testes CHECK (`test_canonical_check_constraints.py`): 10 passed; cada rejeição é o CHECK nomeado.
 - Lint Web: 0 errors (warnings pré-existentes).
 - Typecheck Web: ok.
 - Vitest: 174 passed.
 - Build Web produção: ok. Admin não afetado.
-- Pytest completo: 354 passed.
-- Playwright suíte completa: 40 passed, 0 skipped.
+- Pytest completo: 359 passed.
 - API `http://127.0.0.1:8010/health` `{"status":"ok","database":true}`.
-- Playwright `test:e2e:professions`: 6 passed (personal_trainer, private_tutor, aesthetics, physiotherapist, nutritionist, other + switch de template).
-- Playwright `test:e2e:functional`: 15 passed.
-- Playwright `test:e2e:regression` + suíte completa local: sprint 2A–2D, cycle-integrity, rotinas, isolamento, viewports.
+- Playwright local `127.0.0.1:3000` → API `127.0.0.1:8010` (não HML): **48 passed**, 0 skipped.
+- Seis profissões (`professions-os` + `intake-profession`): personal_trainer, private_tutor, aesthetics, physiotherapist, nutritionist, other.
+- Tutor + `form_kind=physical_anamnesis` → 422 `incompatible_form_kind`.
+
+## Simplificação visual de Rotinas (MVP)
+
+Sem mudança de modelo, migration ou regras de materialização.
+
+- Cards de sugestão com switch, selo Ativa e frequência.
+- Ciclo relativo ativa com o padrão; calendário abre sheet só com frequência.
+- Seção “Suas rotinas” acima das sugestões; formulário personalizado recolhido em “Criar rotina personalizada” / “Nova rotina”.
+- Frequências existentes preservadas (rótulo “A cada 15 dias” = `biweekly`).
+
+## Formulários por profissão (correção crítica)
+
+Causa: `create_intake_link` pinava sempre `croniu_default_physical_activity`. Professor recebia “Anamnese de atividade física”.
+
+Correção:
+
+- Registry `profession_profile` (labels, capabilities, template, consents).
+- Pin no backend: `template_id`/`template_version` pela profissão da sessão.
+- Incompatível → 422, sem fallback silencioso para anamnese física.
+- Sem template compatível → Cadastro inicial genérico (sem saúde).
+- **FORMULÁRIOS ESPECIALIZADOS NUNCA SÃO FALLBACK.**
+- Links ativos com pin errado são corrigidos de forma auditável; respostas históricas não são reescritas.
+- Consentimentos acompanham o schema servido.
+
+HML permanece congelado até os seis fluxos + fallback genérico + Alembic check + regressão completa no SHA candidato.
 
 ## Rollback
+
 
 Reverter o SHA candidato. Sem DROP. Unique `uq_op_occ_org_idem` permanece via `0021_plan_cadence` em qualquer banco já upgradado. Não fazer downgrade de 0021 em HML (droparia `operational_occurrences`). Sem deploy HML, merge, Promote ou alteração de PRD neste SHA.

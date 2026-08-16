@@ -49,6 +49,12 @@ export async function createTemplateUi(page: Page, name: string) {
   await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 });
 }
 
+export async function awaitAppReady(page: Page) {
+  await expect(page.getByText("Verificando assinatura…")).toHaveCount(0, {
+    timeout: 30_000,
+  });
+}
+
 export async function confirmIntelligentCycle(
   page: Page,
   opts: {
@@ -61,7 +67,10 @@ export async function confirmIntelligentCycle(
   },
 ) {
   await page.goto("/app/cycles/new");
-  await expect(page.getByRole("heading", { name: /Novo ciclo/i })).toBeVisible();
+  await awaitAppReady(page);
+  await expect(page.getByRole("heading", { name: /Novo ciclo/i })).toBeVisible({
+    timeout: 15_000,
+  });
   const clientBox = page.getByRole("combobox", { name: "Cliente", exact: true });
   await expect(clientBox.getByRole("option", { name: opts.client })).toHaveCount(1, { timeout: 15_000 });
   await clientBox.selectOption({ label: opts.client });

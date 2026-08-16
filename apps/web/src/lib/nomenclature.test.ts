@@ -21,7 +21,7 @@ describe("nomenclatureFor", () => {
     expect(terms.plan).toBe("plano de ensino/acompanhamento");
     expect(terms.session).toBe("aula");
     expect(terms.evaluation).toBe("avaliação");
-    expect(terms.intake_form).toBe("questionário");
+    expect(terms.intake_form).toBe("cadastro inicial");
   });
 
   it("adapts consultant terms", () => {
@@ -40,9 +40,9 @@ describe("nomenclatureFor", () => {
 describe("recommendedFormKind", () => {
   it("does not recommend physical anamnesis for tutors/consultants", () => {
     expect(recommendedFormKind("private_tutor")).toBe("class_questionnaire");
-    expect(recommendedFormKind("consultant")).toBe("consulting_brief");
-    expect(recommendedFormKind("sports_teacher")).toBe("sports_questionnaire");
-    expect(recommendedFormKind("sports_teacher", "musculacao")).toBe("physical_anamnesis");
+    expect(recommendedFormKind("consultant")).toBe("simple_registration");
+    expect(recommendedFormKind("sports_teacher")).toBe("class_questionnaire");
+    expect(recommendedFormKind("sports_teacher", "musculacao")).toBe("class_questionnaire");
   });
 });
 

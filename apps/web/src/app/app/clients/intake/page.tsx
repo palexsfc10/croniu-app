@@ -141,12 +141,16 @@ export default function ClientsIntakePage() {
       return;
     }
     const text = encodeURIComponent(
-      `Olá! Complete seu cadastro neste link: ${url}`,
+      `Olá! Complete o ${terms.intake_form} neste link: ${url}`,
     );
     window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
   }
 
   const terms = nomenclatureFor(profession?.profession_code);
+  const queueReceived = profession?.queue_received || "Cadastro recebido";
+  const formTitle =
+    profession?.form_title ||
+    recommendedFormLabel(profession?.profession_code, profession?.profession_specialty);
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -154,8 +158,7 @@ export default function ClientsIntakePage() {
       <div>
         <h1 className="h-display text-3xl text-[var(--color-ink)]">{terms.new_intake}</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Convite permanente e fila de cadastros para analisar. Recomendação:{" "}
-          {recommendedFormLabel(profession?.profession_code, profession?.profession_specialty)}.
+          Convite permanente e fila de cadastros para analisar. Formulário: {formTitle}.
         </p>
       </div>
 
@@ -249,7 +252,7 @@ export default function ClientsIntakePage() {
       </section>
 
       <section aria-label="Fila de análise" className="space-y-3">
-        <h2 className="text-base font-semibold">Aguardando análise</h2>
+        <h2 className="text-base font-semibold">{queueReceived}</h2>
         {loading ? (
           <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
         ) : null}

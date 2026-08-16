@@ -14,6 +14,7 @@ import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { IconMoreHorizontal, IconPlus } from "@/components/ui/icons";
 import { RoutineTemplatesPanel } from "@/app/app/routines/routine-templates-panel";
 
 type Routine = {
@@ -40,11 +41,11 @@ const WEEKDAYS = [
 
 const FREQUENCIES = [
   { value: "weekly", label: "Toda semana" },
-  { value: "biweekly", label: "A cada 2 semanas" },
+  { value: "biweekly", label: "A cada 15 dias" },
   { value: "monthly", label: "Uma vez por mês" },
   { value: "bimonthly", label: "A cada 2 meses" },
   { value: "quarterly", label: "A cada 3 meses" },
-  { value: "interval", label: "Intervalo personalizado" },
+  { value: "interval", label: "Personalizado" },
   { value: "once", label: "Uma única vez" },
 ];
 
@@ -105,6 +106,8 @@ export default function RoutinesPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   const boardQuery = useMemo(() => {
     const boardQs = new URLSearchParams();
@@ -113,15 +116,18 @@ export default function RoutinesPageInner() {
   }, [clientId]);
 
   async function load() {
-    const [routines, groups, prof] = await Promise.all([
+    const [routines, paused, groups, prof] = await Promise.all([
       apiFetch<Routine[]>("/api/v1/routines"),
+      apiFetch<Routine[]>("/api/v1/routines?status=paused"),
       apiFetch<{ groups: BoardGroup[] }>(
         `/api/v1/routines/board${boardQuery ? `?${boardQuery}` : ""}`,
       ),
       apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
     ]);
+    const active = routines.error ? [] : (routines.data ?? []);
+    const pausedRows = paused.error ? [] : (paused.data ?? []);
     if (routines.error) setError(routines.error.message);
-    else setItems(routines.data ?? []);
+    else setItems([...active, ...pausedRows]);
     if (groups.error) setError(groups.error.message);
     else if (groups.data) setBoard(groups.data.groups ?? []);
     if (prof.data) setProfession(prof.data);
@@ -188,6 +194,7 @@ export default function RoutinesPageInner() {
     }
     setName("");
     setInfo("Rotina criada.");
+    setCustomOpen(false);
     await load();
   }
 
@@ -221,6 +228,25 @@ export default function RoutinesPageInner() {
     await load();
   }
 
+  async function setRoutineStatus(id: string, status: "paused" | "active" | "archived") {
+    setBusy(true);
+    setMenuFor(null);
+    const result = await apiFetch(`/api/v1/routines/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+    setBusy(false);
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    await load();
+  }
+
+  const yours = items.filter((r) => r.status === "active" || r.status === "paused");
+  const freqText = (item: Routine) =>
+    FREQUENCIES.find((f) => f.value === item.recurrence)?.label || item.recurrence;
+
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
       <BackLink href={returnTo || "/app"} label={returnTo ? "Voltar" : "Hoje"} />
@@ -243,8 +269,93 @@ export default function RoutinesPageInner() {
         </p>
       ) : null}
 
+      <section className="space-y-3" aria-label="Suas rotinas">
+        <h2 className="text-lg font-semibold">Suas rotinas</h2>
+        {!yours.length ? (
+          <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4">
+            <p className="font-medium">Você ainda não ativou nenhuma rotina.</p>
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              Ative uma sugestão abaixo para o Croniu lembrar você.
+            </p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {yours.map((item) => (
+              <li
+                key={item.id}
+                className="relative space-y-2 rounded-[var(--radius-md)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3 py-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold">{item.name}</p>
+                      <Badge tone={item.status === "active" ? "success" : "neutral"}>
+                        {item.status === "active" ? "Ativa" : "Pausada"}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-[var(--color-ink-muted)]">
+                      {freqText(item)}
+                      {item.next_run_on ? ` · próxima: ${item.next_run_on}` : ""}
+                    </p>
+                  </div>
+                  <div className="relative">
+                    <Button
+                      variant="ghost"
+                      className="min-h-11 min-w-11 px-2"
+                      aria-label={`Opções de ${item.name}`}
+                      onClick={() => setMenuFor((cur) => (cur === item.id ? null : item.id))}
+                    >
+                      <IconMoreHorizontal className="h-5 w-5" />
+                    </Button>
+                    {menuFor === item.id ? (
+                      <div className="absolute right-0 z-10 mt-1 min-w-40 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-sm">
+                        {item.status === "active" ? (
+                          <button
+                            type="button"
+                            className="block w-full px-3 py-2 text-left text-sm"
+                            onClick={() => void setRoutineStatus(item.id, "paused")}
+                          >
+                            Pausar
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="block w-full px-3 py-2 text-left text-sm"
+                            onClick={() => void setRoutineStatus(item.id, "active")}
+                          >
+                            Reativar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-sm text-[var(--color-danger)]"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                "Arquivar toda a rotina? As próximas ocorrências deixam de ser geradas.",
+                              )
+                            )
+                              return;
+                            void setRoutineStatus(item.id, "archived");
+                          }}
+                        >
+                          Desativar
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                <Button variant="secondary" disabled={busy} onClick={() => void complete(item.id)}>
+                  Concluir esta ocorrência
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <RoutineTemplatesPanel
-        enabledNames={new Set(items.filter((r) => r.status === "active").map((r) => r.name))}
+        enabled={items.filter((r) => r.status === "active")}
         onChanged={load}
       />
 
@@ -298,8 +409,24 @@ export default function RoutinesPageInner() {
         </section>
       ) : null}
 
-      <section className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-        <h2 className="text-base font-semibold">Outra rotina</h2>
+      <button
+        type="button"
+        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-3 text-sm text-[var(--color-ink-muted)]"
+        onClick={() => setCustomOpen(true)}
+      >
+        <IconPlus className="h-5 w-5" />
+        Criar rotina personalizada
+      </button>
+
+      {customOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="custom-routine-title"
+        >
+          <div className="max-h-[min(36rem,calc(100dvh-7rem))] w-full max-w-md space-y-3 overflow-y-auto rounded-[var(--radius-lg)] bg-[var(--color-surface)] p-4 shadow-lg">
+        <h2 id="custom-routine-title" className="text-base font-semibold">Nova rotina</h2>
         <TextField label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
         <SuggestionChips chips={ROUTINE_NAME_SUGGESTIONS} onSelect={setName} />
         <label className="block space-y-1.5 text-sm">
@@ -443,45 +570,12 @@ export default function RoutinesPageInner() {
         <Button fullWidth disabled={busy} onClick={() => void create()}>
           Salvar rotina
         </Button>
-      </section>
-
-      <ul className="space-y-2">
-        {items.map((item) => (
-          <li
-            key={item.id}
-            className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="font-semibold">{item.name}</p>
-              <Badge tone={item.status === "active" ? "success" : "neutral"}>
-                {item.status === "active" ? "Ativa" : "Pausada"}
-              </Badge>
-            </div>
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              {item.recurrence}
-              {item.next_run_on ? ` · próxima: ${item.next_run_on}` : ""}
-            </p>
-            <div className="flex flex-col gap-2">
-              <Button variant="secondary" disabled={busy} onClick={() => void complete(item.id)}>
-                Concluir esta ocorrência
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={busy}
-                onClick={() => {
-                  if (!window.confirm("Arquivar toda a rotina? As próximas ocorrências deixam de ser geradas.")) return;
-                  void apiFetch(`/api/v1/routines/${item.id}`, {
-                    method: "PATCH",
-                    body: JSON.stringify({ status: "archived" }),
-                  }).then(() => load());
-                }}
-              >
-                Encerrar toda a rotina
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
+        <Button fullWidth variant="ghost" onClick={() => setCustomOpen(false)}>
+          Cancelar
+        </Button>
+          </div>
+        </div>
+      ) : null}
 
       {returnTo ? (
         <Link href={returnTo}>

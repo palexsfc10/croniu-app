@@ -228,6 +228,11 @@ class ProfessionOut(BaseModel):
     recommended_form_kind: str = "simple_registration"
     nomenclature: dict[str, str] = Field(default_factory=dict)
     catalog: dict[str, Any] = Field(default_factory=dict)
+    form_title: str = "Cadastro inicial"
+    queue_received: str = "Cadastro recebido"
+    queue_analyze: str = "Analisar cadastro"
+    intake_template_code: str | None = None
+    collects_health: bool = False
 
 
 class ProfessionUpdateIn(BaseModel):

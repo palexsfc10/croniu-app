@@ -22,7 +22,7 @@ for (const profile of PROFILES) {
     await expect(page.getByRole("link", { name: "Rotinas" }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Ciclos" })).toHaveCount(0);
     await page.goto("/app/routines");
-    await expect(page.getByRole("heading", { name: /Escolha o que o Croniu/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sugestões para você" })).toBeVisible();
     await expect(page.getByText(profile.template, { exact: true }).first()).toBeVisible();
     await page.getByRole("switch", { name: `Ativar ${profile.template}` }).click();
     await page.getByRole("button", { name: "Salvar", exact: true }).click();

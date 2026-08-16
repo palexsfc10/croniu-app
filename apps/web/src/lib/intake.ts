@@ -16,7 +16,9 @@ export const REQUIRED_CONSENT_KEYS = [
 export const OPTIONAL_CONSENT_KEYS = ["whatsapp_optional"] as const;
 
 export const CONSENT_LABELS_PT: Record<string, string> = {
-  purpose_science: "Declaro ciência da finalidade deste cadastro e anamnese.",
+  purpose_science: "Declaro ciência da finalidade deste cadastro.",
+  data_processing:
+    "Autorizo o tratamento dos dados que informei, apenas para este profissional.",
   sensitive_health:
     "Autorizo o tratamento dos dados de saúde que declarei, apenas para este profissional.",
   self_declared: "Declaro que as respostas foram fornecidas por mim.",
@@ -24,6 +26,13 @@ export const CONSENT_LABELS_PT: Record<string, string> = {
   privacy_policy: "Li e aceito a política de privacidade.",
   whatsapp_optional: "Autorizo contato por WhatsApp (opcional).",
 };
+
+const GENERIC_FALLBACK_CONSENTS: AnamnesisConsentDef[] = [
+  { key: "purpose_science", required: true, label: CONSENT_LABELS_PT.purpose_science },
+  { key: "data_processing", required: true, label: CONSENT_LABELS_PT.data_processing },
+  { key: "privacy_policy", required: true, label: CONSENT_LABELS_PT.privacy_policy },
+  { key: "whatsapp_optional", required: false, label: CONSENT_LABELS_PT.whatsapp_optional },
+];
 
 const ATTENTION_VALUES = new Set(["sim", "prefiro_detalhar", "yes", "prefer_detail", "as_vezes"]);
 
@@ -60,18 +69,7 @@ export function consentsFromSchema(
   for (const section of schemaSections(schema)) {
     if (section.consents?.length) return section.consents;
   }
-  return [
-    ...REQUIRED_CONSENT_KEYS.map((key) => ({
-      key,
-      required: true,
-      label: CONSENT_LABELS_PT[key],
-    })),
-    ...OPTIONAL_CONSENT_KEYS.map((key) => ({
-      key,
-      required: false,
-      label: CONSENT_LABELS_PT[key],
-    })),
-  ];
+  return GENERIC_FALLBACK_CONSENTS;
 }
 
 export function flattenQuestions(
@@ -127,8 +125,25 @@ export function hasAttentionAnswers(
   return false;
 }
 
-export function requiredConsentsAccepted(consents: Record<string, boolean>): boolean {
-  return REQUIRED_CONSENT_KEYS.every((key) => consents[key] === true);
+export function intakeSteps(formName?: string | null): Array<{ id: IntakeStepId; label: string }> {
+  const formLabel = (formName || "").trim();
+  const stepLabel =
+    /anamnese/i.test(formLabel) ? "Anamnese" : formLabel ? "Formulário" : "Cadastro";
+  return INTAKE_STEPS.map((step) =>
+    step.id === "anamnese" ? { ...step, label: stepLabel } : step,
+  );
+}
+
+export function requiredConsentsAccepted(
+  consents: Record<string, boolean>,
+  schema?: AnamnesisSchema | null,
+): boolean {
+  const defs = consentsFromSchema(schema);
+  const required = defs.filter((c) => c.required).map((c) => c.key);
+  if (!required.length) {
+    return REQUIRED_CONSENT_KEYS.every((key) => consents[key] === true);
+  }
+  return required.every((key) => consents[key] === true);
 }
 
 export function missingRequiredQuestions(

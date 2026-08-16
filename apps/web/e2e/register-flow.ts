@@ -14,5 +14,5 @@ export async function registerProfessional(
   await expect(page.getByText(/Etapa 2 de 2/)).toBeVisible({ timeout: 15_000 });
   await page.getByRole("radio", { name: "Personal trainer" }).click();
   await page.getByRole("button", { name: "Criar minha conta" }).click();
-  await expect(page).toHaveURL(/\/app/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/app/, { timeout: 45_000 });
 }

@@ -56,6 +56,11 @@ CONSENT_META: dict[str, dict[str, str]] = {
         "legal_basis": "consent",
         "label": "Li e aceito a política de privacidade.",
     },
+    "data_processing": {
+        "purpose": "Tratamento dos dados fornecidos no cadastro",
+        "legal_basis": "consent",
+        "label": "Autorizo o tratamento dos dados que informei, apenas para este profissional.",
+    },
 }
 
 _YES_DETAIL = ["sim", "prefiro_detalhar", "yes", "prefer_detail", "as_vezes"]
@@ -209,3 +214,113 @@ def get_published_system_version(db: Session) -> AnamnesisTemplateVersion:
     if version is None:
         raise RuntimeError("System anamnesis template has no published version")
     return version
+
+
+def ensure_system_intake_templates(db: Session) -> None:
+    """Published system templates for every profession profile. Never skip generic."""
+    from app.services.form_templates import schema_builder_for_code
+    from app.services.profession_profile import (
+        TPL_AESTHETICS,
+        TPL_GENERIC,
+        TPL_NUTRITION,
+        TPL_PHYSIO,
+        TPL_PHYSICAL,
+        TPL_TUTOR,
+    )
+
+    specs = (
+        (TPL_PHYSICAL, SYSTEM_TEMPLATE_NAME, True),
+        (TPL_TUTOR, "Cadastro inicial do aluno", False),
+        (TPL_AESTHETICS, "Ficha inicial de atendimento", False),
+        (TPL_PHYSIO, "Ficha inicial de fisioterapia", False),
+        (TPL_NUTRITION, "Ficha inicial de acompanhamento nutricional", False),
+        (TPL_GENERIC, "Cadastro inicial", False),
+    )
+    for code, name, is_default in specs:
+        if code == TPL_PHYSICAL:
+            ensure_default_anamnesis_template(db)
+            continue
+        existing = db.scalar(
+            select(AnamnesisTemplate).where(
+                AnamnesisTemplate.organization_id.is_(None),
+                AnamnesisTemplate.code == code,
+            )
+        )
+        if existing is None:
+            existing = AnamnesisTemplate(
+                id=uuid.uuid4(),
+                organization_id=None,
+                code=code,
+                name=name,
+                status="published",
+                is_system_default=is_default,
+            )
+            db.add(existing)
+            db.flush()
+        published = db.scalar(
+            select(AnamnesisTemplateVersion)
+            .where(
+                AnamnesisTemplateVersion.template_id == existing.id,
+                AnamnesisTemplateVersion.is_published.is_(True),
+            )
+            .order_by(AnamnesisTemplateVersion.version_number.desc())
+        )
+        if published is None:
+            schema = schema_builder_for_code(code)
+            db.add(
+                AnamnesisTemplateVersion(
+                    id=uuid.uuid4(),
+                    template_id=existing.id,
+                    version_number=1,
+                    schema_json=schema,
+                    is_published=True,
+                )
+            )
+            db.flush()
+
+
+def get_published_version_for_code(db: Session, template_code: str) -> AnamnesisTemplateVersion:
+    from app.services.profession_profile import TPL_GENERIC, TPL_PHYSICAL
+
+    ensure_system_intake_templates(db)
+    code = (template_code or "").strip() or TPL_GENERIC
+    if code == TPL_PHYSICAL:
+        return get_published_system_version(db)
+    template = db.scalar(
+        select(AnamnesisTemplate).where(
+            AnamnesisTemplate.organization_id.is_(None),
+            AnamnesisTemplate.code == code,
+        )
+    )
+    if template is None and code != TPL_GENERIC:
+        logger_safe = __import__("logging").getLogger("croniu.intake")
+        logger_safe.warning("intake_template_missing code=%s fallback=generic", code)
+        return get_published_version_for_code(db, TPL_GENERIC)
+    if template is None:
+        raise RuntimeError("Generic enrollment template has no published version")
+    version = db.scalar(
+        select(AnamnesisTemplateVersion)
+        .where(
+            AnamnesisTemplateVersion.template_id == template.id,
+            AnamnesisTemplateVersion.is_published.is_(True),
+        )
+        .order_by(AnamnesisTemplateVersion.version_number.desc())
+    )
+    if version is None:
+        if code != TPL_GENERIC:
+            return get_published_version_for_code(db, TPL_GENERIC)
+        raise RuntimeError("Generic enrollment template has no published version")
+    return version
+
+
+def required_consent_keys_from_schema(schema: dict[str, Any]) -> tuple[str, ...]:
+    keys: list[str] = []
+    for section in schema.get("sections") or []:
+        for item in section.get("consents") or []:
+            if item.get("required") and item.get("key"):
+                keys.append(str(item["key"]))
+    if keys:
+        return tuple(keys)
+    from app.services.profession_profile import GENERIC_CONSENT_KEYS
+
+    return GENERIC_CONSENT_KEYS

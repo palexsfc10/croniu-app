@@ -292,6 +292,9 @@ export type PublicIntakeContext = {
   anamnesis_schema: AnamnesisSchema;
   template_version_id: string;
   attention_client_message: string;
+  form_kind?: string | null;
+  form_name?: string | null;
+  nomenclature?: Record<string, string>;
 };
 
 export type IntakeSubmitPayload = {
@@ -386,6 +389,11 @@ export type ProfessionProfile = {
   recommended_form_kind: string;
   nomenclature: Record<string, string>;
   catalog: Record<string, unknown>;
+  form_title?: string;
+  queue_received?: string;
+  queue_analyze?: string;
+  intake_template_code?: string | null;
+  collects_health?: boolean;
 };
 
 export type IntakeConsent = {

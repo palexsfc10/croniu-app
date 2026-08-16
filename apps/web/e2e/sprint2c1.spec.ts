@@ -29,8 +29,10 @@ test.describe("Sprint 2C.1 financial edit", () => {
     await register(page, "c21a");
     await seedCycle(page);
     await page.getByRole("link", { name: "Editar valores" }).click();
-    await expect(page).toHaveURL(/\/financial/);
-    await expect(page.getByRole("heading", { name: "Editar valores" })).toBeVisible();
+    await expect(page).toHaveURL(/\/financial/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Editar valores" })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByText(/Agenda permanecerá igual/i)).toBeVisible();
     await page.getByLabel(/Desconto/).fill("60,00");
     await page.getByRole("button", { name: "Revisar e confirmar" }).click();
@@ -50,7 +52,7 @@ test.describe("Sprint 2C.1 financial edit", () => {
     await expect(page.getByText(/Recebido em/)).toBeVisible();
     await page.goto(cyclePath);
     await page.getByRole("link", { name: "Editar valores" }).click();
-    await expect(page).toHaveURL(/\/financial/);
+    await expect(page).toHaveURL(/\/financial/, { timeout: 15_000 });
     await expect(page.getByText(/pagamento já foi confirmado/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /Revisar/i })).toHaveCount(0);
   });

@@ -57,9 +57,7 @@ describe("intake helpers", () => {
     expect(
       requiredConsentsAccepted({
         purpose_science: true,
-        sensitive_health: true,
-        self_declared: true,
-        not_medical: true,
+        data_processing: true,
         privacy_policy: true,
       }),
     ).toBe(true);
@@ -78,7 +76,13 @@ describe("intake helpers", () => {
       "purpose_science",
       "whatsapp_optional",
     ]);
-    expect(consentsFromSchema({}).length).toBeGreaterThanOrEqual(5);
+    expect(consentsFromSchema({}).map((c) => c.key)).toEqual([
+      "purpose_science",
+      "data_processing",
+      "privacy_policy",
+      "whatsapp_optional",
+    ]);
+    expect(consentsFromSchema({}).some((c) => c.key === "sensitive_health")).toBe(false);
   });
 
   it("hides complementary questions until Sim", () => {

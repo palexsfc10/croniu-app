@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.models.client import Client
 from app.models.client_public_access import ClientPublicAccess
 from app.models.intake import (
+    AnamnesisTemplate,
     ClientAnamnesisResponse,
     ClientIntakeSubmission,
     ClientJourney,
@@ -29,9 +30,9 @@ from app.models.organization import Organization
 from app.security.passwords import generate_session_token, hash_session_token
 from app.services import anamnesis_snapshot as snap_svc
 from app.services import anamnesis_template as anam_svc
-from app.services import form_templates as form_svc
 from app.services import journey as journey_svc
 from app.services import profession as profession_svc
+from app.services import profession_profile as profiles
 from app.services.auth import AuthError
 
 logger = logging.getLogger("croniu.intake")
@@ -101,11 +102,15 @@ def _portal_url(token: str) -> str:
     return f"{base}{_portal_path(token)}"
 
 
-def _wa_invite(url: str) -> str:
-    msg = (
-        "Olá! Para iniciar seu acompanhamento, preencha seu cadastro "
-        f"e sua anamnese pelo link: {url}"
-    )
+def _wa_invite(url: str, *, form_noun: str) -> str:
+    noun = (form_noun or "cadastro").strip()
+    if noun.lower() in {"anamnese", "anamnese de atividade física"}:
+        msg = (
+            "Olá! Para iniciar seu acompanhamento, preencha seu cadastro "
+            f"e sua anamnese pelo link: {url}"
+        )
+    else:
+        msg = f"Olá! Para iniciar seu acompanhamento, preencha o {noun} pelo link: {url}"
     return f"https://wa.me/?text={quote(msg)}"
 
 
@@ -129,8 +134,14 @@ def _active_link(db: Session, organization_id: uuid.UUID) -> OrganizationIntakeL
     )
 
 
-def _link_out(row: OrganizationIntakeLink, *, raw: str | None = None) -> dict[str, Any]:
+def _link_out(
+    row: OrganizationIntakeLink,
+    *,
+    raw: str | None = None,
+    form_noun: str | None = None,
+) -> dict[str, Any]:
     url = _public_intake_url(raw) if raw else None
+    noun = form_noun or "cadastro"
     return {
         "has_active_link": row.status == "active",
         "id": str(row.id),
@@ -146,7 +157,7 @@ def _link_out(row: OrganizationIntakeLink, *, raw: str | None = None) -> dict[st
         "token": raw,
         "public_path": _public_intake_path(raw) if raw else None,
         "public_url": url,
-        "wa_message_url": _wa_invite(url) if url else None,
+        "wa_message_url": _wa_invite(url, form_noun=noun) if url else None,
     }
 
 
@@ -190,6 +201,31 @@ def list_intake_links(
     return [_link_out(r) for r in rows]
 
 
+def _pin_for_organization(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    requested_form_kind: str | None,
+) -> tuple[Organization | None, dict[str, Any], Any]:
+    org = db.get(Organization, organization_id)
+    profession = org.profession_code if org else None
+    requested = (requested_form_kind or "").strip() or None
+    if requested and not profiles.form_kind_allowed(profession, requested):
+        logger.warning(
+            "intake_incompatible_form_kind org=%s requested=%s",
+            organization_id,
+            requested,
+        )
+        raise AuthError(
+            "incompatible_form_kind",
+            "Formulário incompatível com a profissão da organização.",
+            422,
+        )
+    profile = profiles.profile_for(profession)
+    version = anam_svc.get_published_version_for_code(db, profile["intake_template_code"])
+    return org, profile, version
+
+
 def create_intake_link(
     db: Session,
     *,
@@ -200,15 +236,10 @@ def create_intake_link(
     form_kind: str | None = None,
     set_primary: bool = False,
 ) -> dict[str, Any]:
-    org = db.get(Organization, organization_id)
-    from app.services import profession as profession_svc
-
-    resolved_kind = (form_kind or "").strip()
-    if not resolved_kind:
-        resolved_kind = profession_svc.recommended_form_kind(
-            org.profession_code if org else None,
-            org.profession_specialty if org else None,
-        )
+    _org, profile, version = _pin_for_organization(
+        db, organization_id=organization_id, requested_form_kind=form_kind
+    )
+    resolved_kind = profile["intake_form_kind"]
     existing_active = list(
         db.scalars(
             select(OrganizationIntakeLink).where(
@@ -233,13 +264,18 @@ def create_intake_link(
         form_kind=resolved_kind[:64],
         is_primary=make_primary,
         created_by_user_id=user_id,
-        template_version_id=anam_svc.get_published_system_version(db).id,
+        template_version_id=version.id,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    logger.info("intake_link created org=%s form_kind=%s", organization_id, row.form_kind)
-    return _link_out(row, raw=raw)
+    logger.info(
+        "intake_link created org=%s form_kind=%s template=%s",
+        organization_id,
+        row.form_kind,
+        profile["intake_template_code"],
+    )
+    return _link_out(row, raw=raw, form_noun=profile["intake_form_noun"])
 
 
 def set_primary_intake_link(
@@ -296,7 +332,9 @@ def rotate_intake_link(
     was_primary = bool(current.is_primary)
     name = current.name
     purpose = current.purpose
-    form_kind = current.form_kind
+    _org, profile, version = _pin_for_organization(
+        db, organization_id=organization_id, requested_form_kind=None
+    )
     current.status = "disabled"
     current.disabled_at = now
     current.rotated_at = now
@@ -311,17 +349,17 @@ def rotate_intake_link(
         status="active",
         name=name or "Link principal",
         purpose=purpose or "new_client",
-        form_kind=form_kind or "physical_anamnesis",
+        form_kind=profile["intake_form_kind"],
         is_primary=was_primary,
         created_by_user_id=user_id,
         rotated_at=now,
-        template_version_id=anam_svc.get_published_system_version(db).id,
+        template_version_id=version.id,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    logger.info("intake_link rotated org=%s", organization_id)
-    return _link_out(row, raw=raw)
+    logger.info("intake_link rotated org=%s form_kind=%s", organization_id, row.form_kind)
+    return _link_out(row, raw=raw, form_noun=profile["intake_form_noun"])
 
 
 def disable_intake_link(
@@ -381,32 +419,63 @@ def _resolve_active_link_by_token(
     return row, org
 
 
-def _schema_for_link(db: Session, link: OrganizationIntakeLink) -> tuple[dict, str, str]:
+def _schema_for_link(
+    db: Session, link: OrganizationIntakeLink, org: Organization | None
+) -> tuple[dict, str, str]:
+    profile = profiles.profile_for(org.profession_code if org else None)
+    expected_code = profile["intake_template_code"]
+
     if link.template_version_id:
         pinned = anam_svc.get_template_version(db, version_id=link.template_version_id)
         if pinned is not None:
-            schema = dict(pinned.schema_json)
-            schema["form_name"] = schema.get("name") or anam_svc.SYSTEM_TEMPLATE_NAME
-            return schema, str(pinned.id), schema["form_name"]
-    return form_svc.resolve_form_schema(db, form_kind=link.form_kind)
+            tpl = db.get(AnamnesisTemplate, pinned.template_id)
+            if tpl is not None and tpl.organization_id is not None:
+                if org is None or tpl.organization_id != org.id:
+                    logger.warning(
+                        "intake_cross_tenant_template org=%s",
+                        link.organization_id,
+                    )
+                    raise GENERIC_TOKEN_ERROR
+            code = tpl.code if tpl is not None else None
+            if code and profiles.template_code_allowed(org.profession_code if org else None, code):
+                schema = dict(pinned.schema_json)
+                form_name = (
+                    schema.get("form_name")
+                    or schema.get("name")
+                    or profile["form_title"]
+                )
+                schema["form_name"] = form_name
+                return schema, str(pinned.id), form_name
+            logger.warning(
+                "intake_pin_corrected org=%s from=%s to=%s",
+                link.organization_id,
+                code,
+                expected_code,
+            )
+
+    version = anam_svc.get_published_version_for_code(db, expected_code)
+    link.template_version_id = version.id
+    link.form_kind = profile["intake_form_kind"]
+    db.add(link)
+    schema = dict(version.schema_json)
+    form_name = schema.get("form_name") or schema.get("name") or profile["form_title"]
+    schema["form_name"] = form_name
+    return schema, str(version.id), form_name
 
 
 def get_public_intake_context(db: Session, *, raw_token: str) -> dict[str, Any]:
     link, org = _resolve_active_link_by_token(db, raw_token=raw_token)
-    schema, template_version_id, form_name = _schema_for_link(db, link)
-    if template_version_id is None:
-        # Persist FK against system template for non-physical forms
-        version = anam_svc.get_published_system_version(db)
-        template_version_id = str(version.id)
+    schema, template_version_id, form_name = _schema_for_link(db, link, org)
     link.last_used_at = datetime.now(UTC)
     db.add(link)
     db.commit()
     terms = profession_svc.nomenclature_for(org.profession_code)
+    intake_noun = terms.get("intake_form") or form_name
     return {
         "professional_public_name": org.name,
         "welcome_message": f"Bem-vindo(a) ao acompanhamento com {org.name}.",
         "process_summary": (
-            f"Preencha seus dados, o {terms.get('intake_form', 'formulário')} e os consentimentos. "
+            f"Preencha seus dados, o {intake_noun} e os consentimentos. "
             "O profissional analisará antes de liberar o acompanhamento."
         ),
         "anamnesis_schema": schema,
@@ -469,7 +538,7 @@ def submit_intake(
     idempotency_key: str,
 ) -> dict[str, Any]:
     # Ignore any client-sent organization_id
-    payload = {k: v for k, v in payload.items() if k != "organization_id"}
+    payload = {k: v for k, v in payload.items() if k not in {"organization_id", "template_version_id", "form_kind"}}
 
     key = (idempotency_key or "").strip()
     if not key or len(key) > 64:
@@ -529,25 +598,20 @@ def submit_intake(
 
     answers = payload.get("answers") or {}
     if not isinstance(answers, dict):
-        raise AuthError("invalid_answers", "Respostas da anamnese inválidas.", 422)
+        raise AuthError("invalid_answers", "Respostas do formulário inválidas.", 422)
 
     consents = payload.get("consents") or {}
     if not isinstance(consents, dict):
         raise AuthError("invalid_consents", "Consentimentos inválidos.", 422)
 
-    for consent_key in anam_svc.REQUIRED_CONSENT_KEYS:
+    schema, template_version_id, _form_name = _schema_for_link(db, link, org)
+    for consent_key in anam_svc.required_consent_keys_from_schema(schema):
         if not consents.get(consent_key):
             raise AuthError(
                 "consent_required",
                 "Aceite todos os consentimentos obrigatórios para continuar.",
                 422,
             )
-
-    schema, template_version_id, _form_name = _schema_for_link(db, link)
-    if template_version_id is None:
-        version = anam_svc.get_published_system_version(db)
-        schema = version.schema_json
-        template_version_id = str(version.id)
     attention = anam_svc.compute_attention_flag(answers, schema)
 
     dup, archived_match = _find_duplicate(

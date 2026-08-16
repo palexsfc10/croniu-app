@@ -91,7 +91,7 @@ export default function IntakeSubmissionDetailPage() {
   const canDecide = Boolean(pending && answersReady && !loading && !error);
 
   const summary = item?.anamnesis?.summary;
-  const formName = item?.anamnesis?.form_name || "Anamnese de atividade física";
+  const formName = item?.anamnesis?.form_name || "Cadastro inicial";
 
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">

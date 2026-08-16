@@ -90,7 +90,18 @@ test("agenda uses the selected day not today", async ({ page }) => {
   await apiRegister(page, { name: "Pro Dia", org: "Studio Dia", email: `day_${Date.now()}@example.com` });
   const today = await localToday(page);
   const other = shiftIso(today, 2);
-  await createCalendarRoutine(page, "Só no outro dia", other);
+  const weekday = new Date(`${other}T00:00:00Z`).getUTCDay();
+  const seeded = await page.request.post("/api/v1/routines", {
+    data: {
+      name: "Só no outro dia",
+      task_type: "review_protocol",
+      recurrence: "weekly",
+      weekday: (weekday + 6) % 7,
+      next_run_on: other,
+      filter_json: { trigger_type: "calendar", starts_on: other },
+    },
+  });
+  expect(seeded.ok(), await seeded.text()).toBeTruthy();
   await page.goto(`/app/agenda?day=${other}`);
   await expect(page.getByText(other)).toBeVisible();
   await expect(page.getByText("Só no outro dia").first()).toBeVisible();
@@ -265,6 +276,6 @@ test("viewports 360 390 412 keep Rotinas nav", async ({ page }) => {
     await page.goto("/app");
     await expect(page.getByRole("link", { name: "Rotinas" }).first()).toBeVisible();
     await page.goto("/app/routines");
-    await expect(page.getByRole("heading", { name: /Escolha o que o Croniu/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sugestões para você" })).toBeVisible();
   }
 });

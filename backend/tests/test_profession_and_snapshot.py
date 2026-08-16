@@ -17,15 +17,18 @@ def test_nomenclature_personal_vs_consultant():
 
 
 def test_recommended_form_kind():
-    assert profession_svc.recommended_form_kind("sports_teacher") == "sports_questionnaire"
+    assert profession_svc.recommended_form_kind("sports_teacher") == "class_questionnaire"
     assert (
         profession_svc.recommended_form_kind("sports_teacher", "musculacao")
-        == "physical_anamnesis"
+        == "class_questionnaire"
     )
     assert profession_svc.recommended_form_kind("personal_trainer") == "physical_anamnesis"
     assert profession_svc.recommended_form_kind("private_tutor") == "class_questionnaire"
-    assert profession_svc.recommended_form_kind("consultant") == "consulting_brief"
+    assert profession_svc.recommended_form_kind("consultant") == "simple_registration"
     assert profession_svc.recommended_form_kind(None) == "simple_registration"
+    assert profession_svc.recommended_form_kind("nutritionist") == "nutrition_intake"
+    assert profession_svc.recommended_form_kind("aesthetics") == "aesthetics_intake"
+    assert profession_svc.recommended_form_kind("physiotherapist") == "physio_intake"
 
 
 def test_validate_other_requires_description():

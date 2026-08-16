@@ -7,8 +7,12 @@ from datetime import date
 from fastapi.testclient import TestClient
 
 
-def _auth(client: TestClient, payload: dict) -> None:
-    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+def _auth(client: TestClient, payload: dict, *, profession: str = "personal_trainer") -> None:
+    body = dict(payload)
+    body["profession_code"] = profession
+    if profession == "other":
+        body["profession_other"] = "Consultoria independente"
+    assert client.post("/api/v1/auth/register", json=body).status_code == 201
     assert (
         client.post(
             "/api/v1/auth/login",

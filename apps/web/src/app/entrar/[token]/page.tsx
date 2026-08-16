@@ -19,7 +19,7 @@ import {
   consentsFromSchema,
   flattenVisibleQuestions,
   hasAttentionAnswers,
-  INTAKE_STEPS,
+  intakeSteps,
   isQuestionVisible,
   loadNamePhoneDraft,
   missingRequiredQuestions,
@@ -121,6 +121,9 @@ export default function PublicIntakePage() {
   }, [token]);
 
   const consentDefs = useMemo(() => consentsFromSchema(ctx?.anamnesis_schema), [ctx]);
+  const formNoun =
+    ctx?.form_name || ctx?.nomenclature?.intake_form || "cadastro";
+  const steps = useMemo(() => intakeSteps(ctx?.form_name), [ctx?.form_name]);
   const questionSections = useMemo(
     () => anamnesisQuestionSections(ctx?.anamnesis_schema),
     [ctx],
@@ -130,7 +133,7 @@ export default function PublicIntakePage() {
     [answers, ctx],
   );
 
-  const stepIndex = INTAKE_STEPS.findIndex((s) => s.id === step);
+  const stepIndex = steps.findIndex((s) => s.id === step);
 
   function patchIdentity<K extends keyof Identity>(key: K, value: Identity[K]) {
     setIdentity((prev) => {
@@ -165,7 +168,7 @@ export default function PublicIntakePage() {
   function goConsents() {
     const missing = missingRequiredQuestions(answers, ctx?.anamnesis_schema);
     if (missing.length) {
-      setError("Responda as perguntas obrigatórias da anamnese.");
+      setError(`Responda as perguntas obrigatórias do ${formNoun.toLowerCase()}.`);
       return;
     }
     setError(null);
@@ -173,7 +176,7 @@ export default function PublicIntakePage() {
   }
 
   function goReview() {
-    if (!requiredConsentsAccepted(consents)) {
+    if (!requiredConsentsAccepted(consents, ctx?.anamnesis_schema)) {
       setError("Aceite todos os consentimentos obrigatórios para continuar.");
       return;
     }
@@ -189,11 +192,11 @@ export default function PublicIntakePage() {
       return;
     }
     if (missingRequiredQuestions(answers, ctx?.anamnesis_schema).length) {
-      setError("Responda as perguntas obrigatórias da anamnese.");
+      setError(`Responda as perguntas obrigatórias do ${formNoun.toLowerCase()}.`);
       setStep("anamnese");
       return;
     }
-    if (!requiredConsentsAccepted(consents)) {
+    if (!requiredConsentsAccepted(consents, ctx?.anamnesis_schema)) {
       setError("Aceite os consentimentos obrigatórios.");
       setStep("consentimentos");
       return;
@@ -254,7 +257,7 @@ export default function PublicIntakePage() {
             <p className="text-sm text-[var(--color-ink-muted)]">Cadastro</p>
             {ctx ? (
               <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
-                {ctx.professional_public_name}
+                {ctx.form_name || ctx.professional_public_name}
               </h1>
             ) : (
               <h1 className="mt-1 text-2xl text-[var(--color-ink)]">Bem-vindo</h1>
@@ -266,7 +269,7 @@ export default function PublicIntakePage() {
         {step !== "welcome" && step !== "enviado" && stepIndex >= 0 ? (
           <nav aria-label="Etapas" className="mb-4">
             <ol className="flex gap-1">
-              {INTAKE_STEPS.map((s, i) => (
+              {steps.map((s, i) => (
                 <li
                   key={s.id}
                   className={[
@@ -280,7 +283,7 @@ export default function PublicIntakePage() {
               ))}
             </ol>
             <p className="mt-2 text-xs font-medium text-[var(--color-ink-muted)]">
-              {INTAKE_STEPS[stepIndex]?.label}
+              {steps[stepIndex]?.label}
             </p>
           </nav>
         ) : null}
@@ -515,7 +518,7 @@ export default function PublicIntakePage() {
               </p>
             </section>
             <p className="text-sm text-[var(--color-ink-muted)]">
-              Anamnese: {Object.keys(answers).filter((k) => answers[k]).length} resposta(s)
+              {formNoun}: {Object.keys(answers).filter((k) => answers[k]).length} resposta(s)
               · Consentimentos:{" "}
               {Object.values(consents).filter(Boolean).length} aceito(s)
             </p>

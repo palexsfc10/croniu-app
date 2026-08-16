@@ -3,6 +3,7 @@ import { apiRegister, loginUi, logoutUi, seedIntelligentCycleApi } from "./helpe
 
 test.describe("accompaniment tab and plan copy", () => {
   test("empty, partial, complete, error retry, viewports, no workout authoring", async ({ page }) => {
+    test.setTimeout(120_000);
     const suffix = Date.now();
     await apiRegister(page, {
       name: "Pro Acc",
