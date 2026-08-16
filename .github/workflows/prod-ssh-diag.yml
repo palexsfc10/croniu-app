@@ -1,0 +1,202 @@
+name: Production SSH diagnostic
+
+# Temporary connectivity probe. Does not deploy, mutate, or print secrets.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_addr_sha256:
+        description: SHA-256 hex of the operator-provided address (not the address itself)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: production
+    steps:
+      - name: Probe production SSH without revealing destination
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+          PRODUCTION_PORT: ${{ secrets.PRODUCTION_PORT }}
+          EXPECTED_ADDR_SHA256: ${{ inputs.expected_addr_sha256 }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, ipaddress, os, socket, sys
+
+          def status(name, value):
+              print(f"{name}={value}")
+
+          host = (os.environ.get("PRODUCTION_HOST") or "").strip()
+          user = (os.environ.get("PRODUCTION_USER") or "").strip()
+          key = os.environ.get("PRODUCTION_SSH_PRIVATE_KEY") or ""
+          known = os.environ.get("PRODUCTION_KNOWN_HOSTS") or ""
+          port_raw = (os.environ.get("PRODUCTION_PORT") or "").strip()
+          expected = (os.environ.get("EXPECTED_ADDR_SHA256") or "").strip().lower()
+
+          status("PRODUCTION_HOST", "SET" if host else "MISSING")
+          status("PRODUCTION_USER", "SET" if user else "MISSING")
+          status("PRODUCTION_SSH_PRIVATE_KEY", "SET" if key.strip() else "MISSING")
+          status("PRODUCTION_KNOWN_HOSTS", "SET" if known.strip() else "MISSING")
+          status("PRODUCTION_PORT", "SET" if port_raw else "MISSING")
+
+          if not host:
+              status("HOST_EQUALS_PROVIDED", "MISMATCH")
+              status("RESOLVED_EQUALS_PROVIDED", "MISMATCH")
+              status("DNS_RESOLVED", "no")
+              status("TCP_REACHABLE", "no")
+              sys.exit(0)
+
+          host_only = host.split("@")[-1]
+          embedded_port = None
+          if host_only.startswith("[") and "]" in host_only:
+              host_only = host_only[1:host_only.index("]")]
+          elif host_only.count(":") == 1 and not host_only.startswith(":"):
+              maybe_host, maybe_port = host_only.rsplit(":", 1)
+              if maybe_port.isdigit():
+                  host_only, embedded_port = maybe_host, int(maybe_port)
+
+          status("HOST_HAS_PROTOCOL", "yes" if "://" in host else "no")
+          status("HOST_HAS_EMBEDDED_PORT", "yes" if embedded_port is not None else "no")
+          status("HOST_IS_JARVIS", "yes" if host_only in {"10.0.0.211", "jarvis"} or "jarvis" in host.lower() else "no")
+
+          parsed_ip = None
+          try:
+              parsed_ip = ipaddress.ip_address(host_only)
+              status("HOST_IS_IP", "yes")
+              status("HOST_IS_PRIVATE", "yes" if parsed_ip.is_private else "no")
+          except ValueError:
+              status("HOST_IS_IP", "no")
+              status("HOST_IS_PRIVATE", "no")
+
+          host_hash = hashlib.sha256(host_only.encode()).hexdigest()
+          status("HOST_EQUALS_PROVIDED", "MATCH" if host_hash == expected else "MISMATCH")
+
+          port = 22
+          if port_raw.isdigit():
+              port = int(port_raw)
+          elif embedded_port is not None:
+              port = embedded_port
+          status("EFFECTIVE_SSH_PORT", str(port))
+
+          resolved_match = False
+          try:
+              infos = socket.getaddrinfo(host_only, port, type=socket.SOCK_STREAM)
+              status("DNS_RESOLVED", "yes")
+              for info in infos:
+                  addr = info[4][0]
+                  if hashlib.sha256(addr.encode()).hexdigest() == expected:
+                      resolved_match = True
+                  try:
+                      ip_obj = ipaddress.ip_address(addr)
+                      if ip_obj.is_private:
+                          status("RESOLVED_IS_PRIVATE", "yes")
+                  except ValueError:
+                      pass
+          except OSError:
+              status("DNS_RESOLVED", "no")
+              infos = []
+          status("RESOLVED_EQUALS_PROVIDED", "MATCH" if resolved_match else "MISMATCH")
+
+          tcp = "no"
+          try:
+              with socket.create_connection((host_only, port), timeout=8):
+                  tcp = "yes"
+          except socket.timeout:
+              tcp = "timeout"
+          except OSError:
+              tcp = "no"
+          status("TCP_REACHABLE", tcp)
+          PY
+
+          install -d -m 700 ~/.ssh
+          umask 077
+          if [[ -n "${PRODUCTION_SSH_PRIVATE_KEY}" ]]; then
+            printf '%s\n' "$PRODUCTION_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+          fi
+          if [[ -n "${PRODUCTION_KNOWN_HOSTS}" ]]; then
+            printf '%s\n' "$PRODUCTION_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            chmod 644 ~/.ssh/known_hosts
+          fi
+
+          python3 - <<'PY'
+          import os, subprocess
+          host = (os.environ.get("PRODUCTION_HOST") or "").strip().split("@")[-1]
+          if host.count(":") == 1 and host.rsplit(":", 1)[1].isdigit():
+              host = host.rsplit(":", 1)[0]
+          known = os.path.expanduser("~/.ssh/known_hosts")
+          if os.path.isfile(known) and host:
+              r = subprocess.run(["ssh-keygen", "-F", host, "-f", known], capture_output=True, text=True)
+              print("KNOWN_HOSTS_HAS_HOST=" + ("yes" if r.returncode == 0 else "no"))
+          else:
+              print("KNOWN_HOSTS_HAS_HOST=no")
+          PY
+
+          echo "SSH_HANDSHAKE=no"
+          echo "HOST_KEY_VALID=no"
+          echo "AUTHENTICATION_REACHED=no"
+          if [[ ! -s ~/.ssh/id_ed25519 || -z "${PRODUCTION_USER}" || -z "${PRODUCTION_HOST}" ]]; then
+            echo "SSH_SKIPPED=yes"
+            exit 0
+          fi
+
+          host="${PRODUCTION_HOST}"
+          host="${host##*@}"
+          port="${PRODUCTION_PORT:-22}"
+          if [[ "$host" == *:* && "$host" != *:*:* ]]; then
+            maybe_port="${host##*:}"
+            if [[ "$maybe_port" =~ ^[0-9]+$ ]]; then
+              port="$maybe_port"
+              host="${host%:*}"
+            fi
+          fi
+
+          set +e
+          ssh_out="$(
+            ssh -n -o BatchMode=yes -o ConnectTimeout=8 -o ConnectionAttempts=1 \
+              -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+              -o NumberOfPasswordPrompts=0 -o LogLevel=ERROR \
+              -p "$port" -i ~/.ssh/id_ed25519 \
+              "${PRODUCTION_USER}@${host}" true 2>&1
+          )"
+          ssh_rc=$?
+          set -e
+          printf '%s\n' "$ssh_out" | python3 - <<'PY'
+          import sys
+          text = sys.stdin.read().lower()
+          def has(*needles):
+              return any(n in text for n in needles)
+          if has("connection timed out", "operation timed out", "connection timed out"):
+              print("SSH_LAYER=tcp_timeout")
+          elif has("could not resolve", "name or service not known", "no address associated"):
+              print("SSH_LAYER=dns")
+          elif has("connection refused"):
+              print("SSH_LAYER=tcp_refused")
+          elif has("host key verification failed", "remote host identification has changed", "no matching host key"):
+              print("SSH_LAYER=host_key")
+              print("HOST_KEY_VALID=no")
+              print("SSH_HANDSHAKE=yes")
+          elif has("permission denied", "publickey", "authentication failed"):
+              print("SSH_LAYER=authentication")
+              print("SSH_HANDSHAKE=yes")
+              print("HOST_KEY_VALID=yes")
+              print("AUTHENTICATION_REACHED=yes")
+          elif has("connection reset", "broken pipe"):
+              print("SSH_LAYER=tcp_reset")
+          else:
+              print("SSH_LAYER=other")
+          PY
+          if [[ "$ssh_rc" -eq 0 ]]; then
+            echo "SSH_HANDSHAKE=yes"
+            echo "HOST_KEY_VALID=yes"
+            echo "AUTHENTICATION_REACHED=yes"
+            echo "SSH_LAYER=remote_ok"
+          fi
+          echo "SSH_EXIT=$ssh_rc"
