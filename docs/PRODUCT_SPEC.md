@@ -282,7 +282,7 @@ Menor escopo · consentimento · tokens criptografados · revogação · descone
 | FR-RECEIVABLE-02 | Pagamento parcial | `FUTURO` | — | — | — | — |
 | FR-RECEIVABLE-03 | Vocabulário pending/paid/cancelled + overdue calc | `PLANEJADO` | docs ADR-021 | — | autorizada | Normalizar código |
 | FR-ALERT-01 | Prioridades no Hoje | `IMPLEMENTADO` | home summary + HOME_PRIORITY.md | domain home | home-hoje | entidade Alert persistida |
-| FR-MYCYCLE-01 | Portal público por token opaco | `IMPLEMENTADO` | `/c/{token}` + public API | 2D | — |
+| FR-MYCYCLE-01 | Portal público por token opaco ou HMAC reconstruível | `IMPLEMENTADO` | `/c/{token}` + public API; GET devolve URL estável | 2D | HMAC `v1` + legado `token_hash` |
 | FR-MYCYCLE-02 | Solicitação renovação idempotente | `IMPLEMENTADO` | renewal_requests | 2D | — |
 | FR-MYCYCLE-03 | Informe pagamento + confirmação pro | `IMPLEMENTADO` | payment_reports | 2D | gateway fora |
 | FR-MYCYCLE-04 | Preferências Pix/link https | `IMPLEMENTADO` | payment-settings | 2D | — |

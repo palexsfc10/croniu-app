@@ -14,7 +14,7 @@ class ClientAccessOut(BaseModel):
     has_active_link: bool
     created_at: datetime | None = None
     last_used_at: datetime | None = None
-    # Raw token only on create/rotate responses
+    # Raw signed token only on create/rotate. GET reconstructs public_url without token.
     token: str | None = None
     public_path: str | None = None
     public_url: str | None = None

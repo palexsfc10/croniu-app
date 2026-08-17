@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -28,10 +30,14 @@ def _public_headers(response: JSONResponse) -> JSONResponse:
     return response
 
 
+def _token_fingerprint(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+
+
 def _rate_limit(request: Request, token: str) -> None:
     settings = get_settings()
     ip = request.client.host if request.client else "unknown"
-    key = f"{ip}:{token[:12]}"
+    key = f"{ip}:{_token_fingerprint(token)}"
     if not public_rate_limiter.allow(key, limit=settings.public_rate_limit_per_minute):
         raise HTTPException(
             status_code=429,

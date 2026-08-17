@@ -21,6 +21,7 @@ from app.api import platform as platform_routes
 from app.api import receivables as receivables_routes
 from app.api import services as services_routes
 from app.config import get_settings
+from app.security.log_redact import install_portal_log_filter
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("croniu")
@@ -37,6 +38,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
     settings.validate_production_email_from()
     settings.validate_email_verification_contract()
+    settings.validate_client_portal_signing_key()
+    install_portal_log_filter()
     app = FastAPI(
         title="Croniu API",
         version="0.1.0",
@@ -103,9 +106,9 @@ def create_app() -> FastAPI:
     app.include_router(evaluations_routes.router, prefix="/api/v1")
     app.include_router(agent_routes.router, prefix="/api/v1")
     app.include_router(feedback_routes.router, prefix="/api/v1")
-    from app.api import profession as profession_routes
     from app.api import billing as billing_routes
     from app.api import billing_webhooks as billing_webhooks_routes
+    from app.api import profession as profession_routes
 
     app.include_router(profession_routes.router, prefix="/api/v1")
     app.include_router(billing_routes.router, prefix="/api/v1")

@@ -78,6 +78,8 @@ def test_token_hash_only_and_public_view(client, register_payload):
     status = client.get(f"/api/v1/clients/{ids['client_id']}/public-access")
     assert status.json()["has_active_link"] is True
     assert status.json().get("token") is None
+    assert status.json()["public_url"]
+    assert status.json()["public_url"] == created.json()["public_url"]
 
     pub = client.get(f"/api/v1/public/my-cycle/{token}")
     assert pub.status_code == 200

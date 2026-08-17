@@ -50,7 +50,7 @@ def create_client_access(
     db: Session = Depends(get_db),
 ) -> ClientAccessOut:
     try:
-        return my_cycle_svc.create_or_rotate_access(
+        return my_cycle_svc.create_access(
             db,
             organization_id=auth.organization.id,
             client_id=client_id,
@@ -67,7 +67,7 @@ def rotate_client_access(
     db: Session = Depends(get_db),
 ) -> ClientAccessOut:
     try:
-        return my_cycle_svc.create_or_rotate_access(
+        return my_cycle_svc.rotate_access(
             db,
             organization_id=auth.organization.id,
             client_id=client_id,

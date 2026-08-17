@@ -131,6 +131,17 @@ describe("ClientProfile", () => {
     expect(screen.queryByText(/Gere um novo acesso/i)).not.toBeInTheDocument();
   });
 
+  it("renders the portal card on the dados tab without asking to generate a copyable link", async () => {
+    nav.tab = "dados";
+    render(<ClientProfile clientId="c1" />);
+    const portal = await screen.findByRole("region", { name: "Portal do cliente" });
+    expect(portal).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Portal do cliente" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Criar acesso" }).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/o token completo não será mostrado/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Copiar link/i })).not.toBeInTheDocument();
+  });
+
   it("humanizes cycle dates and keeps a single plan action", async () => {
     nav.tab = "acompanhamento";
     render(<ClientProfile clientId="c1" />);

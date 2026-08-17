@@ -51,9 +51,9 @@ Cada decisão: contexto · decisão · consequência · status · data (se conhe
 
 | | |
 |--|--|
-| Status | Aceito · **implementado** (Sprint 2D) |
-| Decisão | Token alta entropia (urlsafe ≥256 bits) + SHA-256; um ativo por cliente; revogação/rotação; rate limit in-process; `no-store`/`noindex` |
-| Evidência | `client_public_accesses`; `/c/{token}`; `0007_sprint2d_my_cycle` |
+| Status | Aceito · **implementado** (Sprint 2D; HMAC reconstruível 2026-08) |
+| Decisão | Token alta entropia (urlsafe ≥256 bits) + SHA-256 legado; um ativo por cliente; revogação/rotação; rate limit in-process; `no-store`/`noindex`. GET reconstruí URL assinada HMAC `v1.{access_id}.{mac}` a partir do `id` da linha (não armazena o bearer). Links `token_hash` legados continuam válidos até rotacionar/revogar. `CLIENT_PORTAL_SIGNING_KEY` obrigatória em HML/PRD. |
+| Evidência | `client_public_accesses`; `/c/{token}`; `0007_sprint2d_my_cycle`; `portal_token.py` |
 
 ## ADR-027 — Renovação via Meu Ciclo = interesse apenas
 

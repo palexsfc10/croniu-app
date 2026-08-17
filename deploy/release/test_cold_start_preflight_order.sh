@@ -46,6 +46,7 @@ WEB_HOST_PORT=14000
 ADMIN_HOST_PORT=14002
 CRONIU_ENV=production
 SECRET_KEY=placeholder-secret-key-with-32chars-min
+CLIENT_PORTAL_SIGNING_KEY=placeholder-portal-signing-key-32chars
 SESSION_COOKIE_SECURE=true
 CORS_ORIGINS=https://app.example.test,https://admin.example.test
 OPENAPI_ENABLED=false

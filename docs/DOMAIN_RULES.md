@@ -151,7 +151,7 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 | Criação automática de novo ciclo | **Proibido** no MVP |
 | Máquina de estados completa (`wants_renew`, etc.) | `PLANEJADO` |
 | Página pública Meu Ciclo | `IMPLEMENTADO` (2D) |
-| Token opaco + hash / revogação / rotação | `IMPLEMENTADO` |
+| Token opaco + hash / HMAC reconstruível / revogação / rotação | `IMPLEMENTADO` |
 | Renovação = interesse (sem criar ciclo) | `IMPLEMENTADO` |
 | Informe de pagamento ≠ mark-paid automático | `IMPLEMENTADO` |
 | Aulas restantes (saldo = total − realizadas/faltas) | `IMPLEMENTADO` (ADR-031) |

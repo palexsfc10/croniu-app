@@ -11,7 +11,7 @@ from app.db import Base
 
 
 class ClientPublicAccess(Base):
-    """Opaque public portal token for a client (hash only; raw token shown once)."""
+    """Public portal access. token_hash is a legacy opaque digest or a unique placeholder; signed URLs are minted from id."""
 
     __tablename__ = "client_public_accesses"
     __table_args__ = (

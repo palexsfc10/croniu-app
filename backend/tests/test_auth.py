@@ -34,6 +34,7 @@ def test_version_uses_injected_build_metadata(monkeypatch):
     monkeypatch.setenv("BUILD_TIME", "20260814T120000Z")
     monkeypatch.setenv("CRONIU_ENV", "hml")
     monkeypatch.setenv("APP_VERSION", "client-intake-hml")
+    monkeypatch.setenv("CLIENT_PORTAL_SIGNING_KEY", "hml-test-portal-signing-key-32chars-min")
     get_settings.cache_clear()
     from fastapi.testclient import TestClient
 

@@ -108,6 +108,7 @@ sed -i \
   -e 's/^ASAAS_API_KEY=$/ASAAS_API_KEY=asaas_test_placeholder/' \
   -e 's/^ASAAS_WEBHOOK_TOKEN=$/ASAAS_WEBHOOK_TOKEN=whsec_test_placeholder/' \
   "$TMP/deploy/prd/.env.prd"
+printf '\nCLIENT_PORTAL_SIGNING_KEY=placeholder-portal-signing-key-32chars\n' >>"$TMP/deploy/prd/.env.prd"
 
 export DEPLOY_ROOT="$TMP" ENVIRONMENT=prd \
   COMPOSE_FILE="$TMP/deploy/prd/compose.prd.yaml" \
