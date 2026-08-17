@@ -24,7 +24,7 @@ Produto: [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md).
 | Bootstrap admin só CLI | implementado | `create_platform_admin` |
 | Mutações admin | bloqueadas / parcial | leitura only |
 | MFA admin | planejado | antes de produção |
-| Links públicos Meu Ciclo | implementado | token hash; rate limit; no-store/noindex |
+| Links públicos Meu Ciclo | implementado | HMAC reconstruível + `token_hash` legado; rate limit; no-store/noindex |
 | Google OAuth tokens | planejado | criptografar; sem log |
 | WhatsApp | N/A envio | só URL `wa.me` gerada no client |
 | LGPD minimização | parcial | princípios; link público futuro |
@@ -42,9 +42,9 @@ Locais e compromissos: UUID conhecido de outro tenant → 404/403; cliente/ciclo
 
 Notas de local/compromisso só na área profissional; admin global não lista detalhes individuais de agenda.
 
-## Links públicos (planejado)
+## Links públicos (Meu Ciclo)
 
-Token alta entropia; hash no banco; rate limit; `no-store`; `noindex`; revogação; logs sem token integral.
+HMAC versionado `v1.{access_id}.{mac}` reconstruído no GET a partir do `id` da linha ativa. Bearer não é persistido. `token_hash` legado continua válido até rotacionar/revogar. Rate limit por fingerprint SHA-256; `no-store`; `noindex`; logs sem token/URL completa. `CLIENT_PORTAL_SIGNING_KEY` obrigatória em HML/PRD (fallback derivado de `SECRET_KEY` só em desenvolvimento/testes). Trocar a chave invalida URLs assinadas; links legados independem dela.
 
 ## Rede
 

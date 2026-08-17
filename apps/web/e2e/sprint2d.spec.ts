@@ -23,7 +23,7 @@ test.describe("Sprint 2D Meu Ciclo", () => {
 
     await page.goto(`/app/clients/${clientId}?tab=dados`);
     await page.getByRole("button", { name: "Criar acesso" }).click();
-    await expect(page.getByText(/Acesso gerado/i)).toBeVisible();
+    await expect(page.getByText(/Acesso ativo/i)).toBeVisible();
     const rotated = await page.request.post(`/api/v1/clients/${clientId}/public-access/rotate`);
     expect(rotated.ok()).toBeTruthy();
     const token = (await rotated.json()).token as string;

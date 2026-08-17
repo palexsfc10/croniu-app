@@ -24,7 +24,7 @@ Arquivos: … `test_cycle_financial_invariants.py`, `test_my_cycle_sprint2d.py`.
 
 | Área | Regras cobertas (exemplos) |
 |------|----------------------------|
-| Meu Ciclo 2D | token hash; revogação; portal mínimo; renovação idempotente; Pix https; informe; comprovante; confirmação; tenant |
+| Meu Ciclo 2D | token hash legado + HMAC `v1`; revogação; portal mínimo; renovação idempotente; Pix https; informe; comprovante; confirmação; tenant |
 
 Mapear sempre aos IDs `FR-*` / `NFR-*`.
 
@@ -42,7 +42,8 @@ Login / acesso negado.
 - Sprint 2A: fluxo domínio + artefatos em `apps/web/e2e/artifacts/sprint2a/`  
 - Sprint 2C: serviço → modelo → ciclo inteligente + desconto (`e2e/sprint2c.spec.ts`)  
 - Sprint 2C.1: edição financeira UI + bloqueio pago + isolamento (`e2e/sprint2c1.spec.ts`, 3 cenários)  
-- Sprint 2D: link Meu Ciclo + renovação/pagamento + rotação (`e2e/sprint2d.spec.ts`, 3 cenários)  
+- Sprint 2D: link Meu Ciclo + renovação/pagamento + rotação (`e2e/sprint2d.spec.ts`, 3 cenários)
+- Portal estável: GET reconstrói URL; copiar/WhatsApp; rotacionar/revogar (`e2e/client-portal-access.spec.ts`)  
 - Admin E2E: especificado; executar quando ambiente disponível  
 
 ## Multi-tenancy

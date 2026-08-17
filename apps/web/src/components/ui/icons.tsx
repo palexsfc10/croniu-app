@@ -333,6 +333,16 @@ export function IconCheck({ className = "", ...props }: IconProps) {
   );
 }
 
+export function IconExternalLink({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M14 4h6v6" />
+      <path d="M10 14 20 4" />
+      <path d="M20 14v6H4V4h6" />
+    </svg>
+  );
+}
+
 export function IconCalendarPlus({ className = "", ...props }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>

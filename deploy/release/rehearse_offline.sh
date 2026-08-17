@@ -23,6 +23,7 @@ sed -i \
   -e 's/^POSTGRES_DB=$/POSTGRES_DB=croniu/' \
   -e 's/^SECRET_KEY=$/SECRET_KEY=placeholder-secret-key-with-32chars-min/' \
   "$TMP/deploy/prd/.env.prd"
+printf '\nCLIENT_PORTAL_SIGNING_KEY=placeholder-portal-signing-key-32chars\n' >>"$TMP/deploy/prd/.env.prd"
 grep -q '^API_HOST_PORT=19080$' "$TMP/deploy/prd/.env.prd" || { echo "expected API_HOST_PORT=19080"; fail=1; }
 grep -q '^WEB_HOST_PORT=14000$' "$TMP/deploy/prd/.env.prd" || { echo "expected WEB_HOST_PORT=14000"; fail=1; }
 grep -q '^ADMIN_HOST_PORT=14002$' "$TMP/deploy/prd/.env.prd" || { echo "expected ADMIN_HOST_PORT=14002"; fail=1; }

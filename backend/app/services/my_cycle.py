@@ -36,12 +36,18 @@ from app.schemas.my_cycle import (
     RenewalRequestOut,
 )
 from app.security.passwords import generate_session_token, hash_session_token
+from app.security.portal_token import (
+    InvalidPortalToken,
+    looks_like_bare_uuid,
+    mint_portal_token,
+    parse_portal_token,
+)
 from app.services import agenda as agenda_svc
 from app.services import cycle_period as cycle_period_svc
 from app.services import domain as domain_svc
 from app.services import evaluations as eval_svc
-from app.services import protocols as proto_svc
 from app.services import proof_storage
+from app.services import protocols as proto_svc
 from app.services.auth import AuthError
 from app.services.cycle_calc import compute_renewal_on
 
@@ -167,31 +173,72 @@ def _public_url(token: str) -> tuple[str, str]:
 def _wa_template(client: Client, public_url: str) -> str:
     return (
         f"Olá, {_first_name(client.full_name)}. Aqui está seu acesso ao Croniu "
-        f"para acompanhar seu ciclo, renovação e pagamento: {public_url}"
+        f"para acompanhar sua agenda, ciclo e conteúdos publicados:\n\n{public_url}"
     )
 
 
-def get_access_status(
-    db: Session, *, organization_id: uuid.UUID, client_id: uuid.UUID
+def _access_out(
+    client: Client,
+    row: ClientPublicAccess,
+    *,
+    include_token: bool,
 ) -> ClientAccessOut:
-    domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
-    row = db.scalar(
+    signed = mint_portal_token(row.id)
+    path, url = _public_url(signed)
+    return ClientAccessOut(
+        has_active_link=True,
+        created_at=row.created_at,
+        last_used_at=row.last_used_at,
+        token=signed if include_token else None,
+        public_path=path,
+        public_url=url,
+        wa_message_template=_wa_template(client, url),
+    )
+
+
+def _active_access(
+    db: Session, *, organization_id: uuid.UUID, client_id: uuid.UUID
+) -> ClientPublicAccess | None:
+    return db.scalar(
         select(ClientPublicAccess).where(
             ClientPublicAccess.organization_id == organization_id,
             ClientPublicAccess.client_id == client_id,
             ClientPublicAccess.revoked_at.is_(None),
         )
     )
+
+
+def get_access_status(
+    db: Session, *, organization_id: uuid.UUID, client_id: uuid.UUID
+) -> ClientAccessOut:
+    client = domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
+    row = _active_access(db, organization_id=organization_id, client_id=client_id)
     if row is None:
         return ClientAccessOut(has_active_link=False)
-    return ClientAccessOut(
-        has_active_link=True,
-        created_at=row.created_at,
-        last_used_at=row.last_used_at,
+    return _access_out(client, row, include_token=False)
+
+
+def create_access(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    client_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+) -> ClientAccessOut:
+    client = domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
+    existing = _active_access(db, organization_id=organization_id, client_id=client_id)
+    if existing is not None:
+        return _access_out(client, existing, include_token=True)
+    return _insert_access(
+        db,
+        client=client,
+        organization_id=organization_id,
+        client_id=client_id,
+        user_id=user_id,
     )
 
 
-def create_or_rotate_access(
+def rotate_access(
     db: Session,
     *,
     organization_id: uuid.UUID,
@@ -200,28 +247,41 @@ def create_or_rotate_access(
 ) -> ClientAccessOut:
     client = domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
     now = datetime.now(UTC)
-    existing = db.scalar(
-        select(ClientPublicAccess).where(
-            ClientPublicAccess.organization_id == organization_id,
-            ClientPublicAccess.client_id == client_id,
-            ClientPublicAccess.revoked_at.is_(None),
-        )
-    )
+    existing = _active_access(db, organization_id=organization_id, client_id=client_id)
     if existing is not None:
         existing.revoked_at = now
         db.add(existing)
+    return _insert_access(
+        db,
+        client=client,
+        organization_id=organization_id,
+        client_id=client_id,
+        user_id=user_id,
+    )
 
-    raw = generate_session_token()
+
+def _insert_access(
+    db: Session,
+    *,
+    client: Client,
+    organization_id: uuid.UUID,
+    client_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+) -> ClientAccessOut:
+    # Random hash slot preserves the unique token_hash constraint. The raw
+    # value is never returned; sharing uses the reconstructable signed token.
+    placeholder = generate_session_token()
     row = ClientPublicAccess(
         id=uuid.uuid4(),
         organization_id=organization_id,
         client_id=client_id,
-        token_hash=hash_session_token(raw),
+        token_hash=hash_session_token(placeholder),
         created_by_user_id=user_id,
     )
     db.add(row)
     try:
         db.commit()
+        db.refresh(row)
     except IntegrityError as exc:
         db.rollback()
         raise AuthError(
@@ -230,34 +290,19 @@ def create_or_rotate_access(
             409,
         ) from exc
 
-    path, url = _public_url(raw)
     logger.info(
         "client_public_access created org=%s client=%s",
         organization_id,
         client_id,
     )
-    return ClientAccessOut(
-        has_active_link=True,
-        created_at=row.created_at,
-        last_used_at=None,
-        token=raw,
-        public_path=path,
-        public_url=url,
-        wa_message_template=_wa_template(client, url),
-    )
+    return _access_out(client, row, include_token=True)
 
 
 def revoke_access(
     db: Session, *, organization_id: uuid.UUID, client_id: uuid.UUID
 ) -> ClientAccessOut:
     domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
-    row = db.scalar(
-        select(ClientPublicAccess).where(
-            ClientPublicAccess.organization_id == organization_id,
-            ClientPublicAccess.client_id == client_id,
-            ClientPublicAccess.revoked_at.is_(None),
-        )
-    )
+    row = _active_access(db, organization_id=organization_id, client_id=client_id)
     if row is None:
         return ClientAccessOut(has_active_link=False)
     row.revoked_at = datetime.now(UTC)
@@ -457,12 +502,27 @@ def _active_payment_report(
 
 def _resolve_access(db: Session, raw_token: str) -> ClientPublicAccess:
     token = (raw_token or "").strip()
-    if len(token) < 20:
+    if not token:
         raise UNIFORM_TOKEN_ERROR
-    digest = hash_session_token(token)
-    row = db.scalar(
-        select(ClientPublicAccess).where(ClientPublicAccess.token_hash == digest)
-    )
+
+    row: ClientPublicAccess | None = None
+    try:
+        signed_id = parse_portal_token(token)
+    except InvalidPortalToken as exc:
+        raise UNIFORM_TOKEN_ERROR from exc
+
+    if signed_id is not None:
+        row = db.get(ClientPublicAccess, signed_id)
+    elif looks_like_bare_uuid(token):
+        raise UNIFORM_TOKEN_ERROR
+    elif len(token) < 20:
+        raise UNIFORM_TOKEN_ERROR
+    else:
+        digest = hash_session_token(token)
+        row = db.scalar(
+            select(ClientPublicAccess).where(ClientPublicAccess.token_hash == digest)
+        )
+
     if row is None or row.revoked_at is not None:
         raise UNIFORM_TOKEN_ERROR
     row.last_used_at = datetime.now(UTC)

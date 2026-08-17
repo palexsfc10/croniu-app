@@ -10,5 +10,6 @@
 | Sprint 2C — entrega | [`SPRINT_2C_REPORT.md`](./SPRINT_2C_REPORT.md) | Cycle intelligence |
 | Sprint 2C.1 — entrega | [`SPRINT_2C_1_REPORT.md`](./SPRINT_2C_1_REPORT.md) | Edição financeira UI |
 | Sprint 2D — entrega | [`SPRINT_2D_REPORT.md`](./SPRINT_2D_REPORT.md) | Meu Ciclo / renovação / pagamento |
+| Portal estável (main atual) | [`REPORT_CLIENT_PORTAL_STABLE_ACCESS_CURRENT_MAIN.md`](./REPORT_CLIENT_PORTAL_STABLE_ACCESS_CURRENT_MAIN.md) | HMAC + legado; HML Jarvis; PRD intacta |
 
 Novos relatórios preferencialmente em `docs/reports/`. Não duplicar a fonte oficial de regras (`PRODUCT_SPEC.md`).

@@ -35,6 +35,13 @@ load_env() {
   : "${NEXT_PUBLIC_APP_URL:?}"
   : "${NEXT_PUBLIC_ADMIN_URL:?}"
   [[ "${#SECRET_KEY}" -ge 32 ]] || die "SECRET_KEY deve ter pelo menos 32 caracteres"
+  portal_key="${CLIENT_PORTAL_SIGNING_KEY:-}"
+  if [[ -z "$portal_key" || "${#portal_key}" -lt 32 ]]; then
+    log "CLIENT_PORTAL_SIGNING_KEY=MISSING"
+    die "CLIENT_PORTAL_SIGNING_KEY must be set (min 32 characters) in HML"
+  fi
+  log "CLIENT_PORTAL_SIGNING_KEY=SET"
+  unset portal_key
   # Cartão off por padrão em HML até evidência Asaas sandbox Croniu
   if [[ "${BILLING_CARD_ENABLED:-false}" == "true" ]]; then
     log "WARN BILLING_CARD_ENABLED=true — confirme HML Asaas sandbox Croniu antes de liberar cartão"

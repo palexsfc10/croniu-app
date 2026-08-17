@@ -28,6 +28,8 @@ import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AccompanimentCard } from "@/components/app/accompaniment-card";
+import { ClientPortalCard } from "@/components/app/client-portal-card";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   IconClipboardList,
   IconHistory,
@@ -61,9 +63,7 @@ export function ClientProfile({ clientId }: Props) {
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [profession, setProfession] = useState<ProfessionProfile | null>(null);
-  const [rawToken, setRawToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [portalNotice, setPortalNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -232,43 +232,18 @@ export function ClientProfile({ clientId }: Props) {
     router.replace("/app/clients");
   }
 
-  async function createOrRotate(rotate: boolean) {
-    if (rotate && !window.confirm("Gerar um novo acesso invalida o atual.")) return;
-    const path = rotate
-      ? `/api/v1/clients/${clientId}/public-access/rotate`
-      : `/api/v1/clients/${clientId}/public-access`;
-    const result = await apiFetch<ClientAccess>(path, { method: "POST", body: "{}" });
-    if (result.error) {
-      setError(result.error.message);
-      return;
-    }
-    setAccess(result.data ?? null);
-    setRawToken(result.data?.token ?? null);
-    setPortalNotice("Acesso gerado. Copie agora — o token completo não será mostrado novamente.");
-  }
-
-  async function copyAccess() {
-    const url = rawToken
-      ? access?.public_url || `${window.location.origin}/c/${rawToken}`
-      : null;
+  async function copyMenuAccess() {
+    const url = access?.has_active_link ? access.public_url ?? null : null;
     if (!url) {
-      setPortalNotice("Gere um novo acesso para copiar o endereço completo.");
+      setTab("dados");
+      setMenuOpen(false);
       return;
     }
-    await navigator.clipboard.writeText(url);
-    setPortalNotice("Acesso copiado.");
-  }
-
-  function shareWhatsApp() {
-    const text = encodeURIComponent(
-      "Acesse o portal Croniu para acompanhar agenda, ciclo e conteúdos publicados.",
-    );
-    const phone = (item?.phone || "").replace(/\D/g, "");
-    window.open(
-      phone ? `https://wa.me/55${phone}?text=${text}` : `https://wa.me/?text=${text}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    const result = await copyTextToClipboard(url);
+    setMenuOpen(false);
+    if (!result.ok) {
+      setError("Não foi possível copiar automaticamente. Abra Dados para copiar o endereço.");
+    }
   }
 
   const tabs: { id: Tab; label: string }[] = [
@@ -299,9 +274,26 @@ export function ClientProfile({ clientId }: Props) {
             >
               Editar dados
             </Link>
-            <button type="button" className="block w-full min-h-11 rounded px-2 py-2 text-left text-sm" onClick={() => void copyAccess()}>
-              Copiar acesso
-            </button>
+            {access?.has_active_link && access.public_url ? (
+              <button
+                type="button"
+                className="block w-full min-h-11 rounded px-2 py-2 text-left text-sm"
+                onClick={() => void copyMenuAccess()}
+              >
+                Copiar acesso
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="block w-full min-h-11 rounded px-2 py-2 text-left text-sm"
+                onClick={() => {
+                  setTab("dados");
+                  setMenuOpen(false);
+                }}
+              >
+                Criar acesso
+              </button>
+            )}
             <button
               type="button"
               className="mt-1 block w-full min-h-11 rounded px-2 py-2 text-left text-sm text-[var(--color-danger)]"
@@ -597,38 +589,17 @@ export function ClientProfile({ clientId }: Props) {
             </div>
           </dl>
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold">Portal do cliente</h2>
-            {portalNotice ? (
-              <p role="status" className="text-sm text-[var(--color-ink-muted)]">
-                {portalNotice}
-              </p>
-            ) : null}
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              Compartilhe este acesso para que o cliente acompanhe agenda, ciclo e conteúdos
-              publicados.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {!access?.has_active_link ? (
-                <Button onClick={() => void createOrRotate(false)}>Criar acesso</Button>
-              ) : (
-                <>
-                  <Button onClick={() => void copyAccess()}>Copiar acesso</Button>
-                  <Button variant="secondary" onClick={shareWhatsApp}>
-                    Compartilhar no WhatsApp
-                  </Button>
-                </>
-              )}
-            </div>
-            <details className="text-sm">
-              <summary className="cursor-pointer text-[var(--color-ink-muted)]">Mais opções</summary>
-              <div className="mt-2 flex flex-col gap-2">
-                <Button variant="ghost" onClick={() => void createOrRotate(true)}>
-                  Gerar novo acesso
-                </Button>
-              </div>
-            </details>
-          </div>
+          <ClientPortalCard
+            clientId={clientId}
+            firstName={firstName(item.full_name)}
+            phone={item.phone}
+            access={access}
+            onAccessChange={setAccess}
+            onFeedback={(message, tone) => {
+              if (tone === "error" && message) setError(message);
+              else if (!message) setError(null);
+            }}
+          />
         </section>
       ) : null}
 

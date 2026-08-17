@@ -28,6 +28,9 @@ class Settings(BaseSettings):
         default="dev-only-change-me-to-a-long-random-string-at-least-32-chars",
         alias="SECRET_KEY",
     )
+    # HMAC key for reconstructable client-portal URLs. Required in HML/PRD.
+    # Empty in development/tests: derived from SECRET_KEY with domain separation.
+    client_portal_signing_key: str = Field(default="", alias="CLIENT_PORTAL_SIGNING_KEY")
     session_cookie_name: str = Field(default="croniu_session", alias="SESSION_COOKIE_NAME")
     session_ttl_hours: int = Field(default=168, alias="SESSION_TTL_HOURS")
     session_cookie_secure: bool = Field(default=False, alias="SESSION_COOKIE_SECURE")
@@ -223,6 +226,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 "EMAIL_VERIFICATION_REQUIRED must be true in production "
                 "(HML soft-gate bypass is not allowed in PRD)"
+            )
+
+    def validate_client_portal_signing_key(self) -> None:
+        """Fail-closed: HML and production must set a dedicated portal HMAC key."""
+        if not self.is_production_like:
+            return
+        key = (self.client_portal_signing_key or "").strip()
+        if len(key) < 32:
+            raise ValueError(
+                "CLIENT_PORTAL_SIGNING_KEY must be set (min 32 characters) in HML and production"
             )
 
     @property

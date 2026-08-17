@@ -125,6 +125,15 @@ if [[ "${ENVIRONMENT:-}" == "prd" ]]; then
     "$(env_value ADMIN_HOST_PORT)"
 fi
 
+if [[ "${ENVIRONMENT:-}" == "hml" || "${ENVIRONMENT:-}" == "prd" ]]; then
+  portal_key="$(grep -E "^CLIENT_PORTAL_SIGNING_KEY=" "$ENV_FILE" | head -n1 | cut -d= -f2- || true)"
+  if [[ -z "$portal_key" || "${#portal_key}" -lt 32 ]]; then
+    log "CLIENT_PORTAL_SIGNING_KEY=MISSING"
+    die "CLIENT_PORTAL_SIGNING_KEY must be set (min 32 characters) in $ENVIRONMENT"
+  fi
+  log "CLIENT_PORTAL_SIGNING_KEY=SET"
+fi
+
 min_gb="${MIN_FREE_DISK_GB:-5}"
 avail_kb="$(df -Pk "$DEPLOY_ROOT" | awk 'NR==2 {print $4}')"
 need_kb=$((min_gb * 1024 * 1024))

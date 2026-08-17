@@ -286,6 +286,7 @@ jobs:
             -e 's/^POSTGRES_DB=$/POSTGRES_DB=croniu/' \
             -e 's/^SECRET_KEY=$/SECRET_KEY=placeholder-secret-key-with-32chars-min/' \
             /tmp/.env.prd
+          printf '\nCLIENT_PORTAL_SIGNING_KEY=placeholder-portal-signing-key-32chars\n' >>/tmp/.env.prd
           grep -q '^API_HOST_PORT=19080$' /tmp/.env.prd
           grep -q '^WEB_HOST_PORT=14000$' /tmp/.env.prd
           grep -q '^ADMIN_HOST_PORT=14002$' /tmp/.env.prd
