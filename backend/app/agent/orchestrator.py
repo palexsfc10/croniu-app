@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agent import confirmation as conf_svc
@@ -32,11 +33,16 @@ from app.agent.thread_entities import (
 from app.agent.tools import TOOLS, ToolContext, get_tool, tool_specs
 from app.billing.entitlement import SubscriptionEntitlementService
 from app.config import Settings, get_settings
-from app.models.agent import AgentMessage, AgentPendingAction, AgentRun, AgentToolCall, AgentUsageDaily
+from app.models.agent import (
+    AgentMessage,
+    AgentPendingAction,
+    AgentRun,
+    AgentToolCall,
+    AgentUsageDaily,
+)
 from app.models.organization import Organization
 from app.services import agent_threads as threads_svc
 from app.services.auth import AuthError
-from sqlalchemy import select
 
 logger = logging.getLogger("croniu.agent")
 
@@ -46,6 +52,24 @@ _minute_lock = Lock()
 _minute_buckets: dict[str, list[float]] = defaultdict(list)
 
 HISTORY_LIMIT = 20
+
+
+def _validate_confirmation_contract(result: Any) -> str | None:
+    if not isinstance(result, dict):
+        return "result_not_object"
+    if result.get("needs_confirmation") is not True:
+        return None
+    if not isinstance(result.get("tool_name"), str) or not result["tool_name"]:
+        return "missing_tool_name"
+    if not isinstance(result.get("arguments"), dict):
+        return "missing_arguments"
+    if not isinstance(result.get("summary"), str) or not result["summary"].strip():
+        return "missing_summary"
+    try:
+        json.dumps(result["arguments"])
+    except (TypeError, ValueError):
+        return "arguments_not_serializable"
+    return None
 
 
 @dataclass
@@ -130,7 +154,11 @@ def _replay_client_message(
             ):
                 pending_out = conf_svc.pending_action_to_public_dict(pending_row)
     reply = (assistant.content if assistant else "") or "Mensagem já processada."
-    status = "awaiting_confirmation" if pending_out and pending_out.get("status") == "pending" else "ok"
+    status = (
+        "awaiting_confirmation"
+        if pending_out and pending_out.get("status") == "pending"
+        else "ok"
+    )
     return AgentTurnResult(
         reply=reply,
         pending_action=pending_out,
@@ -456,6 +484,7 @@ def run_turn(
         timezone=temporal.timezone,
         thread_id=thread.id,
         today=temporal.current_local_date,
+        user_message=text,
     )
     tool_trace: list[str] = []
     usage_total = {
@@ -634,6 +663,23 @@ def run_turn(
                 except Exception:
                     logger.exception("tool_error name=%s", name)
                     result = {"error": "Falha ao executar a ferramenta.", "code": "tool_error"}
+
+                contract_error = (
+                    _validate_confirmation_contract(result)
+                    if tool.requires_confirmation
+                    else None
+                )
+                if contract_error:
+                    logger.error(
+                        "tool_contract_error name=%s reason=%s request_id=%s",
+                        name,
+                        contract_error,
+                        req_id,
+                    )
+                    result = {
+                        "error": "A ação não pôde ser preparada com segurança.",
+                        "code": "tool_contract_error",
+                    }
 
                 if isinstance(result, dict) and "error" not in result:
                     for ref in extract_entities_from_tool_result(tool_name=name, result=result):

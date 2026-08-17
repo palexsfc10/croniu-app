@@ -52,10 +52,10 @@ _VERSION_STATUS = {
 }
 
 _OCCURRENCE_TYPE = {
-    "plan_review": "Revisão do plano",
+    "plan_review": "Revisar plano",
     "plan_ending": "Planejamento terminando",
-    "feedback_due": "Feedback",
-    "evaluation_review": "Revisão de avaliação",
+    "feedback_due": "Registrar feedback",
+    "evaluation_review": "Revisar avaliação",
     "cycle_renewal": "Preparar renovação",
     "custom_task": "Tarefa",
 }

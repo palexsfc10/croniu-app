@@ -605,15 +605,23 @@ def _mark_failed(
 
 def _sanitize_result(result: dict[str, Any]) -> dict[str, Any]:
     blocked = {"password", "token", "api_key", "secret", "authorization"}
-    out: dict[str, Any] = {}
-    for key, value in result.items():
-        if any(b in key.lower() for b in blocked):
-            continue
+
+    def clean(value: Any, *, depth: int = 0) -> Any:
         if isinstance(value, (str, int, float, bool)) or value is None:
-            out[key] = value
-        else:
-            out[key] = str(value)[:200]
-    return out
+            return value
+        if depth >= 3:
+            return str(value)[:200]
+        if isinstance(value, list):
+            return [clean(item, depth=depth + 1) for item in value[:50]]
+        if isinstance(value, dict):
+            return {
+                str(key): clean(item, depth=depth + 1)
+                for key, item in list(value.items())[:50]
+                if not any(part in str(key).lower() for part in blocked)
+            }
+        return str(value)[:200]
+
+    return clean(result)
 
 
 def _integrity_error_code(exc: IntegrityError) -> str:
