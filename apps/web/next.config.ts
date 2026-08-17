@@ -41,6 +41,14 @@ const nextConfig: NextConfig = {
         source: "/",
         headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
       },
+      {
+        source: "/entrar/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
+        source: "/c/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
     ];
   },
 };

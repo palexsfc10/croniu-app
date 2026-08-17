@@ -15,16 +15,13 @@ import { QuestionField } from "@/components/intake/question-field";
 import {
   ageProofValid,
   anamnesisQuestionSections,
-  clearNamePhoneDraft,
   consentsFromSchema,
   flattenVisibleQuestions,
   hasAttentionAnswers,
   intakeSteps,
   isQuestionVisible,
-  loadNamePhoneDraft,
   missingRequiredQuestions,
   requiredConsentsAccepted,
-  saveNamePhoneDraft,
   type IntakeStepId,
 } from "@/lib/intake";
 
@@ -106,14 +103,6 @@ export default function PublicIntakePage() {
         return;
       }
       setCtx(body as PublicIntakeContext);
-      const draft = loadNamePhoneDraft(token);
-      if (draft.full_name || draft.phone) {
-        setIdentity((prev) => ({
-          ...prev,
-          full_name: draft.full_name ?? prev.full_name,
-          phone: draft.phone ?? prev.phone,
-        }));
-      }
     })();
     return () => {
       cancelled = true;
@@ -136,13 +125,7 @@ export default function PublicIntakePage() {
   const stepIndex = steps.findIndex((s) => s.id === step);
 
   function patchIdentity<K extends keyof Identity>(key: K, value: Identity[K]) {
-    setIdentity((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === "full_name" || key === "phone") {
-        saveNamePhoneDraft(token, { full_name: next.full_name, phone: next.phone });
-      }
-      return next;
-    });
+    setIdentity((prev) => ({ ...prev, [key]: value }));
   }
 
   function validateIdentity(): string | null {
@@ -244,7 +227,6 @@ export default function PublicIntakePage() {
       setError(parsePublicError(body, "Não foi possível enviar o cadastro."));
       return;
     }
-    clearNamePhoneDraft(token);
     setResult(body as IntakeSubmitResult);
     setStep("enviado");
   }
