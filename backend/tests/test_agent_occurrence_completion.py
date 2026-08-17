@@ -10,11 +10,12 @@ from app.agent import confirmation as conf_svc
 from app.agent.orchestrator import run_turn
 from app.agent.providers.base import LLMResponse, LLMUsage
 from app.agent.providers.fake import FakeLLMProvider
-from app.agent.thread_entities import collect_thread_entity_refs
+from app.agent.thread_entities import collect_thread_entity_refs, extract_entities_from_tool_result
 from app.agent.tools import ToolContext, execute_complete_occurrences, get_tool
 from app.config import Settings
 from app.db import SessionLocal
 from app.models.agent import AgentPendingAction
+from app.models.client import Client
 from app.models.intake import OperationalOccurrence, RecurringClientTask
 from app.models.organization import Organization
 from app.services import agent_threads as threads_svc
@@ -67,18 +68,53 @@ def _occurrence(db, org_id: uuid.UUID, key: str, **overrides) -> OperationalOccu
     return row
 
 
-def _ctx(db, org_id: uuid.UUID, user_id: uuid.UUID) -> ToolContext:
-    return ToolContext(organization_id=org_id, user_id=user_id, db=db)
+def _ctx(
+    db,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    *,
+    today: date | None = None,
+    user_message: str | None = None,
+) -> ToolContext:
+    return ToolContext(
+        organization_id=org_id,
+        user_id=user_id,
+        db=db,
+        today=today,
+        user_message=user_message,
+    )
+
+
+def _client(db, org_id: uuid.UUID, name: str) -> Client:
+    row = Client(organization_id=org_id, full_name=name)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def test_single_and_defer_proposals_have_confirmation_contract(client, register_payload):
     org_id, user_id = _auth(client, register_payload)
     db = SessionLocal()
     try:
-        complete_row = _occurrence(db, org_id, "single-complete")
-        defer_row = _occurrence(db, org_id, "single-defer", occurrence_type="custom_task")
+        murilo = _client(db, org_id, "Murilo Macedo")
+        complete_row = _occurrence(
+            db,
+            org_id,
+            "single-complete",
+            occurrence_type="cycle_renewal",
+            client_id=murilo.id,
+        )
+        defer_row = _occurrence(
+            db,
+            org_id,
+            "single-defer",
+            occurrence_type="custom_task",
+            meta={"name": "Enviar relatório mensal"},
+        )
         complete = get_tool("propose_complete_occurrence").handler(
-            _ctx(db, org_id, user_id), {"occurrence_id": str(complete_row.id)}
+            _ctx(db, org_id, user_id, today=date(2026, 8, 17)),
+            {"occurrence_id": str(complete_row.id)},
         )
         deferred = get_tool("propose_defer_occurrence").handler(
             _ctx(db, org_id, user_id),
@@ -88,6 +124,19 @@ def test_single_and_defer_proposals_have_confirmation_contract(client, register_
         assert complete["arguments"] == {"occurrence_id": str(complete_row.id)}
         assert deferred["tool_name"] == "defer_occurrence"
         assert deferred["arguments"]["deferred_until"] == "2026-08-20"
+        assert complete["summary_fields"] == {
+            "Ação": "Preparar renovação",
+            "Data": "17/08/2026",
+            "Situação": "Hoje",
+            "Cliente": "Murilo Macedo",
+        }
+        assert "cycle_renewal" not in complete["summary"]
+        assert "Preparar renovação" in complete["summary"]
+        assert "Murilo Macedo" in complete["summary"]
+        assert "17/08/2026" in complete["summary"]
+        assert "Hoje" in complete["summary"]
+        assert "custom_task" not in deferred["summary"]
+        assert "Enviar relatório mensal" in deferred["summary"]
         assert complete_row.status == defer_row.status == "open"
     finally:
         db.close()
@@ -121,6 +170,10 @@ def test_batch_confirmation_completes_plan_and_routine_atomically(client, regist
         proposal = get_tool("propose_complete_occurrences").handler(_ctx(db, org_id, user_id), args)
         assert proposal["needs_confirmation"] is True
         assert proposal["summary_fields"]["Quantidade"] == 2
+        assert "evaluation_review" not in proposal["summary"]
+        assert "plan_review" not in proposal["summary"]
+        assert "Revisar avaliação" in proposal["summary"]
+        assert "Revisar plano" in proposal["summary"]
         assert all(
             db.get(OperationalOccurrence, item).status == "open" for item in args["occurrence_ids"]
         )
@@ -186,6 +239,113 @@ def test_batch_rejects_foreign_missing_and_completed_without_partial_write(
             assert exc.value.code == expected_code
             db.refresh(owned)
             assert owned.status == "open"
+    finally:
+        db.close()
+
+
+def test_today_qualifier_uses_organization_local_date_and_never_selects_future(
+    client, register_payload
+):
+    org_id, user_id = _auth(client, register_payload)
+    db = SessionLocal()
+    try:
+        today_row = _occurrence(db, org_id, "local-today", due_on=date(2026, 8, 17))
+        future_row = _occurrence(db, org_id, "local-future", due_on=date(2026, 8, 18))
+        ctx = _ctx(
+            db,
+            org_id,
+            user_id,
+            today=date(2026, 8, 17),
+            user_message="Conclua a revisão de hoje",
+        )
+        proposal = get_tool("propose_complete_occurrence").handler(
+            ctx, {"occurrence_id": str(today_row.id)}
+        )
+        assert proposal["summary_fields"]["Situação"] == "Hoje"
+        with pytest.raises(AuthError) as exc:
+            get_tool("propose_complete_occurrence").handler(
+                ctx, {"occurrence_id": str(future_row.id)}
+            )
+        assert exc.value.code == "occurrence_selection_mismatch"
+        db.refresh(today_row)
+        db.refresh(future_row)
+        assert today_row.status == future_row.status == "open"
+    finally:
+        db.close()
+
+
+def test_today_qualifier_without_match_does_not_create_proposal(client, register_payload):
+    org_id, user_id = _auth(client, register_payload)
+    db = SessionLocal()
+    try:
+        future_row = _occurrence(db, org_id, "only-future", due_on=date(2026, 8, 18))
+        with pytest.raises(AuthError) as exc:
+            get_tool("propose_complete_occurrence").handler(
+                _ctx(
+                    db,
+                    org_id,
+                    user_id,
+                    today=date(2026, 8, 17),
+                    user_message="Conclua a de hoje",
+                ),
+                {"occurrence_id": str(future_row.id)},
+            )
+        assert exc.value.code == "occurrence_selection_not_found"
+        db.refresh(future_row)
+        assert future_row.status == "open"
+    finally:
+        db.close()
+
+
+def test_two_today_occurrences_require_clarification(client, register_payload):
+    org_id, user_id = _auth(client, register_payload)
+    db = SessionLocal()
+    try:
+        first = _occurrence(db, org_id, "today-first")
+        second = _occurrence(db, org_id, "today-second")
+        with pytest.raises(AuthError) as exc:
+            get_tool("propose_complete_occurrence").handler(
+                _ctx(
+                    db,
+                    org_id,
+                    user_id,
+                    today=date(2026, 8, 17),
+                    user_message="Conclua a de hoje",
+                ),
+                {"occurrence_id": str(first.id)},
+            )
+        assert exc.value.code == "occurrence_selection_ambiguous"
+        db.refresh(first)
+        db.refresh(second)
+        assert first.status == second.status == "open"
+    finally:
+        db.close()
+
+
+def test_client_qualifier_selects_only_matching_occurrence(client, register_payload):
+    org_id, user_id = _auth(client, register_payload)
+    db = SessionLocal()
+    try:
+        murilo = _client(db, org_id, "Murilo Macedo")
+        ana = _client(db, org_id, "Ana Souza")
+        murilo_row = _occurrence(db, org_id, "murilo-task", client_id=murilo.id)
+        ana_row = _occurrence(db, org_id, "ana-task", client_id=ana.id)
+        ctx = _ctx(
+            db,
+            org_id,
+            user_id,
+            today=date(2026, 8, 17),
+            user_message="Conclua a do Murilo",
+        )
+        proposal = get_tool("propose_complete_occurrence").handler(
+            ctx, {"occurrence_id": str(murilo_row.id)}
+        )
+        assert proposal["summary_fields"]["Cliente"] == "Murilo Macedo"
+        with pytest.raises(AuthError) as exc:
+            get_tool("propose_complete_occurrence").handler(
+                ctx, {"occurrence_id": str(ana_row.id)}
+            )
+        assert exc.value.code == "occurrence_selection_mismatch"
     finally:
         db.close()
 
@@ -295,6 +455,37 @@ def test_listed_occurrences_are_scoped_to_latest_assistant_message(client, regis
         assert occurrence_ids == {str(second.id)}
     finally:
         db.close()
+
+
+def test_listed_occurrence_reference_carries_human_date_client_and_situation():
+    occurrence_id = str(uuid.uuid4())
+    refs = extract_entities_from_tool_result(
+        tool_name="list_plan_pendencies",
+        result={
+            "today": "2026-08-17",
+            "groups": [
+                {
+                    "label": "Preparar renovação",
+                    "items": [
+                        {
+                            "id": occurrence_id,
+                            "type_label": "Preparar renovação",
+                            "client_name": "Murilo Macedo",
+                            "due_on": "2026-08-17",
+                            "overdue": False,
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert len(refs) == 1
+    assert refs[0]["entity_type"] == "operational_occurrence"
+    assert refs[0]["entity_id"] == occurrence_id
+    assert refs[0]["operation"] == "list_plan_pendencies"
+    assert refs[0]["display_name"] == (
+        "Preparar renovação — Murilo Macedo — 2026-08-17 — Hoje"
+    )
 
 
 def test_orchestrator_sanitizes_invalid_write_contract_without_500(

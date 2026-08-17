@@ -99,7 +99,26 @@ def extract_entities_from_tool_result(
             for item in (group.get("items") or [])[:20]:
                 if not isinstance(item, dict) or not item.get("id"):
                     continue
-                display = item.get("name") or item.get("type_label") or group.get("label")
+                display_parts = [
+                    str(
+                        item.get("name")
+                        or item.get("type_label")
+                        or group.get("label")
+                        or "pendência"
+                    )
+                ]
+                if item.get("client_name"):
+                    display_parts.append(str(item["client_name"]))
+                if item.get("due_on"):
+                    display_parts.append(str(item["due_on"]))
+                    display_parts.append(
+                        "Atrasada"
+                        if item.get("overdue")
+                        else "Hoje"
+                        if item.get("due_on") == result.get("today")
+                        else "Futura"
+                    )
+                display = " — ".join(display_parts)
                 refs.append(
                     make_entity_ref(
                         entity_type="operational_occurrence",
@@ -208,6 +227,9 @@ def format_entities_prompt_block(refs: list[dict[str, str]]) -> str:
         "Para ‘essas mesmas’, use somente operational_occurrence da última resposta "
         "que listou pendências nesta thread. Nunca interprete ‘todas’ como todas as "
         "pendências da organização sem IDs explicitamente presentes nesse contexto.",
+        "Para ‘de hoje’, ‘a atrasada’ ou referência a cliente, selecione somente IDs "
+        "cuja data, situação e cliente correspondam. Se houver mais de uma, peça "
+        "esclarecimento; se não houver, informe que não encontrou.",
     ]
     for ref in refs:
         lines.append(

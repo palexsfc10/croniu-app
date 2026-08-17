@@ -9,22 +9,24 @@ calls a domain/agenda/evaluation service — never raw SQL.
 
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.agent import cycle_prepare as cycle_prep
 from app.agent.providers.base import ToolSpec
 from app.agent.temporal import format_human_datetime_range, resolve_org_timezone
-from app.agent import cycle_prepare as cycle_prep
 from app.models.client import Client
 from app.models.client_evaluation import ClientEvaluation
 from app.models.cycle import Cycle
+from app.models.intake import OperationalOccurrence
 from app.schemas.evaluations import EvaluationCreate
 from app.services import agenda as agenda_svc
 from app.services import cycle_period as cycle_period_svc
@@ -32,6 +34,7 @@ from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
 from app.services import evaluations as eval_svc
 from app.services import my_cycle as my_cycle_svc
+from app.services import status_labels
 from app.services.auth import AuthError
 
 
@@ -45,6 +48,7 @@ class ToolContext(BaseModel):
     timezone: str = "America/Sao_Paulo"
     thread_id: uuid.UUID | None = None
     today: date | None = None
+    user_message: str | None = None
 
 
 @dataclass
@@ -307,6 +311,157 @@ def _require_actionable_occurrence(row: Any) -> None:
         )
 
 
+def _normalized_text(value: str | None) -> str:
+    raw = unicodedata.normalize("NFKD", value or "")
+    return "".join(char for char in raw if not unicodedata.combining(char)).casefold()
+
+
+def _occurrence_client_name(ctx: ToolContext, row: OperationalOccurrence) -> str | None:
+    if row.client_id is None:
+        return None
+    client = ctx.db.scalar(
+        select(Client).where(
+            Client.id == row.client_id,
+            Client.organization_id == ctx.organization_id,
+        )
+    )
+    return client.full_name if client is not None else None
+
+
+def _occurrence_action_label(row: OperationalOccurrence) -> str:
+    if row.occurrence_type == "custom_task" and isinstance(row.meta, dict):
+        custom_name = str(row.meta.get("name") or "").strip()
+        if custom_name:
+            return custom_name[:200]
+    return status_labels.occurrence_type_label(row.occurrence_type)
+
+
+def _occurrence_situation(row: OperationalOccurrence, today: date) -> str:
+    if row.due_on < today:
+        return "Atrasada"
+    if row.due_on > today:
+        return "Futura"
+    return "Hoje"
+
+
+def _occurrence_human_fields(ctx: ToolContext, row: OperationalOccurrence) -> dict[str, Any]:
+    today = ctx.today or _tool_today(ctx)
+    fields: dict[str, Any] = {
+        "Ação": _occurrence_action_label(row),
+        "Data": row.due_on.strftime("%d/%m/%Y"),
+        "Situação": _occurrence_situation(row, today),
+    }
+    client_name = _occurrence_client_name(ctx, row)
+    if client_name:
+        fields["Cliente"] = client_name
+    return fields
+
+
+def _validate_contextual_occurrence_selection(
+    ctx: ToolContext, selected: list[OperationalOccurrence]
+) -> None:
+    """Fail closed for explicit date/client qualifiers in the user's current request."""
+    text = _normalized_text(ctx.user_message)
+    if not text:
+        return
+    today = ctx.today or _tool_today(ctx)
+    wants_today = "hoje" in text
+    wants_overdue = "atrasad" in text
+    wants_future = "futur" in text
+
+    clients = list(
+        ctx.db.scalars(select(Client).where(Client.organization_id == ctx.organization_id)).all()
+    )
+    mentioned_client_ids: set[uuid.UUID] = set()
+    for client in clients:
+        normalized_name = _normalized_text(client.full_name)
+        meaningful_parts = [part for part in normalized_name.split() if len(part) >= 4]
+        if normalized_name in text or any(part in text.split() for part in meaningful_parts):
+            mentioned_client_ids.add(client.id)
+
+    if not (wants_today or wants_overdue or wants_future or mentioned_client_ids):
+        return
+    candidates = list(
+        ctx.db.scalars(
+            select(OperationalOccurrence).where(
+                OperationalOccurrence.organization_id == ctx.organization_id,
+                OperationalOccurrence.status.in_(["open", "deferred"]),
+            )
+        ).all()
+    )
+    if wants_today:
+        candidates = [row for row in candidates if row.due_on == today]
+    elif wants_overdue:
+        candidates = [row for row in candidates if row.due_on < today]
+    elif wants_future:
+        candidates = [row for row in candidates if row.due_on > today]
+    if mentioned_client_ids:
+        candidates = [row for row in candidates if row.client_id in mentioned_client_ids]
+
+    if not candidates:
+        raise AuthError(
+            "occurrence_selection_not_found",
+            "Não encontrei uma pendência compatível com esse pedido.",
+            404,
+        )
+    candidate_ids = {row.id for row in candidates}
+    selected_ids = {row.id for row in selected}
+    if not selected_ids <= candidate_ids:
+        raise AuthError(
+            "occurrence_selection_mismatch",
+            "A pendência selecionada não corresponde ao período ou cliente informado.",
+            409,
+        )
+    if selected_ids != candidate_ids:
+        raise AuthError(
+            "occurrence_selection_ambiguous",
+            "Encontrei mais de uma pendência compatível. Escolha qual deseja concluir.",
+            409,
+        )
+
+
+def _single_occurrence_summary(fields: dict[str, Any]) -> str:
+    lines = ["Marcar como realizada?", "", f"Rotina: {fields['Ação']}"]
+    if fields.get("Cliente"):
+        lines.append(f"Cliente: {fields['Cliente']}")
+    lines.extend([f"Data: {fields['Data']}", f"Situação: {fields['Situação']}"])
+    return "\n".join(lines)
+
+
+def _batch_occurrence_summary(
+    ctx: ToolContext, rows: list[OperationalOccurrence]
+) -> tuple[str, dict[str, Any]]:
+    details = [_occurrence_human_fields(ctx, row) for row in rows]
+    actions = list(dict.fromkeys(str(item["Ação"]) for item in details))
+    dates = sorted({row.due_on for row in rows})
+    clients = list(
+        dict.fromkeys(str(item["Cliente"]) for item in details if item.get("Cliente"))
+    )
+    date_text = (
+        dates[0].strftime("%d/%m/%Y")
+        if len(dates) == 1
+        else f"{dates[0].strftime('%d/%m/%Y')} a {dates[-1].strftime('%d/%m/%Y')}"
+    )
+    client_text = ", ".join(clients) if len(clients) <= 3 else f"{len(clients)} clientes"
+    lines = [
+        "Marcar pendências selecionadas como realizadas?",
+        "",
+        f"Quantidade: {len(rows)}",
+        f"Rotinas: {', '.join(actions)}",
+        f"Datas: {date_text}",
+    ]
+    if client_text:
+        lines.append(f"Clientes: {client_text}")
+    fields: dict[str, Any] = {
+        "Quantidade": len(rows),
+        "Rotinas": actions,
+        "Datas": date_text,
+    }
+    if client_text:
+        fields["Clientes"] = client_text
+    return "\n".join(lines), fields
+
+
 def _propose_complete_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = OccurrenceIdArgs.model_validate(args)
     from app.services import pendencies as pendency_svc
@@ -315,12 +470,14 @@ def _propose_complete_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict
         ctx.db, organization_id=ctx.organization_id, occurrence_id=parsed.occurrence_id
     )
     _require_actionable_occurrence(row)
+    _validate_contextual_occurrence_selection(ctx, [row])
+    fields = _occurrence_human_fields(ctx, row)
     return {
         "needs_confirmation": True,
         "tool_name": "complete_occurrence",
         "arguments": parsed.model_dump(mode="json", exclude_none=True),
-        "summary": f"Marcar pendência {row.occurrence_type} como realizada.",
-        "summary_fields": {"Quantidade": 1, "Tipo": row.occurrence_type},
+        "summary": _single_occurrence_summary(fields),
+        "summary_fields": fields,
     }
 
 
@@ -350,16 +507,14 @@ def _propose_complete_occurrences(ctx: ToolContext, args: dict[str, Any]) -> dic
     ]
     for row in rows:
         _require_actionable_occurrence(row)
-    kinds = sorted({row.occurrence_type for row in rows})
+    _validate_contextual_occurrence_selection(ctx, rows)
+    summary, fields = _batch_occurrence_summary(ctx, rows)
     return {
         "needs_confirmation": True,
         "tool_name": "complete_occurrences",
         "arguments": parsed.model_dump(mode="json", exclude_none=True),
-        "summary": (
-            f"Marcar {len(rows)} pendências selecionadas como realizadas "
-            f"({', '.join(kinds)})."
-        ),
-        "summary_fields": {"Quantidade": len(rows), "Tipos": kinds},
+        "summary": summary,
+        "summary_fields": fields,
     }
 
 
@@ -388,15 +543,17 @@ def _propose_defer_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[st
         ctx.db, organization_id=ctx.organization_id, occurrence_id=parsed.occurrence_id
     )
     _require_actionable_occurrence(row)
+    _validate_contextual_occurrence_selection(ctx, [row])
+    fields = _occurrence_human_fields(ctx, row)
+    fields["Nova data"] = (
+        parsed.deferred_until.strftime("%d/%m/%Y") if parsed.deferred_until else None
+    )
     return {
         "needs_confirmation": True,
         "tool_name": "defer_occurrence",
         "arguments": parsed.model_dump(mode="json", exclude_none=True),
-        "summary": f"Adiar a pendência {row.occurrence_type} para {parsed.deferred_until}.",
-        "summary_fields": {
-            "Tipo": row.occurrence_type,
-            "Nova data": parsed.deferred_until.isoformat() if parsed.deferred_until else None,
-        },
+        "summary": f"Adiar {fields['Ação']} para {fields['Nova data']}?",
+        "summary_fields": fields,
     }
 
 
@@ -2113,7 +2270,9 @@ TOOLS: dict[str, ToolDefinition] = {
     ),
     "propose_complete_occurrence": ToolDefinition(
         name="propose_complete_occurrence",
-        description="Propõe marcar uma pendência de rotina/plano como realizada. Exige confirmação.",
+        description=(
+            "Propõe marcar uma pendência de rotina/plano como realizada. Exige confirmação."
+        ),
         parameters={
             "type": "object",
             "properties": {

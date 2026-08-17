@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agent import confirmation as conf_svc
@@ -32,11 +33,16 @@ from app.agent.thread_entities import (
 from app.agent.tools import TOOLS, ToolContext, get_tool, tool_specs
 from app.billing.entitlement import SubscriptionEntitlementService
 from app.config import Settings, get_settings
-from app.models.agent import AgentMessage, AgentPendingAction, AgentRun, AgentToolCall, AgentUsageDaily
+from app.models.agent import (
+    AgentMessage,
+    AgentPendingAction,
+    AgentRun,
+    AgentToolCall,
+    AgentUsageDaily,
+)
 from app.models.organization import Organization
 from app.services import agent_threads as threads_svc
 from app.services.auth import AuthError
-from sqlalchemy import select
 
 logger = logging.getLogger("croniu.agent")
 
@@ -148,7 +154,11 @@ def _replay_client_message(
             ):
                 pending_out = conf_svc.pending_action_to_public_dict(pending_row)
     reply = (assistant.content if assistant else "") or "Mensagem já processada."
-    status = "awaiting_confirmation" if pending_out and pending_out.get("status") == "pending" else "ok"
+    status = (
+        "awaiting_confirmation"
+        if pending_out and pending_out.get("status") == "pending"
+        else "ok"
+    )
     return AgentTurnResult(
         reply=reply,
         pending_action=pending_out,
@@ -474,6 +484,7 @@ def run_turn(
         timezone=temporal.timezone,
         thread_id=thread.id,
         today=temporal.current_local_date,
+        user_message=text,
     )
     tool_trace: list[str] = []
     usage_total = {
