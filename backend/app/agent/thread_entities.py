@@ -92,6 +92,23 @@ def extract_entities_from_tool_result(
                 )
             )
 
+    if tool_name == "list_plan_pendencies":
+        for group in result.get("groups") or []:
+            if not isinstance(group, dict):
+                continue
+            for item in (group.get("items") or [])[:20]:
+                if not isinstance(item, dict) or not item.get("id"):
+                    continue
+                display = item.get("name") or item.get("type_label") or group.get("label")
+                refs.append(
+                    make_entity_ref(
+                        entity_type="operational_occurrence",
+                        entity_id=item["id"],
+                        display_name=str(display or "pendência"),
+                        operation="list_plan_pendencies",
+                    )
+                )
+
     if tool_name == "prepare_cycle_proposal":
         draft = result.get("draft") or {}
         if draft.get("client_id") and draft.get("client_name"):
@@ -147,6 +164,19 @@ def collect_thread_entity_refs(
             .limit(limit)
         ).all()
     )
+    latest_occurrence_message_id = next(
+        (
+            row.id
+            for row in rows
+            if row.role == "assistant"
+            and any(
+                isinstance(ref, dict)
+                and ref.get("entity_type") == "operational_occurrence"
+                for ref in (row.metadata_safe or {}).get("entities") or []
+            )
+        ),
+        None,
+    )
     seen: set[tuple[str, str]] = set()
     out: list[dict[str, str]] = []
     for row in reversed(rows):
@@ -154,12 +184,17 @@ def collect_thread_entity_refs(
         for ref in meta.get("entities") or []:
             if not isinstance(ref, dict):
                 continue
+            if (
+                ref.get("entity_type") == "operational_occurrence"
+                and row.id != latest_occurrence_message_id
+            ):
+                continue
             key = (str(ref.get("entity_type")), str(ref.get("entity_id")))
             if key in seen or not ref.get("entity_id") or ref.get("entity_id") == "pending":
                 continue
             seen.add(key)
             out.append(ref)
-    return out[-12:]
+    return out[-24:]
 
 
 def format_entities_prompt_block(refs: list[dict[str, str]]) -> str:
@@ -170,6 +205,9 @@ def format_entities_prompt_block(refs: list[dict[str, str]]) -> str:
         "Use estes IDs apenas após validar no tenant via tools. "
         "Pronomes como “ele/ela/nesse cliente” referem-se ao último client listado, "
         "salvo ambiguidade — nesse caso, peça esclarecimento.",
+        "Para ‘essas mesmas’, use somente operational_occurrence da última resposta "
+        "que listou pendências nesta thread. Nunca interprete ‘todas’ como todas as "
+        "pendências da organização sem IDs explicitamente presentes nesse contexto.",
     ]
     for ref in refs:
         lines.append(

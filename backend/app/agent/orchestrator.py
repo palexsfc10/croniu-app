@@ -48,6 +48,24 @@ _minute_buckets: dict[str, list[float]] = defaultdict(list)
 HISTORY_LIMIT = 20
 
 
+def _validate_confirmation_contract(result: Any) -> str | None:
+    if not isinstance(result, dict):
+        return "result_not_object"
+    if result.get("needs_confirmation") is not True:
+        return None
+    if not isinstance(result.get("tool_name"), str) or not result["tool_name"]:
+        return "missing_tool_name"
+    if not isinstance(result.get("arguments"), dict):
+        return "missing_arguments"
+    if not isinstance(result.get("summary"), str) or not result["summary"].strip():
+        return "missing_summary"
+    try:
+        json.dumps(result["arguments"])
+    except (TypeError, ValueError):
+        return "arguments_not_serializable"
+    return None
+
+
 @dataclass
 class AgentMetrics:
     requests: int = 0
@@ -634,6 +652,23 @@ def run_turn(
                 except Exception:
                     logger.exception("tool_error name=%s", name)
                     result = {"error": "Falha ao executar a ferramenta.", "code": "tool_error"}
+
+                contract_error = (
+                    _validate_confirmation_contract(result)
+                    if tool.requires_confirmation
+                    else None
+                )
+                if contract_error:
+                    logger.error(
+                        "tool_contract_error name=%s reason=%s request_id=%s",
+                        name,
+                        contract_error,
+                        req_id,
+                    )
+                    result = {
+                        "error": "A ação não pôde ser preparada com segurança.",
+                        "code": "tool_contract_error",
+                    }
 
                 if isinstance(result, dict) and "error" not in result:
                     for ref in extract_entities_from_tool_result(tool_name=name, result=result):

@@ -374,6 +374,102 @@ def get_occurrence(
     return row
 
 
+def complete_occurrences(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    occurrence_ids: list[uuid.UUID],
+    reason: str | None = None,
+) -> list[OperationalOccurrence]:
+    """Complete a bounded owned set in one transaction or change nothing."""
+    unique_ids = list(dict.fromkeys(occurrence_ids))
+    if not unique_ids or len(unique_ids) > 20:
+        raise AuthError(
+            "invalid_occurrence_batch",
+            "Selecione entre 1 e 20 pendências.",
+            422,
+        )
+    rows = list(
+        db.scalars(
+            select(OperationalOccurrence)
+            .where(
+                OperationalOccurrence.organization_id == organization_id,
+                OperationalOccurrence.id.in_(unique_ids),
+            )
+            .with_for_update()
+        ).all()
+    )
+    by_id = {row.id: row for row in rows}
+    if len(by_id) != len(unique_ids):
+        raise AuthError("occurrence_not_found", "Pendência não encontrada.", 404)
+    ordered = [by_id[item_id] for item_id in unique_ids]
+    if any(row.status not in {"open", "deferred"} for row in ordered):
+        raise AuthError(
+            "occurrence_not_actionable",
+            "Uma ou mais pendências já não podem ser concluídas.",
+            409,
+        )
+
+    now = datetime.now(UTC)
+    try:
+        for row in ordered:
+            row.status = "completed"
+            row.completed_at = now
+            row.reason = (reason or "")[:500] or None
+            if row.protocol_id and row.occurrence_type in {"plan_review", "feedback_due"}:
+                protocol = db.scalar(
+                    select(Protocol).where(
+                        Protocol.id == row.protocol_id,
+                        Protocol.organization_id == organization_id,
+                    )
+                )
+                if protocol is None:
+                    raise AuthError("protocol_not_found", "Plano não encontrado.", 404)
+                if row.occurrence_type == "plan_review":
+                    protocol.last_review_on = row.due_on
+                else:
+                    protocol.last_feedback_on = row.due_on
+                    protocol.next_feedback_on = (
+                        row.due_on + timedelta(days=protocol.feedback_interval_days)
+                        if protocol.feedback_interval_days
+                        else None
+                    )
+                db.add(protocol)
+            meta = row.meta if isinstance(row.meta, dict) else {}
+            routine_id = meta.get("routine_id")
+            if routine_id:
+                try:
+                    parsed_routine_id = uuid.UUID(str(routine_id))
+                except ValueError as exc:
+                    raise AuthError(
+                        "invalid_routine_reference",
+                        "Referência de rotina inválida.",
+                        409,
+                    ) from exc
+                routine_svc.complete_routine(
+                    db,
+                    organization_id=organization_id,
+                    task_id=parsed_routine_id,
+                    today=row.due_on,
+                    occurrence_on=row.due_on,
+                    commit=False,
+                )
+            db.add(row)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    for row in ordered:
+        db.refresh(row)
+        logger.info(
+            "occurrence_decided org=%s type=%s status=completed key=%s",
+            organization_id,
+            row.occurrence_type,
+            row.idempotency_key,
+        )
+    return ordered
+
+
 def decide(
     db: Session,
     *,

@@ -241,6 +241,7 @@ def complete_routine(
     task_id: uuid.UUID,
     today: date | None = None,
     occurrence_on: date | None = None,
+    commit: bool = True,
 ) -> RecurringClientTask:
     row = get_routine(db, organization_id=organization_id, task_id=task_id)
     now = datetime.now(UTC)
@@ -259,6 +260,9 @@ def complete_routine(
         row.status = "archived"
         row.next_run_on = None
     db.add(row)
-    db.commit()
-    db.refresh(row)
+    if commit:
+        db.commit()
+        db.refresh(row)
+    else:
+        db.flush()
     return row

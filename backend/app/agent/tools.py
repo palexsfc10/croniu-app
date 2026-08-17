@@ -285,6 +285,28 @@ class OccurrenceIdArgs(BaseModel):
     reason: str | None = None
 
 
+class OccurrenceIdsArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    occurrence_ids: list[uuid.UUID] = Field(min_length=1, max_length=20)
+    reason: str | None = Field(default=None, max_length=500)
+
+    @field_validator("occurrence_ids")
+    @classmethod
+    def require_unique_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("occurrence_ids must be unique")
+        return value
+
+
+def _require_actionable_occurrence(row: Any) -> None:
+    if row.status not in {"open", "deferred"}:
+        raise AuthError(
+            "occurrence_not_actionable",
+            "Esta pendência já não pode ser alterada.",
+            409,
+        )
+
+
 def _propose_complete_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = OccurrenceIdArgs.model_validate(args)
     from app.services import pendencies as pendency_svc
@@ -292,11 +314,13 @@ def _propose_complete_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict
     row = pendency_svc.get_occurrence(
         ctx.db, organization_id=ctx.organization_id, occurrence_id=parsed.occurrence_id
     )
+    _require_actionable_occurrence(row)
     return {
         "needs_confirmation": True,
+        "tool_name": "complete_occurrence",
+        "arguments": parsed.model_dump(mode="json", exclude_none=True),
         "summary": f"Marcar pendência {row.occurrence_type} como realizada.",
-        "occurrence_id": str(row.id),
-        "occurrence_type": row.occurrence_type,
+        "summary_fields": {"Quantidade": 1, "Tipo": row.occurrence_type},
     }
 
 
@@ -304,23 +328,75 @@ def execute_complete_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[
     parsed = OccurrenceIdArgs.model_validate(args)
     from app.services import pendencies as pendency_svc
 
-    row = pendency_svc.decide(
+    rows = pendency_svc.complete_occurrences(
         ctx.db,
         organization_id=ctx.organization_id,
-        occurrence_id=parsed.occurrence_id,
-        status="completed",
+        occurrence_ids=[parsed.occurrence_id],
         reason=parsed.reason,
     )
+    row = rows[0]
     return {"id": str(row.id), "status": row.status}
+
+
+def _propose_complete_occurrences(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = OccurrenceIdsArgs.model_validate(args)
+    from app.services import pendencies as pendency_svc
+
+    rows = [
+        pendency_svc.get_occurrence(
+            ctx.db, organization_id=ctx.organization_id, occurrence_id=occurrence_id
+        )
+        for occurrence_id in parsed.occurrence_ids
+    ]
+    for row in rows:
+        _require_actionable_occurrence(row)
+    kinds = sorted({row.occurrence_type for row in rows})
+    return {
+        "needs_confirmation": True,
+        "tool_name": "complete_occurrences",
+        "arguments": parsed.model_dump(mode="json", exclude_none=True),
+        "summary": (
+            f"Marcar {len(rows)} pendências selecionadas como realizadas "
+            f"({', '.join(kinds)})."
+        ),
+        "summary_fields": {"Quantidade": len(rows), "Tipos": kinds},
+    }
+
+
+def execute_complete_occurrences(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = OccurrenceIdsArgs.model_validate(args)
+    from app.services import pendencies as pendency_svc
+
+    rows = pendency_svc.complete_occurrences(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        occurrence_ids=parsed.occurrence_ids,
+        reason=parsed.reason,
+    )
+    return {
+        "count": len(rows),
+        "status": "completed",
+        "occurrence_ids": [str(row.id) for row in rows],
+    }
 
 
 def _propose_defer_occurrence(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = OccurrenceIdArgs.model_validate(args)
+    from app.services import pendencies as pendency_svc
+
+    row = pendency_svc.get_occurrence(
+        ctx.db, organization_id=ctx.organization_id, occurrence_id=parsed.occurrence_id
+    )
+    _require_actionable_occurrence(row)
     return {
         "needs_confirmation": True,
-        "summary": "Adiar esta pendência.",
-        "occurrence_id": str(parsed.occurrence_id),
-        "deferred_until": parsed.deferred_until.isoformat() if parsed.deferred_until else None,
+        "tool_name": "defer_occurrence",
+        "arguments": parsed.model_dump(mode="json", exclude_none=True),
+        "summary": f"Adiar a pendência {row.occurrence_type} para {parsed.deferred_until}.",
+        "summary_fields": {
+            "Tipo": row.occurrence_type,
+            "Nova data": parsed.deferred_until.isoformat() if parsed.deferred_until else None,
+        },
     }
 
 
@@ -2052,6 +2128,32 @@ TOOLS: dict[str, ToolDefinition] = {
         handler=_propose_complete_occurrence,
         risk_class="write_common",
     ),
+    "propose_complete_occurrences": ToolDefinition(
+        name="propose_complete_occurrences",
+        description=(
+            "Propõe concluir de 1 a 20 pendências de rotina/plano já listadas, "
+            "atomicamente e com uma única confirmação. Nunca use IDs não apresentados."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "occurrence_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uuid"},
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "uniqueItems": True,
+                },
+                "reason": {"type": "string", "maxLength": 500},
+            },
+            "required": ["occurrence_ids"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_complete_occurrences,
+        risk_class="write_common",
+    ),
     "propose_defer_occurrence": ToolDefinition(
         name="propose_defer_occurrence",
         description="Propõe adiar uma pendência de rotina/plano. Exige confirmação.",
@@ -2083,6 +2185,7 @@ WRITE_EXECUTORS: dict[str, Callable[[ToolContext, dict[str, Any]], dict[str, Any
     "create_evaluation_draft": execute_create_evaluation_draft,
     "add_milestone": execute_add_milestone,
     "complete_occurrence": execute_complete_occurrence,
+    "complete_occurrences": execute_complete_occurrences,
     "defer_occurrence": execute_defer_occurrence,
 }
 
