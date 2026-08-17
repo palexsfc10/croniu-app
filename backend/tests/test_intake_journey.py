@@ -160,6 +160,58 @@ def test_submit_idempotency_underage_and_attention(client, register_payload):
     }
 
 
+def test_permanent_invite_creates_independent_submissions_and_survives_rotation(
+    client, register_payload
+):
+    _auth(client, register_payload)
+    invite = _create_link(client)
+
+    def submit(name: str, phone: str, key: str):
+        return client.post(
+            f"/api/v1/public/intake/{invite}/submit",
+            json={
+                "full_name": name,
+                "phone": phone,
+                "age_band": "18+",
+                "primary_goal": f"Objetivo {name}",
+                "answers": _minimal_answers(),
+                "consents": _required_consents(),
+                "idempotency_key": key,
+            },
+        )
+
+    first = submit("Aluno A", "11933334444", "permanent-invite-a")
+    second = submit("Aluno B", "11955556666", "permanent-invite-b")
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    a = first.json()
+    b = second.json()
+    assert a["submission_id"] != b["submission_id"]
+    assert a["client_id"] != b["client_id"]
+    assert a["portal_token"] != b["portal_token"]
+
+    # The permanent invite resolves only a blank form context; it cannot read
+    # either submission or act as either submission's private portal token.
+    context = client.get(f"/api/v1/public/intake/{invite}")
+    assert context.status_code == 200
+    assert "submission_id" not in context.json()
+    assert "client_id" not in context.json()
+    assert client.get(f"/api/v1/public/intake/portal/{invite}/status").status_code == 404
+
+    assert client.get(
+        f"/api/v1/public/intake/portal/{a['portal_token']}/status"
+    ).status_code == 200
+    assert client.get(
+        f"/api/v1/public/intake/portal/{b['portal_token']}/status"
+    ).status_code == 200
+
+    rotated = client.post("/api/v1/intake-link/rotate")
+    assert rotated.status_code == 200
+    assert client.get(f"/api/v1/public/intake/{invite}").status_code == 404
+    listed_ids = {str(row["id"]) for row in client.get("/api/v1/intake-submissions").json()}
+    assert {a["submission_id"], b["submission_id"]} <= listed_ids
+
+
 def test_duplicate_alert_same_org(client, register_payload):
     _auth(client, register_payload)
     token = _create_link(client)
@@ -340,6 +392,7 @@ def test_token_hash_only_in_db_and_cross_tenant_isolation(client, register_paylo
         },
     )
     assert submitted.status_code == 201, submitted.text
+    submission_id = submitted.json()["submission_id"]
     assert client.get("/api/v1/intake-submissions").json()
 
     # Second org cannot see first org submissions
@@ -360,6 +413,7 @@ def test_token_hash_only_in_db_and_cross_tenant_isolation(client, register_paylo
     listed = client.get("/api/v1/intake-submissions")
     assert listed.status_code == 200
     assert listed.json() == []
+    assert client.get(f"/api/v1/intake-submissions/{submission_id}").status_code == 404
 
 
 def test_missing_consent_blocked_and_logs_safe(client, register_payload, caplog):

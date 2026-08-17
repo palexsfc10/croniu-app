@@ -45,6 +45,16 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname === "/sw.js") return;
+  // Public bearer-token routes and APIs may contain per-person state. They
+  // must never be persisted or replayed by the shared PWA cache.
+  if (
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/entrar/") ||
+    url.pathname.startsWith("/c/")
+  ) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   const isNavigate =
     request.mode === "navigate" ||
