@@ -2142,7 +2142,6 @@ TOOLS: dict[str, ToolDefinition] = {
                     "items": {"type": "string", "format": "uuid"},
                     "minItems": 1,
                     "maxItems": 20,
-                    "uniqueItems": True,
                 },
                 "reason": {"type": "string", "maxLength": 500},
             },
