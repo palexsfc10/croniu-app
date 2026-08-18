@@ -150,7 +150,12 @@ def test_calendar_routine_fans_out_per_active_client(client, register_payload):
     routine_id = created.json()["id"]
 
     board = client.get("/api/v1/routines/board")
-    items = [i for g in board.json()["groups"] for i in g.get("items", []) if i.get("routine_id") == routine_id]
+    items = [
+        i
+        for g in board.json()["groups"]
+        for i in g.get("items", [])
+        if i.get("routine_id") == routine_id
+    ]
     client_ids = {i["client_id"] for i in items}
     assert client_ids == {c1["id"], c2["id"]}
     assert None not in client_ids
@@ -178,7 +183,12 @@ def test_calendar_routine_completing_one_client_does_not_affect_another(client, 
     )
     routine_id = created.json()["id"]
     board = client.get("/api/v1/routines/board")
-    items = [i for g in board.json()["groups"] for i in g.get("items", []) if i.get("routine_id") == routine_id]
+    items = [
+        i
+        for g in board.json()["groups"]
+        for i in g.get("items", [])
+        if i.get("routine_id") == routine_id
+    ]
     occ_ana = next(i for i in items if i["client_id"] == c1["id"])
     decide = client.post(
         f"/api/v1/routines/occurrences/{occ_ana['id']}/decide", json={"status": "completed"}
@@ -187,13 +197,18 @@ def test_calendar_routine_completing_one_client_does_not_affect_another(client, 
 
     board2 = client.get("/api/v1/routines/board")
     items2 = [
-        i for g in board2.json()["groups"] for i in g.get("items", []) if i.get("routine_id") == routine_id
+        i
+        for g in board2.json()["groups"]
+        for i in g.get("items", [])
+        if i.get("routine_id") == routine_id
     ]
     remaining_clients = {i["client_id"] for i in items2}
     assert remaining_clients == {c2["id"]}
 
 
-def test_calendar_routine_without_audience_stays_general_single_occurrence(client, register_payload):
+def test_calendar_routine_without_audience_stays_general_single_occurrence(
+    client, register_payload
+):
     """Backward compatibility: legacy routines with no explicit audience keep
     behaving as a single org-wide occurrence (unchanged from before)."""
     org_id = _org_id(client, register_payload)

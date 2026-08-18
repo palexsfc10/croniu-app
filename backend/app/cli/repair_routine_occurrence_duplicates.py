@@ -58,9 +58,7 @@ def _pick_canonical(
     return min(rows, key=lambda r: (r.due_on, r.created_at))
 
 
-def repair(
-    db: Session, *, organization_id: uuid.UUID | None, apply: bool
-) -> dict[str, object]:
+def repair(db: Session, *, organization_id: uuid.UUID | None, apply: bool) -> dict[str, object]:
     q = select(OperationalOccurrence).where(
         OperationalOccurrence.source == "routine",
         OperationalOccurrence.status.in_(ACTIVE_STATUSES),
@@ -127,7 +125,7 @@ def repair(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Repara ocorrências de rotina duplicadas (cancela excedentes, preserva histórico)."
+        description="Repara ocorrências de rotina duplicadas (cancela excedentes, preserva histórico)."  # noqa: E501
     )
     parser.add_argument(
         "--organization-id",

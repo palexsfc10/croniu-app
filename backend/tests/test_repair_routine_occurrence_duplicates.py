@@ -41,7 +41,11 @@ def _insert_legacy_duplicate(
 def _make_routine(client, *, recurrence: str = "once") -> tuple[str, str, date]:
     created = client.post(
         "/api/v1/routines",
-        json={"name": "Conferir acompanhamento", "task_type": "contact_client", "recurrence": recurrence},
+        json={
+            "name": "Conferir acompanhamento",
+            "task_type": "contact_client",
+            "recurrence": recurrence,
+        },
     )
     assert created.status_code == 201, created.text
     body = created.json()
@@ -61,7 +65,10 @@ def test_repair_collapses_legacy_duplicates_to_one_canonical(client, register_pa
         # for next_run_on; simulate the pre-fix flood alongside it.
         for offset in range(1, 5):
             _insert_legacy_duplicate(
-                db, organization_id=org_id, routine_id=routine_uuid, due_on=canonical_due - timedelta(days=offset)
+                db,
+                organization_id=org_id,
+                routine_id=routine_uuid,
+                due_on=canonical_due - timedelta(days=offset),
             )
         db.commit()
     finally:
