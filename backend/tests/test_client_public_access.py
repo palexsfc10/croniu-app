@@ -121,7 +121,15 @@ def test_tampered_signature_and_bare_uuid_neutral(client, register_payload):
     _auth(client, register_payload)
     ids = _seed_cycle(client, "pa-tamper")
     token = client.post(f"/api/v1/clients/{ids['client_id']}/public-access").json()["token"]
-    tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+    # Don't flip the very last character: the signed token's mac is
+    # base64url of a 32-byte digest, whose final base64 group encodes only
+    # 2 real bytes across 3 characters — the last character's bottom 2 bits
+    # are unused padding the decoder ignores, so ~1 in 16 replacement
+    # values would decode to the exact same bytes and this test would
+    # flake (see backend/tests/test_portal_token.py for the same fix).
+    # The second-to-last character has no such padding bits.
+    idx = len(token) - 2
+    tampered = token[:idx] + ("A" if token[idx] != "A" else "B") + token[idx + 1 :]
     bad = client.get(f"/api/v1/public/my-cycle/{tampered}")
     assert bad.status_code == 404
     assert bad.json()["message"] == "Este acesso não está disponível."
