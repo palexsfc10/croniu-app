@@ -31,6 +31,10 @@ NEARING_END_DAYS = 30
 PORTAL_NEARING_DAYS = 7
 # Ciclo também entra em “encerrando” quando resta no máximo esta quantidade de aulas.
 LESSONS_NEARING_REMAINING = 1
+# Janela específica da prioridade "Ciclo chegando ao fim" na tela Hoje — mais
+# estreita que NEARING_END_DAYS (usado pela listagem geral de Ciclos e pelo
+# badge "Termina em breve", que continuam com o aviso antecipado de 30 dias).
+HOME_CYCLE_ENDING_WINDOW_DAYS = 7
 
 
 def cycle_nearing_reason(cycle: CycleOut) -> str | None:
@@ -142,6 +146,33 @@ def cycles_suppressed_from_home_attention(
                 suppressed.add(older.id)
 
     return suppressed
+
+
+def home_cycle_ending_eligible(cycle: CycleOut, today: date) -> bool:
+    """Whether a cycle already flagged `is_nearing_end` also qualifies for the
+    Hoje "Ciclo chegando ao fim" priority/attention card.
+
+    Isolated from the generic `is_nearing_end` flag on purpose: the Cycles
+    list/detail pages and the "Termina em breve" badge keep the wider
+    heads-up window (`NEARING_END_DAYS` = 30). Hoje is meant to surface only
+    what is *actionable this week*, so the date-based reason is re-gated
+    here to the cycle's last 7 calendar days of vigency — counting the
+    cycle's last inclusive day (the civil day it actually ends on) as day 0.
+    `ends_on` is the exclusive boundary ([starts_on, ends_on)), so a raw
+    `ends_on - today` diff is always >= 1 while the cycle is still current;
+    `cycle_period.last_inclusive_on` corrects for that so "termina hoje" is
+    a real, distinct 0-day case rather than unreachable.
+
+    Lesson-count-based nearing (low/exhausted lessons) is untouched — this
+    hotfix only narrows the date-based window.
+    """
+    if not cycle.is_nearing_end:
+        return False
+    reason = cycle_nearing_reason(cycle)
+    if reason in ("lessons_exhausted", "lessons_low"):
+        return True
+    days_to_last_day = (cycle_period_svc.last_inclusive_on(cycle.ends_on) - today).days
+    return 0 <= days_to_last_day <= HOME_CYCLE_ENDING_WINDOW_DAYS
 
 
 def _normalize_optional_str(value: str | None) -> str | None:
@@ -1070,7 +1101,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             lessons_completed=progress.get(row.id, (0, 0))[0],
             lessons_no_show=progress.get(row.id, (0, 0))[1],
         )
-        if out.is_nearing_end:
+        if home_cycle_ending_eligible(out, today):
             nearing_all.append(out)
     nearing_all.sort(
         key=lambda c: (
