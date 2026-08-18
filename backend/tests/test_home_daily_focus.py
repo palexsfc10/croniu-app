@@ -577,6 +577,85 @@ def test_select_home_priority_order_payment_over_ended_over_renewal():
     assert p2.kind == "cycle_ended_unrenewed"
 
 
+def test_home_priority_subtitles_use_pt_br_dates_not_iso():
+    """UX audit finding: priority card subtitles must never show a raw ISO
+    date (2026-08-01) — only pt-BR (01/08/2026). See
+    docs/sprints/AUDIT_UX_FLOW_REVIEW.md."""
+    from datetime import date
+    from uuid import uuid4
+
+    from app.schemas.domain import CycleOut, ReceivableOut
+    from app.services.domain import select_home_priority
+
+    overdue = [
+        ReceivableOut.model_construct(
+            id=uuid4(),
+            client_id=uuid4(),
+            cycle_id=None,
+            amount_cents=1000,
+            due_on=date(2026, 8, 1),
+            status="pending",
+            received_at=None,
+            created_at=None,
+            updated_at=None,
+            client_name="Devendo",
+            cycle_service_name=None,
+        )
+    ]
+    p = select_home_priority(
+        overdue=overdue,
+        due_today=[],
+        due_later=[],
+        pay_reports=[],
+        ended_unrenewed=[],
+        renewal_reqs=[],
+        nearing=[],
+        has_conflict=False,
+        conflict_entity_id=None,
+        appointments_needing_outcome=[],
+    )
+    assert p is not None
+    assert "01/08/2026" in p.subtitle
+    assert "2026-08-01" not in p.subtitle
+
+    ended = [
+        CycleOut.model_construct(
+            id=uuid4(),
+            client_id=uuid4(),
+            service_id=uuid4(),
+            cycle_type="period",
+            status="ended",
+            starts_on=date(2026, 7, 1),
+            ends_on=date(2026, 8, 1),
+            client_name="Encerrado",
+            service_name="Personal",
+            days_remaining=-4,
+            is_nearing_end=False,
+            value_cents=40000,
+            notes=None,
+            last_contacted_at=None,
+            contact_confirmed_at=None,
+            created_at=None,
+            updated_at=None,
+        )
+    ]
+    p2 = select_home_priority(
+        overdue=[],
+        due_today=[],
+        due_later=[],
+        pay_reports=[],
+        ended_unrenewed=ended,
+        renewal_reqs=[],
+        nearing=[],
+        has_conflict=False,
+        conflict_entity_id=None,
+        appointments_needing_outcome=[],
+    )
+    assert p2 is not None
+    assert "01/08/2026" in p2.subtitle
+    assert "2026-08-01" not in p2.subtitle
+
+
 def test_home_overdue_outranks_cycle_and_dedupes_attention(client, register_payload):
     _auth(client, register_payload)
     person = _create_client(client, "Devendo")

@@ -7,6 +7,7 @@ import {
   WEEKDAY_OPTIONS,
   apiFetch,
   formatBRL,
+  formatDateBR,
   type Cycle,
   type CyclePreview,
 } from "@/lib/api";
@@ -183,7 +184,8 @@ export default function EditCyclePage() {
               {preview ? (
                 <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
                   {preview.lesson_count} aulas · {formatBRL(preview.final_cents)} · vigência até{" "}
-                  {lastInclusiveIso(preview.ends_on)} · renovação {preview.ends_on}
+                  {formatDateBR(lastInclusiveIso(preview.ends_on))} · renovação{" "}
+                  {formatDateBR(preview.ends_on)}
                 </p>
               ) : null}
             </>

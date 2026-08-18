@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiFetch, type Client, type ProfessionProfile, type Protocol } from "@/lib/api";
+import { apiFetch, formatDateBR, type Client, type ProfessionProfile, type Protocol } from "@/lib/api";
 import { nomenclatureFor, safeReturnTo, t, canonicalProfessionCode } from "@/lib/nomenclature";
 import { protocolStatusLabel } from "@/lib/status-labels";
 import { BackLink } from "@/components/app/back-link";
@@ -339,7 +339,7 @@ export default function PlanEditorPage() {
                   : m.kind === "plan_ending"
                     ? t(terms, "plan_ending")
                     : t(terms, "feedback")}{" "}
-                · {m.due_on}
+                · {formatDateBR(m.due_on)}
               </li>
             ))}
           </ul>

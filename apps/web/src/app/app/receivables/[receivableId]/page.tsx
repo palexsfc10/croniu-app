@@ -4,7 +4,7 @@ import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiFetch, formatBRL, type Receivable } from "@/lib/api";
+import { apiFetch, formatBRL, formatDateBR, type Receivable } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ContextualBar } from "@/components/app/contextual-bar";
@@ -69,7 +69,9 @@ export default function ReceivableDetailPage() {
               {receivableStatusLabel(item.status)}
             </Badge>
           </p>
-          <p className="text-sm text-[var(--color-ink-muted)]">Vencimento: {item.due_on}</p>
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Vencimento: {formatDateBR(item.due_on)}
+          </p>
           {item.status !== "received" ? (
             <div className="space-y-3">
               <TextField

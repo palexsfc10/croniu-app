@@ -170,5 +170,5 @@ def preview_text(recurrence: str, spec: dict[str, Any], *, weekday: int | None, 
     else:
         body = f"Recorrente{start_label}."
     if next_on:
-        return f"{body} Próxima: {next_on.isoformat()}."
+        return f"{body} Próxima: {next_on.strftime('%d/%m/%Y')}."
     return body

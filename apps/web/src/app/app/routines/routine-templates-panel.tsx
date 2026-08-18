@@ -268,7 +268,7 @@ export function RoutineTemplatesPanel({ enabled, onChanged }: Props) {
           aria-modal="true"
           aria-labelledby="routine-activate-title"
         >
-          <div className="w-full max-w-md space-y-3 rounded-[var(--radius-lg)] bg-[var(--color-surface)] p-4 shadow-lg">
+          <div className="max-h-[min(36rem,calc(100dvh-7rem))] w-full max-w-md space-y-3 overflow-y-auto rounded-[var(--radius-lg)] bg-[var(--color-surface)] p-4 shadow-lg">
             <h2 id="routine-activate-title" className="text-base font-semibold">
               {sheet.name}
             </h2>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from urllib.parse import quote
 
 from sqlalchemy import Select, func, select
@@ -95,7 +95,9 @@ def _attention_cycle_subtitle(cycle: CycleOut) -> str:
             )
         )
         return f"Ciclo termina {when} · sem renovação encaminhada"
-    return f"Ciclo encerra em {cycle_period_svc.last_inclusive_on(cycle.ends_on).isoformat()} · renovação em {cycle.ends_on.isoformat()} · sem renovação encaminhada"
+    last_day = cycle_period_svc.last_inclusive_on(cycle.ends_on).strftime("%d/%m/%Y")
+    renewal_day = cycle.ends_on.strftime("%d/%m/%Y")
+    return f"Ciclo encerra em {last_day} · renovação em {renewal_day} · sem renovação encaminhada"
 
 
 def cycles_suppressed_from_home_attention(
@@ -911,7 +913,7 @@ def select_home_priority(
         return PriorityActionOut(
             kind="pending_payment",
             title="Recebimento atrasado",
-            subtitle=f"{first.client_name} · venceu em {first.due_on.isoformat()}",
+            subtitle=f"{first.client_name} · venceu em {first.due_on.strftime('%d/%m/%Y')}",
             href=f"/app/receivables/{first.id}",
             entity_id=first.id,
             cta_label="Revisar recebimento",
@@ -931,7 +933,7 @@ def select_home_priority(
         return PriorityActionOut(
             kind="pending_payment",
             title="Recebimento vence hoje",
-            subtitle=f"{first.client_name} · vence em {first.due_on.isoformat()}",
+            subtitle=f"{first.client_name} · vence em {first.due_on.strftime('%d/%m/%Y')}",
             href=f"/app/receivables/{first.id}",
             entity_id=first.id,
             cta_label="Revisar recebimento",
@@ -941,7 +943,7 @@ def select_home_priority(
         return PriorityActionOut(
             kind="cycle_ended_unrenewed",
             title="Ciclo encerrado sem renovação",
-            subtitle=f"{first.client_name} · encerrou em {first.ends_on.isoformat()}",
+            subtitle=f"{first.client_name} · encerrou em {first.ends_on.strftime('%d/%m/%Y')}",
             href=f"/app/cycles/{first.id}",
             entity_id=first.id,
             cta_label="Ver ciclo",
@@ -991,7 +993,7 @@ def select_home_priority(
         return PriorityActionOut(
             kind="pending_payment",
             title="Recebimento próximo",
-            subtitle=f"{first.client_name} · vence em {first.due_on.isoformat()}",
+            subtitle=f"{first.client_name} · vence em {first.due_on.strftime('%d/%m/%Y')}",
             href=f"/app/receivables/{first.id}",
             entity_id=first.id,
             cta_label="Revisar recebimento",
@@ -1191,9 +1193,9 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         )
     for pay in pending:
         label = (
-            f"Recebimento atrasado · venceu {pay.due_on.isoformat()}"
+            f"Recebimento atrasado · venceu {pay.due_on.strftime('%d/%m/%Y')}"
             if pay.due_on < today
-            else f"Recebimento pendente · vence {pay.due_on.isoformat()}"
+            else f"Recebimento pendente · vence {pay.due_on.strftime('%d/%m/%Y')}"
         )
         attention.append(
             AttentionItemOut(
@@ -1211,7 +1213,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
             AttentionItemOut(
                 kind="cycle_ended_unrenewed",
                 title=cycle.client_name or "Cliente",
-                subtitle=f"Ciclo encerrado em {cycle.ends_on.isoformat()} · sem renovação",
+                subtitle=f"Ciclo encerrado em {cycle.ends_on.strftime('%d/%m/%Y')} · sem renovação",
                 href=f"/app/cycles/{cycle.id}",
                 entity_id=cycle.id,
                 client_name=cycle.client_name,
