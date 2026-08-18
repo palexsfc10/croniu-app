@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { Appointment, AttentionItem, HomeSummary, PriorityAction } from "@/lib/api";
-import { apiFetch, formatOrgDateTime } from "@/lib/api";
+import { apiFetch, formatDateBR, formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import {
@@ -262,36 +262,86 @@ function subscribeSetupStorage(onStoreChange: () => void) {
   return subscribeInitialSetupCollapse(onStoreChange);
 }
 
+type TodayActionItem = {
+  id: string;
+  name?: string | null;
+  type_label: string;
+  client_name?: string | null;
+  client_id?: string | null;
+  overdue?: boolean;
+  due_on: string;
+  occurrence_type: string;
+};
+
+const TODAY_ACTIONS_LIMIT = 3;
+
+function groupByOccurrenceType(items: TodayActionItem[]) {
+  const map = new Map<string, TodayActionItem[]>();
+  for (const item of items) {
+    const list = map.get(item.occurrence_type) ?? [];
+    list.push(item);
+    map.set(item.occurrence_type, list);
+  }
+  return [...map.values()];
+}
+
+function RestSummaryRow({ items }: { items: TodayActionItem[] }) {
+  const label = items[0]?.name || items[0]?.type_label || "Ações";
+  const anyOverdue = items.some((i) => i.overdue);
+  const names = items
+    .map((i) => i.client_name)
+    .filter((n): n is string => Boolean(n))
+    .slice(0, 2);
+  const extra = items.length - names.length;
+  const who =
+    names.length > 0
+      ? `${names.join(", ")}${extra > 0 ? ` e mais ${extra}` : ""}`
+      : `${items.length} pendência${items.length === 1 ? "" : "s"}`;
+  return (
+    <li className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-3">
+      <p className="font-semibold">
+        {items.length} {label.toLowerCase()}
+        {anyOverdue ? " · atrasadas" : ""}
+      </p>
+      <p className="text-sm text-[var(--color-ink-muted)]">{who}</p>
+      <Link
+        href="/app/routines"
+        className="mt-1 inline-block text-sm font-medium text-[var(--color-link)]"
+      >
+        Ver pendências
+      </Link>
+    </li>
+  );
+}
+
 function TodayActions() {
-  const [items, setItems] = useState<
-    Array<{
-      id: string;
-      name?: string | null;
-      type_label: string;
-      client_name?: string | null;
-      client_id?: string | null;
-      overdue?: boolean;
-      due_on: string;
-      occurrence_type: string;
-    }>
-  >([]);
+  const [items, setItems] = useState<TodayActionItem[]>([]);
   useEffect(() => {
     void (async () => {
       const result = await apiFetch<{
-        groups: Array<{ items: typeof items }>;
+        groups: Array<{ items: TodayActionItem[] }>;
       }>("/api/v1/routines/board?bucket=today");
       const flat = (result.data?.groups ?? []).flatMap((g) => g.items ?? []);
       setItems(flat);
     })();
   }, []);
   if (!items.length) return null;
+
+  const sorted = [...items].sort((a, b) => {
+    if (Boolean(b.overdue) !== Boolean(a.overdue)) return b.overdue ? 1 : -1;
+    return a.due_on.localeCompare(b.due_on);
+  });
+  const individual = sorted.slice(0, TODAY_ACTIONS_LIMIT);
+  const rest = sorted.slice(TODAY_ACTIONS_LIMIT);
+  const restGroups = groupByOccurrenceType(rest);
+
   return (
     <section aria-label="Suas ações de hoje" className="space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
         Suas ações de hoje
       </h2>
       <ul className="space-y-2">
-        {items.map((item) => (
+        {individual.map((item) => (
           <li
             key={item.id}
             className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
@@ -301,7 +351,7 @@ function TodayActions() {
             </p>
             <p className="font-semibold">{item.name || item.type_label}</p>
             <p className="text-sm text-[var(--color-ink-muted)]">
-              {item.client_name || "Grupo de clientes"} · prazo {item.due_on}
+              {item.client_name || "Clientes elegíveis"} · até {formatDateBR(item.due_on)}
             </p>
             <Link
               href={item.client_id ? `/app/clients/${item.client_id}` : "/app/routines"}
@@ -310,6 +360,9 @@ function TodayActions() {
               {item.client_id ? "Abrir cliente" : "Ver rotinas"}
             </Link>
           </li>
+        ))}
+        {restGroups.map((group) => (
+          <RestSummaryRow key={group[0].occurrence_type} items={group} />
         ))}
       </ul>
     </section>

@@ -38,9 +38,7 @@ def local_today(timezone: str | None) -> date:
 def list_routines(
     db: Session, *, organization_id: uuid.UUID, status: str | None = "active"
 ) -> list[RecurringClientTask]:
-    q = select(RecurringClientTask).where(
-        RecurringClientTask.organization_id == organization_id
-    )
+    q = select(RecurringClientTask).where(RecurringClientTask.organization_id == organization_id)
     if status:
         q = q.where(RecurringClientTask.status == status)
     return list(db.scalars(q.order_by(RecurringClientTask.next_run_on.asc().nullslast())).all())
@@ -224,10 +222,16 @@ def skip_occurrence(
     db: Session, *, organization_id: uuid.UUID, task_id: uuid.UUID, today: date | None = None
 ) -> RecurringClientTask:
     row = get_routine(db, organization_id=organization_id, task_id=task_id)
-    base = row.next_run_on or today or date.today()
-    row.next_run_on = rec_svc.advance(
-        row.recurrence, row.filter_json or {}, weekday=row.weekday, from_day=base
-    )
+    if row.recurrence == "once":
+        # A "once" task has a single due date; skipping it ends the routine
+        # rather than rescheduling — there is no stable next date to advance to.
+        row.status = "archived"
+        row.next_run_on = None
+    else:
+        base = row.next_run_on or today or date.today()
+        row.next_run_on = rec_svc.advance(
+            row.recurrence, row.filter_json or {}, weekday=row.weekday, from_day=base
+        )
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -253,9 +257,7 @@ def complete_routine(
     row.filter_json = spec
     flag_modified(row, "filter_json")
     row.last_completed_at = now
-    row.next_run_on = rec_svc.advance(
-        row.recurrence, spec, weekday=row.weekday, from_day=target
-    )
+    row.next_run_on = rec_svc.advance(row.recurrence, spec, weekday=row.weekday, from_day=target)
     if row.recurrence == "once":
         row.status = "archived"
         row.next_run_on = None
