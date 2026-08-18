@@ -69,9 +69,7 @@ export function ClientProfile({ clientId }: Props) {
   const [loading, setLoading] = useState(true);
   const [evaluations, setEvaluations] = useState<ClientEvaluation[]>([]);
   const [todayIso, setTodayIso] = useState("2026-01-01");
-  const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(
-    null,
-  );
+  const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   const terms = nomenclatureFor(profession?.profession_code);
@@ -109,10 +107,7 @@ export function ClientProfile({ clientId }: Props) {
     if (ev.data) setEvaluations(ev.data);
     if (rb.data) {
       setRoutinePendingCount(
-        rb.data.groups.reduce(
-          (sum, g) => sum + (g.occurrence_count ?? g.count),
-          0,
-        ),
+        rb.data.groups.reduce((sum, g) => sum + (g.occurrence_count ?? g.count), 0),
       );
     }
     if (sub.data?.length) setSubmissionId(sub.data[0].id);
@@ -153,6 +148,7 @@ export function ClientProfile({ clientId }: Props) {
     if (action === "organize_agenda") {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `Organize a agenda do ciclo de ${name}.`,
         cta: journey?.next_action_label || "Organizar agenda",
         href: `/app/agenda?clientId=${clientId}`,
@@ -161,6 +157,7 @@ export function ClientProfile({ clientId }: Props) {
     if (action === "create_cycle") {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `Configure o ciclo de ${name}.`,
         cta: "Criar ciclo",
         href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
@@ -184,42 +181,33 @@ export function ClientProfile({ clientId }: Props) {
         agenda: "agenda",
         routine: "rotina",
       };
-      const pending = [
-        "anamnesis",
-        "evaluation",
-        "plan",
-        "cycle",
-        "agenda",
-        "routine",
-      ].filter((key) => !checklist[key] || checklist[key] === "todo");
+      const pending = ["anamnesis", "evaluation", "plan", "cycle", "agenda", "routine"].filter(
+        (key) => !checklist[key] || checklist[key] === "todo",
+      );
       const pendingText = pending.length
         ? ` Falta: ${pending.map((key) => stepLabels[key]).join(", ")}.`
         : "";
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `Continue a preparação de ${name}.${pendingText}`,
         cta: journey?.next_action_label || "Preparar acompanhamento",
         href: prepareHref,
       };
     }
-    if (!activeCycle && action !== "organize_agenda") {
-      return {
-        title: "Próximo passo",
-        text: `Configure o primeiro ciclo de ${name}.`,
-        cta: "Criar ciclo",
-        href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
-      };
-    }
+    // No standalone "sem ciclo ativo" fallback here: whether a cycle is
+    // still pending is exactly what the checklist-driven `create_cycle`
+    // branch above already answers, from the same source of truth used by
+    // the preparation checklist itself. A client whose cycle step was
+    // explicitly resolved "não se aplica" has no active cycle either, and
+    // duplicating that check here would contradict the checklist by asking
+    // the professional to create a cycle they already said didn't apply.
     const ending = published?.milestones?.find((m) => m.kind === "plan_ending");
     const review = published?.milestones?.find((m) => m.kind === "plan_review");
-    if (
-      ending &&
-      published &&
-      ending.due_on <= addDaysIso(todayIso, 7) &&
-      ending.due_on >= todayIso
-    ) {
+    if (ending && published && ending.due_on <= addDaysIso(todayIso, 7) && ending.due_on >= todayIso) {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `O planejamento atual termina nesta semana.`,
         cta: t(terms, "plan_ending"),
         href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
@@ -228,6 +216,7 @@ export function ClientProfile({ clientId }: Props) {
     if (review && published && review.due_on <= addDaysIso(todayIso, 7)) {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `O ${t(terms, "plan")} de ${name} precisa ser revisado.`,
         cta: `Revisar ${t(terms, "plan_short")}`,
         href: `/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
@@ -236,26 +225,33 @@ export function ClientProfile({ clientId }: Props) {
     if (draft) {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `Há um rascunho de ${t(terms, "plan")} para continuar.`,
         cta: "Continuar rascunho",
         href: `/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
       };
     }
-    if (
-      journey?.stage === "approved" ||
-      journey?.next_action === "prepare_accompaniment" ||
-      journey?.next_action === "continue_onboarding"
-    ) {
+    // Every checklist-driven and operational branch above already covers
+    // "there's something to do." Reaching here means the preparation
+    // checklist has nothing pending (journey.next_action is authoritatively
+    // null — see backend/app/services/accompaniment.py) and no plan
+    // ending/review/draft needs attention either: there is genuinely no
+    // next step, so none is invented. `journey` existing at all means the
+    // initial preparation ran its course at some point (real state, not a
+    // guess) — that's worth naming explicitly instead of a generic filler.
+    if (journey) {
       return {
-        title: "Próximo passo",
-        text: `Prepare o acompanhamento de ${name}.`,
-        cta: "Preparar acompanhamento",
-        href: `/app/clients/${clientId}/accompaniment`,
+        title: "Acompanhamento pronto",
+        isPending: false,
+        text: `A jornada inicial de ${name} está concluída.`,
+        cta: "Ver acompanhamento",
+        href: returnAccomp,
       };
     }
     return {
       title: "Próximo passo",
-      text: "Tudo organizado por enquanto.",
+      isPending: false,
+      text: `Tudo em dia com ${name}.`,
       cta: null as string | null,
       href: null as string | null,
     };
@@ -277,7 +273,7 @@ export function ClientProfile({ clientId }: Props) {
   }
 
   async function copyMenuAccess() {
-    const url = access?.has_active_link ? (access.public_url ?? null) : null;
+    const url = access?.has_active_link ? access.public_url ?? null : null;
     if (!url) {
       setTab("dados");
       setMenuOpen(false);
@@ -286,9 +282,7 @@ export function ClientProfile({ clientId }: Props) {
     const result = await copyTextToClipboard(url);
     setMenuOpen(false);
     if (!result.ok) {
-      setError(
-        "Não foi possível copiar automaticamente. Abra Dados para copiar o endereço.",
-      );
+      setError("Não foi possível copiar automaticamente. Abra Dados para copiar o endereço.");
     }
   }
 
@@ -361,13 +355,9 @@ export function ClientProfile({ clientId }: Props) {
             {item.full_name}
           </h1>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="info">
-              {clientStatusLabel(item.status) || stageLabel}
-            </Badge>
-            {next.cta ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                Próximo: {next.cta}
-              </p>
+            <Badge tone="info">{clientStatusLabel(item.status) || stageLabel}</Badge>
+            {next.isPending && next.cta ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
             ) : null}
           </div>
         </header>
@@ -413,49 +403,34 @@ export function ClientProfile({ clientId }: Props) {
           aria-label="Resumo"
         >
           {loading && !item ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              Carregando resumo…
-            </p>
+            <p className="text-sm text-[var(--color-ink-muted)]">Carregando resumo…</p>
           ) : item ? (
             <>
-              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-                  {next.title}
-                </p>
-                <p className="mt-1 text-sm text-[var(--color-ink)]">
-                  {next.text}
-                </p>
-                {next.cta && next.href ? (
-                  <Link href={next.href} className="mt-3 inline-block">
-                    <Button>{next.cta}</Button>
-                  </Link>
-                ) : null}
-              </div>
-              {activeCycle ? (
-                <p className="text-sm text-[var(--color-ink-muted)]">
-                  Ciclo atual · {activeCycle.service_name || "Serviço"} ·{" "}
-                  {
-                    formatCycleVigencyCard(
-                      activeCycle.starts_on,
-                      activeCycle.ends_on,
-                    ).range
-                  }
-                  <span className="block">
-                    {
-                      formatCycleVigencyCard(
-                        activeCycle.starts_on,
-                        activeCycle.ends_on,
-                      ).renewal
-                    }
-                  </span>
-                </p>
-              ) : null}
-              {published ? (
-                <p className="text-sm text-[var(--color-ink-muted)]">
-                  {t(terms, "plan")} vigente · {published.title} ·{" "}
-                  {protocolStatusLabel(published.status)}
-                </p>
-              ) : null}
+          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+              {next.title}
+            </p>
+            <p className="mt-1 text-sm text-[var(--color-ink)]">{next.text}</p>
+            {next.cta && next.href ? (
+              <Link href={next.href} className="mt-3 inline-block">
+                <Button>{next.cta}</Button>
+              </Link>
+            ) : null}
+          </div>
+          {activeCycle ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Ciclo atual · {activeCycle.service_name || "Serviço"} ·{" "}
+              {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).range}
+              <span className="block">
+                {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).renewal}
+              </span>
+            </p>
+          ) : null}
+          {published ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              {t(terms, "plan")} vigente · {published.title} · {protocolStatusLabel(published.status)}
+            </p>
+          ) : null}
             </>
           ) : (
             <EmptyStateGuide
@@ -480,184 +455,159 @@ export function ClientProfile({ clientId }: Props) {
           aria-label="Acompanhamento"
         >
           {loading && !item ? (
-            <div
-              className="space-y-3"
-              aria-busy="true"
-              data-testid="accompaniment-skeleton"
-            >
+            <div className="space-y-3" aria-busy="true" data-testid="accompaniment-skeleton">
               <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
               <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
             </div>
           ) : (
             <>
-              {error ? (
-                <EmptyStateGuide
-                  title="Não foi possível carregar o acompanhamento"
-                  body={error}
-                  action={
-                    <Button type="button" onClick={() => void load()}>
-                      Tentar novamente
-                    </Button>
+          {error ? (
+            <EmptyStateGuide
+              title="Não foi possível carregar o acompanhamento"
+              body={error}
+              action={
+                <Button type="button" onClick={() => void load()}>
+                  Tentar novamente
+                </Button>
+              }
+            />
+          ) : null}
+          {next.isPending && next.cta && next.href ? (
+            <EmptyStateGuide
+              title="Próxima ação"
+              body={next.text}
+              action={
+                <Link href={next.href}>
+                  <Button>{next.cta}</Button>
+                </Link>
+              }
+            />
+          ) : null}
+          <AccompanimentCard
+            icon={<IconRefreshCw className="h-5 w-5" />}
+            title="Ciclo atual"
+            state={activeCycle ? cycleListStatus(activeCycle, todayIso) : "Vazio"}
+            summary={activeCycle?.service_name || "Sem ciclo"}
+            detail={
+              activeCycle
+                ? [
+                    formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).range,
+                    formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).renewal,
+                    activeCycle.lesson_count != null
+                      ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} aulas realizadas`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "Nenhum ciclo ainda."
+            }
+            progress={
+              activeCycle?.lesson_count
+                ? { value: activeCycle.lessons_completed ?? 0, max: activeCycle.lesson_count }
+                : null
+            }
+            primary={
+              activeCycle
+                ? { href: `/app/cycles/${activeCycle.id}`, label: "Ver ciclo", variant: "secondary" }
+                : {
+                    href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+                    label: "Criar ciclo",
+                    variant: "primary",
                   }
-                />
-              ) : null}
-              {next.cta && next.href ? (
-                <EmptyStateGuide
-                  title="Próxima ação"
-                  body={next.text}
-                  action={
-                    <Link href={next.href}>
-                      <Button>{next.cta}</Button>
-                    </Link>
+            }
+          />
+          <AccompanimentCard
+            icon={<IconLayers className="h-5 w-5" />}
+            testId="accompaniment-plan-card"
+            title={t(terms, "plan")}
+            state={published || draft ? protocolStatusLabel((published || draft)?.status) : "Vazio"}
+            summary={(published || draft)?.title || "Plano ainda não criado"}
+            detail={
+              (published || draft)?.duration_value
+                ? `${(published || draft)?.duration_value} semanas`
+                : undefined
+            }
+            primary={
+              draft
+                ? {
+                    href: `/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                    label: "Continuar rascunho",
+                    variant: "secondary",
                   }
-                />
-              ) : null}
-              <AccompanimentCard
-                icon={<IconRefreshCw className="h-5 w-5" />}
-                title="Ciclo atual"
-                state={
-                  activeCycle ? cycleListStatus(activeCycle, todayIso) : "Vazio"
-                }
-                summary={activeCycle?.service_name || "Sem ciclo"}
-                detail={
-                  activeCycle
-                    ? [
-                        formatCycleVigencyCard(
-                          activeCycle.starts_on,
-                          activeCycle.ends_on,
-                        ).range,
-                        formatCycleVigencyCard(
-                          activeCycle.starts_on,
-                          activeCycle.ends_on,
-                        ).renewal,
-                        activeCycle.lesson_count != null
-                          ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} aulas realizadas`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")
-                    : "Nenhum ciclo ainda."
-                }
-                progress={
-                  activeCycle?.lesson_count
-                    ? {
-                        value: activeCycle.lessons_completed ?? 0,
-                        max: activeCycle.lesson_count,
-                      }
-                    : null
-                }
-                primary={
-                  activeCycle
-                    ? {
-                        href: `/app/cycles/${activeCycle.id}`,
-                        label: "Ver ciclo",
-                        variant: "secondary",
-                      }
-                    : {
-                        href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
-                        label: "Criar ciclo",
-                        variant: "primary",
-                      }
-                }
-              />
-              <AccompanimentCard
-                icon={<IconLayers className="h-5 w-5" />}
-                testId="accompaniment-plan-card"
-                title={t(terms, "plan")}
-                state={
-                  published || draft
-                    ? protocolStatusLabel((published || draft)?.status)
-                    : "Vazio"
-                }
-                summary={
-                  (published || draft)?.title || "Plano ainda não criado"
-                }
-                detail={
-                  (published || draft)?.duration_value
-                    ? `${(published || draft)?.duration_value} semanas`
-                    : undefined
-                }
-                primary={
-                  draft
-                    ? {
-                        href: `/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
-                        label: "Continuar rascunho",
-                        variant: "secondary",
-                      }
-                    : published
-                      ? {
-                          href: `/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
-                          label: "Ver plano",
-                          variant: "secondary",
-                        }
-                      : {
-                          href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
-                          label: "Criar plano",
-                          variant: "primary",
-                        }
-                }
-                extras={
-                  published
-                    ? [
-                        {
-                          href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
-                          label: "Nova versão",
-                        },
-                      ]
-                    : []
-                }
-              />
-              <AccompanimentCard
-                icon={<IconClipboardList className="h-5 w-5" />}
-                title="Avaliações"
-                state={
-                  evaluations[0]
-                    ? `${protocolStatusLabel(evaluations[0].status)} · ${evaluations.length}`
-                    : "Vazio"
-                }
-                summary={
-                  evaluations[0]?.title || "Nenhuma avaliação registrada"
-                }
-                detail={
-                  evaluations.length
-                    ? "A última avaliação aparece aqui. O cliente só vê o que você publicar."
-                    : "Registre o ponto de partida quando fizer sentido."
-                }
-                primary={
-                  evaluations[0]
-                    ? {
-                        href: `/app/clients/${clientId}/evaluations/${evaluations[0].id}?returnTo=${encodeURIComponent(returnAccomp)}`,
-                        label: "Ver avaliação",
-                        variant: "secondary",
-                      }
-                    : {
-                        href: `/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`,
-                        label: "Nova avaliação",
-                        variant: "secondary",
-                      }
-                }
-              />
-              <AccompanimentCard
-                icon={<IconHistory className="h-5 w-5" />}
-                title="Rotinas"
-                state={
-                  routinePendingCount === null
-                    ? null
-                    : routinePendingCount > 0
-                      ? `${routinePendingCount} pendente${routinePendingCount === 1 ? "" : "s"}`
-                      : "Em dia"
-                }
-                summary={
-                  routinePendingCount
-                    ? `${routinePendingCount} ocorrência${routinePendingCount === 1 ? "" : "s"} aguardando ação.`
-                    : "Nenhuma pendência de rotina para este aluno agora."
-                }
-                primary={{
-                  href: `/app/routines/pending?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
-                  label: "Ver rotinas",
-                  variant: "secondary",
-                }}
-              />
+                : published
+                  ? {
+                      href: `/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                      label: "Ver plano",
+                      variant: "secondary",
+                    }
+                  : {
+                      href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                      label: "Criar plano",
+                      variant: "primary",
+                    }
+            }
+            extras={
+              published
+                ? [
+                    {
+                      href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                      label: "Nova versão",
+                    },
+                  ]
+                : []
+            }
+          />
+          <AccompanimentCard
+            icon={<IconClipboardList className="h-5 w-5" />}
+            title="Avaliações"
+            state={
+              evaluations[0]
+                ? `${protocolStatusLabel(evaluations[0].status)} · ${evaluations.length}`
+                : "Vazio"
+            }
+            summary={
+              evaluations[0]?.title || "Nenhuma avaliação registrada"
+            }
+            detail={
+              evaluations.length
+                ? "A última avaliação aparece aqui. O cliente só vê o que você publicar."
+                : "Registre o ponto de partida quando fizer sentido."
+            }
+            primary={
+              evaluations[0]
+                ? {
+                    href: `/app/clients/${clientId}/evaluations/${evaluations[0].id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                    label: "Ver avaliação",
+                    variant: "secondary",
+                  }
+                : {
+                    href: `/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                    label: "Nova avaliação",
+                    variant: "secondary",
+                  }
+            }
+          />
+          <AccompanimentCard
+            icon={<IconHistory className="h-5 w-5" />}
+            title="Rotinas"
+            state={
+              routinePendingCount === null
+                ? null
+                : routinePendingCount > 0
+                  ? `${routinePendingCount} pendente${routinePendingCount === 1 ? "" : "s"}`
+                  : "Em dia"
+            }
+            summary={
+              routinePendingCount
+                ? `${routinePendingCount} ocorrência${routinePendingCount === 1 ? "" : "s"} aguardando ação.`
+                : "Nenhuma pendência de rotina para este aluno agora."
+            }
+            primary={{
+              href: `/app/routines/pending?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+              label: "Ver rotinas",
+              variant: "secondary",
+            }}
+          />
             </>
           )}
         </section>
@@ -705,16 +655,13 @@ export function ClientProfile({ clientId }: Props) {
             >
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-[var(--color-ink)]">
-                  {terms.intake_form.charAt(0).toUpperCase() +
-                    terms.intake_form.slice(1)}
+                  {terms.intake_form.charAt(0).toUpperCase() + terms.intake_form.slice(1)}
                 </span>
                 <span className="block text-sm text-[var(--color-ink-muted)]">
                   Respostas enviadas no cadastro
                 </span>
               </span>
-              <span className="shrink-0 text-sm font-medium text-[var(--color-link)]">
-                Ver
-              </span>
+              <span className="shrink-0 text-sm font-medium text-[var(--color-link)]">Ver</span>
             </Link>
           ) : null}
 
@@ -732,12 +679,8 @@ export function ClientProfile({ clientId }: Props) {
         </section>
       ) : null}
 
-      {actionLabel &&
-      tab === "resumo" &&
-      journey?.requires_professional_attention ? (
-        <p className="text-sm text-[var(--color-warning)]">
-          Há pendências de cadastro para revisar.
-        </p>
+      {actionLabel && tab === "resumo" && journey?.requires_professional_attention ? (
+        <p className="text-sm text-[var(--color-warning)]">Há pendências de cadastro para revisar.</p>
       ) : null}
       <span className="hidden">{safeReturnTo(returnAccomp)}</span>
     </div>

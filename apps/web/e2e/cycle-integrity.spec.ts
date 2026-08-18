@@ -132,31 +132,48 @@ test.describe("cycle integrity local candidate", () => {
     await expect(page.getByRole("heading", { name: /Preparar/ })).toBeVisible({
       timeout: 20_000,
     });
-    // Client created directly via API (no intake link submission), so
-    // anamnesis auto-resolves to "não se aplica" instead of blocking the
-    // checklist forever — see accompaniment.py has_intake_submission.
+    // Client created directly via API (no intake link submission): anamnesis
+    // starts pending like every other step — never auto-inferred to "não se
+    // aplica" just because the client has no submission — but it's not a
+    // dead end either: there's no submission to review, so the offered
+    // action is sharing the intake link, not "Marcar como analisada". Being
+    // the first unresolved step, it's highlighted "PRÓXIMO PASSO" instead of
+    // a plain "Pendente" badge (same treatment every other next step gets).
     await expect(
-      page.locator("li").first().getByText("Não se aplica"),
+      page.locator("li").first().getByText("PRÓXIMO PASSO"),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Marcar como analisada" })).toHaveCount(0);
-    await page.screenshot({ path: shot("02-anamnese-analisada.png"), fullPage: true });
+    await expect(page.locator("li").first().getByText("Compartilhar link")).toBeVisible();
+    await page.screenshot({ path: shot("02-anamnese-pendente.png"), fullPage: true });
 
     await page.goto("/app");
     await page.goto(`/app/clients/${clientId}/accompaniment`);
     await expect(
-      page.locator("li").first().getByText("Não se aplica"),
+      page.locator("li").first().getByText("PRÓXIMO PASSO"),
     ).toBeVisible();
     await page.reload();
     await expect(
-      page.locator("li").first().getByText("Não se aplica"),
+      page.locator("li").first().getByText("PRÓXIMO PASSO"),
     ).toBeVisible();
 
     await logoutAndLogin(page, email);
     await page.goto(`/app/clients/${clientId}/accompaniment`);
     await expect(
-      page.locator("li").first().getByText("Não se aplica"),
+      page.locator("li").first().getByText("PRÓXIMO PASSO"),
     ).toBeVisible();
     await page.screenshot({ path: shot("03-anamnese-apos-login.png"), fullPage: true });
+
+    // The professional can still explicitly resolve anamnesis as "não se
+    // aplica", exactly like every other step — this is the fix for the
+    // owner's review: the choice must be explicit, never inferred. The
+    // step's title is profession-dependent ("Anamnese", "Cadastro", ...),
+    // so select it positionally — it's still the first checklist row.
+    const anamnesisRow = page.locator("li").first();
+    await anamnesisRow.getByRole("button", { name: "Outras opções" }).click();
+    await page.getByRole("button", { name: "Não se aplica" }).click();
+    await expect(anamnesisRow.getByText("Não se aplica")).toBeVisible();
+    await page.reload();
+    await expect(page.locator("li").first().getByText("Não se aplica")).toBeVisible();
 
     async function markOption(title: string | RegExp, option: "Não se aplica" | "Fazer depois") {
       const row = page.locator("li").filter({ has: page.getByRole("heading", { name: title }) });

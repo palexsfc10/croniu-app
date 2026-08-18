@@ -14,13 +14,7 @@ import { nomenclatureFor } from "@/lib/nomenclature";
 import { clientInitials, clientListPresentation } from "@/lib/client-list";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-  IconChevronRight,
-  IconLink,
-  IconPlus,
-  IconUser,
-  IconWhatsApp,
-} from "@/components/ui/icons";
+import { IconChevronRight, IconLink, IconPlus, IconUser, IconWhatsApp } from "@/components/ui/icons";
 
 function ShareLinkButton({
   variant = "secondary",
@@ -46,18 +40,14 @@ function ShareLinkButton({
   function publicUrl() {
     if (rawToken) return `${window.location.origin}/entrar/${rawToken}`;
     if (link?.public_url) return link.public_url;
-    if (link?.public_path)
-      return `${window.location.origin}${link.public_path}`;
+    if (link?.public_path) return `${window.location.origin}${link.public_path}`;
     return null;
   }
 
   async function createLink() {
     setBusy(true);
     setInfo(null);
-    const result = await apiFetch<IntakeLink>("/api/v1/intake-link", {
-      method: "POST",
-      body: "{}",
-    });
+    const result = await apiFetch<IntakeLink>("/api/v1/intake-link", { method: "POST", body: "{}" });
     setBusy(false);
     if (result.error) {
       setInfo(result.error.message);
@@ -87,9 +77,7 @@ function ShareLinkButton({
       setInfo("Crie o link para compartilhar.");
       return;
     }
-    const text = encodeURIComponent(
-      `Olá! Complete o ${intakeFormLabel} neste link: ${url}`,
-    );
+    const text = encodeURIComponent(`Olá! Complete o ${intakeFormLabel} neste link: ${url}`);
     window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
   }
 
@@ -111,10 +99,7 @@ function ShareLinkButton({
       {open ? (
         <div className="absolute left-0 z-20 mt-1 w-64 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
           {info ? (
-            <p
-              role="status"
-              className="mb-2 text-xs text-[var(--color-ink-muted)]"
-            >
+            <p role="status" className="mb-2 text-xs text-[var(--color-ink-muted)]">
               {info}
             </p>
           ) : null}
@@ -161,9 +146,7 @@ export default function ClientsPage() {
   const [error, setError] = useState<string | null>(null);
   const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<"active" | "archived">(
-    "active",
-  );
+  const [statusFilter, setStatusFilter] = useState<"active" | "archived">("active");
   const [query, setQuery] = useState("");
   const terms = nomenclatureFor(profession?.profession_code);
   const title = terms.clients.charAt(0).toUpperCase() + terms.clients.slice(1);
@@ -209,9 +192,7 @@ export default function ClientsPage() {
     <div className="space-y-4 animate-fade-up pb-4">
       <header className="space-y-3">
         <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">
-            {title}
-          </h1>
+          <h1 className="h-display text-3xl text-[var(--color-ink)]">{title}</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             Pessoas que você atende, com o próximo passo à vista.
           </p>
@@ -271,9 +252,7 @@ export default function ClientsPage() {
         </label>
       ) : null}
 
-      {loading ? (
-        <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
-      ) : null}
+      {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}
@@ -308,9 +287,7 @@ export default function ClientsPage() {
                   className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-sm font-semibold text-[var(--color-primary)]"
                   aria-hidden
                 >
-                  {clientInitials(item.full_name) || (
-                    <IconUser className="h-4 w-4" />
-                  )}
+                  {clientInitials(item.full_name) || <IconUser className="h-4 w-4" />}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold text-[var(--color-ink)]">

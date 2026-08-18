@@ -162,18 +162,19 @@ def resolve_accompaniment(
         )
         is not None
     )
-    # A client added directly by the professional (not via the public intake
-    # link) never has a submission to review — "todo" would block the
-    # checklist forever, since nothing can ever make it "done". Treat that
-    # absence as "não se aplica" unless the professional stored something
-    # else explicitly (na/later/done still win, same as every other step).
-    anamnesis_default = "todo" if has_intake_submission else "na"
-
+    # Whether anamnesis applies to a given client is a professional decision,
+    # exactly like evaluation/plan below — never silently inferred from how
+    # the client was created. A client added directly by the professional
+    # (no public-intake submission yet) still defaults to "todo": the
+    # professional can send/copy the intake link to this client later, mark
+    # it reviewed manually, or explicitly choose "na" via the same
+    # not-applicable action every other step exposes. Only that explicit
+    # choice — never the mere absence of a submission — resolves it.
     steps = {
         "anamnesis": (
             "done"
             if anamnesis_done
-            else _merge(stored.get("anamnesis") or anamnesis_default, fact_done=False)
+            else _merge(stored.get("anamnesis"), fact_done=False)
         ),
         "evaluation": _merge(
             stored.get("evaluation")
@@ -202,8 +203,10 @@ def resolve_accompaniment(
         "anamnesis": (
             "Analisada"
             if steps["anamnesis"] == "done"
-            else "Cliente cadastrado diretamente, sem formulário"
-            if steps["anamnesis"] == "na" and not has_intake_submission
+            else "Marcada como não aplicável"
+            if steps["anamnesis"] == "na"
+            else "Nenhuma resposta recebida ainda"
+            if steps["anamnesis"] == "todo" and not has_intake_submission
             else None
         ),
         "evaluation": None,
@@ -280,13 +283,38 @@ def apply_step(
     flag_modified(journey, "accompaniment_checklist")
     if step == "anamnesis" and status == "done" and journey.anamnesis_reviewed_at is None:
         journey.anamnesis_reviewed_at = datetime.now(UTC)
+    if step == "activate" and status == "done" and journey.stage != "active":
+        # The checklist is the current readiness gate: completing this last
+        # step is a real state-machine transition, not just a checkbox.
+        # Without this, journey.stage stays stuck at whatever pre-active
+        # stage the client was left in (e.g. "approved" right after intake
+        # approval) forever, and every screen that branches on stage — not
+        # just the checklist — keeps treating the client as still needing
+        # preparation even though nothing is actually pending. Stages that
+        # can't reach "active" (archived, rejected, pre-approval) mean this
+        # checklist shouldn't have been reachable in the first place; skip
+        # the transition rather than fail the whole request over it.
+        try:
+            journey = journey_svc.transition_journey(
+                db,
+                organization_id=organization_id,
+                client_id=client_id,
+                to_stage="active",
+                next_action=None,
+            )
+        except AuthError:
+            pass
     resolved = resolve_accompaniment(
         db,
         organization_id=organization_id,
         client_id=client_id,
         journey=journey,
     )
-    journey.next_action = resolved["next_action"] or "prepare_accompaniment"
+    # None means the checklist has nothing left ("todo"/"later") — persist
+    # that truthfully instead of a magic "prepare_accompaniment" fallback,
+    # which used to stick around forever once the checklist finished and
+    # made every screen wrongly claim the preparation was still pending.
+    journey.next_action = resolved["next_action"]
     db.add(journey)
     db.commit()
     db.refresh(journey)

@@ -41,16 +41,26 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
         "evaluation_pending",
         "protocol_pending",
         "ready_to_start",
+        # The 7-step accompaniment checklist (anamnesis/evaluation/plan/
+        # cycle/agenda/routine/activate) is the current, richer readiness
+        # gate — it supersedes the older evaluation/protocol-decision path
+        # to ready_to_start, which the UI no longer drives end-to-end.
+        # Direct activation is allowed once the professional explicitly
+        # completes the checklist's "activate" step (see
+        # accompaniment.apply_step), regardless of which intermediate
+        # decision stages were used or skipped.
+        "active",
         "paused",
         "archived",
     },
     "evaluation_pending": {
         "protocol_pending",
         "ready_to_start",
+        "active",
         "paused",
         "archived",
     },
-    "protocol_pending": {"ready_to_start", "paused", "archived"},
+    "protocol_pending": {"ready_to_start", "active", "paused", "archived"},
     "ready_to_start": {"active", "paused", "archived"},
     "active": {"review_due", "paused", "archived"},
     "review_due": {"active", "protocol_pending", "paused", "archived"},

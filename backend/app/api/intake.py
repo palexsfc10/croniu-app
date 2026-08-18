@@ -52,7 +52,12 @@ def _journey_out(row, db: Session | None = None, organization_id=None) -> Journe
             client_id=row.client_id,
             journey=row,
         )
-    next_action = (resolved["next_action"] if resolved else None) or row.next_action
+    # `resolved` is the live, authoritative computation — when present, its
+    # next_action is trusted as-is, including None (nothing pending). Only
+    # fall back to the persisted row.next_action when no live resolution ran
+    # (call sites that don't pass db/organization_id); never let a stale
+    # persisted value override a fresh "nothing left to do" signal.
+    next_action = resolved["next_action"] if resolved is not None else row.next_action
     return JourneyOut(
         id=row.id,
         client_id=row.client_id,

@@ -3,10 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch, type ClientAccess } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/clipboard";
-import {
-  formatPortalDate,
-  formatPortalDateTime,
-} from "@/lib/format-portal-dates";
+import { formatPortalDate, formatPortalDateTime } from "@/lib/format-portal-dates";
 import { portalWhatsAppMessage, whatsappShareHref } from "@/lib/whatsapp-share";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,24 +44,17 @@ export function ClientPortalCard({
     return () => window.clearTimeout(timer);
   }, [copied]);
 
-  const publicUrl = access?.has_active_link
-    ? (access.public_url ?? null)
-    : null;
-  const publicPath = access?.has_active_link
-    ? (access.public_path ?? null)
-    : null;
+  const publicUrl = access?.has_active_link ? access.public_url ?? null : null;
+  const publicPath = access?.has_active_link ? access.public_path ?? null : null;
 
   async function createAccess() {
     setBusy(true);
     setCopyError(null);
     onFeedback?.(null);
-    const result = await apiFetch<ClientAccess>(
-      `/api/v1/clients/${clientId}/public-access`,
-      {
-        method: "POST",
-        body: "{}",
-      },
-    );
+    const result = await apiFetch<ClientAccess>(`/api/v1/clients/${clientId}/public-access`, {
+      method: "POST",
+      body: "{}",
+    });
     setBusy(false);
     if (result.error) {
       onFeedback?.(result.error.message, "error");
@@ -111,12 +101,9 @@ export function ClientPortalCard({
   async function revokeAccess() {
     setBusy(true);
     onFeedback?.(null);
-    const result = await apiFetch<ClientAccess>(
-      `/api/v1/clients/${clientId}/public-access`,
-      {
-        method: "DELETE",
-      },
-    );
+    const result = await apiFetch<ClientAccess>(`/api/v1/clients/${clientId}/public-access`, {
+      method: "DELETE",
+    });
     setBusy(false);
     setConfirm(null);
     if (result.error) {
@@ -140,9 +127,7 @@ export function ClientPortalCard({
       className="min-w-0 space-y-3 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
     >
       <div className="flex items-start justify-between gap-3">
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">
-          Portal do cliente
-        </h2>
+        <h2 className="text-base font-semibold text-[var(--color-ink)]">Portal do cliente</h2>
         {access?.has_active_link ? (
           <Badge tone="success">Acesso ativo</Badge>
         ) : null}
@@ -151,8 +136,8 @@ export function ClientPortalCard({
       {!access?.has_active_link ? (
         <>
           <p className="text-sm leading-relaxed text-[var(--color-ink-muted)]">
-            Compartilhe um acesso para que o cliente acompanhe agenda, ciclo,
-            evolução e conteúdos publicados.
+            Compartilhe um acesso para que o cliente acompanhe agenda, ciclo, evolução e
+            conteúdos publicados.
           </p>
           <Button fullWidth disabled={busy} onClick={() => void createAccess()}>
             Criar acesso
@@ -169,9 +154,7 @@ export function ClientPortalCard({
               <dd>{formatPortalDate(access.created_at) ?? "—"}</dd>
             </div>
             <div className="flex min-w-0 gap-2">
-              <dt className="shrink-0 text-[var(--color-ink-muted)]">
-                Último acesso:
-              </dt>
+              <dt className="shrink-0 text-[var(--color-ink-muted)]">Último acesso:</dt>
               <dd className="min-w-0">
                 {access.last_used_at
                   ? formatPortalDateTime(access.last_used_at)
@@ -181,9 +164,7 @@ export function ClientPortalCard({
           </dl>
 
           <div className="min-w-0">
-            <p className="mb-1 text-sm font-medium text-[var(--color-ink)]">
-              Endereço
-            </p>
+            <p className="mb-1 text-sm font-medium text-[var(--color-ink)]">Endereço</p>
             <p
               className="truncate rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-sm text-[var(--color-ink-muted)]"
               data-testid="portal-url"
@@ -200,12 +181,7 @@ export function ClientPortalCard({
               </span>
             </Button>
             {waHref ? (
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
+              <a href={waHref} target="_blank" rel="noopener noreferrer" className="block">
                 <Button fullWidth variant="secondary">
                   <span className="inline-flex items-center gap-2">
                     <IconWhatsApp />
@@ -215,12 +191,7 @@ export function ClientPortalCard({
               </a>
             ) : null}
             {publicPath ? (
-              <a
-                href={publicPath}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
+              <a href={publicPath} target="_blank" rel="noopener noreferrer" className="block">
                 <Button fullWidth variant="outline">
                   <span className="inline-flex items-center gap-2">
                     <IconExternalLink />
