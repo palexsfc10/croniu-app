@@ -24,13 +24,23 @@ superficial por todas as telas.
 | Rotinas (I) | **Owner:** ao habilitar/ver pendências, ocorrências aparecem materializadas na própria tela de Rotinas, logo acima de "Criar rotina personalizada" — dá a impressão de que a tela está "criando registros" ali mesmo | Observado ao vivo; `routines-inner.tsx` (`{board.length ? <section>…</section> : null}` antes do botão) | P1 | Alta — confusão de modelo mental relatada diretamente pelo owner | Médio | Extrair pendências para link "Ver pendências" → página própria `/app/routines/pending`; manter "Criar rotina personalizada" exatamente como está |
 | Rotinas (I) | **Owner:** abertura dos formulários (sheets) de rotina no mobile "tá ruim" | Código: sheet de ativação de sugestão (`routine-templates-panel.tsx`) não tem `max-h`/`overflow-y-auto`, ao contrário do sheet de rotina personalizada (`routines-inner.tsx`) que já tem — em telas curtas ou com teclado aberto o conteúdo pode ficar cortado sem rolagem | P1 | Média-alta em mobile | Baixo | Aplicar o mesmo `max-h-[min(36rem,calc(100dvh-7rem))] overflow-y-auto` já usado no outro sheet |
 | Hoje (B) | "Suas ações de hoje" e "Precisa de atenção" mostram a mesma informação duas vezes ("Revisar plano" individual + "Revisão de planos: 2 para revisar") | Observado ao vivo; `today-board.tsx` `extraAttention` sintetiza cards a partir de contadores independentes da lista real de ocorrências | P2 | Alta | Baixo | Remover os cards sintéticos `plan_review_group`/`feedback_group` de `extraAttention` — `TodayActions` já cobre isso com mais detalhe (cliente, situação) desde a correção anterior |
-| Detalhe do cliente (E) | Cliente cadastrado manualmente (sem link de convite) mostra "Próximo: Analisar formulário" — texto sugere revisar uma submissão que não existe | Observado ao vivo | P3 | A investigar — pode ser comportamento correto do estágio de jornada padrão | Médio | Documentado, não implementado nesta rodada — precisa de investigação da lógica de `client_journey` sem risco de regressão em fluxos de intake reais |
+| Detalhe do cliente — Resumo (E) | **Owner (vídeo):** "próximo passo" fica travado em "Analisar formulário" para sempre — parece que a tarefa nunca finaliza | Confirmado: `resolve_accompaniment` escolhe o primeiro passo `"todo"` do checklist, e `anamnesis` é sempre o primeiro; sem submissão de intake pública, `anamnesis_reviewed_at` nunca é setado automaticamente, então o passo nunca sai de `"todo"` mesmo com avaliação, plano e ciclo já prontos | P1 | Alta — afeta todo cliente cadastrado manualmente | Médio | `accompaniment.py`: sem `ClientIntakeSubmission` vinculada ao cliente, `anamnesis` resolve para `"na"` em vez de `"todo"` (override explícito do profissional continua tendo prioridade) |
+| Detalhe do cliente — Acompanhamento (E) | **Owner (vídeo):** "Ver plano" abre em branco mesmo quando o plano já existe | Confirmado: `plans/[protocolId]/page.tsx` reexporta o mesmo componente de `plans/new`, sem estado de carregamento — o formulário renderiza os campos vazios (modo criação) até a busca do plano existente terminar | P1 | Média — depende da latência da rede | Baixo | Skeleton de carregamento enquanto `protocolId` está sendo buscado |
+| Detalhe do cliente — Acompanhamento (E) | **Owner (vídeo):** card "Ciclo atual" só tem botão "Ver ciclo"; pediu barra de progresso | Sem evidência de bug, pedido de melhoria direto | P2 | Média | Baixo | Nova prop `progress` em `AccompanimentCard` — barra de conclusão de aulas do ciclo |
+| Detalhe do cliente — Acompanhamento (E) | **Owner (vídeo):** cards "Ver avaliação"/"Ver rotinas" pouco informativos, pediu algo "premium" | Card de Rotinas mostrava rótulo estático `"Quadro"` sem dado real; Avaliações mostrava só a contagem | P2 | Média | Baixo | Avaliações mostra status da última avaliação; Rotinas mostra contagem real de pendências do cliente e linka para `/app/routines/pending` |
 
 ## Itens adiados (fora do escopo desta rodada)
 
-- Investigação completa do texto "Analisar formulário" para clientes sem
-  submissão de intake (P3, precisa de mais tempo para não arriscar regressão
-  no fluxo de intake real).
+- Passo "routine" do checklist de acompanhamento tem a mesma limitação
+  estrutural que "anamnesis" tinha (`fact_done=False` fixo — nunca resolve
+  sozinho, mesmo quando o cliente já está coberto por uma rotina ativa).
+  Não corrigido nesta rodada: detectar "esta rotina se aplica a este
+  cliente" é mais complexo (rotinas `all_active` vs `this_client`) e não foi
+  o item relatado pelo owner. Candidato a próxima rodada.
+- Redesenho completo da tela de Resumo (o owner sugeriu "talvez trazer o
+  resumo completo do onboarding do cliente" — é uma ideia de redesenho maior,
+  não um bug; registrado para uma próxima sprint de UX, não implementado
+  aqui para não fugir de "melhorias suaves").
 - Auditoria visual completa (screenshots) em mobile: o ambiente de browser
   desta sessão não conseguiu compor frames para captura de tela (limitação de
   ferramenta, não do produto); a revisão mobile do sheet de Rotinas foi feita
