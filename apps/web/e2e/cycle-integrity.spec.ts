@@ -132,20 +132,30 @@ test.describe("cycle integrity local candidate", () => {
     await expect(page.getByRole("heading", { name: /Preparar/ })).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByRole("button", { name: "Marcar como analisada" }).click();
-    await expect(page.getByText("Concluído").first()).toBeVisible();
+    // Client created directly via API (no intake link submission), so
+    // anamnesis auto-resolves to "não se aplica" instead of blocking the
+    // checklist forever — see accompaniment.py has_intake_submission.
+    await expect(
+      page.locator("li").first().getByText("Não se aplica"),
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: "Marcar como analisada" })).toHaveCount(0);
     await page.screenshot({ path: shot("02-anamnese-analisada.png"), fullPage: true });
 
     await page.goto("/app");
     await page.goto(`/app/clients/${clientId}/accompaniment`);
-    await expect(page.getByRole("button", { name: "Marcar como analisada" })).toHaveCount(0);
+    await expect(
+      page.locator("li").first().getByText("Não se aplica"),
+    ).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("button", { name: "Marcar como analisada" })).toHaveCount(0);
+    await expect(
+      page.locator("li").first().getByText("Não se aplica"),
+    ).toBeVisible();
 
     await logoutAndLogin(page, email);
     await page.goto(`/app/clients/${clientId}/accompaniment`);
-    await expect(page.getByRole("button", { name: "Marcar como analisada" })).toHaveCount(0);
+    await expect(
+      page.locator("li").first().getByText("Não se aplica"),
+    ).toBeVisible();
     await page.screenshot({ path: shot("03-anamnese-apos-login.png"), fullPage: true });
 
     async function markOption(title: string | RegExp, option: "Não se aplica" | "Fazer depois") {

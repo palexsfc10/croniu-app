@@ -110,6 +110,11 @@ export default function AccompanimentPreparePage() {
   const ret = encodeURIComponent(returnBase);
   const defined = journey?.progress_defined ?? STEP_ORDER.filter((k) => k !== "activate" && checklist[k] && checklist[k] !== "todo").length;
   const total = journey?.progress_total ?? 6;
+  const progressPercent = total > 0 ? Math.max(0, Math.min(100, Math.round((defined / total) * 100))) : 0;
+  const nextStepKey: StepKey | null =
+    STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "todo") ??
+    STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "later") ??
+    null;
 
   function primary(step: StepKey, value: string) {
     if (value === "done") {
@@ -161,6 +166,19 @@ export default function AccompanimentPreparePage() {
         <p className="text-sm text-[var(--color-ink-muted)]">
           {defined} de {total} etapas definidas
         </p>
+        <div
+          className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-subtle)]"
+          role="progressbar"
+          aria-valuenow={progressPercent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Preparação do acompanhamento: ${progressPercent}% concluída`}
+        >
+          <div
+            className="h-full rounded-full bg-[var(--color-primary)] transition-[width]"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
       </header>
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
@@ -168,19 +186,75 @@ export default function AccompanimentPreparePage() {
         </p>
       ) : null}
 
-      <ol className="divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <ol className="space-y-2">
         {STEP_ORDER.map((step, index) => {
           const value = (checklist[step] ?? "todo") as Status;
           const action = primary(step, value);
+          const isNext = step === nextStepKey;
+
+          if (value === "done") {
+            return (
+              <li
+                key={step}
+                className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)]/60 bg-[var(--color-surface)] px-3 py-2 opacity-80"
+              >
+                <span
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-success-subtle)] text-xs font-semibold text-[var(--color-success)]"
+                  aria-hidden
+                >
+                  ✓
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium text-[var(--color-ink)]">{titles[step]}</p>
+                    <Badge tone={statusTone(value)}>{statusLabel(value)}</Badge>
+                  </div>
+                  {summaries[step] ? (
+                    <p className="text-sm text-[var(--color-ink-muted)]">{summaries[step]}</p>
+                  ) : null}
+                </div>
+                {action?.href ? (
+                  <Link
+                    href={action.href}
+                    className="shrink-0 text-sm font-medium text-[var(--color-link)] underline-offset-2 hover:underline"
+                  >
+                    {action.label}
+                  </Link>
+                ) : null}
+              </li>
+            );
+          }
+
           return (
-            <li key={step} className="flex items-start gap-3 px-3 py-3">
-              <span className="mt-0.5 w-5 text-center text-xs font-semibold text-[var(--color-ink-muted)]">
-                {value === "done" ? "✓" : index + 1}
+            <li
+              key={step}
+              className={[
+                "flex items-start gap-3 rounded-[var(--radius-md)] border px-3 py-3",
+                isNext
+                  ? "border-[var(--color-primary)]/40 bg-[var(--color-primary-subtle)]/30 shadow-[0_1px_3px_rgba(15,15,20,0.06)]"
+                  : "border-[var(--color-border)] bg-[var(--color-surface)]",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                  isNext
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "text-[var(--color-ink-muted)]",
+                ].join(" ")}
+              >
+                {index + 1}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-semibold text-[var(--color-ink)]">{titles[step]}</h2>
-                  <Badge tone={statusTone(value)}>{statusLabel(value)}</Badge>
+                  {isNext ? (
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+                      Próximo passo
+                    </span>
+                  ) : (
+                    <Badge tone={statusTone(value)}>{statusLabel(value)}</Badge>
+                  )}
                 </div>
                 {summaries[step] ? (
                   <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">{summaries[step]}</p>
@@ -188,11 +262,12 @@ export default function AccompanimentPreparePage() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {action?.href ? (
                     <Link href={action.href}>
-                      <Button>{action.label}</Button>
+                      <Button variant={isNext ? "primary" : "secondary"}>{action.label}</Button>
                     </Link>
                   ) : null}
                   {action?.action ? (
                     <Button
+                      variant={isNext ? "primary" : "secondary"}
                       disabled={busy !== null}
                       onClick={action.action}
                     >

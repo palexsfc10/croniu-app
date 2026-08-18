@@ -25,7 +25,7 @@ test.describe("accompaniment tab and plan copy", () => {
     await expect(panel.getByRole("heading", { name: /plano de acompanhamento/i })).toBeVisible();
     await expect(panel.getByRole("heading", { name: "Avaliações" })).toBeVisible();
     await expect(panel.getByRole("heading", { name: "Rotinas" })).toBeVisible();
-    await expect(panel.getByText("Defina a recorrência")).toBeVisible();
+    await expect(panel.getByText("Nenhuma pendência de rotina")).toBeVisible();
     await expect(page.getByText("Criar treino")).toHaveCount(0);
 
     await page.route("**/api/v1/clients/**/evaluations**", (route) => {
