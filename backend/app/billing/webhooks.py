@@ -405,6 +405,10 @@ class BillingWebhookService:
                 subscription.current_period_end = now + timedelta(days=30)
                 subscription.next_billing_at = subscription.current_period_end
                 subscription.grace_period_ends_at = None
+
+            from app.services.referral import mark_referral_paid
+
+            mark_referral_paid(self.db, subscription.organization_id)
             return
 
         if event == "PAYMENT_OVERDUE":

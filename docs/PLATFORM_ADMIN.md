@@ -56,3 +56,10 @@ Credenciais via prompt seguro ou variáveis de ambiente **não versionadas**.
 ## Ações planejadas (ainda bloqueadas na UI/API mutável)
 
 Ativar/suspender/reativar, ajustar trial com justificativa — exigirão permissão, confirmação, motivo e auditoria completa.
+
+## Parceiros e indicações
+
+Seção `/referrals` (namespace `/api/v1/platform/referrals/*`): habilitar divulgador, definir
+código/comissão, ativar/desativar, contadores. Mutações exigem `platform_admin` (não
+`platform_viewer`). Auditado em `AdminAuditLog`. Detalhe completo:
+[`REFERRAL_PROGRAM.md`](./REFERRAL_PROGRAM.md).

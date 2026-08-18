@@ -235,6 +235,67 @@ describe("Verify email form", () => {
   });
 });
 
+describe("Register referral coupon", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    searchParams = new URLSearchParams();
+  });
+
+  it("shows the applied-coupon message when ?ref= is valid", async () => {
+    searchParams = new URLSearchParams("ref=PROMO10");
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/referrals/validate")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ valid: true, code: "PROMO10", discount_percent: 10 }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+
+    render(<RegisterForm />);
+    await waitFor(() => {
+      expect(screen.getByText(/Cupom PROMO10 aplicado/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/10% de desconto/)).toBeInTheDocument();
+  });
+
+  it("shows the unavailable-coupon message without blocking registration", async () => {
+    searchParams = new URLSearchParams("ref=NAOEXISTE");
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/referrals/validate")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ valid: false, code: "NAOEXISTE" }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+
+    render(<RegisterForm />);
+    await waitFor(() => {
+      expect(screen.getByText("Este cupom não está disponível.")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeEnabled();
+  });
+
+  it("does not call the coupon endpoint without ?ref=", () => {
+    searchParams = new URLSearchParams();
+    const fetchSpy = vi.spyOn(global, "fetch");
+    render(<RegisterForm />);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("Official favicon assets", () => {
   it("ships Croniu mark derivatives and not the stock Next glyph alone", () => {
     const root = join(process.cwd());

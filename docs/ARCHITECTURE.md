@@ -92,7 +92,7 @@ Compose sobe Postgres; API e Next tipicamente no host. Portas: ver [`PROJECT_STA
 
 ## Domínio (API)
 
-Rotas versionadas sob `/api/v1`: auth, domain (clientes/serviços/ciclos/recebíveis), **agenda** (preferências/timezone, locais, compromissos, agenda do dia), platform (admin).
+Rotas versionadas sob `/api/v1`: auth, domain (clientes/serviços/ciclos/recebíveis), **agenda** (preferências/timezone, locais, compromissos, agenda do dia), billing (Asaas), referrals (indicação/cupom), platform (admin).
 
 Instantes de compromisso em UTC; “hoje” e exibição pelo `organizations.timezone` (IANA).
 

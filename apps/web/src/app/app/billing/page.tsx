@@ -154,6 +154,30 @@ export default function BillingPage() {
         </section>
       ) : null}
 
+      {ent?.referral_active && ent.referral_base_amount_cents ? (
+        <section className="space-y-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[var(--color-ink-muted)]">Plano Croniu</span>
+            <span>{formatBRL(ent.referral_base_amount_cents)}/mês</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[var(--color-ink-muted)]">
+              Desconto vitalício de indicação
+            </span>
+            <span className="text-[var(--color-success,#16a34a)]">
+              −{formatBRL(ent.referral_base_amount_cents - amount)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-1.5 text-sm font-semibold">
+            <span>Total</span>
+            <span>{formatBRL(amount)}/mês</span>
+          </div>
+          <p className="pt-1 text-xs text-[var(--color-ink-muted)]">
+            Seu desconto permanece vinculado a esta conta enquanto você utilizar o Croniu.
+          </p>
+        </section>
+      ) : null}
+
       {resumeUrl ? (
         <a href={resumeUrl} className="block">
           <Button fullWidth>Continuar checkout</Button>

@@ -110,6 +110,7 @@ def register(
             profession_specialty=payload.profession_specialty,
             profession_other=payload.profession_other,
             use_cases=payload.use_cases,
+            referral_code=payload.referral_code,
         )
     except AuthError as exc:
         raise _http_error(exc) from exc

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import math
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
-import math
 from typing import Any
-import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,7 +16,6 @@ from app.config import get_settings
 from app.models.billing import BillingPlan, BillingPrice, Subscription, SubscriptionStatus
 from app.models.organization import Organization
 from app.services.auth import AuthError
-
 
 WRITE_ALLOWED_STATUSES = frozenset(
     {
@@ -125,6 +124,9 @@ class EntitlementSnapshot:
     resume_checkout_url: str | None = None
     open_checkout_expires_at: str | None = None
     open_checkout_status: str | None = None
+    referral_active: bool = False
+    referral_discount_percent: int | None = None
+    referral_base_amount_cents: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -231,6 +233,21 @@ class SubscriptionEntitlementService:
             cancel_scheduled=False,
         )
 
+        from app.services.referral import get_attribution, resolve_checkout_amount_cents
+
+        base_amount_cents = price.amount_cents if price else None
+        display_amount_cents = base_amount_cents
+        referral_active = False
+        referral_discount_percent = None
+        if org_id is not None and base_amount_cents is not None:
+            attribution = get_attribution(self.db, org_id)
+            if attribution is not None:
+                referral_active = True
+                referral_discount_percent = attribution.discount_percent_snapshot
+                display_amount_cents, _ = resolve_checkout_amount_cents(
+                    self.db, organization_id=org_id, base_amount_cents=base_amount_cents
+                )
+
         return EntitlementSnapshot(
             subscription_status=self._public_status(subscription),
             payment_status=subscription.payment_status,
@@ -251,7 +268,7 @@ class SubscriptionEntitlementService:
             next_billing_at=_iso(subscription.next_billing_at),
             country_code=subscription.country_code or "BR",
             currency=subscription.currency or "BRL",
-            amount_cents=price.amount_cents if price else None,
+            amount_cents=display_amount_cents,
             billing_type=subscription.billing_type,
             payment_prepared=setup.payment_prepared,
             gateway_available=gateway_available,
@@ -269,6 +286,9 @@ class SubscriptionEntitlementService:
             resume_checkout_url=setup.resume_checkout_url,
             open_checkout_expires_at=setup.open_checkout_expires_at,
             open_checkout_status=setup.open_checkout_status,
+            referral_active=referral_active,
+            referral_discount_percent=referral_discount_percent,
+            referral_base_amount_cents=base_amount_cents if referral_active else None,
         )
 
     def ensure_can_write(self, organization_id: uuid.UUID) -> EntitlementSnapshot:

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiFetch, type ApiError, type MeResponse } from "@/lib/api";
@@ -46,12 +46,30 @@ function humanRegisterError(error: ApiError & { status?: number }): { title: str
   return { title, body: "Revise as informações ou tente novamente." };
 }
 
-export function RegisterForm() {
+type ReferralCheck = { valid: boolean; code: string; discount_percent?: number | null };
+
+function RegisterFormInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const submittingLock = useRef(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [formError, setFormError] = useState<{ title: string; body: string } | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const referralCode = (searchParams.get("ref") || "").trim();
+  const [referralCheck, setReferralCheck] = useState<ReferralCheck | null>(null);
+
+  useEffect(() => {
+    if (!referralCode) return;
+    let cancelled = false;
+    void apiFetch<ReferralCheck>(
+      `/api/v1/referrals/validate?code=${encodeURIComponent(referralCode)}`,
+    ).then((result) => {
+      if (!cancelled && result.data) setReferralCheck(result.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [referralCode]);
   const {
     register,
     handleSubmit,
@@ -145,6 +163,7 @@ export function RegisterForm() {
           profession_specialty: values.profession_specialty || null,
           profession_other: values.profession_other || null,
           use_cases: values.use_cases?.length ? values.use_cases : null,
+          referral_code: referralCode || null,
         }),
       });
       submittingLock.current = false;
@@ -230,6 +249,20 @@ export function RegisterForm() {
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
         Etapa {step} de 2 · {step === 1 ? "Seus dados" : "Seu trabalho"}
       </p>
+
+      {referralCode && referralCheck?.valid ? (
+        <p className="rounded-[var(--radius-sm)] bg-[var(--color-success-subtle,theme(colors.green.50))] px-3 py-2 text-sm text-[var(--color-ink)]">
+          Cupom {referralCheck.code} aplicado
+          <br />
+          Você terá {referralCheck.discount_percent ?? 10}% de desconto na assinatura após o
+          período gratuito.
+        </p>
+      ) : null}
+      {referralCode && referralCheck && !referralCheck.valid ? (
+        <p className="rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] px-3 py-2 text-sm text-[var(--color-ink-muted)]">
+          Este cupom não está disponível.
+        </p>
+      ) : null}
 
       <div className={step === 1 ? "space-y-4" : "hidden"}>
         <TextField
@@ -449,5 +482,13 @@ export function RegisterForm() {
           </a>
         </p>
     </div>
+  );
+}
+
+export function RegisterForm() {
+  return (
+    <Suspense fallback={<p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>}>
+      <RegisterFormInner />
+    </Suspense>
   );
 }

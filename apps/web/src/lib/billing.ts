@@ -20,6 +20,9 @@ export type BillingEntitlement = {
   amount_cents?: number | null;
   currency?: string | null;
   sandbox_mode?: boolean;
+  referral_active?: boolean;
+  referral_discount_percent?: number | null;
+  referral_base_amount_cents?: number | null;
 };
 
 export type BillingCheckout = {

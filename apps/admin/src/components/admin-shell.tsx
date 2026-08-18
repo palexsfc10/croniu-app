@@ -11,6 +11,7 @@ const nav = [
   { href: "/dashboard", label: "Visão geral" },
   { href: "/organizations", label: "Organizações" },
   { href: "/users", label: "Usuários" },
+  { href: "/referrals", label: "Parceiros e indicações" },
   { href: "/cycle-agenda", label: "Ciclo–agenda" },
   { href: "/feedbacks", label: "Feedbacks" },
   { href: "/ai", label: "Assistente IA" },
