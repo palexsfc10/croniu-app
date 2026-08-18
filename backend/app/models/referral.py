@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -74,8 +75,10 @@ class ReferralCampaign(Base):
     __table_args__ = (
         UniqueConstraint("partner_id", name="uq_referral_campaigns_partner_id"),
         # `code` is always stored normalized (uppercase) by the service layer;
-        # the migration also adds a functional UNIQUE INDEX on lower(code) as
-        # defense-in-depth against direct SQL / future bypasses of the service.
+        # this functional index is defense-in-depth against direct SQL / future
+        # bypasses of the service (mirrors the migration's raw CREATE INDEX so
+        # `alembic check` sees no drift between models and schema).
+        Index("uq_referral_campaigns_code_ci", text("lower(code)"), unique=True),
         CheckConstraint(
             "commission_percent >= 0 AND commission_percent <= 100",
             name="ck_referral_campaigns_commission_range",
