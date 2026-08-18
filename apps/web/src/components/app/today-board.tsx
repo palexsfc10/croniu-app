@@ -422,30 +422,11 @@ export function TodayBoard({ summary }: Props) {
       return start <= t && t < end;
     });
 
-  const attentionBase = summary.attention_items ?? [];
-  const extraAttention: AttentionItem[] = [];
-  if (
-    (summary.protocol_reviews_due_count ?? 0) > 0 &&
-    !attentionBase.some((i) => i.kind === "plan_review" || i.href === "/app/routines")
-  ) {
-    extraAttention.push({
-      kind: "plan_review_group",
-      title: "Revisão de planos",
-      subtitle: `${summary.protocol_reviews_due_count} para revisar`,
-      href: "/app/routines",
-      entity_id: "routines-review",
-    });
-  }
-  if ((summary.feedbacks_due_count ?? 0) > 0) {
-    extraAttention.push({
-      kind: "feedback_group",
-      title: "Feedbacks",
-      subtitle: `${summary.feedbacks_due_count} para acompanhar`,
-      href: "/app/routines",
-      entity_id: "routines-feedback",
-    });
-  }
-  const attention = [...attentionBase, ...extraAttention];
+  // Routine pendencies (plan reviews, feedback) already render as their own
+  // cards in "Suas ações de hoje" via TodayActions — with per-client detail
+  // this section can't show. Synthesizing count-only duplicates of the same
+  // items here just repeats the same information twice on one screen.
+  const attention = summary.attention_items ?? [];
   const hasIntakeCounts =
     (summary.new_submissions_count ?? 0) > 0 ||
     (summary.evaluation_pending_count ?? 0) > 0 ||

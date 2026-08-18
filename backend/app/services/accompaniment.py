@@ -26,12 +26,12 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.appointment import Appointment
 from app.models.cycle import Cycle
-from app.models.intake import ClientJourney
+from app.models.intake import ClientIntakeSubmission, ClientJourney
 from app.models.organization import Organization
+from app.services import cycle_period as cycle_period_svc
 from app.services import evaluations as eval_svc
 from app.services import journey as journey_svc
 from app.services import protocols as proto_svc
-from app.services import cycle_period as cycle_period_svc
 from app.services.auth import AuthError
 
 STEP_KEYS = (
@@ -151,9 +151,31 @@ def resolve_accompaniment(
     anamnesis_done = bool(journey and journey.anamnesis_reviewed_at) or stored.get(
         "anamnesis"
     ) == "done"
-
+    has_intake_submission = (
+        db.scalar(
+            select(ClientIntakeSubmission.id)
+            .where(
+                ClientIntakeSubmission.organization_id == organization_id,
+                ClientIntakeSubmission.client_id == client_id,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+    # Whether anamnesis applies to a given client is a professional decision,
+    # exactly like evaluation/plan below — never silently inferred from how
+    # the client was created. A client added directly by the professional
+    # (no public-intake submission yet) still defaults to "todo": the
+    # professional can send/copy the intake link to this client later, mark
+    # it reviewed manually, or explicitly choose "na" via the same
+    # not-applicable action every other step exposes. Only that explicit
+    # choice — never the mere absence of a submission — resolves it.
     steps = {
-        "anamnesis": "done" if anamnesis_done else _merge(stored.get("anamnesis"), fact_done=False),
+        "anamnesis": (
+            "done"
+            if anamnesis_done
+            else _merge(stored.get("anamnesis"), fact_done=False)
+        ),
         "evaluation": _merge(
             stored.get("evaluation")
             or (
@@ -178,7 +200,15 @@ def resolve_accompaniment(
     }
 
     summaries: dict[str, str | None] = {
-        "anamnesis": "Analisada" if steps["anamnesis"] == "done" else None,
+        "anamnesis": (
+            "Analisada"
+            if steps["anamnesis"] == "done"
+            else "Marcada como não aplicável"
+            if steps["anamnesis"] == "na"
+            else "Nenhuma resposta recebida ainda"
+            if steps["anamnesis"] == "todo" and not has_intake_submission
+            else None
+        ),
         "evaluation": None,
         "plan": published.title if published else None,
         "cycle": None,
@@ -253,13 +283,38 @@ def apply_step(
     flag_modified(journey, "accompaniment_checklist")
     if step == "anamnesis" and status == "done" and journey.anamnesis_reviewed_at is None:
         journey.anamnesis_reviewed_at = datetime.now(UTC)
+    if step == "activate" and status == "done" and journey.stage != "active":
+        # The checklist is the current readiness gate: completing this last
+        # step is a real state-machine transition, not just a checkbox.
+        # Without this, journey.stage stays stuck at whatever pre-active
+        # stage the client was left in (e.g. "approved" right after intake
+        # approval) forever, and every screen that branches on stage — not
+        # just the checklist — keeps treating the client as still needing
+        # preparation even though nothing is actually pending. Stages that
+        # can't reach "active" (archived, rejected, pre-approval) mean this
+        # checklist shouldn't have been reachable in the first place; skip
+        # the transition rather than fail the whole request over it.
+        try:
+            journey = journey_svc.transition_journey(
+                db,
+                organization_id=organization_id,
+                client_id=client_id,
+                to_stage="active",
+                next_action=None,
+            )
+        except AuthError:
+            pass
     resolved = resolve_accompaniment(
         db,
         organization_id=organization_id,
         client_id=client_id,
         journey=journey,
     )
-    journey.next_action = resolved["next_action"] or "prepare_accompaniment"
+    # None means the checklist has nothing left ("todo"/"later") — persist
+    # that truthfully instead of a magic "prepare_accompaniment" fallback,
+    # which used to stick around forever once the checklist finished and
+    # made every screen wrongly claim the preparation was still pending.
+    journey.next_action = resolved["next_action"]
     db.add(journey)
     db.commit()
     db.refresh(journey)

@@ -797,13 +797,19 @@ def _submission_public_result(
 
 
 def list_submissions(
-    db: Session, *, organization_id: uuid.UUID, status: str | None = None
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    status: str | None = None,
+    client_id: uuid.UUID | None = None,
 ) -> list[ClientIntakeSubmission]:
     q = select(ClientIntakeSubmission).where(
         ClientIntakeSubmission.organization_id == organization_id
     )
     if status:
         q = q.where(ClientIntakeSubmission.status == status)
+    if client_id:
+        q = q.where(ClientIntakeSubmission.client_id == client_id)
     return list(
         db.scalars(q.order_by(ClientIntakeSubmission.submitted_at.desc().nullslast())).all()
     )

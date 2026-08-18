@@ -43,22 +43,25 @@ export default function AccompanimentPreparePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [sheet, setSheet] = useState<StepKey | null>(null);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
   const returnBase = `/app/clients/${params.clientId}/accompaniment`;
   const terms = nomenclatureFor(profession?.profession_code);
   const checklist = journey?.accompaniment_checklist ?? {};
   const summaries = journey?.accompaniment_summaries ?? {};
 
   const load = useCallback(async () => {
-    const [c, j, p] = await Promise.all([
+    const [c, j, p, sub] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${params.clientId}`),
       apiFetch<ClientJourney>(`/api/v1/clients/${params.clientId}/journey`),
       apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
+      apiFetch<Array<{ id: string }>>(`/api/v1/intake-submissions?client_id=${params.clientId}`),
     ]);
     if (c.error) setError(c.error.message);
     else setClient(c.data ?? null);
     if (j.error) setError(j.error.message);
     else setJourney(j.data ?? null);
     if (p.data) setProfession(p.data);
+    if (sub.data?.length) setSubmissionId(sub.data[0].id);
   }, [params.clientId]);
 
   useEffect(() => {
@@ -110,9 +113,19 @@ export default function AccompanimentPreparePage() {
   const ret = encodeURIComponent(returnBase);
   const defined = journey?.progress_defined ?? STEP_ORDER.filter((k) => k !== "activate" && checklist[k] && checklist[k] !== "todo").length;
   const total = journey?.progress_total ?? 6;
+  const progressPercent = total > 0 ? Math.max(0, Math.min(100, Math.round((defined / total) * 100))) : 0;
+  const nextStepKey: StepKey | null =
+    STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "todo") ??
+    STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "later") ??
+    null;
 
   function primary(step: StepKey, value: string) {
     if (value === "done") {
+      if (step === "anamnesis") {
+        return submissionId
+          ? { href: `/app/clients/intake/${submissionId}`, label: "Ver respostas" }
+          : null;
+      }
       if (step === "cycle") {
         return { href: `/app/clients/${params.clientId}?tab=acompanhamento`, label: "Ver ciclo" };
       }
@@ -120,7 +133,7 @@ export default function AccompanimentPreparePage() {
         return { href: `/app/agenda?clientId=${params.clientId}`, label: "Ver agenda" };
       }
       if (step === "plan") {
-        return { href: `/app/clients/${params.clientId}?tab=accompaniment&focus=plan`, label: "Ver plano" };
+        return { href: `/app/clients/${params.clientId}?tab=acompanhamento`, label: "Ver plano" };
       }
       return null;
     }
@@ -128,13 +141,19 @@ export default function AccompanimentPreparePage() {
       return { action: () => setSheet(step), label: value === "later" ? "Continuar agora" : "Alterar decisão" };
     }
     if (step === "anamnesis") {
-      return { action: () => void persist("anamnesis", "done"), label: "Marcar como analisada" };
+      // A real submission exists and is waiting for review — that's the
+      // action. Otherwise there is nothing to review yet: the useful next
+      // step is getting the intake link to this client, not a button that
+      // marks an empty form "analisada".
+      return submissionId
+        ? { action: () => void persist("anamnesis", "done"), label: "Marcar como analisada" }
+        : { href: "/app/clients/intake", label: "Compartilhar link" };
     }
     if (step === "evaluation") {
       return { href: `/app/clients/${params.clientId}/evaluations/new?returnTo=${ret}`, label: "Registrar agora" };
     }
     if (step === "plan") {
-      return { href: `/app/clients/${params.clientId}?tab=accompaniment&focus=plan&returnTo=${ret}`, label: `Criar ${t(terms, "plan_short")}` };
+      return { href: `/app/clients/${params.clientId}/plans/new?returnTo=${ret}`, label: `Criar ${t(terms, "plan_short")}` };
     }
     if (step === "cycle") {
       return { href: `/app/cycles/new?clientId=${params.clientId}&returnTo=${ret}`, label: "Criar ciclo" };
@@ -161,6 +180,19 @@ export default function AccompanimentPreparePage() {
         <p className="text-sm text-[var(--color-ink-muted)]">
           {defined} de {total} etapas definidas
         </p>
+        <div
+          className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-subtle)]"
+          role="progressbar"
+          aria-valuenow={progressPercent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Preparação do acompanhamento: ${progressPercent}% concluída`}
+        >
+          <div
+            className="h-full rounded-full bg-[var(--color-primary)] transition-[width]"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
       </header>
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
@@ -168,19 +200,80 @@ export default function AccompanimentPreparePage() {
         </p>
       ) : null}
 
-      <ol className="divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <ol className="space-y-2">
         {STEP_ORDER.map((step, index) => {
           const value = (checklist[step] ?? "todo") as Status;
           const action = primary(step, value);
+          const isNext = step === nextStepKey;
+
+          if (value === "done") {
+            return (
+              <li
+                key={step}
+                data-testid={`checklist-row-${step}`}
+                className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)]/60 bg-[var(--color-surface)] px-3 py-2 opacity-80"
+              >
+                <span
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-success-subtle)] text-xs font-semibold text-[var(--color-success)]"
+                  aria-hidden
+                >
+                  ✓
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-[var(--color-ink)]">{titles[step]}</p>
+                  {summaries[step] ? (
+                    <p className="text-sm text-[var(--color-ink-muted)]">{summaries[step]}</p>
+                  ) : null}
+                </div>
+                <div
+                  data-testid={`checklist-actions-${step}`}
+                  className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-3"
+                >
+                  {action?.href ? (
+                    <Link
+                      href={action.href}
+                      className="flex min-h-11 items-center text-sm font-medium text-[var(--color-link)] underline-offset-2 hover:underline"
+                    >
+                      {action.label}
+                    </Link>
+                  ) : null}
+                  <Badge tone={statusTone(value)}>{statusLabel(value)}</Badge>
+                </div>
+              </li>
+            );
+          }
+
           return (
-            <li key={step} className="flex items-start gap-3 px-3 py-3">
-              <span className="mt-0.5 w-5 text-center text-xs font-semibold text-[var(--color-ink-muted)]">
-                {value === "done" ? "✓" : index + 1}
+            <li
+              key={step}
+              data-testid={`checklist-row-${step}`}
+              className={[
+                "flex items-start gap-3 rounded-[var(--radius-md)] border px-3 py-3",
+                isNext
+                  ? "border-[var(--color-primary)]/40 bg-[var(--color-primary-subtle)]/30 shadow-[0_1px_3px_rgba(15,15,20,0.06)]"
+                  : "border-[var(--color-border)] bg-[var(--color-surface)]",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                  isNext
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "text-[var(--color-ink-muted)]",
+                ].join(" ")}
+              >
+                {index + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-sm font-semibold text-[var(--color-ink)]">{titles[step]}</h2>
-                  <Badge tone={statusTone(value)}>{statusLabel(value)}</Badge>
+                  {isNext ? (
+                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+                      Próximo passo
+                    </span>
+                  ) : (
+                    <Badge tone={statusTone(value)}>{statusLabel(value)}</Badge>
+                  )}
                 </div>
                 {summaries[step] ? (
                   <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">{summaries[step]}</p>
@@ -188,18 +281,19 @@ export default function AccompanimentPreparePage() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {action?.href ? (
                     <Link href={action.href}>
-                      <Button>{action.label}</Button>
+                      <Button variant={isNext ? "primary" : "secondary"}>{action.label}</Button>
                     </Link>
                   ) : null}
                   {action?.action ? (
                     <Button
+                      variant={isNext ? "primary" : "secondary"}
                       disabled={busy !== null}
                       onClick={action.action}
                     >
                       {action.label}
                     </Button>
                   ) : null}
-                  {value === "todo" && step !== "anamnesis" && step !== "activate" ? (
+                  {value === "todo" && step !== "activate" ? (
                     <button
                       type="button"
                       className="text-sm font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
@@ -232,21 +326,15 @@ export default function AccompanimentPreparePage() {
               Como deseja continuar?
             </h2>
             <div className="mt-3 grid gap-2">
-              {sheet !== "anamnesis" ? (
-                <Button variant="secondary" disabled={busy !== null} onClick={() => void persist(sheet, "later")}>
-                  Fazer depois
-                </Button>
-              ) : null}
-              {sheet !== "anamnesis" && sheet !== "activate" ? (
-                <Button variant="secondary" disabled={busy !== null} onClick={() => void persist(sheet, "na")}>
-                  Não se aplica
-                </Button>
-              ) : null}
-              {sheet !== "anamnesis" ? (
-                <Button variant="ghost" disabled={busy !== null} onClick={() => void persist(sheet, "done")}>
-                  Marcar concluído
-                </Button>
-              ) : null}
+              <Button variant="secondary" disabled={busy !== null} onClick={() => void persist(sheet, "later")}>
+                Fazer depois
+              </Button>
+              <Button variant="secondary" disabled={busy !== null} onClick={() => void persist(sheet, "na")}>
+                Não se aplica
+              </Button>
+              <Button variant="ghost" disabled={busy !== null} onClick={() => void persist(sheet, "done")}>
+                Marcar concluído
+              </Button>
               {(checklist[sheet] === "na" || checklist[sheet] === "later") ? (
                 <Button variant="ghost" disabled={busy !== null} onClick={() => void persist(sheet, "todo")}>
                   Reconsiderar

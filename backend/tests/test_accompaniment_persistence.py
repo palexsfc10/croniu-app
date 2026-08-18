@@ -98,6 +98,202 @@ def test_na_survives_reload_and_cycle_is_recognized(client, register_payload):
     assert listed.json()[0]["id"] == cycle.json()["id"]
 
 
+def test_manual_client_anamnesis_defaults_pending_never_auto_na(
+    client, register_payload
+):
+    """A client added directly by the professional (no public-intake
+    submission) must default to "todo"/Pendente for anamnesis, exactly like
+    every other checklist step — never a silently-inferred "na". Whether
+    anamnesis applies is a professional decision (same precedence rule as
+    evaluation/plan's waived/external), not a fact derived from how the
+    client was created; auto-resolving it to "na" would let a client whose
+    anamnesis was simply never requested read as "Concluído"-adjacent
+    progress it didn't earn.
+
+    An earlier version of this rule *did* auto-default to "na" specifically
+    to avoid the checklist getting stuck forever on anamnesis for manual
+    clients (see docs/sprints/AUDIT_UX_FLOW_REVIEW.md) — that dead-end is
+    now avoided differently: the professional has an explicit "não se
+    aplica" action for this step (same as every other step), so nothing is
+    stuck; it just requires a decision instead of assuming one."""
+    _auth(client, register_payload)
+    created = client.post("/api/v1/clients", json={"full_name": "Cliente Manual"})
+    assert created.status_code == 201
+    client_id = created.json()["id"]
+
+    journey = client.get(f"/api/v1/clients/{client_id}/journey")
+    assert journey.status_code == 200
+    body = journey.json()
+    assert body["accompaniment_checklist"]["anamnesis"] == "todo"
+    assert body["next_action"] == "review_anamnesis"
+    assert body["accompaniment_summaries"]["anamnesis"]
+
+    # Explicit "não se aplica" resolves it — same precedence every other
+    # step already has, now also available for anamnesis.
+    marked_na = client.patch(
+        f"/api/v1/clients/{client_id}/journey/accompaniment-step",
+        json={"step": "anamnesis", "status": "na"},
+    )
+    assert marked_na.status_code == 200, marked_na.text
+    assert marked_na.json()["accompaniment_checklist"]["anamnesis"] == "na"
+    assert marked_na.json()["next_action"] != "review_anamnesis"
+
+    # Reconsidering and marking it reviewed instead still works (explicit
+    # decisions are never one-way).
+    marked_done = client.patch(
+        f"/api/v1/clients/{client_id}/journey/accompaniment-step",
+        json={"step": "anamnesis", "status": "done"},
+    )
+    assert marked_done.status_code == 200
+    assert marked_done.json()["accompaniment_checklist"]["anamnesis"] == "done"
+
+
+def _create_intake_link(client: TestClient) -> str:
+    created = client.post("/api/v1/intake-link")
+    assert created.status_code == 200, created.text
+    return created.json()["token"]
+
+
+def _submit_intake(client: TestClient, token: str, *, idem: str) -> dict:
+    payload = {
+        "full_name": "Aluno Convite",
+        "phone": "11999990099",
+        "age_band": "18+",
+        "primary_goal": "Condicionamento",
+        "answers": {
+            "a_primary_goal": "Condicionamento",
+            "d_chest_pain": "nao",
+            "d_dizziness": "nao",
+            "g_chest_pain_exertion": "nao",
+            "g_dizziness_exertion": "nao",
+        },
+        "consents": {
+            "purpose_science": True,
+            "sensitive_health": True,
+            "self_declared": True,
+            "not_medical": True,
+            "privacy_policy": True,
+            "whatsapp_optional": False,
+        },
+        "idempotency_key": idem,
+        "organization_id": "00000000-0000-0000-0000-000000000099",
+    }
+    submitted = client.post(f"/api/v1/public/intake/{token}/submit", json=payload)
+    assert submitted.status_code == 201, submitted.text
+    return submitted.json()
+
+
+def test_checklist_fully_done_clears_next_action_and_activates_stage_manual_client(
+    client, register_payload
+):
+    """Owner-reported contradiction: the résumé card kept telling the
+    professional to "Preparar acompanhamento" even though every checklist
+    step already showed Concluído.
+
+    Root cause: apply_step() persisted the literal string
+    "prepare_accompaniment" onto journey.next_action as a fallback whenever
+    resolve_accompaniment() had nothing left to report (next_action=None),
+    and _journey_out() preferred that stale persisted value over the fresh
+    None. For a manually-created client (journey starts stage="active"
+    already, see ensure_legacy_active_journey), this is the only broken
+    piece — the sibling test below covers the invite-flow client, where the
+    stage itself was also stuck.
+
+    Asserts next_action reflects a genuinely finished state on a fresh GET
+    — not just in the PATCH response."""
+    _auth(client, register_payload)
+    created = client.post("/api/v1/clients", json={"full_name": "Cliente Pronto"})
+    assert created.status_code == 201
+    client_id = created.json()["id"]
+
+    baseline = client.get(f"/api/v1/clients/{client_id}/journey").json()
+    assert baseline["stage"] == "active"
+    assert baseline["accompaniment_checklist"]["activate"] == "done"
+    assert baseline["accompaniment_checklist"]["anamnesis"] == "todo"
+
+    na = client.patch(
+        f"/api/v1/clients/{client_id}/journey/accompaniment-step",
+        json={"step": "anamnesis", "status": "na"},
+    )
+    assert na.status_code == 200, na.text
+
+    for step in ("evaluation", "plan", "cycle", "agenda", "routine"):
+        done = client.patch(
+            f"/api/v1/clients/{client_id}/journey/accompaniment-step",
+            json={"step": step, "status": "done"},
+        )
+        assert done.status_code == 200, done.text
+
+    body = done.json()
+    assert body["next_action"] is None
+    assert all(v in {"done", "na"} for v in body["accompaniment_checklist"].values())
+
+    # Not just the mutation response — a fresh, independent GET must agree.
+    reread = client.get(f"/api/v1/clients/{client_id}/journey").json()
+    assert reread["next_action"] is None
+    assert reread["progress_defined"] == reread["progress_total"]
+
+
+def test_checklist_fully_done_clears_next_action_and_activates_stage_invite_client(
+    client, register_payload
+):
+    """Same contradiction as above, reproduced end-to-end for a client who
+    came through the public intake link and was approved — the exact path
+    the owner's screenshots show (anamnesis already "Analisada", not "Não
+    se aplica"). Here journey.stage starts at "approved", not "active":
+    marking the checklist's "activate" step done must be a real state
+    transition (journey.stage -> "active"), not just a JSON flag, or every
+    stage-gated branch elsewhere keeps treating the client as still in
+    preparation forever — see journey.VALID_TRANSITIONS and
+    accompaniment.apply_step."""
+    payload = dict(register_payload)
+    payload["profession_code"] = "personal_trainer"
+    _auth(client, payload)
+    token = _create_intake_link(client)
+    submitted = _submit_intake(client, token, idem="prep-invite-1")
+    submission_id = submitted["submission_id"]
+
+    approved = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/approve", json={}
+    )
+    assert approved.status_code == 200, approved.text
+    client_id = approved.json()["client_id"]
+    assert client_id
+
+    started = client.get(f"/api/v1/clients/{client_id}/journey").json()
+    assert started["stage"] == "approved"
+    assert started["accompaniment_checklist"]["anamnesis"] == "todo"
+    assert started["accompaniment_checklist"]["activate"] == "todo"
+
+    for step in ("anamnesis", "evaluation", "plan", "cycle", "agenda", "routine"):
+        done = client.patch(
+            f"/api/v1/clients/{client_id}/journey/accompaniment-step",
+            json={"step": step, "status": "done"},
+        )
+        assert done.status_code == 200, done.text
+
+    mid = client.get(f"/api/v1/clients/{client_id}/journey").json()
+    assert mid["stage"] == "approved"
+    assert mid["next_action"] == "activate_accompaniment"
+    assert mid["accompaniment_checklist"]["activate"] == "todo"
+
+    activated = client.patch(
+        f"/api/v1/clients/{client_id}/journey/accompaniment-step",
+        json={"step": "activate", "status": "done"},
+    )
+    assert activated.status_code == 200, activated.text
+    body = activated.json()
+    assert body["accompaniment_checklist"]["activate"] == "done"
+    assert body["next_action"] is None
+    assert body["stage"] == "active"
+
+    reread = client.get(f"/api/v1/clients/{client_id}/journey").json()
+    assert reread["next_action"] is None
+    assert reread["stage"] == "active"
+    assert all(v in {"done", "na"} for v in reread["accompaniment_checklist"].values())
+    assert reread["progress_defined"] == reread["progress_total"]
+
+
 def test_invalid_step_and_status_rejected(client, register_payload):
     _auth(client, register_payload)
     created = client.post("/api/v1/clients", json={"full_name": "Cliente Valid"})

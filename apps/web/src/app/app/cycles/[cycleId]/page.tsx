@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   apiFetch,
   formatBRL,
+  formatDateBR,
   type Cycle,
   type Receivable,
   type WhatsAppPrep,
@@ -14,6 +15,7 @@ import { formatCycleDetailLines } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
 import { ContextualBar } from "@/components/app/contextual-bar";
 import { BackLink } from "@/components/app/back-link";
+import { receivableStatusLabel } from "@/lib/status-tone";
 
 export default function CycleDetailPage() {
   const params = useParams<{ cycleId: string }>();
@@ -203,7 +205,8 @@ export default function CycleDetailPage() {
                     href={`/app/receivables/${item.id}`}
                     className="block rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-sm"
                   >
-                    {formatBRL(item.amount_cents)} · {item.status} · vence {item.due_on}
+                    {formatBRL(item.amount_cents)} · {receivableStatusLabel(item.status)} · vence{" "}
+                    {formatDateBR(item.due_on)}
                   </Link>
                 </li>
               ))}

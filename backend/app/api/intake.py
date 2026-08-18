@@ -52,7 +52,12 @@ def _journey_out(row, db: Session | None = None, organization_id=None) -> Journe
             client_id=row.client_id,
             journey=row,
         )
-    next_action = (resolved["next_action"] if resolved else None) or row.next_action
+    # `resolved` is the live, authoritative computation — when present, its
+    # next_action is trusted as-is, including None (nothing pending). Only
+    # fall back to the persisted row.next_action when no live resolution ran
+    # (call sites that don't pass db/organization_id); never let a stale
+    # persisted value override a fresh "nothing left to do" signal.
+    next_action = resolved["next_action"] if resolved is not None else row.next_action
     return JourneyOut(
         id=row.id,
         client_id=row.client_id,
@@ -251,11 +256,12 @@ def disable_link_by_id(
 @router.get("/intake-submissions", response_model=list[IntakeSubmissionListItem])
 def list_submissions(
     status: str | None = Query(default=None),
+    client_id: UUID | None = Query(default=None),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> list[IntakeSubmissionListItem]:
     rows = intake_svc.list_submissions(
-        db, organization_id=auth.organization.id, status=status
+        db, organization_id=auth.organization.id, status=status, client_id=client_id
     )
     return [
         IntakeSubmissionListItem(

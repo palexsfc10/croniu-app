@@ -291,7 +291,9 @@ export default function AgendaPage() {
           Próximo
         </Button>
       </div>
-      <p className="text-sm font-semibold text-[var(--color-ink)]">{day ?? "…"}</p>
+      <p className="text-sm font-semibold text-[var(--color-ink)]">
+        {day ? formatHumanDate(day) : "…"}
+      </p>
 
       <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
         <input

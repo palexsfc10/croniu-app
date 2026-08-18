@@ -2,12 +2,141 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch, type Client, type Cycle, type HomeSummary, type ProfessionProfile } from "@/lib/api";
+import {
+  apiFetch,
+  type Client,
+  type Cycle,
+  type HomeSummary,
+  type IntakeLink,
+  type ProfessionProfile,
+} from "@/lib/api";
 import { nomenclatureFor } from "@/lib/nomenclature";
 import { clientInitials, clientListPresentation } from "@/lib/client-list";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { IconChevronRight, IconLink, IconPlus, IconUser } from "@/components/ui/icons";
+import { IconChevronRight, IconLink, IconPlus, IconUser, IconWhatsApp } from "@/components/ui/icons";
+
+function ShareLinkButton({
+  variant = "secondary",
+  intakeFormLabel,
+}: {
+  variant?: "primary" | "secondary";
+  intakeFormLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [link, setLink] = useState<IntakeLink | null>(null);
+  const [rawToken, setRawToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
+
+  async function ensureLoaded() {
+    if (loaded) return;
+    const res = await apiFetch<IntakeLink>("/api/v1/intake-link");
+    if (res.data) setLink(res.data);
+    setLoaded(true);
+  }
+
+  function publicUrl() {
+    if (rawToken) return `${window.location.origin}/entrar/${rawToken}`;
+    if (link?.public_url) return link.public_url;
+    if (link?.public_path) return `${window.location.origin}${link.public_path}`;
+    return null;
+  }
+
+  async function createLink() {
+    setBusy(true);
+    setInfo(null);
+    const result = await apiFetch<IntakeLink>("/api/v1/intake-link", { method: "POST", body: "{}" });
+    setBusy(false);
+    if (result.error) {
+      setInfo(result.error.message);
+      return;
+    }
+    setLink(result.data ?? null);
+    setRawToken(result.data?.token ?? null);
+  }
+
+  async function copyLink() {
+    const url = publicUrl();
+    if (!url) {
+      setInfo("Crie o link para copiar.");
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    setInfo("Link copiado.");
+  }
+
+  function shareWhatsApp() {
+    if (link?.wa_message_url) {
+      window.open(link.wa_message_url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const url = publicUrl();
+    if (!url) {
+      setInfo("Crie o link para compartilhar.");
+      return;
+    }
+    const text = encodeURIComponent(`Olá! Complete o ${intakeFormLabel} neste link: ${url}`);
+    window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <div className="relative min-w-0">
+      <Button
+        variant={variant}
+        className="min-h-11 whitespace-nowrap"
+        aria-expanded={open}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) void ensureLoaded();
+        }}
+      >
+        <IconLink className="mr-1.5 h-4 w-4" />
+        Compartilhar link
+      </Button>
+      {open ? (
+        <div className="absolute left-0 z-20 mt-1 w-64 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
+          {info ? (
+            <p role="status" className="mb-2 text-xs text-[var(--color-ink-muted)]">
+              {info}
+            </p>
+          ) : null}
+          {!loaded ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
+          ) : !link?.has_active_link ? (
+            <Button fullWidth disabled={busy} onClick={() => void createLink()}>
+              Criar link de convite
+            </Button>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <Button fullWidth disabled={busy} onClick={() => void copyLink()}>
+                Copiar link
+              </Button>
+              <Button
+                fullWidth
+                variant="secondary"
+                disabled={busy}
+                onClick={shareWhatsApp}
+                className="inline-flex items-center justify-center gap-2"
+              >
+                <IconWhatsApp className="h-5 w-5" aria-hidden />
+                WhatsApp
+              </Button>
+              <Link
+                href="/app/clients/intake"
+                className="block text-center text-xs text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
+              >
+                Ver fila de cadastros
+              </Link>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function ClientsPage() {
   const [items, setItems] = useState<Client[]>([]);
@@ -75,12 +204,7 @@ export default function ClientsPage() {
               {addLabel}
             </Button>
           </Link>
-          <Link href="/app/clients/intake" className="min-w-0">
-            <Button variant="secondary" className="min-h-11 whitespace-nowrap">
-              <IconLink className="mr-1.5 h-4 w-4" />
-              Compartilhar link
-            </Button>
-          </Link>
+          <ShareLinkButton intakeFormLabel={terms.intake_form} />
         </div>
         {intakeCount > 0 ? (
           <Link
@@ -144,11 +268,7 @@ export default function ClientsPage() {
               <Link href="/app/clients/new">
                 <Button className="min-h-11">{addLabel}</Button>
               </Link>
-              <Link href="/app/clients/intake">
-                <Button variant="secondary" className="min-h-11">
-                  Compartilhar link
-                </Button>
-              </Link>
+              <ShareLinkButton intakeFormLabel={terms.intake_form} />
             </div>
           }
         />

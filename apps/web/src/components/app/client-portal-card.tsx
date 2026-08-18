@@ -8,7 +8,13 @@ import { portalWhatsAppMessage, whatsappShareHref } from "@/lib/whatsapp-share";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { IconCheck, IconCopy, IconExternalLink, IconWhatsApp } from "@/components/ui/icons";
+import {
+  IconCheck,
+  IconChevronRight,
+  IconCopy,
+  IconExternalLink,
+  IconWhatsApp,
+} from "@/components/ui/icons";
 
 type Props = {
   clientId: string;
@@ -202,11 +208,12 @@ export function ClientPortalCard({
             </p>
           ) : null}
 
-          <details className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 p-3">
-            <summary className="cursor-pointer text-sm font-medium text-[var(--color-ink)]">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-1 py-1 text-sm font-medium text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">
+              <IconChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-90" />
               Mais opções
             </summary>
-            <div className="mt-3 flex flex-col gap-2">
+            <div className="mt-2 flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
               <Button
                 fullWidth
                 variant="secondary"

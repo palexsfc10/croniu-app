@@ -69,6 +69,8 @@ export function ClientProfile({ clientId }: Props) {
   const [loading, setLoading] = useState(true);
   const [evaluations, setEvaluations] = useState<ClientEvaluation[]>([]);
   const [todayIso, setTodayIso] = useState("2026-01-01");
+  const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(null);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   const terms = nomenclatureFor(profession?.profession_code);
   const returnAccomp = `/app/clients/${clientId}?tab=acompanhamento`;
@@ -76,7 +78,7 @@ export function ClientProfile({ clientId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [c, a, j, p, cy, pr, pref, ev] = await Promise.all([
+    const [c, a, j, p, cy, pr, pref, ev, rb, sub] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${clientId}`),
       apiFetch<ClientAccess>(`/api/v1/clients/${clientId}/public-access`),
       apiFetch<ClientJourney>(`/api/v1/clients/${clientId}/journey`),
@@ -85,6 +87,12 @@ export function ClientProfile({ clientId }: Props) {
       apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
       apiFetch<{ local_today: string }>("/api/v1/organization/preferences"),
       apiFetch<ClientEvaluation[]>(`/api/v1/clients/${clientId}/evaluations`),
+      apiFetch<{ groups: Array<{ occurrence_count?: number; count: number }> }>(
+        `/api/v1/routines/board?client_id=${clientId}`,
+      ),
+      apiFetch<Array<{ id: string; submitted_at: string | null }>>(
+        `/api/v1/intake-submissions?client_id=${clientId}`,
+      ),
     ]);
     if (c.error) setError(c.error.message);
     else setItem(c.data ?? null);
@@ -97,6 +105,12 @@ export function ClientProfile({ clientId }: Props) {
     if (pref.data?.local_today) setTodayIso(pref.data.local_today);
     if (ev.error && !c.error) setError(ev.error.message);
     if (ev.data) setEvaluations(ev.data);
+    if (rb.data) {
+      setRoutinePendingCount(
+        rb.data.groups.reduce((sum, g) => sum + (g.occurrence_count ?? g.count), 0),
+      );
+    }
+    if (sub.data?.length) setSubmissionId(sub.data[0].id);
     setLoading(false);
   }, [clientId]);
 
@@ -134,6 +148,7 @@ export function ClientProfile({ clientId }: Props) {
     if (action === "organize_agenda") {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `Organize a agenda do ciclo de ${name}.`,
         cta: journey?.next_action_label || "Organizar agenda",
         href: `/app/agenda?clientId=${clientId}`,
@@ -142,6 +157,7 @@ export function ClientProfile({ clientId }: Props) {
     if (action === "create_cycle") {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `Configure o ciclo de ${name}.`,
         cta: "Criar ciclo",
         href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
@@ -156,26 +172,42 @@ export function ClientProfile({ clientId }: Props) {
       action === "prepare_accompaniment" ||
       action === "continue_onboarding"
     ) {
+      const checklist = journey?.accompaniment_checklist ?? {};
+      const stepLabels: Record<string, string> = {
+        anamnesis: terms.intake_form,
+        evaluation: t(terms, "evaluation"),
+        plan: t(terms, "plan"),
+        cycle: "ciclo",
+        agenda: "agenda",
+        routine: "rotina",
+      };
+      const pending = ["anamnesis", "evaluation", "plan", "cycle", "agenda", "routine"].filter(
+        (key) => !checklist[key] || checklist[key] === "todo",
+      );
+      const pendingText = pending.length
+        ? ` Falta: ${pending.map((key) => stepLabels[key]).join(", ")}.`
+        : "";
       return {
         title: "Próximo passo",
-        text: `Continue a preparação de ${name}.`,
+        isPending: true,
+        text: `Continue a preparação de ${name}.${pendingText}`,
         cta: journey?.next_action_label || "Preparar acompanhamento",
         href: prepareHref,
       };
     }
-    if (!activeCycle && action !== "organize_agenda") {
-      return {
-        title: "Próximo passo",
-        text: `Configure o primeiro ciclo de ${name}.`,
-        cta: "Criar ciclo",
-        href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
-      };
-    }
+    // No standalone "sem ciclo ativo" fallback here: whether a cycle is
+    // still pending is exactly what the checklist-driven `create_cycle`
+    // branch above already answers, from the same source of truth used by
+    // the preparation checklist itself. A client whose cycle step was
+    // explicitly resolved "não se aplica" has no active cycle either, and
+    // duplicating that check here would contradict the checklist by asking
+    // the professional to create a cycle they already said didn't apply.
     const ending = published?.milestones?.find((m) => m.kind === "plan_ending");
     const review = published?.milestones?.find((m) => m.kind === "plan_review");
     if (ending && published && ending.due_on <= addDaysIso(todayIso, 7) && ending.due_on >= todayIso) {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `O planejamento atual termina nesta semana.`,
         cta: t(terms, "plan_ending"),
         href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
@@ -184,6 +216,7 @@ export function ClientProfile({ clientId }: Props) {
     if (review && published && review.due_on <= addDaysIso(todayIso, 7)) {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `O ${t(terms, "plan")} de ${name} precisa ser revisado.`,
         cta: `Revisar ${t(terms, "plan_short")}`,
         href: `/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
@@ -192,26 +225,33 @@ export function ClientProfile({ clientId }: Props) {
     if (draft) {
       return {
         title: "Próximo passo",
+        isPending: true,
         text: `Há um rascunho de ${t(terms, "plan")} para continuar.`,
         cta: "Continuar rascunho",
         href: `/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
       };
     }
-    if (
-      journey?.stage === "approved" ||
-      journey?.next_action === "prepare_accompaniment" ||
-      journey?.next_action === "continue_onboarding"
-    ) {
+    // Every checklist-driven and operational branch above already covers
+    // "there's something to do." Reaching here means the preparation
+    // checklist has nothing pending (journey.next_action is authoritatively
+    // null — see backend/app/services/accompaniment.py) and no plan
+    // ending/review/draft needs attention either: there is genuinely no
+    // next step, so none is invented. `journey` existing at all means the
+    // initial preparation ran its course at some point (real state, not a
+    // guess) — that's worth naming explicitly instead of a generic filler.
+    if (journey) {
       return {
-        title: "Próximo passo",
-        text: `Prepare o acompanhamento de ${name}.`,
-        cta: "Preparar acompanhamento",
-        href: `/app/clients/${clientId}/accompaniment`,
+        title: "Acompanhamento pronto",
+        isPending: false,
+        text: `A jornada inicial de ${name} está concluída.`,
+        cta: "Ver acompanhamento",
+        href: returnAccomp,
       };
     }
     return {
       title: "Próximo passo",
-      text: "Tudo organizado por enquanto.",
+      isPending: false,
+      text: `Tudo em dia com ${name}.`,
       cta: null as string | null,
       href: null as string | null,
     };
@@ -316,7 +356,7 @@ export function ClientProfile({ clientId }: Props) {
           </h1>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="info">{clientStatusLabel(item.status) || stageLabel}</Badge>
-            {next.cta ? (
+            {next.isPending && next.cta ? (
               <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
             ) : null}
           </div>
@@ -335,7 +375,7 @@ export function ClientProfile({ clientId }: Props) {
         role="tablist"
         aria-label="Ficha"
         onKeyDown={onTabKey}
-        className="grid h-12 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1fr)] items-stretch gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-0.5 max-[360px]:h-12"
+        className="grid h-12 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1fr)] items-stretch gap-0.5 rounded-[var(--radius-md)] border border-[var(--color-border)]/60 bg-[var(--color-surface-subtle)] p-0.5 shadow-[inset_0_1px_2px_rgba(15,15,20,0.04)] max-[360px]:h-12"
       >
         {tabs.map((entry) => (
           <button
@@ -346,7 +386,7 @@ export function ClientProfile({ clientId }: Props) {
             aria-selected={tab === entry.id}
             aria-controls={`ficha-panel-${entry.id}`}
             tabIndex={tab === entry.id ? 0 : -1}
-            className="flex min-h-11 min-w-0 items-center justify-center rounded-[10px] px-1 text-center text-[13px] font-medium leading-tight text-[var(--color-ink-muted)] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_2px_rgba(15,15,20,0.06)] max-[360px]:text-xs"
+            className="flex min-h-11 min-w-0 items-center justify-center rounded-[10px] px-1 text-center text-[13px] font-medium leading-tight text-[var(--color-ink-muted)] whitespace-nowrap transition-all duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:font-semibold aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_3px_rgba(15,15,20,0.08)] max-[360px]:text-xs"
             onClick={() => setTab(entry.id)}
           >
             {entry.label}
@@ -432,7 +472,7 @@ export function ClientProfile({ clientId }: Props) {
               }
             />
           ) : null}
-          {next.cta && next.href ? (
+          {next.isPending && next.cta && next.href ? (
             <EmptyStateGuide
               title="Próxima ação"
               body={next.text}
@@ -460,6 +500,11 @@ export function ClientProfile({ clientId }: Props) {
                     .filter(Boolean)
                     .join(" · ")
                 : "Nenhum ciclo ainda."
+            }
+            progress={
+              activeCycle?.lesson_count
+                ? { value: activeCycle.lessons_completed ?? 0, max: activeCycle.lesson_count }
+                : null
             }
             primary={
               activeCycle
@@ -515,7 +560,11 @@ export function ClientProfile({ clientId }: Props) {
           <AccompanimentCard
             icon={<IconClipboardList className="h-5 w-5" />}
             title="Avaliações"
-            state={evaluations.length ? `${evaluations.length}` : "Vazio"}
+            state={
+              evaluations[0]
+                ? `${protocolStatusLabel(evaluations[0].status)} · ${evaluations.length}`
+                : "Vazio"
+            }
             summary={
               evaluations[0]?.title || "Nenhuma avaliação registrada"
             }
@@ -541,10 +590,20 @@ export function ClientProfile({ clientId }: Props) {
           <AccompanimentCard
             icon={<IconHistory className="h-5 w-5" />}
             title="Rotinas"
-            state="Quadro"
-            summary="Defina a recorrência e acompanhe cada ocorrência sem perder as próximas."
+            state={
+              routinePendingCount === null
+                ? null
+                : routinePendingCount > 0
+                  ? `${routinePendingCount} pendente${routinePendingCount === 1 ? "" : "s"}`
+                  : "Em dia"
+            }
+            summary={
+              routinePendingCount
+                ? `${routinePendingCount} ocorrência${routinePendingCount === 1 ? "" : "s"} aguardando ação.`
+                : "Nenhuma pendência de rotina para este aluno agora."
+            }
             primary={{
-              href: `/app/routines?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+              href: `/app/routines/pending?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
               label: "Ver rotinas",
               variant: "secondary",
             }}
@@ -588,6 +647,23 @@ export function ClientProfile({ clientId }: Props) {
               <dd>{item.notes || "—"}</dd>
             </div>
           </dl>
+
+          {submissionId ? (
+            <Link
+              href={`/app/clients/intake/${submissionId}`}
+              className="flex min-h-11 items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-[var(--color-ink)]">
+                  {terms.intake_form.charAt(0).toUpperCase() + terms.intake_form.slice(1)}
+                </span>
+                <span className="block text-sm text-[var(--color-ink-muted)]">
+                  Respostas enviadas no cadastro
+                </span>
+              </span>
+              <span className="shrink-0 text-sm font-medium text-[var(--color-link)]">Ver</span>
+            </Link>
+          ) : null}
 
           <ClientPortalCard
             clientId={clientId}
