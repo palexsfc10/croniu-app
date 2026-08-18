@@ -24,6 +24,7 @@ type Template = {
   trigger_type: string;
   anchor?: string;
   offset_days?: number;
+  audience?: string;
 };
 
 type EnabledRoutine = {
@@ -92,6 +93,7 @@ export function RoutineTemplatesPanel({ enabled, onChanged }: Props) {
       trigger_type: tpl.trigger_type,
       anchor: tpl.anchor,
       offset_days: tpl.offset_days ?? 0,
+      audience: tpl.trigger_type === "calendar" ? tpl.audience || "all_active" : undefined,
       weekdays: [weekday],
       starts_on: startsOn || null,
       no_end: true,

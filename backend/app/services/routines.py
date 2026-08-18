@@ -224,10 +224,16 @@ def skip_occurrence(
     db: Session, *, organization_id: uuid.UUID, task_id: uuid.UUID, today: date | None = None
 ) -> RecurringClientTask:
     row = get_routine(db, organization_id=organization_id, task_id=task_id)
-    base = row.next_run_on or today or date.today()
-    row.next_run_on = rec_svc.advance(
-        row.recurrence, row.filter_json or {}, weekday=row.weekday, from_day=base
-    )
+    if row.recurrence == "once":
+        # A "once" task has a single due date; skipping it ends the routine
+        # rather than rescheduling — there is no stable next date to advance to.
+        row.status = "archived"
+        row.next_run_on = None
+    else:
+        base = row.next_run_on or today or date.today()
+        row.next_run_on = rec_svc.advance(
+            row.recurrence, row.filter_json or {}, weekday=row.weekday, from_day=base
+        )
     db.add(row)
     db.commit()
     db.refresh(row)
