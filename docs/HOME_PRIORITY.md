@@ -19,7 +19,7 @@ Primeiro match vence. Compromissos **nunca** viram `priority_action` (evitam rep
    - `status == "ended"` **ou** `ends_on < local_today`
    - Sem renovação aberta do ciclo, sem renovação `resolved` com sucessor, sem sucessor ativo mesmo cliente+serviço
 3. **Pedido de renovação (portal)** → `renewal_requested`
-4. **Ciclo próximo do encerramento** → `cycle_nearing_end` (ativos `is_nearing_end` após suppress)
+4. **Ciclo próximo do encerramento** → `cycle_nearing_end` (ativos `is_nearing_end` após suppress **e** dentro da janela de 7 dias até o último dia de vigência — `home_cycle_ending_eligible` em `domain.py`; motivo por aulas baixas/esgotadas não entra nessa janela). A listagem/detalhe de Ciclos e o badge "Termina em breve" continuam usando o aviso mais amplo de 30 dias (`NEARING_END_DAYS`) — não são afetados por essa janela.
 5. **Outra pendência operacional real** (nesta ordem):
    - conflito de agenda do dia → `agenda_conflict`
    - compromisso do dia com `ends_at <= now` ainda `scheduled` → `appointment_needs_outcome`
