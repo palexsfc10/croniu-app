@@ -98,6 +98,33 @@ def test_na_survives_reload_and_cycle_is_recognized(client, register_payload):
     assert listed.json()[0]["id"] == cycle.json()["id"]
 
 
+def test_manually_created_client_does_not_get_stuck_on_anamnesis(client, register_payload):
+    """UX finding (owner video review): a client added directly by the
+    professional has no intake submission to review, so the anamnesis step
+    could never resolve and permanently blocked the "next step" indicator —
+    even after every other step (evaluation, plan, cycle, agenda) was done.
+    See docs/sprints/AUDIT_UX_FLOW_REVIEW.md."""
+    _auth(client, register_payload)
+    created = client.post("/api/v1/clients", json={"full_name": "Cliente Manual"})
+    assert created.status_code == 201
+    client_id = created.json()["id"]
+
+    journey = client.get(f"/api/v1/clients/{client_id}/journey")
+    assert journey.status_code == 200
+    body = journey.json()
+    assert body["accompaniment_checklist"]["anamnesis"] == "na"
+    assert body["next_action"] != "review_anamnesis"
+    assert body["accompaniment_summaries"]["anamnesis"]
+
+    # An explicit professional decision still wins over the auto "na" default.
+    marked_done = client.patch(
+        f"/api/v1/clients/{client_id}/journey/accompaniment-step",
+        json={"step": "anamnesis", "status": "done"},
+    )
+    assert marked_done.status_code == 200
+    assert marked_done.json()["accompaniment_checklist"]["anamnesis"] == "done"
+
+
 def test_invalid_step_and_status_rejected(client, register_payload):
     _auth(client, register_payload)
     created = client.post("/api/v1/clients", json={"full_name": "Cliente Valid"})

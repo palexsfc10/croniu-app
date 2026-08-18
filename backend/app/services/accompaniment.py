@@ -26,12 +26,12 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.appointment import Appointment
 from app.models.cycle import Cycle
-from app.models.intake import ClientJourney
+from app.models.intake import ClientIntakeSubmission, ClientJourney
 from app.models.organization import Organization
+from app.services import cycle_period as cycle_period_svc
 from app.services import evaluations as eval_svc
 from app.services import journey as journey_svc
 from app.services import protocols as proto_svc
-from app.services import cycle_period as cycle_period_svc
 from app.services.auth import AuthError
 
 STEP_KEYS = (
@@ -151,9 +151,30 @@ def resolve_accompaniment(
     anamnesis_done = bool(journey and journey.anamnesis_reviewed_at) or stored.get(
         "anamnesis"
     ) == "done"
+    has_intake_submission = (
+        db.scalar(
+            select(ClientIntakeSubmission.id)
+            .where(
+                ClientIntakeSubmission.organization_id == organization_id,
+                ClientIntakeSubmission.client_id == client_id,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+    # A client added directly by the professional (not via the public intake
+    # link) never has a submission to review — "todo" would block the
+    # checklist forever, since nothing can ever make it "done". Treat that
+    # absence as "não se aplica" unless the professional stored something
+    # else explicitly (na/later/done still win, same as every other step).
+    anamnesis_default = "todo" if has_intake_submission else "na"
 
     steps = {
-        "anamnesis": "done" if anamnesis_done else _merge(stored.get("anamnesis"), fact_done=False),
+        "anamnesis": (
+            "done"
+            if anamnesis_done
+            else _merge(stored.get("anamnesis") or anamnesis_default, fact_done=False)
+        ),
         "evaluation": _merge(
             stored.get("evaluation")
             or (
@@ -178,7 +199,13 @@ def resolve_accompaniment(
     }
 
     summaries: dict[str, str | None] = {
-        "anamnesis": "Analisada" if steps["anamnesis"] == "done" else None,
+        "anamnesis": (
+            "Analisada"
+            if steps["anamnesis"] == "done"
+            else "Cliente cadastrado diretamente, sem formulário"
+            if steps["anamnesis"] == "na" and not has_intake_submission
+            else None
+        ),
         "evaluation": None,
         "plan": published.title if published else None,
         "cycle": None,

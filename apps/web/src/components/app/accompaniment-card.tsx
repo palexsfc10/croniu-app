@@ -15,6 +15,7 @@ type Props = {
   state?: string | null;
   summary: string;
   detail?: string | null;
+  progress?: { value: number; max: number } | null;
   primary?: AccompanimentAction | null;
   secondary?: AccompanimentAction | null;
   extras?: AccompanimentAction[];
@@ -27,10 +28,15 @@ export function AccompanimentCard({
   state,
   summary,
   detail,
+  progress,
   primary,
   secondary,
   extras = [],
 }: Props) {
+  const progressPercent =
+    progress && progress.max > 0
+      ? Math.max(0, Math.min(100, Math.round((progress.value / progress.max) * 100)))
+      : null;
   const actions = [primary, secondary].filter(Boolean) as AccompanimentAction[];
   const twoCol = actions.length === 2 && actions.every((a) => a.label.length <= 16);
 
@@ -54,6 +60,21 @@ export function AccompanimentCard({
           </div>
           <p className="text-sm text-[var(--color-ink)]">{summary}</p>
           {detail ? <p className="text-sm text-[var(--color-ink-muted)]">{detail}</p> : null}
+          {progressPercent !== null ? (
+            <div
+              className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-subtle)]"
+              role="progressbar"
+              aria-valuenow={progressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`${title}: ${progressPercent}% concluído`}
+            >
+              <div
+                className="h-full rounded-full bg-[var(--color-primary)] transition-[width]"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          ) : null}
           {actions.length ? (
             <div
               className={

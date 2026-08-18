@@ -69,6 +69,7 @@ export function ClientProfile({ clientId }: Props) {
   const [loading, setLoading] = useState(true);
   const [evaluations, setEvaluations] = useState<ClientEvaluation[]>([]);
   const [todayIso, setTodayIso] = useState("2026-01-01");
+  const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(null);
 
   const terms = nomenclatureFor(profession?.profession_code);
   const returnAccomp = `/app/clients/${clientId}?tab=acompanhamento`;
@@ -76,7 +77,7 @@ export function ClientProfile({ clientId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [c, a, j, p, cy, pr, pref, ev] = await Promise.all([
+    const [c, a, j, p, cy, pr, pref, ev, rb] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${clientId}`),
       apiFetch<ClientAccess>(`/api/v1/clients/${clientId}/public-access`),
       apiFetch<ClientJourney>(`/api/v1/clients/${clientId}/journey`),
@@ -85,6 +86,9 @@ export function ClientProfile({ clientId }: Props) {
       apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
       apiFetch<{ local_today: string }>("/api/v1/organization/preferences"),
       apiFetch<ClientEvaluation[]>(`/api/v1/clients/${clientId}/evaluations`),
+      apiFetch<{ groups: Array<{ occurrence_count?: number; count: number }> }>(
+        `/api/v1/routines/board?client_id=${clientId}`,
+      ),
     ]);
     if (c.error) setError(c.error.message);
     else setItem(c.data ?? null);
@@ -97,6 +101,11 @@ export function ClientProfile({ clientId }: Props) {
     if (pref.data?.local_today) setTodayIso(pref.data.local_today);
     if (ev.error && !c.error) setError(ev.error.message);
     if (ev.data) setEvaluations(ev.data);
+    if (rb.data) {
+      setRoutinePendingCount(
+        rb.data.groups.reduce((sum, g) => sum + (g.occurrence_count ?? g.count), 0),
+      );
+    }
     setLoading(false);
   }, [clientId]);
 
@@ -461,6 +470,11 @@ export function ClientProfile({ clientId }: Props) {
                     .join(" · ")
                 : "Nenhum ciclo ainda."
             }
+            progress={
+              activeCycle?.lesson_count
+                ? { value: activeCycle.lessons_completed ?? 0, max: activeCycle.lesson_count }
+                : null
+            }
             primary={
               activeCycle
                 ? { href: `/app/cycles/${activeCycle.id}`, label: "Ver ciclo", variant: "secondary" }
@@ -515,7 +529,11 @@ export function ClientProfile({ clientId }: Props) {
           <AccompanimentCard
             icon={<IconClipboardList className="h-5 w-5" />}
             title="Avaliações"
-            state={evaluations.length ? `${evaluations.length}` : "Vazio"}
+            state={
+              evaluations[0]
+                ? `${protocolStatusLabel(evaluations[0].status)} · ${evaluations.length}`
+                : "Vazio"
+            }
             summary={
               evaluations[0]?.title || "Nenhuma avaliação registrada"
             }
@@ -541,10 +559,20 @@ export function ClientProfile({ clientId }: Props) {
           <AccompanimentCard
             icon={<IconHistory className="h-5 w-5" />}
             title="Rotinas"
-            state="Quadro"
-            summary="Defina a recorrência e acompanhe cada ocorrência sem perder as próximas."
+            state={
+              routinePendingCount === null
+                ? null
+                : routinePendingCount > 0
+                  ? `${routinePendingCount} pendente${routinePendingCount === 1 ? "" : "s"}`
+                  : "Em dia"
+            }
+            summary={
+              routinePendingCount
+                ? `${routinePendingCount} ocorrência${routinePendingCount === 1 ? "" : "s"} aguardando ação.`
+                : "Nenhuma pendência de rotina para este aluno agora."
+            }
             primary={{
-              href: `/app/routines?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+              href: `/app/routines/pending?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
               label: "Ver rotinas",
               variant: "secondary",
             }}

@@ -43,6 +43,7 @@ export default function PlanEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState<Protocol | null>(null);
+  const [loadingExisting, setLoadingExisting] = useState(Boolean(protocolId));
 
   const terms = nomenclatureFor(profession?.profession_code);
   const guide = planGuidance(profession?.profession_code);
@@ -90,6 +91,7 @@ export default function PlanEditorPage() {
           setFeedbackDays(proto.data.feedback_interval_days ?? "none");
         }
       }
+      setLoadingExisting(false);
     })();
   }, [params.clientId, protocolId]);
 
@@ -179,6 +181,14 @@ export default function PlanEditorPage() {
         </p>
       ) : null}
 
+      {loadingExisting ? (
+        <div className="space-y-3" aria-busy="true">
+          <div className="h-11 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+          <div className="h-11 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+          <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+        </div>
+      ) : (
+        <>
       <FormSectionIntro title="Registro do plano" description={guide.title} />
       <TextField
         label="Título"
@@ -360,6 +370,8 @@ export default function PlanEditorPage() {
           Cancelar
         </Link>
       </div>
+        </>
+      )}
     </div>
   );
 }
