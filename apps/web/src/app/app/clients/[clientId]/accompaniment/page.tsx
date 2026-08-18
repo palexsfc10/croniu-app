@@ -43,22 +43,27 @@ export default function AccompanimentPreparePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [sheet, setSheet] = useState<StepKey | null>(null);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
   const returnBase = `/app/clients/${params.clientId}/accompaniment`;
   const terms = nomenclatureFor(profession?.profession_code);
   const checklist = journey?.accompaniment_checklist ?? {};
   const summaries = journey?.accompaniment_summaries ?? {};
 
   const load = useCallback(async () => {
-    const [c, j, p] = await Promise.all([
+    const [c, j, p, sub] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${params.clientId}`),
       apiFetch<ClientJourney>(`/api/v1/clients/${params.clientId}/journey`),
       apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
+      apiFetch<Array<{ id: string }>>(
+        `/api/v1/intake-submissions?client_id=${params.clientId}`,
+      ),
     ]);
     if (c.error) setError(c.error.message);
     else setClient(c.data ?? null);
     if (j.error) setError(j.error.message);
     else setJourney(j.data ?? null);
     if (p.data) setProfession(p.data);
+    if (sub.data?.length) setSubmissionId(sub.data[0].id);
   }, [params.clientId]);
 
   useEffect(() => {
@@ -98,8 +103,11 @@ export default function AccompanimentPreparePage() {
   }
 
   const titles: Record<StepKey, string> = {
-    anamnesis: terms.intake_form.charAt(0).toUpperCase() + terms.intake_form.slice(1),
-    evaluation: t(terms, "evaluation").charAt(0).toUpperCase() + t(terms, "evaluation").slice(1),
+    anamnesis:
+      terms.intake_form.charAt(0).toUpperCase() + terms.intake_form.slice(1),
+    evaluation:
+      t(terms, "evaluation").charAt(0).toUpperCase() +
+      t(terms, "evaluation").slice(1),
     plan: t(terms, "plan").charAt(0).toUpperCase() + t(terms, "plan").slice(1),
     cycle: "Ciclo",
     agenda: "Agenda",
@@ -108,9 +116,16 @@ export default function AccompanimentPreparePage() {
   };
 
   const ret = encodeURIComponent(returnBase);
-  const defined = journey?.progress_defined ?? STEP_ORDER.filter((k) => k !== "activate" && checklist[k] && checklist[k] !== "todo").length;
+  const defined =
+    journey?.progress_defined ??
+    STEP_ORDER.filter(
+      (k) => k !== "activate" && checklist[k] && checklist[k] !== "todo",
+    ).length;
   const total = journey?.progress_total ?? 6;
-  const progressPercent = total > 0 ? Math.max(0, Math.min(100, Math.round((defined / total) * 100))) : 0;
+  const progressPercent =
+    total > 0
+      ? Math.max(0, Math.min(100, Math.round((defined / total) * 100)))
+      : 0;
   const nextStepKey: StepKey | null =
     STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "todo") ??
     STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "later") ??
@@ -118,44 +133,88 @@ export default function AccompanimentPreparePage() {
 
   function primary(step: StepKey, value: string) {
     if (value === "done") {
+      if (step === "anamnesis") {
+        return submissionId
+          ? {
+              href: `/app/clients/intake/${submissionId}`,
+              label: "Ver respostas",
+            }
+          : null;
+      }
       if (step === "cycle") {
-        return { href: `/app/clients/${params.clientId}?tab=acompanhamento`, label: "Ver ciclo" };
+        return {
+          href: `/app/clients/${params.clientId}?tab=acompanhamento`,
+          label: "Ver ciclo",
+        };
       }
       if (step === "agenda") {
-        return { href: `/app/agenda?clientId=${params.clientId}`, label: "Ver agenda" };
+        return {
+          href: `/app/agenda?clientId=${params.clientId}`,
+          label: "Ver agenda",
+        };
       }
       if (step === "plan") {
-        return { href: `/app/clients/${params.clientId}?tab=accompaniment&focus=plan`, label: "Ver plano" };
+        return {
+          href: `/app/clients/${params.clientId}?tab=acompanhamento`,
+          label: "Ver plano",
+        };
       }
       return null;
     }
     if (value === "na" || value === "later") {
-      return { action: () => setSheet(step), label: value === "later" ? "Continuar agora" : "Alterar decisão" };
+      return {
+        action: () => setSheet(step),
+        label: value === "later" ? "Continuar agora" : "Alterar decisão",
+      };
     }
     if (step === "anamnesis") {
-      return { action: () => void persist("anamnesis", "done"), label: "Marcar como analisada" };
+      return {
+        action: () => void persist("anamnesis", "done"),
+        label: "Marcar como analisada",
+      };
     }
     if (step === "evaluation") {
-      return { href: `/app/clients/${params.clientId}/evaluations/new?returnTo=${ret}`, label: "Registrar agora" };
+      return {
+        href: `/app/clients/${params.clientId}/evaluations/new?returnTo=${ret}`,
+        label: "Registrar agora",
+      };
     }
     if (step === "plan") {
-      return { href: `/app/clients/${params.clientId}?tab=accompaniment&focus=plan&returnTo=${ret}`, label: `Criar ${t(terms, "plan_short")}` };
+      return {
+        href: `/app/clients/${params.clientId}/plans/new?returnTo=${ret}`,
+        label: `Criar ${t(terms, "plan_short")}`,
+      };
     }
     if (step === "cycle") {
-      return { href: `/app/cycles/new?clientId=${params.clientId}&returnTo=${ret}`, label: "Criar ciclo" };
+      return {
+        href: `/app/cycles/new?clientId=${params.clientId}&returnTo=${ret}`,
+        label: "Criar ciclo",
+      };
     }
     if (step === "agenda") {
-      return { href: `/app/agenda?clientId=${params.clientId}&returnTo=${ret}`, label: "Organizar agenda" };
+      return {
+        href: `/app/agenda?clientId=${params.clientId}&returnTo=${ret}`,
+        label: "Organizar agenda",
+      };
     }
     if (step === "routine") {
-      return { href: `/app/routines?clientId=${params.clientId}&returnTo=${ret}`, label: "Configurar rotina" };
+      return {
+        href: `/app/routines?clientId=${params.clientId}&returnTo=${ret}`,
+        label: "Configurar rotina",
+      };
     }
-    return { action: () => void persist("activate", "done"), label: "Ativar acompanhamento" };
+    return {
+      action: () => void persist("activate", "done"),
+      label: "Ativar acompanhamento",
+    };
   }
 
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
-      <BackLink href={`/app/clients/${params.clientId}`} label="Voltar à ficha" />
+      <BackLink
+        href={`/app/clients/${params.clientId}`}
+        label="Voltar à ficha"
+      />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
           Preparar {t(terms, "accompaniment")}
@@ -205,12 +264,16 @@ export default function AccompanimentPreparePage() {
                   ✓
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium text-[var(--color-ink)]">{titles[step]}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-medium text-[var(--color-ink)]">
+                      {titles[step]}
+                    </p>
                     <Badge tone={statusTone(value)}>{statusLabel(value)}</Badge>
                   </div>
                   {summaries[step] ? (
-                    <p className="text-sm text-[var(--color-ink-muted)]">{summaries[step]}</p>
+                    <p className="text-sm text-[var(--color-ink-muted)]">
+                      {summaries[step]}
+                    </p>
                   ) : null}
                 </div>
                 {action?.href ? (
@@ -246,10 +309,12 @@ export default function AccompanimentPreparePage() {
                 {index + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-semibold text-[var(--color-ink)]">{titles[step]}</h2>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="truncate text-sm font-semibold text-[var(--color-ink)]">
+                    {titles[step]}
+                  </h2>
                   {isNext ? (
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-primary)]">
                       Próximo passo
                     </span>
                   ) : (
@@ -257,12 +322,16 @@ export default function AccompanimentPreparePage() {
                   )}
                 </div>
                 {summaries[step] ? (
-                  <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">{summaries[step]}</p>
+                  <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
+                    {summaries[step]}
+                  </p>
                 ) : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {action?.href ? (
                     <Link href={action.href}>
-                      <Button variant={isNext ? "primary" : "secondary"}>{action.label}</Button>
+                      <Button variant={isNext ? "primary" : "secondary"}>
+                        {action.label}
+                      </Button>
                     </Link>
                   ) : null}
                   {action?.action ? (
@@ -274,7 +343,9 @@ export default function AccompanimentPreparePage() {
                       {action.label}
                     </Button>
                   ) : null}
-                  {value === "todo" && step !== "anamnesis" && step !== "activate" ? (
+                  {value === "todo" &&
+                  step !== "anamnesis" &&
+                  step !== "activate" ? (
                     <button
                       type="button"
                       className="text-sm font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
@@ -308,22 +379,38 @@ export default function AccompanimentPreparePage() {
             </h2>
             <div className="mt-3 grid gap-2">
               {sheet !== "anamnesis" ? (
-                <Button variant="secondary" disabled={busy !== null} onClick={() => void persist(sheet, "later")}>
+                <Button
+                  variant="secondary"
+                  disabled={busy !== null}
+                  onClick={() => void persist(sheet, "later")}
+                >
                   Fazer depois
                 </Button>
               ) : null}
               {sheet !== "anamnesis" && sheet !== "activate" ? (
-                <Button variant="secondary" disabled={busy !== null} onClick={() => void persist(sheet, "na")}>
+                <Button
+                  variant="secondary"
+                  disabled={busy !== null}
+                  onClick={() => void persist(sheet, "na")}
+                >
                   Não se aplica
                 </Button>
               ) : null}
               {sheet !== "anamnesis" ? (
-                <Button variant="ghost" disabled={busy !== null} onClick={() => void persist(sheet, "done")}>
+                <Button
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={() => void persist(sheet, "done")}
+                >
                   Marcar concluído
                 </Button>
               ) : null}
-              {(checklist[sheet] === "na" || checklist[sheet] === "later") ? (
-                <Button variant="ghost" disabled={busy !== null} onClick={() => void persist(sheet, "todo")}>
+              {checklist[sheet] === "na" || checklist[sheet] === "later" ? (
+                <Button
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={() => void persist(sheet, "todo")}
+                >
                   Reconsiderar
                 </Button>
               ) : null}

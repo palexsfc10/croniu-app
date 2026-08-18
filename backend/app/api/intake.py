@@ -251,11 +251,12 @@ def disable_link_by_id(
 @router.get("/intake-submissions", response_model=list[IntakeSubmissionListItem])
 def list_submissions(
     status: str | None = Query(default=None),
+    client_id: UUID | None = Query(default=None),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> list[IntakeSubmissionListItem]:
     rows = intake_svc.list_submissions(
-        db, organization_id=auth.organization.id, status=status
+        db, organization_id=auth.organization.id, status=status, client_id=client_id
     )
     return [
         IntakeSubmissionListItem(

@@ -14,7 +14,11 @@ import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
-import { IconMoreHorizontal, IconPlus } from "@/components/ui/icons";
+import {
+  IconChevronRight,
+  IconMoreHorizontal,
+  IconPlus,
+} from "@/components/ui/icons";
 import { RoutineTemplatesPanel } from "@/app/app/routines/routine-templates-panel";
 
 type Routine = {
@@ -73,9 +77,13 @@ export default function RoutinesPageInner() {
   const [nth, setNth] = useState(1);
   const [intervalN, setIntervalN] = useState(2);
   const [intervalUnit, setIntervalUnit] = useState("weeks");
-  const [scope, setScope] = useState<"all_active" | "this_client" | "general">("general");
+  const [scope, setScope] = useState<"all_active" | "this_client" | "general">(
+    "general",
+  );
   const [scopeClientId, setScopeClientId] = useState("");
-  const [clients, setClients] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [clients, setClients] = useState<
+    Array<{ id: string; full_name: string }>
+  >([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,16 +141,19 @@ export default function RoutinesPageInner() {
   }
 
   async function refreshPreview() {
-    const result = await apiFetch<{ preview: string }>("/api/v1/routines/preview", {
-      method: "POST",
-      body: JSON.stringify({
-        name: name.trim() || "Rotina",
-        task_type: taskType,
-        recurrence,
-        weekday,
-        filter_json: filterJson(),
-      }),
-    });
+    const result = await apiFetch<{ preview: string }>(
+      "/api/v1/routines/preview",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: name.trim() || "Rotina",
+          task_type: taskType,
+          recurrence,
+          weekday,
+          filter_json: filterJson(),
+        }),
+      },
+    );
     if (result.data?.preview) setPreview(result.data.preview);
   }
 
@@ -164,7 +175,8 @@ export default function RoutinesPageInner() {
         task_type: taskType,
         recurrence,
         weekday,
-        lead_days: taskType === "review_cycle" || taskType === "prepare_renewal" ? 7 : 0,
+        lead_days:
+          taskType === "review_cycle" || taskType === "prepare_renewal" ? 7 : 0,
         filter_json: filterJson(),
         next_run_on: recurrence === "once" && startsOn ? startsOn : null,
       }),
@@ -180,7 +192,10 @@ export default function RoutinesPageInner() {
     await load();
   }
 
-  async function setRoutineStatus(id: string, status: "paused" | "active" | "archived") {
+  async function setRoutineStatus(
+    id: string,
+    status: "paused" | "active" | "archived",
+  ) {
     setBusy(true);
     setMenuFor(null);
     const result = await apiFetch(`/api/v1/routines/${id}`, {
@@ -195,12 +210,19 @@ export default function RoutinesPageInner() {
     await load();
   }
 
-  const yours = items.filter((r) => r.status === "active" || r.status === "paused");
-  const pendingCount = board.reduce((sum, g) => sum + (g.occurrence_count ?? g.count), 0);
+  const yours = items.filter(
+    (r) => r.status === "active" || r.status === "paused",
+  );
+  const pendingCount = board.reduce(
+    (sum, g) => sum + (g.occurrence_count ?? g.count),
+    0,
+  );
   const freqText = (item: Routine) =>
-    FREQUENCIES.find((f) => f.value === item.recurrence)?.label || item.recurrence;
+    FREQUENCIES.find((f) => f.value === item.recurrence)?.label ||
+    item.recurrence;
   const scopeText = (item: Routine) => {
-    const audience = (item.filter_json as { audience?: string } | null)?.audience;
+    const audience = (item.filter_json as { audience?: string } | null)
+      ?.audience;
     if (audience === "all_active") return "Todos os alunos elegíveis";
     if (audience === "selected") return "Alunos selecionados";
     if (audience === "this_client") return "Um aluno específico";
@@ -209,7 +231,10 @@ export default function RoutinesPageInner() {
 
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
-      <BackLink href={returnTo || "/app"} label={returnTo ? "Voltar" : "Hoje"} />
+      <BackLink
+        href={returnTo || "/app"}
+        label={returnTo ? "Voltar" : "Hoje"}
+      />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
         <p className="text-sm text-[var(--color-ink-muted)]">
@@ -230,87 +255,118 @@ export default function RoutinesPageInner() {
       ) : null}
 
       <section className="space-y-3" aria-label="Suas rotinas">
-        <h2 className="text-lg font-semibold">Suas rotinas</h2>
         {!yours.length ? (
-          <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4">
-            <p className="font-medium">Você ainda não ativou nenhuma rotina.</p>
-            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-              Ative uma sugestão abaixo para o Croniu lembrar você.
-            </p>
-          </div>
+          <>
+            <h2 className="text-lg font-semibold">Suas rotinas</h2>
+            <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4">
+              <p className="font-medium">
+                Você ainda não ativou nenhuma rotina.
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                Ative uma sugestão abaixo para o Croniu lembrar você.
+              </p>
+            </div>
+          </>
         ) : (
-          <ul className="space-y-2">
-            {yours.map((item) => (
-              <li
-                key={item.id}
-                className="relative space-y-2 rounded-[var(--radius-md)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3 py-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold">{item.name}</p>
-                      <Badge tone={item.status === "active" ? "success" : "neutral"}>
-                        {item.status === "active" ? "Ativa" : "Pausada"}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      {freqText(item)}
-                      {item.next_run_on ? ` · próxima: ${formatDateBR(item.next_run_on)}` : ""}
-                    </p>
-                    {scopeText(item) ? (
-                      <p className="text-xs text-[var(--color-ink-muted)]">{scopeText(item)}</p>
-                    ) : null}
-                  </div>
-                  <div className="relative">
-                    <Button
-                      variant="ghost"
-                      className="min-h-11 min-w-11 px-2"
-                      aria-label={`Opções de ${item.name}`}
-                      onClick={() => setMenuFor((cur) => (cur === item.id ? null : item.id))}
-                    >
-                      <IconMoreHorizontal className="h-5 w-5" />
-                    </Button>
-                    {menuFor === item.id ? (
-                      <div className="absolute right-0 z-10 mt-1 min-w-40 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-sm">
-                        {item.status === "active" ? (
-                          <button
-                            type="button"
-                            className="block w-full px-3 py-2 text-left text-sm"
-                            onClick={() => void setRoutineStatus(item.id, "paused")}
-                          >
-                            Pausar
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="block w-full px-3 py-2 text-left text-sm"
-                            onClick={() => void setRoutineStatus(item.id, "active")}
-                          >
-                            Reativar
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="block w-full px-3 py-2 text-left text-sm text-[var(--color-danger)]"
-                          onClick={() => {
-                            if (
-                              !window.confirm(
-                                "Arquivar toda a rotina? As próximas ocorrências deixam de ser geradas.",
-                              )
-                            )
-                              return;
-                            void setRoutineStatus(item.id, "archived");
-                          }}
+          <details open className="group">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2 text-lg font-semibold">
+                Suas rotinas
+                <span className="rounded-full bg-[var(--color-surface-subtle)] px-2 py-0.5 text-xs font-medium text-[var(--color-ink-muted)]">
+                  {yours.length}
+                </span>
+              </span>
+              <IconChevronRight className="h-4 w-4 shrink-0 text-[var(--color-ink-muted)] transition-transform group-open:rotate-90" />
+            </summary>
+            <ul className="mt-3 space-y-2">
+              {yours.map((item) => (
+                <li
+                  key={item.id}
+                  className="relative space-y-2 rounded-[var(--radius-md)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3 py-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold">{item.name}</p>
+                        <Badge
+                          tone={
+                            item.status === "active" ? "success" : "neutral"
+                          }
                         >
-                          Desativar
-                        </button>
+                          {item.status === "active" ? "Ativa" : "Pausada"}
+                        </Badge>
                       </div>
-                    ) : null}
+                      <p className="text-sm text-[var(--color-ink-muted)]">
+                        {freqText(item)}
+                        {item.next_run_on
+                          ? ` · próxima: ${formatDateBR(item.next_run_on)}`
+                          : ""}
+                      </p>
+                      {scopeText(item) ? (
+                        <p className="text-xs text-[var(--color-ink-muted)]">
+                          {scopeText(item)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="relative">
+                      <Button
+                        variant="ghost"
+                        className="min-h-11 min-w-11 px-2"
+                        aria-label={`Opções de ${item.name}`}
+                        onClick={() =>
+                          setMenuFor((cur) =>
+                            cur === item.id ? null : item.id,
+                          )
+                        }
+                      >
+                        <IconMoreHorizontal className="h-5 w-5" />
+                      </Button>
+                      {menuFor === item.id ? (
+                        <div className="absolute right-0 z-10 mt-1 min-w-40 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-sm">
+                          {item.status === "active" ? (
+                            <button
+                              type="button"
+                              className="block w-full px-3 py-2 text-left text-sm"
+                              onClick={() =>
+                                void setRoutineStatus(item.id, "paused")
+                              }
+                            >
+                              Pausar
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="block w-full px-3 py-2 text-left text-sm"
+                              onClick={() =>
+                                void setRoutineStatus(item.id, "active")
+                              }
+                            >
+                              Reativar
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="block w-full px-3 py-2 text-left text-sm text-[var(--color-danger)]"
+                            onClick={() => {
+                              if (
+                                !window.confirm(
+                                  "Arquivar toda a rotina? As próximas ocorrências deixam de ser geradas.",
+                                )
+                              )
+                                return;
+                              void setRoutineStatus(item.id, "archived");
+                            }}
+                          >
+                            Desativar
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </section>
 
@@ -329,7 +385,9 @@ export default function RoutinesPageInner() {
             {pendingCount}
           </span>
         ) : (
-          <span className="text-xs text-[var(--color-ink-muted)]">Tudo em dia</span>
+          <span className="text-xs text-[var(--color-ink-muted)]">
+            Tudo em dia
+          </span>
         )}
       </Link>
 
@@ -339,9 +397,9 @@ export default function RoutinesPageInner() {
         onClick={() => {
           setCustomOpen(true);
           if (!clients.length) {
-            void apiFetch<Array<{ id: string; full_name: string }>>("/api/v1/clients").then(
-              (result) => setClients(result.data ?? []),
-            );
+            void apiFetch<Array<{ id: string; full_name: string }>>(
+              "/api/v1/clients",
+            ).then((result) => setClients(result.data ?? []));
           }
         }}
       >
@@ -357,184 +415,215 @@ export default function RoutinesPageInner() {
           aria-labelledby="custom-routine-title"
         >
           <div className="max-h-[min(36rem,calc(100dvh-7rem))] w-full max-w-md space-y-3 overflow-y-auto rounded-[var(--radius-lg)] bg-[var(--color-surface)] p-4 shadow-lg">
-        <h2 id="custom-routine-title" className="text-base font-semibold">Nova rotina</h2>
-        <TextField label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
-        <SuggestionChips chips={ROUTINE_NAME_SUGGESTIONS} onSelect={setName} />
-        <label className="block space-y-1.5 text-sm">
-          <span className="font-medium">Tipo</span>
-          <select
-            aria-label="Tipo"
-            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-            value={taskType}
-            onChange={(e) => setTaskType(e.target.value)}
-          >
-            {routineTypes(resolveCapabilities(profession?.profession_code, profession?.use_cases).includes("workouts")).map(
-              (opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ),
-            )}
-          </select>
-        </label>
-        <label className="block space-y-1.5 text-sm">
-          <span className="font-medium">Para quem é esta rotina?</span>
-          <select
-            aria-label="Para quem é esta rotina?"
-            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-            value={scope}
-            onChange={(e) => setScope(e.target.value as typeof scope)}
-          >
-            <option value="all_active">Para todos os alunos elegíveis</option>
-            <option value="this_client">Para um aluno específico</option>
-            <option value="general">Rotina geral, sem aluno</option>
-          </select>
-        </label>
-        <ConditionalField when={scope === "this_client"}>
-          <label className="block space-y-1.5 text-sm">
-            <span className="font-medium">Aluno</span>
-            <select
-              aria-label="Aluno"
-              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-              value={scopeClientId}
-              onChange={(e) => setScopeClientId(e.target.value)}
-            >
-              <option value="">Selecione…</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.full_name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </ConditionalField>
-        <label className="block space-y-1.5 text-sm" htmlFor="routine-frequency">
-          <span className="font-medium">Com que frequência?</span>
-          <select
-            id="routine-frequency"
-            data-testid="routine-frequency"
-            aria-label="Com que frequência?"
-            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-            value={recurrence}
-            onChange={(e) => {
-              setRecurrence(e.target.value);
-              void refreshPreview();
-            }}
-          >
-            {FREQUENCIES.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <ConditionalField when={recurrence !== "interval"}>
-          <label className="block space-y-1.5 text-sm">
-            <span className="font-medium">Dia da semana</span>
-            <select
-              aria-label="Dia da semana"
-              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-              value={weekday}
-              onChange={(e) => setWeekday(Number(e.target.value))}
-            >
-              {WEEKDAYS.map((label, idx) => (
-                <option key={label} value={idx}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </ConditionalField>
-        <ConditionalField when={recurrence === "monthly"}>
-          <label className="block space-y-1.5 text-sm">
-            <span className="font-medium">Como no mês?</span>
-            <select
-              aria-label="Como no mês?"
-              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-              value={monthMode}
-              onChange={(e) => setMonthMode(e.target.value as "dom" | "nth_weekday")}
-            >
-              <option value="dom">Dia fixo do mês</option>
-              <option value="nth_weekday">Posição do dia da semana</option>
-            </select>
-          </label>
-          {monthMode === "dom" ? (
+            <h2 id="custom-routine-title" className="text-base font-semibold">
+              Nova rotina
+            </h2>
             <TextField
-              label="Dia do mês"
-              type="number"
-              value={String(monthDay)}
-              onChange={(e) => setMonthDay(Number(e.target.value))}
+              label="Nome"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
-          ) : (
-            <label className="block space-y-1.5 text-sm">
-              <span className="font-medium">Qual ocorrência</span>
-              <select
-                aria-label="Qual ocorrência"
-                className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-                value={nth}
-                onChange={(e) => setNth(Number(e.target.value))}
-              >
-                <option value={1}>Primeira</option>
-                <option value={2}>Segunda</option>
-                <option value={3}>Terceira</option>
-                <option value={4}>Quarta</option>
-                <option value={5}>Quinta</option>
-                <option value={-1}>Última</option>
-              </select>
-            </label>
-          )}
-        </ConditionalField>
-        <ConditionalField when={recurrence === "interval"}>
-          <div className="grid grid-cols-2 gap-2">
-            <TextField
-              label="A cada"
-              type="number"
-              value={String(intervalN)}
-              onChange={(e) => setIntervalN(Number(e.target.value))}
+            <SuggestionChips
+              chips={ROUTINE_NAME_SUGGESTIONS}
+              onSelect={setName}
             />
             <label className="block space-y-1.5 text-sm">
-              <span className="font-medium">Unidade</span>
+              <span className="font-medium">Tipo</span>
               <select
-                aria-label="Unidade"
+                aria-label="Tipo"
                 className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
-                value={intervalUnit}
-                onChange={(e) => setIntervalUnit(e.target.value)}
+                value={taskType}
+                onChange={(e) => setTaskType(e.target.value)}
               >
-                <option value="days">dias</option>
-                <option value="weeks">semanas</option>
-                <option value="months">meses</option>
+                {routineTypes(
+                  resolveCapabilities(
+                    profession?.profession_code,
+                    profession?.use_cases,
+                  ).includes("workouts"),
+                ).map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </label>
-          </div>
-        </ConditionalField>
-        <TextField
-          label="Data de início"
-          type="date"
-          value={startsOn}
-          onChange={(e) => setStartsOn(e.target.value)}
-        />
-        <label className="flex min-h-11 items-center gap-2 text-sm">
-          <input type="checkbox" checked={noEnd} onChange={(e) => setNoEnd(e.target.checked)} />
-          Sem data final
-        </label>
-        <ConditionalField when={!noEnd}>
-          <TextField
-            label="Data de término"
-            type="date"
-            value={endsOn}
-            onChange={(e) => setEndsOn(e.target.value)}
-          />
-        </ConditionalField>
-        <Button type="button" variant="secondary" onClick={() => void refreshPreview()}>
-          Ver próxima ocorrência
-        </Button>
-        {preview ? <FieldHint>{preview}</FieldHint> : null}
-        <Button fullWidth disabled={busy} onClick={() => void create()}>
-          Salvar rotina
-        </Button>
-        <Button fullWidth variant="ghost" onClick={() => setCustomOpen(false)}>
-          Cancelar
-        </Button>
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">Para quem é esta rotina?</span>
+              <select
+                aria-label="Para quem é esta rotina?"
+                className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                value={scope}
+                onChange={(e) => setScope(e.target.value as typeof scope)}
+              >
+                <option value="all_active">
+                  Para todos os alunos elegíveis
+                </option>
+                <option value="this_client">Para um aluno específico</option>
+                <option value="general">Rotina geral, sem aluno</option>
+              </select>
+            </label>
+            <ConditionalField when={scope === "this_client"}>
+              <label className="block space-y-1.5 text-sm">
+                <span className="font-medium">Aluno</span>
+                <select
+                  aria-label="Aluno"
+                  className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                  value={scopeClientId}
+                  onChange={(e) => setScopeClientId(e.target.value)}
+                >
+                  <option value="">Selecione…</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.full_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </ConditionalField>
+            <label
+              className="block space-y-1.5 text-sm"
+              htmlFor="routine-frequency"
+            >
+              <span className="font-medium">Com que frequência?</span>
+              <select
+                id="routine-frequency"
+                data-testid="routine-frequency"
+                aria-label="Com que frequência?"
+                className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                value={recurrence}
+                onChange={(e) => {
+                  setRecurrence(e.target.value);
+                  void refreshPreview();
+                }}
+              >
+                {FREQUENCIES.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ConditionalField when={recurrence !== "interval"}>
+              <label className="block space-y-1.5 text-sm">
+                <span className="font-medium">Dia da semana</span>
+                <select
+                  aria-label="Dia da semana"
+                  className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                  value={weekday}
+                  onChange={(e) => setWeekday(Number(e.target.value))}
+                >
+                  {WEEKDAYS.map((label, idx) => (
+                    <option key={label} value={idx}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </ConditionalField>
+            <ConditionalField when={recurrence === "monthly"}>
+              <label className="block space-y-1.5 text-sm">
+                <span className="font-medium">Como no mês?</span>
+                <select
+                  aria-label="Como no mês?"
+                  className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                  value={monthMode}
+                  onChange={(e) =>
+                    setMonthMode(e.target.value as "dom" | "nth_weekday")
+                  }
+                >
+                  <option value="dom">Dia fixo do mês</option>
+                  <option value="nth_weekday">Posição do dia da semana</option>
+                </select>
+              </label>
+              {monthMode === "dom" ? (
+                <TextField
+                  label="Dia do mês"
+                  type="number"
+                  value={String(monthDay)}
+                  onChange={(e) => setMonthDay(Number(e.target.value))}
+                />
+              ) : (
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium">Qual ocorrência</span>
+                  <select
+                    aria-label="Qual ocorrência"
+                    className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                    value={nth}
+                    onChange={(e) => setNth(Number(e.target.value))}
+                  >
+                    <option value={1}>Primeira</option>
+                    <option value={2}>Segunda</option>
+                    <option value={3}>Terceira</option>
+                    <option value={4}>Quarta</option>
+                    <option value={5}>Quinta</option>
+                    <option value={-1}>Última</option>
+                  </select>
+                </label>
+              )}
+            </ConditionalField>
+            <ConditionalField when={recurrence === "interval"}>
+              <div className="grid grid-cols-2 gap-2">
+                <TextField
+                  label="A cada"
+                  type="number"
+                  value={String(intervalN)}
+                  onChange={(e) => setIntervalN(Number(e.target.value))}
+                />
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium">Unidade</span>
+                  <select
+                    aria-label="Unidade"
+                    className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+                    value={intervalUnit}
+                    onChange={(e) => setIntervalUnit(e.target.value)}
+                  >
+                    <option value="days">dias</option>
+                    <option value="weeks">semanas</option>
+                    <option value="months">meses</option>
+                  </select>
+                </label>
+              </div>
+            </ConditionalField>
+            <TextField
+              label="Data de início"
+              type="date"
+              value={startsOn}
+              onChange={(e) => setStartsOn(e.target.value)}
+            />
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={noEnd}
+                onChange={(e) => setNoEnd(e.target.checked)}
+              />
+              Sem data final
+            </label>
+            <ConditionalField when={!noEnd}>
+              <TextField
+                label="Data de término"
+                type="date"
+                value={endsOn}
+                onChange={(e) => setEndsOn(e.target.value)}
+              />
+            </ConditionalField>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void refreshPreview()}
+            >
+              Ver próxima ocorrência
+            </Button>
+            {preview ? <FieldHint>{preview}</FieldHint> : null}
+            <Button fullWidth disabled={busy} onClick={() => void create()}>
+              Salvar rotina
+            </Button>
+            <Button
+              fullWidth
+              variant="ghost"
+              onClick={() => setCustomOpen(false)}
+            >
+              Cancelar
+            </Button>
           </div>
         </div>
       ) : null}

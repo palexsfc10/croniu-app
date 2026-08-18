@@ -69,7 +69,10 @@ export function ClientProfile({ clientId }: Props) {
   const [loading, setLoading] = useState(true);
   const [evaluations, setEvaluations] = useState<ClientEvaluation[]>([]);
   const [todayIso, setTodayIso] = useState("2026-01-01");
-  const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(null);
+  const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(
+    null,
+  );
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   const terms = nomenclatureFor(profession?.profession_code);
   const returnAccomp = `/app/clients/${clientId}?tab=acompanhamento`;
@@ -77,7 +80,7 @@ export function ClientProfile({ clientId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [c, a, j, p, cy, pr, pref, ev, rb] = await Promise.all([
+    const [c, a, j, p, cy, pr, pref, ev, rb, sub] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${clientId}`),
       apiFetch<ClientAccess>(`/api/v1/clients/${clientId}/public-access`),
       apiFetch<ClientJourney>(`/api/v1/clients/${clientId}/journey`),
@@ -88,6 +91,9 @@ export function ClientProfile({ clientId }: Props) {
       apiFetch<ClientEvaluation[]>(`/api/v1/clients/${clientId}/evaluations`),
       apiFetch<{ groups: Array<{ occurrence_count?: number; count: number }> }>(
         `/api/v1/routines/board?client_id=${clientId}`,
+      ),
+      apiFetch<Array<{ id: string; submitted_at: string | null }>>(
+        `/api/v1/intake-submissions?client_id=${clientId}`,
       ),
     ]);
     if (c.error) setError(c.error.message);
@@ -103,9 +109,13 @@ export function ClientProfile({ clientId }: Props) {
     if (ev.data) setEvaluations(ev.data);
     if (rb.data) {
       setRoutinePendingCount(
-        rb.data.groups.reduce((sum, g) => sum + (g.occurrence_count ?? g.count), 0),
+        rb.data.groups.reduce(
+          (sum, g) => sum + (g.occurrence_count ?? g.count),
+          0,
+        ),
       );
     }
+    if (sub.data?.length) setSubmissionId(sub.data[0].id);
     setLoading(false);
   }, [clientId]);
 
@@ -165,9 +175,29 @@ export function ClientProfile({ clientId }: Props) {
       action === "prepare_accompaniment" ||
       action === "continue_onboarding"
     ) {
+      const checklist = journey?.accompaniment_checklist ?? {};
+      const stepLabels: Record<string, string> = {
+        anamnesis: terms.intake_form,
+        evaluation: t(terms, "evaluation"),
+        plan: t(terms, "plan"),
+        cycle: "ciclo",
+        agenda: "agenda",
+        routine: "rotina",
+      };
+      const pending = [
+        "anamnesis",
+        "evaluation",
+        "plan",
+        "cycle",
+        "agenda",
+        "routine",
+      ].filter((key) => !checklist[key] || checklist[key] === "todo");
+      const pendingText = pending.length
+        ? ` Falta: ${pending.map((key) => stepLabels[key]).join(", ")}.`
+        : "";
       return {
         title: "Próximo passo",
-        text: `Continue a preparação de ${name}.`,
+        text: `Continue a preparação de ${name}.${pendingText}`,
         cta: journey?.next_action_label || "Preparar acompanhamento",
         href: prepareHref,
       };
@@ -182,7 +212,12 @@ export function ClientProfile({ clientId }: Props) {
     }
     const ending = published?.milestones?.find((m) => m.kind === "plan_ending");
     const review = published?.milestones?.find((m) => m.kind === "plan_review");
-    if (ending && published && ending.due_on <= addDaysIso(todayIso, 7) && ending.due_on >= todayIso) {
+    if (
+      ending &&
+      published &&
+      ending.due_on <= addDaysIso(todayIso, 7) &&
+      ending.due_on >= todayIso
+    ) {
       return {
         title: "Próximo passo",
         text: `O planejamento atual termina nesta semana.`,
@@ -242,7 +277,7 @@ export function ClientProfile({ clientId }: Props) {
   }
 
   async function copyMenuAccess() {
-    const url = access?.has_active_link ? access.public_url ?? null : null;
+    const url = access?.has_active_link ? (access.public_url ?? null) : null;
     if (!url) {
       setTab("dados");
       setMenuOpen(false);
@@ -251,7 +286,9 @@ export function ClientProfile({ clientId }: Props) {
     const result = await copyTextToClipboard(url);
     setMenuOpen(false);
     if (!result.ok) {
-      setError("Não foi possível copiar automaticamente. Abra Dados para copiar o endereço.");
+      setError(
+        "Não foi possível copiar automaticamente. Abra Dados para copiar o endereço.",
+      );
     }
   }
 
@@ -324,9 +361,13 @@ export function ClientProfile({ clientId }: Props) {
             {item.full_name}
           </h1>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="info">{clientStatusLabel(item.status) || stageLabel}</Badge>
+            <Badge tone="info">
+              {clientStatusLabel(item.status) || stageLabel}
+            </Badge>
             {next.cta ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Próximo: {next.cta}
+              </p>
             ) : null}
           </div>
         </header>
@@ -344,7 +385,7 @@ export function ClientProfile({ clientId }: Props) {
         role="tablist"
         aria-label="Ficha"
         onKeyDown={onTabKey}
-        className="grid h-12 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1fr)] items-stretch gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] p-0.5 max-[360px]:h-12"
+        className="grid h-12 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1fr)] items-stretch gap-0.5 rounded-[var(--radius-md)] border border-[var(--color-border)]/60 bg-[var(--color-surface-subtle)] p-0.5 shadow-[inset_0_1px_2px_rgba(15,15,20,0.04)] max-[360px]:h-12"
       >
         {tabs.map((entry) => (
           <button
@@ -355,7 +396,7 @@ export function ClientProfile({ clientId }: Props) {
             aria-selected={tab === entry.id}
             aria-controls={`ficha-panel-${entry.id}`}
             tabIndex={tab === entry.id ? 0 : -1}
-            className="flex min-h-11 min-w-0 items-center justify-center rounded-[10px] px-1 text-center text-[13px] font-medium leading-tight text-[var(--color-ink-muted)] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_2px_rgba(15,15,20,0.06)] max-[360px]:text-xs"
+            className="flex min-h-11 min-w-0 items-center justify-center rounded-[10px] px-1 text-center text-[13px] font-medium leading-tight text-[var(--color-ink-muted)] whitespace-nowrap transition-all duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:font-semibold aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_3px_rgba(15,15,20,0.08)] max-[360px]:text-xs"
             onClick={() => setTab(entry.id)}
           >
             {entry.label}
@@ -372,34 +413,49 @@ export function ClientProfile({ clientId }: Props) {
           aria-label="Resumo"
         >
           {loading && !item ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">Carregando resumo…</p>
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Carregando resumo…
+            </p>
           ) : item ? (
             <>
-          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-              {next.title}
-            </p>
-            <p className="mt-1 text-sm text-[var(--color-ink)]">{next.text}</p>
-            {next.cta && next.href ? (
-              <Link href={next.href} className="mt-3 inline-block">
-                <Button>{next.cta}</Button>
-              </Link>
-            ) : null}
-          </div>
-          {activeCycle ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              Ciclo atual · {activeCycle.service_name || "Serviço"} ·{" "}
-              {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).range}
-              <span className="block">
-                {formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).renewal}
-              </span>
-            </p>
-          ) : null}
-          {published ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              {t(terms, "plan")} vigente · {published.title} · {protocolStatusLabel(published.status)}
-            </p>
-          ) : null}
+              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+                  {next.title}
+                </p>
+                <p className="mt-1 text-sm text-[var(--color-ink)]">
+                  {next.text}
+                </p>
+                {next.cta && next.href ? (
+                  <Link href={next.href} className="mt-3 inline-block">
+                    <Button>{next.cta}</Button>
+                  </Link>
+                ) : null}
+              </div>
+              {activeCycle ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  Ciclo atual · {activeCycle.service_name || "Serviço"} ·{" "}
+                  {
+                    formatCycleVigencyCard(
+                      activeCycle.starts_on,
+                      activeCycle.ends_on,
+                    ).range
+                  }
+                  <span className="block">
+                    {
+                      formatCycleVigencyCard(
+                        activeCycle.starts_on,
+                        activeCycle.ends_on,
+                      ).renewal
+                    }
+                  </span>
+                </p>
+              ) : null}
+              {published ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  {t(terms, "plan")} vigente · {published.title} ·{" "}
+                  {protocolStatusLabel(published.status)}
+                </p>
+              ) : null}
             </>
           ) : (
             <EmptyStateGuide
@@ -424,159 +480,184 @@ export function ClientProfile({ clientId }: Props) {
           aria-label="Acompanhamento"
         >
           {loading && !item ? (
-            <div className="space-y-3" aria-busy="true" data-testid="accompaniment-skeleton">
+            <div
+              className="space-y-3"
+              aria-busy="true"
+              data-testid="accompaniment-skeleton"
+            >
               <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
               <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
             </div>
           ) : (
             <>
-          {error ? (
-            <EmptyStateGuide
-              title="Não foi possível carregar o acompanhamento"
-              body={error}
-              action={
-                <Button type="button" onClick={() => void load()}>
-                  Tentar novamente
-                </Button>
-              }
-            />
-          ) : null}
-          {next.cta && next.href ? (
-            <EmptyStateGuide
-              title="Próxima ação"
-              body={next.text}
-              action={
-                <Link href={next.href}>
-                  <Button>{next.cta}</Button>
-                </Link>
-              }
-            />
-          ) : null}
-          <AccompanimentCard
-            icon={<IconRefreshCw className="h-5 w-5" />}
-            title="Ciclo atual"
-            state={activeCycle ? cycleListStatus(activeCycle, todayIso) : "Vazio"}
-            summary={activeCycle?.service_name || "Sem ciclo"}
-            detail={
-              activeCycle
-                ? [
-                    formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).range,
-                    formatCycleVigencyCard(activeCycle.starts_on, activeCycle.ends_on).renewal,
-                    activeCycle.lesson_count != null
-                      ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} aulas realizadas`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")
-                : "Nenhum ciclo ainda."
-            }
-            progress={
-              activeCycle?.lesson_count
-                ? { value: activeCycle.lessons_completed ?? 0, max: activeCycle.lesson_count }
-                : null
-            }
-            primary={
-              activeCycle
-                ? { href: `/app/cycles/${activeCycle.id}`, label: "Ver ciclo", variant: "secondary" }
-                : {
-                    href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
-                    label: "Criar ciclo",
-                    variant: "primary",
+              {error ? (
+                <EmptyStateGuide
+                  title="Não foi possível carregar o acompanhamento"
+                  body={error}
+                  action={
+                    <Button type="button" onClick={() => void load()}>
+                      Tentar novamente
+                    </Button>
                   }
-            }
-          />
-          <AccompanimentCard
-            icon={<IconLayers className="h-5 w-5" />}
-            testId="accompaniment-plan-card"
-            title={t(terms, "plan")}
-            state={published || draft ? protocolStatusLabel((published || draft)?.status) : "Vazio"}
-            summary={(published || draft)?.title || "Plano ainda não criado"}
-            detail={
-              (published || draft)?.duration_value
-                ? `${(published || draft)?.duration_value} semanas`
-                : undefined
-            }
-            primary={
-              draft
-                ? {
-                    href: `/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
-                    label: "Continuar rascunho",
-                    variant: "secondary",
+                />
+              ) : null}
+              {next.cta && next.href ? (
+                <EmptyStateGuide
+                  title="Próxima ação"
+                  body={next.text}
+                  action={
+                    <Link href={next.href}>
+                      <Button>{next.cta}</Button>
+                    </Link>
                   }
-                : published
-                  ? {
-                      href: `/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
-                      label: "Ver plano",
-                      variant: "secondary",
-                    }
-                  : {
-                      href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
-                      label: "Criar plano",
-                      variant: "primary",
-                    }
-            }
-            extras={
-              published
-                ? [
-                    {
-                      href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
-                      label: "Nova versão",
-                    },
-                  ]
-                : []
-            }
-          />
-          <AccompanimentCard
-            icon={<IconClipboardList className="h-5 w-5" />}
-            title="Avaliações"
-            state={
-              evaluations[0]
-                ? `${protocolStatusLabel(evaluations[0].status)} · ${evaluations.length}`
-                : "Vazio"
-            }
-            summary={
-              evaluations[0]?.title || "Nenhuma avaliação registrada"
-            }
-            detail={
-              evaluations.length
-                ? "A última avaliação aparece aqui. O cliente só vê o que você publicar."
-                : "Registre o ponto de partida quando fizer sentido."
-            }
-            primary={
-              evaluations[0]
-                ? {
-                    href: `/app/clients/${clientId}/evaluations/${evaluations[0].id}?returnTo=${encodeURIComponent(returnAccomp)}`,
-                    label: "Ver avaliação",
-                    variant: "secondary",
-                  }
-                : {
-                    href: `/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`,
-                    label: "Nova avaliação",
-                    variant: "secondary",
-                  }
-            }
-          />
-          <AccompanimentCard
-            icon={<IconHistory className="h-5 w-5" />}
-            title="Rotinas"
-            state={
-              routinePendingCount === null
-                ? null
-                : routinePendingCount > 0
-                  ? `${routinePendingCount} pendente${routinePendingCount === 1 ? "" : "s"}`
-                  : "Em dia"
-            }
-            summary={
-              routinePendingCount
-                ? `${routinePendingCount} ocorrência${routinePendingCount === 1 ? "" : "s"} aguardando ação.`
-                : "Nenhuma pendência de rotina para este aluno agora."
-            }
-            primary={{
-              href: `/app/routines/pending?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
-              label: "Ver rotinas",
-              variant: "secondary",
-            }}
-          />
+                />
+              ) : null}
+              <AccompanimentCard
+                icon={<IconRefreshCw className="h-5 w-5" />}
+                title="Ciclo atual"
+                state={
+                  activeCycle ? cycleListStatus(activeCycle, todayIso) : "Vazio"
+                }
+                summary={activeCycle?.service_name || "Sem ciclo"}
+                detail={
+                  activeCycle
+                    ? [
+                        formatCycleVigencyCard(
+                          activeCycle.starts_on,
+                          activeCycle.ends_on,
+                        ).range,
+                        formatCycleVigencyCard(
+                          activeCycle.starts_on,
+                          activeCycle.ends_on,
+                        ).renewal,
+                        activeCycle.lesson_count != null
+                          ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} aulas realizadas`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : "Nenhum ciclo ainda."
+                }
+                progress={
+                  activeCycle?.lesson_count
+                    ? {
+                        value: activeCycle.lessons_completed ?? 0,
+                        max: activeCycle.lesson_count,
+                      }
+                    : null
+                }
+                primary={
+                  activeCycle
+                    ? {
+                        href: `/app/cycles/${activeCycle.id}`,
+                        label: "Ver ciclo",
+                        variant: "secondary",
+                      }
+                    : {
+                        href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+                        label: "Criar ciclo",
+                        variant: "primary",
+                      }
+                }
+              />
+              <AccompanimentCard
+                icon={<IconLayers className="h-5 w-5" />}
+                testId="accompaniment-plan-card"
+                title={t(terms, "plan")}
+                state={
+                  published || draft
+                    ? protocolStatusLabel((published || draft)?.status)
+                    : "Vazio"
+                }
+                summary={
+                  (published || draft)?.title || "Plano ainda não criado"
+                }
+                detail={
+                  (published || draft)?.duration_value
+                    ? `${(published || draft)?.duration_value} semanas`
+                    : undefined
+                }
+                primary={
+                  draft
+                    ? {
+                        href: `/app/clients/${clientId}/plans/${draft.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                        label: "Continuar rascunho",
+                        variant: "secondary",
+                      }
+                    : published
+                      ? {
+                          href: `/app/clients/${clientId}/plans/${published.id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                          label: "Ver plano",
+                          variant: "secondary",
+                        }
+                      : {
+                          href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                          label: "Criar plano",
+                          variant: "primary",
+                        }
+                }
+                extras={
+                  published
+                    ? [
+                        {
+                          href: `/app/clients/${clientId}/plans/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                          label: "Nova versão",
+                        },
+                      ]
+                    : []
+                }
+              />
+              <AccompanimentCard
+                icon={<IconClipboardList className="h-5 w-5" />}
+                title="Avaliações"
+                state={
+                  evaluations[0]
+                    ? `${protocolStatusLabel(evaluations[0].status)} · ${evaluations.length}`
+                    : "Vazio"
+                }
+                summary={
+                  evaluations[0]?.title || "Nenhuma avaliação registrada"
+                }
+                detail={
+                  evaluations.length
+                    ? "A última avaliação aparece aqui. O cliente só vê o que você publicar."
+                    : "Registre o ponto de partida quando fizer sentido."
+                }
+                primary={
+                  evaluations[0]
+                    ? {
+                        href: `/app/clients/${clientId}/evaluations/${evaluations[0].id}?returnTo=${encodeURIComponent(returnAccomp)}`,
+                        label: "Ver avaliação",
+                        variant: "secondary",
+                      }
+                    : {
+                        href: `/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnAccomp)}`,
+                        label: "Nova avaliação",
+                        variant: "secondary",
+                      }
+                }
+              />
+              <AccompanimentCard
+                icon={<IconHistory className="h-5 w-5" />}
+                title="Rotinas"
+                state={
+                  routinePendingCount === null
+                    ? null
+                    : routinePendingCount > 0
+                      ? `${routinePendingCount} pendente${routinePendingCount === 1 ? "" : "s"}`
+                      : "Em dia"
+                }
+                summary={
+                  routinePendingCount
+                    ? `${routinePendingCount} ocorrência${routinePendingCount === 1 ? "" : "s"} aguardando ação.`
+                    : "Nenhuma pendência de rotina para este aluno agora."
+                }
+                primary={{
+                  href: `/app/routines/pending?clientId=${clientId}&returnTo=${encodeURIComponent(returnAccomp)}`,
+                  label: "Ver rotinas",
+                  variant: "secondary",
+                }}
+              />
             </>
           )}
         </section>
@@ -617,6 +698,26 @@ export function ClientProfile({ clientId }: Props) {
             </div>
           </dl>
 
+          {submissionId ? (
+            <Link
+              href={`/app/clients/intake/${submissionId}`}
+              className="flex min-h-11 items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-[var(--color-ink)]">
+                  {terms.intake_form.charAt(0).toUpperCase() +
+                    terms.intake_form.slice(1)}
+                </span>
+                <span className="block text-sm text-[var(--color-ink-muted)]">
+                  Respostas enviadas no cadastro
+                </span>
+              </span>
+              <span className="shrink-0 text-sm font-medium text-[var(--color-link)]">
+                Ver
+              </span>
+            </Link>
+          ) : null}
+
           <ClientPortalCard
             clientId={clientId}
             firstName={firstName(item.full_name)}
@@ -631,8 +732,12 @@ export function ClientProfile({ clientId }: Props) {
         </section>
       ) : null}
 
-      {actionLabel && tab === "resumo" && journey?.requires_professional_attention ? (
-        <p className="text-sm text-[var(--color-warning)]">Há pendências de cadastro para revisar.</p>
+      {actionLabel &&
+      tab === "resumo" &&
+      journey?.requires_professional_attention ? (
+        <p className="text-sm text-[var(--color-warning)]">
+          Há pendências de cadastro para revisar.
+        </p>
       ) : null}
       <span className="hidden">{safeReturnTo(returnAccomp)}</span>
     </div>
