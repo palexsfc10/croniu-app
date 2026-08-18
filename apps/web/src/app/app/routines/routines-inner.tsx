@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiFetch, type ProfessionProfile } from "@/lib/api";
+import { apiFetch, formatDateBR, type ProfessionProfile } from "@/lib/api";
 import { ROUTINE_NAME_SUGGESTIONS, routineTypes } from "@/lib/form-guidance";
 import { resolveCapabilities } from "@/lib/capabilities";
 import { SuggestionChips } from "@/components/ui/suggestion-chips";
@@ -101,6 +101,9 @@ export default function RoutinesPageInner() {
   const [nth, setNth] = useState(1);
   const [intervalN, setIntervalN] = useState(2);
   const [intervalUnit, setIntervalUnit] = useState("weeks");
+  const [scope, setScope] = useState<"all_active" | "this_client" | "general">("general");
+  const [scopeClientId, setScopeClientId] = useState("");
+  const [clients, setClients] = useState<Array<{ id: string; full_name: string }>>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +144,9 @@ export default function RoutinesPageInner() {
 
   function filterJson() {
     return {
+      trigger_type: "calendar",
+      audience: scope,
+      client_id: scope === "this_client" ? scopeClientId || null : null,
       weekdays: [weekday],
       starts_on: startsOn || null,
       ends_on: noEnd ? null : endsOn || null,
@@ -173,6 +179,10 @@ export default function RoutinesPageInner() {
       setError("Informe o nome da rotina.");
       return;
     }
+    if (scope === "this_client" && !scopeClientId) {
+      setError("Selecione o aluno desta rotina.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const result = await apiFetch<Routine>("/api/v1/routines", {
@@ -195,21 +205,6 @@ export default function RoutinesPageInner() {
     setName("");
     setInfo("Rotina criada.");
     setCustomOpen(false);
-    await load();
-  }
-
-  async function complete(id: string) {
-    setBusy(true);
-    const result = await apiFetch(`/api/v1/routines/${id}/complete`, {
-      method: "POST",
-      body: "{}",
-    });
-    setBusy(false);
-    if (result.error) {
-      setError(result.error.message);
-      return;
-    }
-    setInfo("Rotina marcada como concluída.");
     await load();
   }
 
@@ -246,6 +241,13 @@ export default function RoutinesPageInner() {
   const yours = items.filter((r) => r.status === "active" || r.status === "paused");
   const freqText = (item: Routine) =>
     FREQUENCIES.find((f) => f.value === item.recurrence)?.label || item.recurrence;
+  const scopeText = (item: Routine) => {
+    const audience = (item.filter_json as { audience?: string } | null)?.audience;
+    if (audience === "all_active") return "Todos os alunos elegíveis";
+    if (audience === "selected") return "Alunos selecionados";
+    if (audience === "this_client") return "Um aluno específico";
+    return null;
+  };
 
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
@@ -295,8 +297,11 @@ export default function RoutinesPageInner() {
                     </div>
                     <p className="text-sm text-[var(--color-ink-muted)]">
                       {freqText(item)}
-                      {item.next_run_on ? ` · próxima: ${item.next_run_on}` : ""}
+                      {item.next_run_on ? ` · próxima: ${formatDateBR(item.next_run_on)}` : ""}
                     </p>
+                    {scopeText(item) ? (
+                      <p className="text-xs text-[var(--color-ink-muted)]">{scopeText(item)}</p>
+                    ) : null}
                   </div>
                   <div className="relative">
                     <Button
@@ -345,9 +350,6 @@ export default function RoutinesPageInner() {
                     ) : null}
                   </div>
                 </div>
-                <Button variant="secondary" disabled={busy} onClick={() => void complete(item.id)}>
-                  Concluir esta ocorrência
-                </Button>
               </li>
             ))}
           </ul>
@@ -412,7 +414,14 @@ export default function RoutinesPageInner() {
       <button
         type="button"
         className="flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-3 text-sm text-[var(--color-ink-muted)]"
-        onClick={() => setCustomOpen(true)}
+        onClick={() => {
+          setCustomOpen(true);
+          if (!clients.length) {
+            void apiFetch<Array<{ id: string; full_name: string }>>("/api/v1/clients").then(
+              (result) => setClients(result.data ?? []),
+            );
+          }
+        }}
       >
         <IconPlus className="h-5 w-5" />
         Criar rotina personalizada
@@ -446,6 +455,37 @@ export default function RoutinesPageInner() {
             )}
           </select>
         </label>
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium">Para quem é esta rotina?</span>
+          <select
+            aria-label="Para quem é esta rotina?"
+            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+            value={scope}
+            onChange={(e) => setScope(e.target.value as typeof scope)}
+          >
+            <option value="all_active">Para todos os alunos elegíveis</option>
+            <option value="this_client">Para um aluno específico</option>
+            <option value="general">Rotina geral, sem aluno</option>
+          </select>
+        </label>
+        <ConditionalField when={scope === "this_client"}>
+          <label className="block space-y-1.5 text-sm">
+            <span className="font-medium">Aluno</span>
+            <select
+              aria-label="Aluno"
+              className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3"
+              value={scopeClientId}
+              onChange={(e) => setScopeClientId(e.target.value)}
+            >
+              <option value="">Selecione…</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </ConditionalField>
         <label className="block space-y-1.5 text-sm" htmlFor="routine-frequency">
           <span className="font-medium">Com que frequência?</span>
           <select
@@ -597,12 +637,22 @@ function OccurrenceRow({
   busy: boolean;
   onComplete: (id: string) => void;
 }) {
+  const situation = item.overdue ? "Atrasada" : "Em dia";
   return (
     <div>
+      <span
+        className={
+          item.overdue
+            ? "font-semibold text-[var(--color-danger)]"
+            : "font-medium text-[var(--color-ink-muted)]"
+        }
+      >
+        {situation}
+      </span>
+      {" · "}
       <span className="font-medium">{item.client_name || "Cliente"}</span>
       {item.plan_title ? ` · ${item.plan_title}` : ""}
-      {" · "}até {item.due_on}
-      {item.overdue ? " · atrasado" : ""}
+      {" · "}até {formatDateBR(item.due_on)}
       <div className="mt-1">
         <Button variant="secondary" disabled={busy} onClick={() => onComplete(item.id)}>
           Marcar realizado
