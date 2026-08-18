@@ -23,6 +23,10 @@ export type BillingEntitlement = {
   referral_active?: boolean;
   referral_discount_percent?: number | null;
   referral_base_amount_cents?: number | null;
+  next_billing_at?: string | null;
+  grace_period_ends_at?: string | null;
+  cancellation_effective_at?: string | null;
+  open_checkout_expires_at?: string | null;
 };
 
 export type BillingCheckout = {

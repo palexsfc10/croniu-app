@@ -147,6 +147,48 @@ Calculados em `app/services/referral.list_partner_summaries`, por campanha:
     indicação / Total, com o texto "Seu desconto permanece vinculado a esta conta enquanto você
     utilizar o Croniu."
 
+## 6.1 Máquina de estados de `/app/billing` (não exclusiva do programa de indicação)
+
+A tela de assinatura precisa cobrir oito estados sem nunca deixar a pessoa sem uma próxima ação
+clara nem repetir a mesma frase duas vezes. Implementado em
+`apps/web/src/lib/billing-labels.ts` (`describeBillingState`), consumido por
+`apps/web/src/app/app/billing/page.tsx`:
+
+| Estado | `subscription_status` / `billing_setup_status` | O que a tela mostra |
+|--------|--------------------------------------------------|----------------------|
+| Trial ativo | `trial` / `available` | Convite para assinar voluntariamente + "sua primeira cobrança ocorrerá em {fim do trial}". |
+| Trial expirado | `expired` (ou `blocking_reason=trial_expired`) | "Teste encerrado" + convite para assinar; dados preservados. |
+| Checkout pendente | qualquer / `checkout_pending` | "Continuar checkout" (retomar, nunca recomeçar) + prazo de expiração do link. |
+| Pagamento confirmado (ainda em trial) | `trial` / `subscription_prepared` | "Assinatura confirmada" + data exata da primeira cobrança real (fim do trial — nunca antes). |
+| Assinatura ativa | `active` / `paid` | "Assinatura ativa" + data da próxima cobrança (`next_billing_at`). |
+| Inadimplente | `past_due`/`grace_period` | Prazo de regularização (`grace_period_ends_at`) + aviso honesto: **não há hoje um botão de atualizar cartão** — orienta a contatar o suporte (ver limitação abaixo). |
+| Cancelada | `cancelled` | Se `cancellation_effective_at` no futuro: acesso preservado até essa data. Caso contrário: convite a assinar de novo. |
+| Reativação | volta a `trial`/`active` | Mesmos ramos acima — o desconto de indicação (se houver) é sempre recalculado a partir da atribuição, nunca perdido. |
+
+**Preço não cobrado silenciosamente**: `first_charge_date_for_subscription`
+(`app/billing/checkout_helpers.py`) já define `nextDueDate` da assinatura Asaas como o fim do
+trial quando o trial ainda está aberto — a Asaas não cobra antes dessa data. Isso preexistia à
+tela; o que faltava era **mostrar** essa data ao usuário, o que a nova `scheduleNote` resolve.
+
+**Limitação conhecida (documentada, não improvisada): allowlist de sandbox em HML.**
+`BILLING_SANDBOX_ALLOWLIST_ORG_IDS` (ver `deploy/hml/.env.hml`) restringe checkout hospedado a um
+conjunto fixo de `organization_id` em HML — qualquer outra organização, indicada ou não, tem
+`can_start_checkout=false` mesmo com cartão habilitado (`card_enabled=true`) e trial aberto. Isso
+é intencional (evita geração descontrolada de checkouts reais no sandbox Asaas por qualquer
+cadastro em um ambiente compartilhado) e não deve ser removido nem contornado no código. Antes
+desta correção, a tela simplesmente não mostrava nada quando isso acontecia. Agora, sempre que
+`recommended_action="subscribe"` mas nenhum botão pode ser oferecido, a tela explica: "Assinatura
+por cartão ainda não está disponível para esta conta neste momento... avisaremos assim que a
+contratação estiver liberada" — sem expor o mecanismo de allowlist ao usuário final. **Comportamento
+seguro proposto e já implementado**: nunca cobrar, nunca abrir checkout sem o usuário clicar, e
+sempre informar o estado real em vez de ficar em silêncio.
+
+**Atualização de método de pagamento (inadimplência): limitação real, não implementada.** Não
+existe hoje endpoint para o cliente atualizar cartão/forma de pagamento pelo Croniu — apenas
+criação do primeiro checkout. Para `past_due`/`grace_period`, a tela mostra o prazo de graça e
+orienta contato com o suporte, sem fingir um botão que não existe. Construir esse fluxo é uma
+entrega futura (fora do escopo desta correção).
+
 ## 7. Runbook operacional
 
 **Habilitar um divulgador**
@@ -170,6 +212,29 @@ Calculados em `app/services/referral.list_partner_summaries`, por campanha:
 - Comissão prevista é sempre recalculada em tempo real a partir dos snapshots; não há tabela de
   cache a invalidar.
 
+**Limpeza de dados de smoke/teste em HML (regra obrigatória)**
+
+Incidente registrado em 2026-08-18: uma limpeza por *nome/código* (`DELETE ... WHERE name ILIKE
+'%...%'` / `DELETE FROM referral_attributions` sem filtro) apagou uma atribuição real, criada
+manualmente pelo operador durante a janela de teste, porque ela usava por coincidência o mesmo
+cupom de smoke. Foi reconstruída manualmente (ver commit/relatório da correção), mas o processo
+era inseguro. Regras daqui em diante, sem exceção:
+
+1. **Só apagar por ID capturado na própria execução do smoke.** Cada script de smoke deve
+   registrar (`echo`/log) o UUID de cada entidade que ele mesmo criou (usuário, organização,
+   parceiro, campanha, atribuição, admin) no momento da criação. A limpeza usa exclusivamente
+   esses IDs — nunca `LIKE`/`ILIKE` por nome, e-mail ou código, mesmo que pareçam exclusivos do
+   smoke.
+2. **Nunca apagar por "o que a constraint trouxe junto".** Se um `DELETE` por ID for bloqueado por
+   uma FK (`RESTRICT`) apontando para um registro que não está na lista de IDs capturados, **pare
+   e reporte** — não amplie o `DELETE` para incluir esse dependente só para destravar a limpeza.
+   Esse dependente pode ser dado real de outra pessoa.
+3. **Reversão de mudanças de ambiente (allowlist, `.env.hml`, etc.) deve restaurar o valor
+   anterior exato** (backup do arquivo antes de editar), nunca reescrever com um valor
+   "reconstruído de memória".
+4. Ao final de qualquer smoke em HML, publicar a lista de IDs removidos (ou "nenhum removido")
+   no relatório — nunca só "contagens finais".
+
 **Rollback**
 - Aplicação: reverter o deploy (a feature é aditiva — nenhuma rota/tabela existente foi
   alterada em formato incompatível).
@@ -192,9 +257,15 @@ do divulgador sem dados financeiros, isolamento de tenant (dono de organização
 de plataforma).
 
 Frontend: `apps/web/src/components/auth/auth-forms.test.tsx` (banner de cupom aplicado/indisponível,
-nenhuma chamada sem `?ref=`) e `apps/web/src/components/app/app-shell.test.tsx` (item de menu
-condicional). Regressão completa das suítes existentes (backend e frontend) executada sem
-quebras.
+nenhuma chamada sem `?ref=`), `apps/web/src/components/app/app-shell.test.tsx` (item de menu
+condicional), `apps/web/src/lib/billing-labels.test.ts` (13 casos — os 8 estados da máquina de
+`/app/billing`, nunca repete headline/detail) e `apps/web/src/app/app/billing/page.test.tsx` (9
+casos — DOM real de cada estado, incluindo o guard de regressão do texto duplicado e o aviso
+honesto quando o checkout não está disponível). Regressão completa das suítes existentes (backend
+e frontend) executada sem quebras.
+
+E2E direcionados: `apps/admin/e2e/referral-program.spec.ts` e `apps/web/e2e/referral-program.spec.ts`
+— fluxos completos via UI real (Playwright), não só chamadas de API.
 
 Verificação manual (smoke, ambiente local): registro com `?ref=` válido mostrando o banner,
 checkout hospedado carregando exatamente R$ 26,91 para organização indicada, página
