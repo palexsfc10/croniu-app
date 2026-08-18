@@ -62,14 +62,50 @@ filho de `organizations` no schema).
   cadastrado manualmente).
 - Frontend: build, typecheck, lint (0 erros), Vitest 195 testes.
 - CI da PR: 8/8 checks verdes.
-- Playwright E2E não reexecutado neste ambiente; specs existentes revisadas
-  por leitura e confirmadas compatíveis com as mudanças de UI.
+- **Playwright E2E completo rodado localmente** (não só revisado por
+  leitura) contra API+web locais apontando para o Postgres de dev. Achou e
+  corrigiu **2 regressões reais** introduzidas por este branch:
+  - `accompaniment-journey.spec.ts` esperava o texto estático antigo do
+    card de Rotinas ("Defina a recorrência…"), substituído por um resumo
+    de pendências ao vivo em um commit anterior deste mesmo branch.
+  - `cycle-integrity.spec.ts` dirigia a etapa de anamnese assumindo que
+    sempre começa em `"todo"` — agora começa `"na"` para clientes criados
+    via API (a correção da anamnese); teste ajustado para validar o novo
+    comportamento em vez de forçar o antigo.
+  - Após as correções: 35 passed, mais 17 falhas causadas por
+    `rate_limited` no endpoint de registro — artefato de rodar a suíte
+    inteira sem pausas contra uma única instância local (limite de
+    segurança do próprio produto), não relacionado ao código alterado;
+    confirmado lendo o erro (todas as 17 falham no primeiro passo,
+    `apiRegister`, antes de qualquer código deste branch ser exercitado).
+
+## Segunda rodada — redesenho do checklist "Preparar acompanhamento"
+
+Pedido adicional do owner (print + reprodução ao vivo): a tela de
+checklist de preparação tinha peso visual idêntico em todas as 7 etapas,
+dificultando identificar rapidamente o que precisava de ação.
+
+- `image_sha` = `deploy_sha` = `5fc3d111a9de202ca247a6590c7576a6788a31ad`
+- `version` = `v1.0.0-ux-flow-review.2`
+- Redesenho: etapas concluídas colapsam em linha compacta (check + selo,
+  sem botão); a etapa realmente pendente seguinte (mesma lógica de
+  resolução do backend — primeiro "todo", com fallback para "later")
+  ganha destaque visual ("PRÓXIMO PASSO", borda/fundo de destaque, botão
+  primário); demais pendências usam botão secundário; barra de progresso
+  adicionada no topo.
+- Validado com screenshots do Playwright local (evidência visual real, não
+  só leitura de código) e depois confirmado ao vivo em HML via API
+  (`GET .../journey` retornando `anamnesis:"na"`,
+  `next_action:"register_evaluation"` para um cliente sintético recém-criado).
+- `GET /version` → `v1.0.0-ux-flow-review.2`, sha `5fc3d111a9de202ca247a6590c7576a6788a31ad`.
+- Dados sintéticos da segunda rodada (organização, cliente, usuário)
+  removidos; contagens de volta a 245 organizações / 249 usuários.
 
 ## Rollback
 
 `deploy/release/rollback.sh` com `RELEASE_MANIFEST.previous.json` (aponta
-para `v1.0.0-routines-occurrence-fix.1`, sha `0580d3d`). Backup pré-deploy
-verificado pelo próprio `deploy.sh` (mandatório em release não-cold-start).
+para a release anterior). Backup pré-deploy verificado pelo próprio
+`deploy.sh` em cada release (mandatório em release não-cold-start).
 
 ## PRD
 
