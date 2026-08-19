@@ -170,18 +170,44 @@ clara nem repetir a mesma frase duas vezes. Implementado em
 trial quando o trial ainda está aberto — a Asaas não cobra antes dessa data. Isso preexistia à
 tela; o que faltava era **mostrar** essa data ao usuário, o que a nova `scheduleNote` resolve.
 
-**Limitação conhecida (documentada, não improvisada): allowlist de sandbox em HML.**
-`BILLING_SANDBOX_ALLOWLIST_ORG_IDS` (ver `deploy/hml/.env.hml`) restringe checkout hospedado a um
-conjunto fixo de `organization_id` em HML — qualquer outra organização, indicada ou não, tem
-`can_start_checkout=false` mesmo com cartão habilitado (`card_enabled=true`) e trial aberto. Isso
-é intencional (evita geração descontrolada de checkouts reais no sandbox Asaas por qualquer
-cadastro em um ambiente compartilhado) e não deve ser removido nem contornado no código. Antes
-desta correção, a tela simplesmente não mostrava nada quando isso acontecia. Agora, sempre que
-`recommended_action="subscribe"` mas nenhum botão pode ser oferecido, a tela explica: "Assinatura
-por cartão ainda não está disponível para esta conta neste momento... avisaremos assim que a
-contratação estiver liberada" — sem expor o mecanismo de allowlist ao usuário final. **Comportamento
-seguro proposto e já implementado**: nunca cobrar, nunca abrir checkout sem o usuário clicar, e
-sempre informar o estado real em vez de ficar em silêncio.
+**Liberação de checkout em HML: `BILLING_SANDBOX_ALLOW_ALL` (substituiu a allowlist crescente).**
+
+Histórico do problema: `BILLING_SANDBOX_ALLOWLIST_ORG_IDS` (lista fixa de `organization_id`)
+restringia checkout hospedado a um punhado de contas em HML — qualquer outra organização,
+indicada ou não (incluindo contas reais criadas manualmente pelo operador, não só fixtures de
+teste), tinha `can_start_checkout=false` mesmo com cartão habilitado e trial aberto. Manter uma
+allowlist manual crescente não escala e falha fechado por padrão (bloqueia tudo que não foi
+explicitamente adicionado) — o oposto do que HML precisa para ser útil.
+
+Solução: `BILLING_SANDBOX_ALLOW_ALL` (`app/config.py`, `app/billing/config.py`,
+`is_sandbox_allow_all_active()`), um sinalizador explícito que libera checkout para **todas** as
+organizações do ambiente, mas só tem efeito quando **as três condições abaixo são verdadeiras ao
+mesmo tempo** — qualquer uma falsa e o sinalizador é ignorado (fail-closed, nunca fail-open):
+
+1. `BILLING_SANDBOX_ALLOW_ALL=true`;
+2. `CRONIU_ENV` normaliza para exatamente `"hml"` (nunca `"production"` — ver
+   `normalize_croniu_env`);
+3. `ASAAS_ENVIRONMENT=sandbox` (Asaas real de produção nunca é liberado por este sinalizador,
+   mesmo que `CRONIU_ENV` esteja mal configurado como `hml` por engano).
+
+Quando o sinalizador está ligado mas alguma condição falha, isso fica registrado explicitamente em
+`BillingRuntimeStatus.issues` como `billing_sandbox_allow_all_ignored_outside_hml_sandbox` — nunca
+falha em silêncio. `BILLING_SANDBOX_ALLOWLIST_ORG_IDS` continua existindo para o caso raro de
+querer restringir a um subconjunto mesmo em HML (com o sinalizador desligado), mas deixou de ser a
+forma recomendada de liberar o ambiente inteiro.
+
+Configuração HML atual (`deploy/hml/.env.hml`): `BILLING_SANDBOX_ALLOW_ALL=true`,
+`BILLING_SANDBOX_ALLOWLIST_ORG_IDS` preservado (não usado enquanto o allow-all estiver ativo, mas
+não removido). **Em PRD, `BILLING_SANDBOX_ALLOW_ALL` não deve existir no `.env` — o padrão é
+`false`, e mesmo que alguém o defina como `true` por engano em produção, as condições 2 e 3 acima
+bloqueiam qualquer efeito.**
+
+Sempre que `recommended_action="subscribe"` mas nenhum botão pode ser oferecido (billing
+desligado, credenciais ausentes, ou qualquer outro motivo de configuração), a tela explica:
+"Assinatura por cartão ainda não está disponível para esta conta neste momento... avisaremos assim
+que a contratação estiver liberada" — sem expor o mecanismo interno ao usuário final.
+**Comportamento seguro**: nunca cobrar, nunca abrir checkout sem o usuário clicar, e sempre
+informar o estado real em vez de ficar em silêncio.
 
 **Atualização de método de pagamento (inadimplência): limitação real, não implementada.** Não
 existe hoje endpoint para o cliente atualizar cartão/forma de pagamento pelo Croniu — apenas
@@ -255,6 +281,14 @@ gera atribuição, dupla atribuição impossível, **preço 2990/2691 verificado
 o payload real enviado ao provider Asaas mockado**, contador de pagantes idempotente, endpoint
 do divulgador sem dados financeiros, isolamento de tenant (dono de organização não acessa rotas
 de plataforma).
+
+`backend/tests/test_billing_sandbox_allow_all.py` (9 casos) — HML sandbox com liberação global
+(`BILLING_SANDBOX_ALLOW_ALL`), HML sandbox restrito por allowlist com o sinalizador desligado, HML
+sandbox sem allowlist e sem allow-all bloqueia todas as orgs (o bug relatado), produção nunca
+liberada pelo sinalizador (mesmo definido `true` por engano), sinalizador ignorado se
+`CRONIU_ENV≠hml` ou `ASAAS_ENVIRONMENT≠sandbox`, config inválida e credenciais ausentes falham
+fechado mesmo com o sinalizador ligado, billing desligado falha fechado mesmo com o sinalizador
+ligado.
 
 Frontend: `apps/web/src/components/auth/auth-forms.test.tsx` (banner de cupom aplicado/indisponível,
 nenhuma chamada sem `?ref=`), `apps/web/src/components/app/app-shell.test.tsx` (item de menu
