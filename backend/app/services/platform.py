@@ -9,11 +9,11 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import Settings, get_settings
 from app.models.agent import AgentPendingAction, AgentRun, AgentThread
 from app.models.billing import Subscription, SubscriptionStatus
+from app.models.intake import OperationalOccurrence, Protocol
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.platform_membership import PlatformMembership
 from app.models.receivable import Receivable
-from app.models.intake import OperationalOccurrence, Protocol
 from app.models.user import User
 from app.models.user_feedback import UserFeedback
 from app.schemas.platform import (
@@ -28,8 +28,8 @@ from app.schemas.platform import (
 )
 from app.services import domain as domain_svc
 from app.services.environment_label import normalize_croniu_env
-from app.services.profession import PROFESSION_OPTIONS, recommended_form_kind
 from app.services.platform_pilot_ops import list_cycle_agenda_integrity
+from app.services.profession import PROFESSION_OPTIONS, recommended_form_kind
 
 _PROFESSION_LABEL = {item["code"]: item["label"] for item in PROFESSION_OPTIONS}
 
@@ -293,6 +293,10 @@ def _subscription_status(db: Session, organization_id: uuid.UUID) -> str | None:
     return sub.status if sub else None
 
 
+def _subscription_for_org(db: Session, organization_id: uuid.UUID) -> Subscription | None:
+    return db.scalar(select(Subscription).where(Subscription.organization_id == organization_id))
+
+
 def _operational_status(org_status: str, subscription_status: str | None) -> str:
     if org_status == "suspended" or subscription_status in {
         SubscriptionStatus.SUSPENDED.value,
@@ -402,6 +406,9 @@ def get_organization_detail(db: Session, organization_id: uuid.UUID) -> Organiza
         or 0
     )
     plans_count, published_plans, overdue = _plan_ops_counts(db, org.id)
+    subscription = _subscription_for_org(db, org.id)
+    from app.utils.timezone import format_in_timezone
+
     return OrganizationDetail(
         id=org.id,
         name=org.name,
@@ -430,6 +437,13 @@ def get_organization_detail(db: Session, organization_id: uuid.UUID) -> Organiza
         plans_count=plans_count,
         published_plans_count=published_plans,
         overdue_occurrences_count=overdue,
+        trial_ends_at=subscription.trial_ends_at if subscription else None,
+        trial_ends_at_local=format_in_timezone(
+            subscription.trial_ends_at if subscription else None, org.timezone
+        ),
+        disabled_at=org.disabled_at,
+        disabled_at_local=format_in_timezone(org.disabled_at, org.timezone),
+        disabled_reason=org.disabled_reason,
     )
 
 

@@ -31,6 +31,7 @@ from app.services.auth import (
     confirm_password_reset,
     create_session,
     ensure_email_verified,
+    ensure_organization_not_disabled,
     get_current_auth,
     primary_organization_id,
     register_owner,
@@ -150,10 +151,11 @@ def login(
         user = authenticate_user(db, email=str(payload.email), password=payload.password)
         ensure_email_verified(user, settings)
         organization_id = primary_organization_id(db, user)
+        organization = db.get(Organization, organization_id)
+        ensure_organization_not_disabled(organization)
         _, token = create_session(db, user=user, organization_id=organization_id, settings=settings)
         user.last_login_at = datetime.now(UTC)
         db.add(user)
-        organization = db.get(Organization, organization_id)
         if organization is not None:
             organization.last_activity_at = datetime.now(UTC)
             db.add(organization)
