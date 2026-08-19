@@ -15,12 +15,19 @@ from app.schemas.feedback import (
     FeedbackStatusUpdateIn,
 )
 from app.schemas.platform import (
+    OrganizationDeactivateIn,
+    OrganizationDeletionPreviewOut,
     OrganizationDetail,
+    OrganizationPermanentDeleteIn,
+    OrganizationPermanentDeleteOut,
+    OrganizationReactivateIn,
     OverviewMetrics,
     PaginatedOrganizations,
     PaginatedUsers,
     PlatformLoginRequest,
     PlatformMeResponse,
+    TrialExtendIn,
+    TrialExtendOut,
 )
 from app.schemas.referral import (
     CodeAvailabilityOut,
@@ -29,6 +36,7 @@ from app.schemas.referral import (
     PartnerSummaryOut,
     UpdateCommissionIn,
 )
+from app.services import platform_admin_ops
 from app.services import referral as referral_svc
 from app.services.auth import AuthError
 from app.services.environment_label import normalize_croniu_env
@@ -211,6 +219,121 @@ def platform_organization_detail(
             detail={"code": "not_found", "message": "Organização não encontrada."},
         )
     return detail
+
+
+@router.post("/organizations/{organization_id}/trial/extend", response_model=TrialExtendOut)
+def platform_extend_trial(
+    organization_id: uuid.UUID,
+    payload: TrialExtendIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> TrialExtendOut:
+    _require_platform_admin(auth)
+    ip, ua = client_meta(request)
+    try:
+        return platform_admin_ops.extend_trial(
+            db,
+            organization_id=organization_id,
+            additional_days=payload.additional_days,
+            reason=payload.reason,
+            actor_user_id=auth.user.id,
+            ip_address=ip,
+            user_agent=ua,
+        )
+    except AuthError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/organizations/{organization_id}/deactivate", response_model=OrganizationDetail)
+def platform_deactivate_organization(
+    organization_id: uuid.UUID,
+    payload: OrganizationDeactivateIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> OrganizationDetail:
+    _require_platform_admin(auth)
+    ip, ua = client_meta(request)
+    try:
+        return platform_admin_ops.deactivate_organization(
+            db,
+            organization_id=organization_id,
+            confirmation_text=payload.confirmation_text,
+            reason=payload.reason,
+            actor_user_id=auth.user.id,
+            ip_address=ip,
+            user_agent=ua,
+        )
+    except AuthError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/organizations/{organization_id}/reactivate", response_model=OrganizationDetail)
+def platform_reactivate_organization(
+    organization_id: uuid.UUID,
+    payload: OrganizationReactivateIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> OrganizationDetail:
+    _require_platform_admin(auth)
+    ip, ua = client_meta(request)
+    try:
+        return platform_admin_ops.reactivate_organization(
+            db,
+            organization_id=organization_id,
+            reason=payload.reason,
+            actor_user_id=auth.user.id,
+            ip_address=ip,
+            user_agent=ua,
+        )
+    except AuthError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get(
+    "/organizations/{organization_id}/deletion-preview",
+    response_model=OrganizationDeletionPreviewOut,
+)
+def platform_organization_deletion_preview(
+    organization_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> OrganizationDeletionPreviewOut:
+    _require_platform_admin(auth)
+    try:
+        return platform_admin_ops.get_deletion_preview(db, organization_id=organization_id)
+    except AuthError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post(
+    "/organizations/{organization_id}/permanent-delete",
+    response_model=OrganizationPermanentDeleteOut,
+)
+def platform_permanently_delete_organization(
+    organization_id: uuid.UUID,
+    payload: OrganizationPermanentDeleteIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> OrganizationPermanentDeleteOut:
+    _require_platform_admin(auth)
+    ip, ua = client_meta(request)
+    try:
+        return platform_admin_ops.permanently_delete_organization(
+            db,
+            organization_id=organization_id,
+            confirmation_text=payload.confirmation_text,
+            confirmation_understood=payload.confirmation_understood,
+            reason=payload.reason,
+            actor_user_id=auth.user.id,
+            ip_address=ip,
+            user_agent=ua,
+        )
+    except AuthError as exc:
+        raise _http_error(exc) from exc
 
 
 @router.get("/users", response_model=PaginatedUsers)

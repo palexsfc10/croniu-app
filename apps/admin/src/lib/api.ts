@@ -70,6 +70,35 @@ export type OrganizationDetail = OrganizationListItem & {
   plans_count?: number;
   published_plans_count?: number;
   overdue_occurrences_count?: number;
+  trial_ends_at?: string | null;
+  trial_ends_at_local?: string | null;
+  disabled_at?: string | null;
+  disabled_at_local?: string | null;
+  disabled_reason?: string | null;
+};
+
+export type TrialExtendOut = {
+  organization_id: string;
+  previous_trial_ends_at: string;
+  previous_trial_ends_at_local: string;
+  new_trial_ends_at: string;
+  new_trial_ends_at_local: string;
+  additional_days: number;
+};
+
+export type OrganizationDeletionPreview = {
+  organization_id: string;
+  organization_name: string;
+  eligible_for_hard_delete: boolean;
+  will_anonymize: boolean;
+  blocking_reasons: string[];
+  data_to_remove: Record<string, number>;
+};
+
+export type OrganizationPermanentDeleteResult = {
+  organization_id: string;
+  mode: "hard_delete" | "anonymized";
+  backup_path: string;
 };
 
 export type UserListItem = {

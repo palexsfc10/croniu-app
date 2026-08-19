@@ -181,6 +181,23 @@ def ensure_email_verified(user: User, settings: Settings) -> None:
         status.HTTP_403_FORBIDDEN,
     )
 
+def ensure_organization_not_disabled(organization: Organization | None) -> None:
+    """Block login for a deactivated organization (platform-admin account control).
+
+    "Desativar conta" must stop new logins without touching billing/referral
+    data — this is the enforcement point. Reactivation clears status back to
+    its prior value, which lets login succeed again immediately.
+    """
+    if organization is None:
+        return
+    if organization.status == "disabled":
+        raise AuthError(
+            "organization_disabled",
+            "Esta conta está desativada. Entre em contato com o suporte.",
+            status.HTTP_403_FORBIDDEN,
+        )
+
+
 def authenticate_user(db: Session, *, email: str, password: str) -> User:
     normalized_email = email.strip().lower()
     user = db.scalar(select(User).where(User.email == normalized_email))

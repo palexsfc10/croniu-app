@@ -40,6 +40,12 @@ class Organization(Base):
     last_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Set only while status == "disabled" (platform-admin account controls).
+    # status_before_disable lets reactivation restore the exact prior value
+    # instead of guessing a default (e.g. "active" vs "evaluating").
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status_before_disable: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

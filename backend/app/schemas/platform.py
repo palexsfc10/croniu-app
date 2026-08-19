@@ -80,6 +80,61 @@ class OrganizationDetail(OrganizationListItem):
     plans_count: int = 0
     published_plans_count: int = 0
     overdue_occurrences_count: int = 0
+    # Platform-admin account controls (trial extension / deactivation).
+    trial_ends_at: datetime | None = None
+    trial_ends_at_local: str | None = None
+    disabled_at: datetime | None = None
+    disabled_at_local: str | None = None
+    disabled_reason: str | None = None
+
+
+TRIAL_EXTENSION_MIN_DAYS = 1
+TRIAL_EXTENSION_MAX_DAYS = 90
+TRIAL_EXTENSION_QUICK_OPTIONS = (3, 7, 15, 30)
+
+
+class TrialExtendIn(BaseModel):
+    additional_days: int = Field(ge=TRIAL_EXTENSION_MIN_DAYS, le=TRIAL_EXTENSION_MAX_DAYS)
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class TrialExtendOut(BaseModel):
+    organization_id: uuid.UUID
+    previous_trial_ends_at: datetime
+    previous_trial_ends_at_local: str
+    new_trial_ends_at: datetime
+    new_trial_ends_at_local: str
+    additional_days: int
+
+
+class OrganizationDeactivateIn(BaseModel):
+    confirmation_text: str = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class OrganizationReactivateIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class OrganizationDeletionPreviewOut(BaseModel):
+    organization_id: uuid.UUID
+    organization_name: str
+    eligible_for_hard_delete: bool
+    will_anonymize: bool
+    blocking_reasons: list[str]
+    data_to_remove: dict[str, int]
+
+
+class OrganizationPermanentDeleteIn(BaseModel):
+    confirmation_text: str = Field(min_length=1, max_length=200)
+    confirmation_understood: bool
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class OrganizationPermanentDeleteOut(BaseModel):
+    organization_id: uuid.UUID
+    mode: str
+    backup_path: str
 
 
 class UserListItem(BaseModel):
