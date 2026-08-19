@@ -50,6 +50,18 @@ export function AuthScreen({
         </div>
 
         {children}
+
+        <p className="pt-2 text-center text-xs text-[var(--color-ink-subtle)]">
+          Ao continuar, você concorda com os{" "}
+          <Link href="/termos" className="underline-offset-2 hover:underline">
+            Termos de Uso
+          </Link>{" "}
+          e a{" "}
+          <Link href="/privacidade" className="underline-offset-2 hover:underline">
+            Política de Privacidade
+          </Link>
+          .
+        </p>
       </div>
     </main>
   );

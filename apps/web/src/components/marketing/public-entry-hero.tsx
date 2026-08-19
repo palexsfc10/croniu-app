@@ -90,8 +90,16 @@ export function PublicEntryHero({ next = null }: Props) {
         </aside>
       </main>
 
-      <footer className="mx-auto w-full max-w-6xl px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 text-center text-xs text-[var(--color-ink-subtle)] sm:px-8 sm:text-left">
+      <footer className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 text-center text-xs text-[var(--color-ink-subtle)] sm:flex-row sm:items-center sm:justify-between sm:text-left">
         <p>© Croniu</p>
+        <p className="flex justify-center gap-4 sm:justify-end">
+          <Link href="/privacidade" className="underline-offset-2 hover:underline">
+            Política de Privacidade
+          </Link>
+          <Link href="/termos" className="underline-offset-2 hover:underline">
+            Termos de Uso
+          </Link>
+        </p>
       </footer>
     </div>
   );
