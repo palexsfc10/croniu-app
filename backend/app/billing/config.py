@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from app.billing.asaas_url import normalize_asaas_api_url
 from app.config import get_settings
 from app.services.auth import AuthError
-
+from app.services.environment_label import normalize_croniu_env
 
 ASAAS_SANDBOX_URL_MARKER = "sandbox.asaas.com"
 ASAAS_PROD_URL_MARKER = "api.asaas.com"
@@ -26,6 +26,7 @@ class BillingRuntimeStatus:
     card_enabled: bool
     sandbox_mode: bool
     allowlist_active: bool
+    sandbox_allow_all_active: bool
     issues: tuple[str, ...]
 
     def to_public_dict(self) -> dict:
@@ -40,6 +41,7 @@ class BillingRuntimeStatus:
             "card_enabled": self.card_enabled,
             "sandbox_mode": self.sandbox_mode,
             "allowlist_active": self.allowlist_active,
+            "sandbox_allow_all_active": self.sandbox_allow_all_active,
             "issues": list(self.issues),
         }
 
@@ -89,6 +91,25 @@ def validate_asaas_environment_config() -> tuple[bool, list[str]]:
     return (len(issues) == 0, issues)
 
 
+def is_sandbox_allow_all_active(*, sandbox_mode: bool | None = None) -> bool:
+    """Explicit, env-gated opt-in — see BILLING_SANDBOX_ALLOW_ALL in app/config.py.
+
+    Fail-closed: requires ALL of — the flag set, CRONIU_ENV normalizing to
+    exactly "hml" (never "production"), and Asaas itself in sandbox mode.
+    Any one of these being false means the flag has no effect, even if set.
+    """
+    settings = get_settings()
+    if not settings.billing_sandbox_allow_all:
+        return False
+    env_token = normalize_croniu_env(settings.croniu_env)
+    if env_token != "hml":
+        return False
+    if sandbox_mode is None:
+        env = (settings.asaas_environment or "sandbox").strip().lower()
+        sandbox_mode = env != "production"
+    return bool(sandbox_mode)
+
+
 def get_billing_runtime_status() -> BillingRuntimeStatus:
     settings = get_settings()
     env = (settings.asaas_environment or "sandbox").strip().lower()
@@ -99,9 +120,15 @@ def get_billing_runtime_status() -> BillingRuntimeStatus:
     allowlist = get_sandbox_allowlist()
     allowlist_active = bool(allowlist)
 
+    sandbox_allow_all_active = is_sandbox_allow_all_active(sandbox_mode=sandbox_mode)
+    if settings.billing_sandbox_allow_all and not sandbox_allow_all_active:
+        # Flag was set but conditions weren't met (wrong env and/or Asaas
+        # environment) — never silently grant access; surface it loudly.
+        issues = [*issues, "billing_sandbox_allow_all_ignored_outside_hml_sandbox"]
+
     checkout_global = bool(settings.billing_enabled and settings.billing_checkout_enabled)
     if settings.is_production_like and sandbox_mode:
-        if not allowlist_active:
+        if not allowlist_active and not sandbox_allow_all_active:
             checkout_global = False
             if "homologation_requires_allowlist" not in issues:
                 issues = [*issues, "homologation_requires_allowlist"]
@@ -125,6 +152,7 @@ def get_billing_runtime_status() -> BillingRuntimeStatus:
         card_enabled=bool(settings.billing_card_enabled),
         sandbox_mode=sandbox_mode,
         allowlist_active=allowlist_active,
+        sandbox_allow_all_active=sandbox_allow_all_active,
         issues=tuple(issues),
     )
 
@@ -134,10 +162,16 @@ def is_checkout_allowed_for_org(organization_id: uuid.UUID) -> bool:
     status = get_billing_runtime_status()
     if not status.billing_enabled:
         return False
-    if not status.checkout_globally_enabled and not status.allowlist_active:
+    if (
+        not status.checkout_globally_enabled
+        and not status.allowlist_active
+        and not status.sandbox_allow_all_active
+    ):
         return False
     if not status.asaas_credentials_present or not status.config_valid:
         return False
+    if status.sandbox_allow_all_active:
+        return True
     allowlist = get_sandbox_allowlist()
     if allowlist:
         return organization_id in allowlist

@@ -23,6 +23,13 @@ export type MeResponse = {
   role: string;
 };
 
+export type MyReferral = {
+  enabled: boolean;
+  code: string | null;
+  discount_percent: number | null;
+  link: string | null;
+};
+
 export type Client = {
   id: string;
   full_name: string;

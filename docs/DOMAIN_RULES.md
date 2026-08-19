@@ -159,6 +159,24 @@ Vocabulário **alvo** (aprovado; normalização em sprint autorizada):
 
 ---
 
+## Indicação / cupom
+
+Detalhe completo: [`REFERRAL_PROGRAM.md`](./REFERRAL_PROGRAM.md) · [`ADR-043`](./ADR-043-referral-coupon-program.md).
+
+| Regra | Status |
+|-------|--------|
+| Divulgador habilitado pelo Admin da plataforma (não autoatendimento) | `IMPLEMENTADO` |
+| Código de cupom definido pelo Admin, único (case-insensitive) | `IMPLEMENTADO` |
+| Desconto fixo de 10%, vitalício para a organização atribuída | `IMPLEMENTADO` |
+| Atribuição única por organização, criada só no cadastro, nunca retroativa | `IMPLEMENTADO` |
+| Backend calcula o preço final; frontend nunca envia preço/desconto/`price_id` confiável | `IMPLEMENTADO` |
+| Comissão prevista: projeção interna, não visível ao divulgador, snapshot por atribuição | `IMPLEMENTADO` |
+| Cancelamento/reativação da mesma organização preserva o desconto | `IMPLEMENTADO` |
+| Desativação do divulgador não remove descontos já concedidos | `IMPLEMENTADO` |
+| Pagamento de comissão / repasse automático / nota fiscal | **Fora do escopo** desta entrega |
+
+---
+
 ## Alertas
 
 | Regra | Status |

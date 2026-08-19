@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -21,14 +22,22 @@ from app.schemas.platform import (
     PlatformLoginRequest,
     PlatformMeResponse,
 )
+from app.schemas.referral import (
+    CodeAvailabilityOut,
+    EnablePartnerIn,
+    PartnerSummaryListOut,
+    PartnerSummaryOut,
+    UpdateCommissionIn,
+)
+from app.services import referral as referral_svc
 from app.services.auth import AuthError
+from app.services.environment_label import normalize_croniu_env
 from app.services.platform import (
     get_organization_detail,
     get_overview_metrics,
     list_organizations,
     list_users,
 )
-from app.services.environment_label import normalize_croniu_env
 from app.services.platform_auth import (
     PlatformAuthContext,
     authenticate_platform_user,
@@ -358,6 +367,169 @@ def platform_errors(
     from app.services.platform_pilot_ops import list_sanitized_errors
 
     return list_sanitized_errors(db, organization_id=organization_id, limit=limit)
+
+
+def _require_platform_admin(auth: PlatformAuthContext) -> None:
+    if auth.membership.role != "platform_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "platform_forbidden",
+                "message": "Apenas administradores da plataforma podem executar esta ação.",
+            },
+        )
+
+
+def _summary_out(settings: Settings, summary: referral_svc.PartnerSummary) -> PartnerSummaryOut:
+    link = None
+    if summary.code:
+        link = f"{settings.public_app_base_url.rstrip('/')}/register?ref={summary.code}"
+    return PartnerSummaryOut.model_validate({**summary.__dict__, "link": link})
+
+
+@router.get("/referrals", response_model=PartnerSummaryListOut)
+def platform_referrals_list(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> PartnerSummaryListOut:
+    summaries = referral_svc.list_partner_summaries(db)
+    return PartnerSummaryListOut(items=[_summary_out(settings, s) for s in summaries])
+
+
+@router.get("/referrals/code-availability", response_model=CodeAvailabilityOut)
+def platform_referrals_code_availability(
+    code: str = Query(min_length=1, max_length=64),
+    db: Session = Depends(get_db),
+    _auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> CodeAvailabilityOut:
+    try:
+        normalized = referral_svc.normalize_code(code)
+    except AuthError:
+        return CodeAvailabilityOut(available=False, code=code.strip().upper()[:32])
+    available = referral_svc.code_available(db, normalized)
+    return CodeAvailabilityOut(available=available, code=normalized)
+
+
+@router.post("/referrals", response_model=PartnerSummaryOut, status_code=status.HTTP_201_CREATED)
+def platform_referrals_enable(
+    payload: EnablePartnerIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> PartnerSummaryOut:
+    _require_platform_admin(auth)
+    try:
+        result = referral_svc.enable_partner(
+            db,
+            target_user_id=payload.user_id,
+            code=payload.code,
+            commission_percent=payload.commission_percent,
+            actor_user_id=auth.user.id,
+        )
+    except AuthError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+
+    ip, ua = client_meta(request)
+    write_admin_audit(
+        db,
+        actor_user_id=auth.user.id,
+        action="platform.referral_partner_enabled",
+        resource_type="referral_partner",
+        resource_id=str(result.partner.id),
+        metadata_safe={"code": result.campaign.code, "code_changed": result.code_changed},
+        ip_address=ip,
+        user_agent=ua,
+    )
+    summaries = referral_svc.list_partner_summaries(db)
+    match = next(s for s in summaries if s.partner_id == result.partner.id)
+    return _summary_out(settings, match)
+
+
+@router.patch("/referrals/{partner_id}/commission", response_model=PartnerSummaryOut)
+def platform_referrals_update_commission(
+    partner_id: uuid.UUID,
+    payload: UpdateCommissionIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> PartnerSummaryOut:
+    _require_platform_admin(auth)
+    partner = db.get(referral_svc.ReferralPartner, partner_id)
+    if partner is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Divulgador não encontrado."},
+        )
+    campaign = db.scalar(
+        select(referral_svc.ReferralCampaign).where(
+            referral_svc.ReferralCampaign.partner_id == partner_id
+        )
+    )
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Cupom não encontrado."},
+        )
+    campaign.commission_percent = payload.commission_percent
+    db.commit()
+
+    ip, ua = client_meta(request)
+    write_admin_audit(
+        db,
+        actor_user_id=auth.user.id,
+        action="platform.referral_commission_updated",
+        resource_type="referral_campaign",
+        resource_id=str(campaign.id),
+        metadata_safe={"commission_percent": str(payload.commission_percent)},
+        ip_address=ip,
+        user_agent=ua,
+    )
+    summaries = referral_svc.list_partner_summaries(db)
+    match = next(s for s in summaries if s.partner_id == partner_id)
+    return _summary_out(settings, match)
+
+
+@router.patch("/referrals/{partner_id}/status", response_model=PartnerSummaryOut)
+def platform_referrals_toggle_status(
+    partner_id: uuid.UUID,
+    enabled: bool,
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    auth: PlatformAuthContext = Depends(get_current_platform_auth),
+) -> PartnerSummaryOut:
+    _require_platform_admin(auth)
+    try:
+        if enabled:
+            referral_svc.enable_existing_partner(db, partner_id=partner_id)
+        else:
+            referral_svc.disable_partner(db, partner_id=partner_id)
+    except AuthError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+
+    ip, ua = client_meta(request)
+    write_admin_audit(
+        db,
+        actor_user_id=auth.user.id,
+        action="platform.referral_partner_status_changed",
+        resource_type="referral_partner",
+        resource_id=str(partner_id),
+        metadata_safe={"enabled": enabled},
+        ip_address=ip,
+        user_agent=ua,
+    )
+    summaries = referral_svc.list_partner_summaries(db)
+    match = next(s for s in summaries if s.partner_id == partner_id)
+    return _summary_out(settings, match)
 
 
 @router.post("/self-elevate", include_in_schema=False)

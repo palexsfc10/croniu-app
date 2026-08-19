@@ -289,7 +289,11 @@ class BillingService:
         minutes = clamp_minutes_to_expire(settings.billing_checkout_minutes_to_expire)
         callbacks = build_checkout_callback_urls()
         external_reference = f"crn_{uuid.uuid4().hex}"
-        amount_cents = int(price.amount_cents)
+        from app.services.referral import resolve_checkout_amount_cents
+
+        amount_cents, _referral_attribution = resolve_checkout_amount_cents(
+            self.db, organization_id=organization_id, base_amount_cents=int(price.amount_cents)
+        )
         value = cents_to_asaas_value(amount_cents)
 
         checkout_row = BillingCheckout(

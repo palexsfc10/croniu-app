@@ -27,6 +27,7 @@ class RegisterRequest(BaseModel):
     profession_specialty: str | None = None
     profession_other: str | None = None
     use_cases: list[str] | None = None
+    referral_code: str | None = Field(default=None, max_length=32)
 
 
 class LoginRequest(BaseModel):

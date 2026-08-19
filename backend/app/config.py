@@ -148,6 +148,13 @@ class Settings(BaseSettings):
         default="",
         alias="BILLING_SANDBOX_ALLOWLIST_ORG_IDS",
     )
+    # Explicit, documented opt-in to release checkout for every organization in
+    # HML sandbox (instead of maintaining a growing manual allowlist). Only
+    # ever takes effect when CRONIU_ENV normalizes to "hml" AND
+    # ASAAS_ENVIRONMENT="sandbox" — see app/billing/config.py
+    # get_billing_runtime_status(). Fail-closed everywhere else, including if
+    # this is mistakenly set to true in production.
+    billing_sandbox_allow_all: bool = Field(default=False, alias="BILLING_SANDBOX_ALLOW_ALL")
     billing_checkout_minutes_to_expire: int = Field(
         default=60,
         alias="BILLING_CHECKOUT_MINUTES_TO_EXPIRE",

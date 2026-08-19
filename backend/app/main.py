@@ -113,6 +113,9 @@ def create_app() -> FastAPI:
     app.include_router(profession_routes.router, prefix="/api/v1")
     app.include_router(billing_routes.router, prefix="/api/v1")
     app.include_router(billing_webhooks_routes.router, prefix="/api/v1")
+    from app.api import referral as referral_routes
+
+    app.include_router(referral_routes.router, prefix="/api/v1")
     app.include_router(platform_routes.router, prefix="/api/v1")
     return app
 

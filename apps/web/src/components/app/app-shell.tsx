@@ -13,6 +13,7 @@ import {
 import { BrandMark, BrandWordmark } from "@/components/brand";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
+import { apiFetch, type MyReferral } from "@/lib/api";
 import {
   IconCalendarDays,
   IconCreditCard,
@@ -21,6 +22,7 @@ import {
   IconLifeBuoy,
   IconLogOut,
   IconClipboardList,
+  IconLink,
   IconUser,
   IconUsersRound,
 } from "@/components/ui/icons";
@@ -79,10 +81,12 @@ function menuItemClass(danger = false) {
 function ProfileMenu({
   fullName,
   orgName,
+  showReferralLink,
   onLogout,
 }: {
   fullName: string;
   orgName: string;
+  showReferralLink: boolean;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -175,6 +179,17 @@ function ProfileMenu({
             <IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />
             Ajuda e feedback
           </Link>
+          {showReferralLink ? (
+            <Link
+              role="menuitem"
+              href="/app/referrals"
+              className={menuItemClass()}
+              onClick={close}
+            >
+              <IconLink className="h-4 w-4 opacity-80" aria-hidden />
+              Meu link de indicação
+            </Link>
+          ) : null}
           <div className="my-1 border-t border-[var(--color-border)]" />
           <button
             type="button"
@@ -197,10 +212,12 @@ function ProfileMenu({
 function AccountSidebarLinks({
   fullName,
   orgName,
+  showReferralLink,
   onLogout,
 }: {
   fullName: string;
   orgName: string;
+  showReferralLink: boolean;
   onLogout: () => void;
 }) {
   return (
@@ -230,6 +247,15 @@ function AccountSidebarLinks({
         <IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />
         Ajuda e feedback
       </Link>
+      {showReferralLink ? (
+        <Link
+          href="/app/referrals"
+          className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+        >
+          <IconLink className="h-4 w-4 opacity-80" aria-hidden />
+          Meu link de indicação
+        </Link>
+      ) : null}
       <button
         type="button"
         onClick={onLogout}
@@ -245,6 +271,18 @@ function AccountSidebarLinks({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { me, loading, logout } = useAuth();
+  const [referral, setReferral] = useState<MyReferral | null>(null);
+
+  useEffect(() => {
+    if (!me) return;
+    let cancelled = false;
+    void apiFetch<MyReferral>("/api/v1/referrals/me").then((result) => {
+      if (!cancelled && result.data) setReferral(result.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [me]);
 
   if (loading) {
     return (
@@ -323,6 +361,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <AccountSidebarLinks
             fullName={me.user.full_name}
             orgName={me.organization.name}
+            showReferralLink={referral?.enabled ?? false}
             onLogout={doLogout}
           />
         </div>
@@ -345,6 +384,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <ProfileMenu
                 fullName={me.user.full_name}
                 orgName={me.organization.name}
+                showReferralLink={referral?.enabled ?? false}
                 onLogout={doLogout}
               />
             </div>

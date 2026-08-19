@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/app/app-shell";
+import { apiFetch } from "@/lib/api";
 
 const logout = vi.fn();
 
@@ -10,10 +11,15 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
-  apiFetch: vi.fn(async () => ({
-    data: { has_active_access: true, can_write: true, billing_setup_status: "available" },
-    status: 200,
-  })),
+  apiFetch: vi.fn(async (url: string) => {
+    if (typeof url === "string" && url.includes("/referrals/me")) {
+      return { data: { enabled: false, code: null, discount_percent: null, link: null }, status: 200 };
+    }
+    return {
+      data: { has_active_access: true, can_write: true, billing_setup_status: "available" },
+      status: 200,
+    };
+  }),
 }));
 
 vi.mock("next/link", () => ({
@@ -84,6 +90,9 @@ describe("AppShell account navigation", () => {
       "href",
       "/app/help",
     );
+    expect(
+      within(menu).queryByRole("menuitem", { name: /Meu link de indicação/i }),
+    ).not.toBeInTheDocument();
     expect(within(menu).queryByRole("menuitem", { name: /Manual/i })).not.toBeInTheDocument();
     expect(within(menu).queryByText("owner")).not.toBeInTheDocument();
     expect(within(menu).queryByText(/a@b\.com/)).not.toBeInTheDocument();
@@ -115,5 +124,40 @@ describe("AppShell account navigation", () => {
     );
     expect(container.querySelectorAll('[data-testid="pwa-install-banner"]')).toHaveLength(0);
     expect(screen.getAllByRole("link", { name: "Hoje" }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("AppShell referral menu item", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(apiFetch).mockClear();
+  });
+
+  it("shows 'Meu link de indicação' when the user is an enabled referral partner", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("/referrals/me")) {
+        return {
+          data: { enabled: true, code: "PROMO10", discount_percent: 10, link: "https://x/register?ref=PROMO10" },
+          status: 200,
+        };
+      }
+      return {
+        data: { has_active_access: true, can_write: true, billing_setup_status: "available" },
+        status: 200,
+      };
+    });
+
+    render(
+      <AppShell>
+        <p>content</p>
+      </AppShell>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menu da conta" }));
+    const menu = screen.getByRole("menu", { name: "Conta" });
+    await waitFor(() => {
+      expect(
+        within(menu).getByRole("menuitem", { name: /Meu link de indicação/i }),
+      ).toHaveAttribute("href", "/app/referrals");
+    });
   });
 });

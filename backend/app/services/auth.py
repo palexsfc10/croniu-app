@@ -63,6 +63,7 @@ def register_owner(
     profession_specialty: str | None = None,
     profession_other: str | None = None,
     use_cases: list[str] | None = None,
+    referral_code: str | None = None,
 ) -> tuple[User, Organization, Membership]:
     normalized_email = email.strip().lower()
     existing = db.scalar(select(User).where(User.email == normalized_email))
@@ -115,9 +116,13 @@ def register_owner(
         ) from exc
 
     from app.billing.service import BillingService
+    from app.services.referral import create_attribution_if_eligible
 
     try:
         BillingService(db).create_trial(organization_id=organization.id)
+        create_attribution_if_eligible(
+            db, organization_id=organization.id, raw_code=referral_code
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()

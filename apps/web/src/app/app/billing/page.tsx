@@ -13,28 +13,7 @@ import {
   isAllowedAsaasCheckoutUrl,
   sanitizeBillingErrorMessage,
 } from "@/lib/billing-errors";
-import {
-  paymentStatusLabel,
-  subscriptionStatusLabel,
-  trialRemainingLabel,
-} from "@/lib/billing-labels";
-
-function setupLabel(status: string) {
-  switch (status) {
-    case "paid":
-      return "Assinatura ativa";
-    case "subscription_prepared":
-      return "Assinatura preparada — aguardando confirmação do pagamento";
-    case "checkout_pending":
-      return "Checkout em andamento";
-    case "checkout_failed":
-      return "Checkout não concluído";
-    case "checkout_expired":
-      return "Checkout expirado";
-    default:
-      return "Plano disponível";
-  }
-}
+import { describeBillingState, paymentStatusLabel } from "@/lib/billing-labels";
 
 export default function BillingPage() {
   const [ent, setEnt] = useState<BillingEntitlement | null>(null);
@@ -108,12 +87,21 @@ export default function BillingPage() {
   const cardOn = Boolean(ent?.card_enabled);
   const canResume = Boolean(ent?.can_resume_checkout && ent.resume_checkout_url);
   const canStart = Boolean(ent?.can_start_checkout && cardOn);
-  const trialLabel = trialRemainingLabel(ent?.trial_days_remaining);
-  const isTrial = (ent?.subscription_status || "").toLowerCase() === "trial";
   const resumeUrl =
     canResume && isAllowedAsaasCheckoutUrl(ent?.resume_checkout_url)
       ? ent!.resume_checkout_url!
       : null;
+  const view = ent ? describeBillingState(ent) : null;
+  // Backend's own recommendation is "subscribe" whenever a start-checkout
+  // action should exist. If neither button renders (card disabled globally,
+  // or this org isn't allowed to check out in this environment yet), say so
+  // plainly instead of leaving the screen with no explanation and no button.
+  const noCheckoutAvailable = Boolean(
+    ent && ent.recommended_action === "subscribe" && !canStart && !canResume && !view?.noActionNote,
+  );
+  const hasResolvedSubscription = ["active", "cancelled", "past_due", "grace_period", "suspended"].includes(
+    (ent?.subscription_status || "").toLowerCase(),
+  );
 
   return (
     <div className="mx-auto max-w-lg space-y-4 animate-fade-up">
@@ -121,7 +109,8 @@ export default function BillingPage() {
       <div>
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Assinatura</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Croniu · plano mensal {formatBRL(amount)} · trial de 7 dias.
+          Croniu · plano mensal {formatBRL(amount)}
+          {hasResolvedSubscription ? "." : " · trial de 7 dias."}
         </p>
       </div>
 
@@ -134,23 +123,50 @@ export default function BillingPage() {
         </p>
       ) : null}
 
-      {ent ? (
+      {ent && view ? (
         <section className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <p className="text-sm font-semibold text-[var(--color-ink)]">
-            {isTrial
-              ? subscriptionStatusLabel(ent.subscription_status)
-              : setupLabel(ent.billing_setup_status)}
-          </p>
-          <p className="text-sm text-[var(--color-ink-muted)]">
-            {subscriptionStatusLabel(ent.subscription_status)}
-            {isTrial && trialLabel ? ` · ${trialLabel}` : ""}
-          </p>
+          <p className="text-sm font-semibold text-[var(--color-ink)]">{view.headline}</p>
+          <p className="text-sm text-[var(--color-ink-muted)]">{view.detail}</p>
           <p className="text-sm text-[var(--color-ink-muted)]">
             Pagamento · {paymentStatusLabel(ent.payment_status, ent.subscription_status)}
           </p>
-          {!cardOn ? (
-            <p className="text-sm text-[var(--color-warning)]">{CHECKOUT_TEMPORARY_ERROR}</p>
+          {view.scheduleNote ? (
+            <p className="text-sm text-[var(--color-ink)]">{view.scheduleNote}</p>
           ) : null}
+          {view.noActionNote ? (
+            <p className="text-sm text-[var(--color-warning)]">{view.noActionNote}</p>
+          ) : null}
+          {noCheckoutAvailable ? (
+            <p className="text-sm text-[var(--color-warning)]">
+              Assinatura por cartão ainda não está disponível para esta conta neste momento. Você
+              continua com acesso completo ao Croniu enquanto isso; avisaremos assim que a
+              contratação estiver liberada.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {ent?.referral_active && ent.referral_base_amount_cents ? (
+        <section className="space-y-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[var(--color-ink-muted)]">Plano Croniu</span>
+            <span>{formatBRL(ent.referral_base_amount_cents)}/mês</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[var(--color-ink-muted)]">
+              Desconto vitalício de indicação
+            </span>
+            <span className="text-[var(--color-success,#16a34a)]">
+              −{formatBRL(ent.referral_base_amount_cents - amount)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-1.5 text-sm font-semibold">
+            <span>Total</span>
+            <span>{formatBRL(amount)}/mês</span>
+          </div>
+          <p className="pt-1 text-xs text-[var(--color-ink-muted)]">
+            Seu desconto permanece vinculado a esta conta enquanto você utilizar o Croniu.
+          </p>
         </section>
       ) : null}
 
