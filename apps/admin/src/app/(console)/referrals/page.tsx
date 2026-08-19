@@ -35,6 +35,7 @@ export default function ReferralsPage() {
 
   const [userSearch, setUserSearch] = useState("");
   const [userResults, setUserResults] = useState<UserListItem[]>([]);
+  const [userSearchStatus, setUserSearchStatus] = useState<"idle" | "empty" | "error">("idle");
   const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
   const [code, setCode] = useState("");
   const [commission, setCommission] = useState("10");
@@ -64,7 +65,14 @@ export default function ReferralsPage() {
     const result = await apiFetch<Paginated<UserListItem>>(
       `/api/v1/platform/users?page=1&page_size=10&search=${encodeURIComponent(userSearch.trim())}`,
     );
-    if (!result.error) setUserResults(result.data?.items ?? []);
+    if (result.error) {
+      setUserResults([]);
+      setUserSearchStatus("error");
+      return;
+    }
+    const items = result.data?.items ?? [];
+    setUserResults(items);
+    setUserSearchStatus(items.length === 0 ? "empty" : "idle");
   }
 
   async function checkCodeAvailability(value: string) {
@@ -105,6 +113,7 @@ export default function ReferralsPage() {
     setSelectedUser(null);
     setUserSearch("");
     setUserResults([]);
+    setUserSearchStatus("idle");
     setCode("");
     setCommission("10");
     setCodeAvailable(null);
@@ -179,6 +188,17 @@ export default function ReferralsPage() {
                 <Button type="submit">Buscar</Button>
               </div>
             </form>
+            {userSearchStatus === "empty" ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Nenhum usuário encontrado para “{userSearch.trim()}”. Verifique o nome ou e-mail e
+                tente novamente.
+              </p>
+            ) : null}
+            {userSearchStatus === "error" ? (
+              <p role="alert" className="text-sm text-[var(--color-danger)]">
+                Não foi possível buscar usuários agora. Tente novamente.
+              </p>
+            ) : null}
             {userResults.length > 0 ? (
               <ul className="divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
                 {userResults.map((user) => (
