@@ -106,4 +106,32 @@ test.describe("Admin — parceiros e indicações", () => {
 
     void userId;
   });
+
+  test("busca sem resultado mostra mensagem em vez de tela vazia sem seleção possível", async ({
+    page,
+  }) => {
+    const suffix = Date.now();
+    const adminEmail = `ops_referral_empty_e2e_${suffix}@example.com`;
+    const adminPassword = "AdminSenhaForte12!";
+    bootstrapPlatformAdmin(adminEmail, adminPassword, "Operador Referral Empty E2E");
+
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill(adminEmail);
+    await page.getByLabel("Senha").fill(adminPassword);
+    await page.getByRole("button", { name: "Entrar no admin" }).click();
+    await expect(page.getByRole("heading", { name: "Visão operacional", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.getByRole("link", { name: "Parceiros e indicações" }).click();
+    await expect(page.getByRole("heading", { name: "Parceiros e indicações" })).toBeVisible();
+
+    const noMatchTerm = `zzz-sem-match-${suffix}`;
+    await page.getByLabel("Buscar usuário por nome ou e-mail").fill(noMatchTerm);
+    await page.getByRole("button", { name: "Buscar" }).click();
+    await expect(page.getByText(`Nenhum usuário encontrado para “${noMatchTerm}”.`)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: "Selecionar" })).toHaveCount(0);
+  });
 });
