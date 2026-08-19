@@ -245,6 +245,34 @@ class Settings(BaseSettings):
                 "CLIENT_PORTAL_SIGNING_KEY must be set (min 32 characters) in HML and production"
             )
 
+    def validate_asaas_webhook_token_contract(self) -> None:
+        """Fail-closed: production must set a webhook token whenever billing is enabled.
+
+        Without it, POST /billing/webhooks/asaas accepts unauthenticated payloads —
+        anyone could forge PAYMENT_CONFIRMED/CHECKOUT_PAID events and activate a
+        subscription without paying. Scoped to production only (not HML) since HML
+        runs Asaas sandbox and its .env contract isn't verified here.
+        """
+        if self.croniu_env.lower() != "production":
+            return
+        if not self.billing_enabled:
+            return
+        if not (self.asaas_webhook_token or "").strip():
+            raise ValueError(
+                "ASAAS_WEBHOOK_TOKEN must be set in production when BILLING_ENABLED=true"
+            )
+
+    def validate_session_cookie_secure_contract(self) -> None:
+        """Fail-closed: production must always mark session cookies Secure.
+
+        Scoped to production only (not is_production_like) — HML intentionally runs
+        with SESSION_COOKIE_SECURE=false today.
+        """
+        if self.croniu_env.lower() != "production":
+            return
+        if not self.session_cookie_secure:
+            raise ValueError("SESSION_COOKIE_SECURE must be true in production")
+
     @property
     def voice_mime_allowlist(self) -> set[str]:
         return {

@@ -271,6 +271,8 @@ def platform_feedback_status(
     from app.services import feedback as feedback_svc
     from app.services.auth import AuthError
 
+    _require_platform_admin(auth)
+
     try:
         return feedback_svc.update_feedback_status(
             db,
