@@ -42,7 +42,7 @@ export function PublicEntryHero({ next = null }: Props) {
             Seu parceiro de rotina
           </p>
           <div className="space-y-3">
-            <h1 className="h-display text-[2rem] leading-[1.15] text-[var(--color-ink)] sm:text-4xl lg:text-[2.75rem]">
+            <h1 className="h-display-public text-[2rem] leading-[1.15] text-[var(--color-ink)] sm:text-4xl lg:text-[2.75rem]">
               Organize seus clientes.
               <br />
               Simplifique sua rotina.

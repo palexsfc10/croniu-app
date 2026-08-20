@@ -43,7 +43,7 @@ export function AuthScreen({
         </header>
 
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-[var(--color-ink)]">{title}</h1>
+          <h1 className="h-display-public text-2xl text-[var(--color-ink)]">{title}</h1>
           {subtitle ? (
             <p className="text-sm text-[var(--color-ink-muted)]">{subtitle}</p>
           ) : null}

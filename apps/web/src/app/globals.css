@@ -205,6 +205,17 @@ h3,
   font-weight: 700;
 }
 
+/*
+ * Serifada só na entrada pública (hero + auth), para casar com o H1 do
+ * site institucional. Não usar nas telas logadas — aquelas seguem só
+ * `.h-display` (Manrope) acima.
+ */
+.h-display-public {
+  font-family: var(--font-fraunces), Georgia, serif;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
 :focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
