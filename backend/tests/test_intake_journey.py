@@ -130,9 +130,10 @@ def test_submit_idempotency_underage_and_attention(client, register_payload):
     assert second.json()["idempotent_replay"] is True
     assert second.json()["submission_id"] == submission_id
 
-    # Hash only: raw intake token must not appear in link status
+    # Reconstructable token: link status always exposes the same reusable
+    # value for an active link (see test_intake_link_invite.py).
     link = client.get("/api/v1/intake-link").json()
-    assert link.get("token") is None
+    assert link.get("token") == token
 
     pre = client.get(f"/api/v1/public/intake/portal/{portal}/status")
     assert pre.status_code == 200
