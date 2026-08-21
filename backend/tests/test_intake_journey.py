@@ -49,11 +49,12 @@ def _create_link(client: TestClient) -> str:
     assert created.status_code == 200, created.text
     token = created.json()["token"]
     assert token and len(token) >= 32
-    # Token not returned on subsequent GET
+    # The token is reconstructable: a subsequent GET returns the exact same
+    # value, so the professional can always fetch the same reusable link.
     status = client.get("/api/v1/intake-link")
     assert status.status_code == 200
     assert status.json()["has_active_link"] is True
-    assert status.json().get("token") is None
+    assert status.json().get("token") == token
     return token
 
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiFetch,
   type Client,
@@ -12,73 +12,94 @@ import {
 } from "@/lib/api";
 import { nomenclatureFor } from "@/lib/nomenclature";
 import { clientInitials, clientListPresentation } from "@/lib/client-list";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconChevronRight, IconLink, IconPlus, IconUser, IconWhatsApp } from "@/components/ui/icons";
 
-function ShareLinkButton({
-  variant = "secondary",
-  intakeFormLabel,
-}: {
-  variant?: "primary" | "secondary";
-  intakeFormLabel: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [link, setLink] = useState<IntakeLink | null>(null);
-  const [rawToken, setRawToken] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [info, setInfo] = useState<string | null>(null);
+type InviteState = "idle" | "loading" | "ready" | "error";
 
-  async function ensureLoaded() {
-    if (loaded) return;
-    const res = await apiFetch<IntakeLink>("/api/v1/intake-link");
-    if (res.data) setLink(res.data);
-    setLoaded(true);
-  }
-
-  function publicUrl() {
-    if (rawToken) return `${window.location.origin}/entrar/${rawToken}`;
-    if (link?.public_url) return link.public_url;
-    if (link?.public_path) return `${window.location.origin}${link.public_path}`;
+/** Extracts the exact message (greeting + link) already baked into the
+ * WhatsApp share URL, so "copiar convite" and "enviar pelo WhatsApp"
+ * always send identical text. */
+function inviteMessageFrom(waMessageUrl: string | null | undefined): string | null {
+  if (!waMessageUrl) return null;
+  try {
+    const text = new URL(waMessageUrl).searchParams.get("text");
+    return text && text.trim() ? text : null;
+  } catch {
     return null;
   }
+}
 
-  async function createLink() {
-    setBusy(true);
-    setInfo(null);
-    const result = await apiFetch<IntakeLink>("/api/v1/intake-link", { method: "POST", body: "{}" });
-    setBusy(false);
-    if (result.error) {
-      setInfo(result.error.message);
-      return;
+function InviteButton({ variant = "secondary" }: { variant?: "primary" | "secondary" }) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<InviteState>("idle");
+  const [link, setLink] = useState<IntakeLink | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const inFlight = useRef<Promise<void> | null>(null);
+
+  async function ensureLink() {
+    if (inFlight.current) return inFlight.current;
+    const task = (async () => {
+      setState("loading");
+      setCopied(false);
+      const res = await apiFetch<IntakeLink>("/api/v1/intake-link");
+      if (res.error) {
+        setState("error");
+        return;
+      }
+      let data = res.data ?? null;
+      if (data && !data.has_active_link) {
+        const created = await apiFetch<IntakeLink>("/api/v1/intake-link", {
+          method: "POST",
+          body: "{}",
+        });
+        if (created.error) {
+          setState("error");
+          return;
+        }
+        data = created.data ?? null;
+      }
+      if (!data?.public_url) {
+        setState("error");
+        return;
+      }
+      setLink(data);
+      setState("ready");
+    })();
+    inFlight.current = task;
+    try {
+      await task;
+    } finally {
+      inFlight.current = null;
     }
-    setLink(result.data ?? null);
-    setRawToken(result.data?.token ?? null);
   }
 
-  async function copyLink() {
-    const url = publicUrl();
-    if (!url) {
-      setInfo("Crie o link para copiar.");
-      return;
-    }
-    await navigator.clipboard.writeText(url);
-    setInfo("Link copiado.");
+  function openSheet() {
+    setOpen(true);
+    setCopyError(false);
+    void ensureLink();
   }
 
-  function shareWhatsApp() {
-    if (link?.wa_message_url) {
-      window.open(link.wa_message_url, "_blank", "noopener,noreferrer");
+  async function copyInvite() {
+    const message = inviteMessageFrom(link?.wa_message_url) ?? link?.public_url ?? null;
+    if (!message) {
+      setState("error");
       return;
     }
-    const url = publicUrl();
-    if (!url) {
-      setInfo("Crie o link para compartilhar.");
+    const result = await copyTextToClipboard(message);
+    setCopied(result.ok);
+    setCopyError(!result.ok);
+  }
+
+  function sendWhatsApp() {
+    if (!link?.wa_message_url) {
+      setState("error");
       return;
     }
-    const text = encodeURIComponent(`Olá! Complete o ${intakeFormLabel} neste link: ${url}`);
-    window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
+    window.open(link.wa_message_url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -86,52 +107,66 @@ function ShareLinkButton({
       <Button
         variant={variant}
         className="min-h-11 whitespace-nowrap"
+        aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => {
-          const next = !open;
-          setOpen(next);
-          if (next) void ensureLoaded();
-        }}
+        onClick={() => (open ? setOpen(false) : openSheet())}
       >
         <IconLink className="mr-1.5 h-4 w-4" />
-        Compartilhar link
+        Convidar aluno
       </Button>
       {open ? (
-        <div className="absolute left-0 z-20 mt-1 w-64 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-          {info ? (
-            <p role="status" className="mb-2 text-xs text-[var(--color-ink-muted)]">
-              {info}
-            </p>
+        <div
+          role="dialog"
+          aria-label="Convide um aluno"
+          className="absolute right-0 z-30 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-md"
+        >
+          <h2 className="text-sm font-semibold text-[var(--color-ink)]">Convide um aluno</h2>
+          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+            Envie este convite para o aluno preencher o cadastro.
+          </p>
+
+          {state === "loading" ? (
+            <p className="mt-3 text-sm text-[var(--color-ink-muted)]">Preparando convite…</p>
           ) : null}
-          {!loaded ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
-          ) : !link?.has_active_link ? (
-            <Button fullWidth disabled={busy} onClick={() => void createLink()}>
-              Criar link de convite
-            </Button>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <Button fullWidth disabled={busy} onClick={() => void copyLink()}>
-                Copiar link
+
+          {state === "error" ? (
+            <div className="mt-3 space-y-2">
+              <p role="alert" className="text-sm text-[var(--color-danger)]">
+                Não foi possível preparar o convite. Tente novamente.
+              </p>
+              <Button fullWidth variant="secondary" onClick={() => void ensureLink()}>
+                Tentar novamente
               </Button>
+            </div>
+          ) : null}
+
+          {state === "ready" && link ? (
+            <div className="mt-3 flex flex-col gap-2">
               <Button
                 fullWidth
-                variant="secondary"
-                disabled={busy}
-                onClick={shareWhatsApp}
+                onClick={sendWhatsApp}
                 className="inline-flex items-center justify-center gap-2"
               >
                 <IconWhatsApp className="h-5 w-5" aria-hidden />
-                WhatsApp
+                Enviar pelo WhatsApp
               </Button>
-              <Link
-                href="/app/clients/intake"
-                className="block text-center text-xs text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
+              <Button fullWidth variant="secondary" onClick={() => void copyInvite()}>
+                Copiar convite
+              </Button>
+              <p
+                role="status"
+                className={`text-center text-xs ${
+                  copyError ? "text-[var(--color-danger)]" : "text-[var(--color-ink-muted)]"
+                }`}
               >
-                Ver fila de cadastros
-              </Link>
+                {copyError
+                  ? "Não foi possível copiar. Tente novamente."
+                  : copied
+                    ? "Convite copiado"
+                    : link.public_url}
+              </p>
             </div>
-          )}
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -204,7 +239,7 @@ export default function ClientsPage() {
               {addLabel}
             </Button>
           </Link>
-          <ShareLinkButton intakeFormLabel={terms.intake_form} />
+          <InviteButton />
         </div>
         {intakeCount > 0 ? (
           <Link
@@ -262,15 +297,7 @@ export default function ClientsPage() {
       {!loading && !items.length ? (
         <EmptyState
           title={emptyTitle}
-          description="Adicione manualmente ou compartilhe seu link de cadastro."
-          action={
-            <div className="flex flex-wrap justify-center gap-2">
-              <Link href="/app/clients/new">
-                <Button className="min-h-11">{addLabel}</Button>
-              </Link>
-              <ShareLinkButton intakeFormLabel={terms.intake_form} />
-            </div>
-          }
+          description={`Cadastre um ${terms.client} manualmente ou envie um convite para ele preencher os dados.`}
         />
       ) : null}
 
