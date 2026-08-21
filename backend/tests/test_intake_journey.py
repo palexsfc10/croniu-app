@@ -49,11 +49,12 @@ def _create_link(client: TestClient) -> str:
     assert created.status_code == 200, created.text
     token = created.json()["token"]
     assert token and len(token) >= 32
-    # Token not returned on subsequent GET
+    # The token is reconstructable: a subsequent GET returns the exact same
+    # value, so the professional can always fetch the same reusable link.
     status = client.get("/api/v1/intake-link")
     assert status.status_code == 200
     assert status.json()["has_active_link"] is True
-    assert status.json().get("token") is None
+    assert status.json().get("token") == token
     return token
 
 
@@ -129,9 +130,10 @@ def test_submit_idempotency_underage_and_attention(client, register_payload):
     assert second.json()["idempotent_replay"] is True
     assert second.json()["submission_id"] == submission_id
 
-    # Hash only: raw intake token must not appear in link status
+    # Reconstructable token: link status always exposes the same reusable
+    # value for an active link (see test_intake_link_invite.py).
     link = client.get("/api/v1/intake-link").json()
-    assert link.get("token") is None
+    assert link.get("token") == token
 
     pre = client.get(f"/api/v1/public/intake/portal/{portal}/status")
     assert pre.status_code == 200
