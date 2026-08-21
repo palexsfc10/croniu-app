@@ -27,6 +27,11 @@ from app.models.intake import (
     ProtocolVersion,
 )
 from app.models.organization import Organization
+from app.security.intake_link_token import (
+    InvalidIntakeLinkToken,
+    mint_intake_link_token,
+    parse_intake_link_token,
+)
 from app.security.passwords import generate_session_token, hash_session_token
 from app.services import anamnesis_snapshot as snap_svc
 from app.services import anamnesis_template as anam_svc
@@ -105,12 +110,15 @@ def _portal_url(token: str) -> str:
 def _wa_invite(url: str, *, form_noun: str) -> str:
     noun = (form_noun or "cadastro").strip()
     if noun.lower() in {"anamnese", "anamnese de atividade física"}:
-        msg = (
-            "Olá! Para iniciar seu acompanhamento, preencha seu cadastro "
-            f"e sua anamnese pelo link: {url}"
-        )
+        preencha = "seu cadastro e sua anamnese"
+    elif noun.lower().startswith("ficha"):
+        preencha = f"sua {noun}"
     else:
-        msg = f"Olá! Para iniciar seu acompanhamento, preencha o {noun} pelo link: {url}"
+        preencha = f"seu {noun}"
+    msg = (
+        f"Olá! Para facilitar seu acompanhamento, preencha {preencha} "
+        f"no Croniu pelo link abaixo:\n{url}"
+    )
     return f"https://wa.me/?text={quote(msg)}"
 
 
@@ -137,11 +145,18 @@ def _active_link(db: Session, organization_id: uuid.UUID) -> OrganizationIntakeL
 def _link_out(
     row: OrganizationIntakeLink,
     *,
-    raw: str | None = None,
     form_noun: str | None = None,
 ) -> dict[str, Any]:
-    url = _public_intake_url(raw) if raw else None
+    # The public token is a deterministic HMAC of the row id (see
+    # app.security.intake_link_token), not a stored secret — so it can be
+    # reconstructed identically on every call. This lets the professional's
+    # dashboard always show the same, reusable link for an active row
+    # (reload, logout/login, new device) without ever persisting the raw
+    # token. Links created before this scheme keep validating via
+    # token_hash — see _resolve_active_link_by_token.
     noun = form_noun or "cadastro"
+    signed = mint_intake_link_token(row.id) if row.status == "active" else None
+    url = _public_intake_url(signed) if signed else None
     return {
         "has_active_link": row.status == "active",
         "id": str(row.id),
@@ -154,8 +169,8 @@ def _link_out(
         "created_at": row.created_at,
         "rotated_at": row.rotated_at,
         "last_used_at": row.last_used_at,
-        "token": raw,
-        "public_path": _public_intake_path(raw) if raw else None,
+        "token": signed,
+        "public_path": _public_intake_path(signed) if signed else None,
         "public_url": url,
         "wa_message_url": _wa_invite(url, form_noun=noun) if url else None,
     }
@@ -236,6 +251,12 @@ def create_intake_link(
     form_kind: str | None = None,
     set_primary: bool = False,
 ) -> dict[str, Any]:
+    # Serialize concurrent "invite" taps for the same organization (double
+    # click, duplicate request) so at most one link ends up primary/active
+    # from a single burst of create calls — no schema change required.
+    db.execute(
+        select(Organization.id).where(Organization.id == organization_id).with_for_update()
+    )
     _org, profile, version = _pin_for_organization(
         db, organization_id=organization_id, requested_form_kind=form_kind
     )
@@ -248,6 +269,12 @@ def create_intake_link(
             )
         ).all()
     )
+    if not set_primary and existing_active:
+        # A concurrent call already ensured a link while we waited on the
+        # organization lock above — reuse it instead of minting a second
+        # active row for the same "invite" tap.
+        primary = next((r for r in existing_active if r.is_primary), existing_active[0])
+        return _link_out(primary, form_noun=profile["intake_form_noun"])
     make_primary = set_primary or len(existing_active) == 0
     if make_primary:
         for other in existing_active:
@@ -275,7 +302,7 @@ def create_intake_link(
         row.form_kind,
         profile["intake_template_code"],
     )
-    return _link_out(row, raw=raw, form_noun=profile["intake_form_noun"])
+    return _link_out(row, form_noun=profile["intake_form_noun"])
 
 
 def set_primary_intake_link(
@@ -359,7 +386,7 @@ def rotate_intake_link(
     db.commit()
     db.refresh(row)
     logger.info("intake_link rotated org=%s form_kind=%s", organization_id, row.form_kind)
-    return _link_out(row, raw=raw, form_noun=profile["intake_form_noun"])
+    return _link_out(row, form_noun=profile["intake_form_noun"])
 
 
 def disable_intake_link(
@@ -402,16 +429,30 @@ def disable_intake_link(
 def _resolve_active_link_by_token(
     db: Session, *, raw_token: str
 ) -> tuple[OrganizationIntakeLink, Organization]:
-    if not raw_token or not raw_token.strip():
+    token = (raw_token or "").strip()
+    if not token:
         raise GENERIC_TOKEN_ERROR
-    digest = hash_session_token(raw_token.strip())
-    row = db.scalar(
-        select(OrganizationIntakeLink).where(
-            OrganizationIntakeLink.token_hash == digest,
-            OrganizationIntakeLink.status == "active",
+
+    row: OrganizationIntakeLink | None = None
+    try:
+        signed_id = parse_intake_link_token(token)
+    except InvalidIntakeLinkToken as exc:
+        raise GENERIC_TOKEN_ERROR from exc
+
+    if signed_id is not None:
+        row = db.get(OrganizationIntakeLink, signed_id)
+    else:
+        digest = hash_session_token(token)
+        row = db.scalar(
+            select(OrganizationIntakeLink).where(
+                OrganizationIntakeLink.token_hash == digest,
+            )
         )
-    )
-    if row is None:
+
+    # Re-checked here regardless of which path resolved the row: a signed
+    # token stays cryptographically valid even after the link is disabled,
+    # so "active" status is the actual source of truth for revocation.
+    if row is None or row.status != "active":
         raise GENERIC_TOKEN_ERROR
     org = db.get(Organization, row.organization_id)
     if org is None:
