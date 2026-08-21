@@ -22,6 +22,7 @@ from app.schemas.auth import (
 )
 from app.security.client_ip import request_client_ip
 from app.security.rate_limit import public_rate_limiter
+from app.services import profession_profile as profession_profile_svc
 from app.services.auth import (
     PASSWORD_RESET_GENERIC_MESSAGE,
     AuthContext,
@@ -65,6 +66,23 @@ class EmailVerificationConfirm(BaseModel):
 class RegisterResponse(MeResponse):
     requires_email_verification: bool = False
     message: str | None = None
+
+
+def _organization_out(organization: Organization) -> OrganizationOut:
+    # Same source as GET /organization/profession — no divergent mapping.
+    profile = profession_profile_svc.profile_for(organization.profession_code)
+    return OrganizationOut(
+        id=organization.id,
+        name=organization.name,
+        timezone=organization.timezone,
+        profession_code=organization.profession_code,
+        profession_specialty=organization.profession_specialty,
+        profession_other=organization.profession_other,
+        profession_onboarding_done=bool(organization.profession_onboarding_done),
+        use_cases=organization.use_cases if isinstance(organization.use_cases, list) else None,
+        form_title=profile["form_title"],
+        queue_received=profile["queue_received"],
+    )
 
 
 def _http_error(exc: AuthError) -> HTTPException:
@@ -124,14 +142,14 @@ def register(
         set_session_cookie(response, token, settings)
         return RegisterResponse(
             user=UserOut.model_validate(user),
-            organization=OrganizationOut.model_validate(organization),
+            organization=_organization_out(organization),
             role=membership.role,
             requires_email_verification=False,
         )
 
     return RegisterResponse(
         user=UserOut.model_validate(user),
-        organization=OrganizationOut.model_validate(organization),
+        organization=_organization_out(organization),
         role=membership.role,
         requires_email_verification=True,
         message="Conta criada. Verifique seu e-mail para acessar o Croniu.",
@@ -167,7 +185,7 @@ def login(
     set_session_cookie(response, token, settings)
     return MeResponse(
         user=UserOut.model_validate(auth.user),
-        organization=OrganizationOut.model_validate(auth.organization),
+        organization=_organization_out(auth.organization),
         role=auth.membership.role,
     )
 
@@ -194,7 +212,7 @@ def logout(
 def me(auth: AuthContext = Depends(get_current_auth)) -> MeResponse:
     return MeResponse(
         user=UserOut.model_validate(auth.user),
-        organization=OrganizationOut.model_validate(auth.organization),
+        organization=_organization_out(auth.organization),
         role=auth.membership.role,
     )
 

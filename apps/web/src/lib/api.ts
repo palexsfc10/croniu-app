@@ -19,6 +19,13 @@ export type MeResponse = {
     profession_specialty?: string | null;
     profession_other?: string | null;
     profession_onboarding_done?: boolean;
+    // Additive nomenclature fields — same source of truth as
+    // GET /api/v1/organization/profession. Present so screens that only
+    // read (not edit) profession-adaptive labels never need a second
+    // round-trip just to resolve them.
+    use_cases?: string[] | null;
+    form_title?: string | null;
+    queue_received?: string | null;
   };
   role: string;
 };

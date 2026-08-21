@@ -119,6 +119,96 @@ def test_me_and_logout(client, register_payload):
     assert client.get("/api/v1/auth/me").status_code == 401
 
 
+def test_me_nomenclature_fields_match_organization_profession(client, register_payload):
+    """/auth/me carries the same profession-derived labels as
+    GET /organization/profession — a single source of truth, no divergent
+    frontend or backend mapping (RC: eliminate nomenclature-flash residual
+    screens without a second round-trip)."""
+    payload = {
+        **register_payload,
+        "profession_code": "personal_trainer",
+        "use_cases": ["workouts", "plans_cycles"],
+    }
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+
+    me = client.get("/api/v1/auth/me")
+    assert me.status_code == 200
+    org = me.json()["organization"]
+
+    profession = client.get("/api/v1/organization/profession")
+    assert profession.status_code == 200
+    prof = profession.json()
+
+    assert org["form_title"] == prof["form_title"] == "Anamnese de atividade física"
+    assert org["queue_received"] == prof["queue_received"] == "Anamnese recebida"
+    assert org["use_cases"] == prof["use_cases"] == ["workouts", "plans_cycles"]
+
+
+def test_me_nomenclature_fields_differ_by_profession(client, register_payload):
+    nutri_payload = {
+        **register_payload,
+        "email": "nutri-nomenclature@example.com",
+        "profession_code": "nutritionist",
+    }
+    assert client.post("/api/v1/auth/register", json=nutri_payload).status_code == 201
+    nutri_org = client.get("/api/v1/auth/me").json()["organization"]
+    assert nutri_org["form_title"] == "Ficha inicial de acompanhamento nutricional"
+    assert nutri_org["queue_received"] != "Anamnese recebida"
+
+
+def test_me_nomenclature_fields_generic_when_profession_unset(client, register_payload):
+    assert client.post("/api/v1/auth/register", json=register_payload).status_code == 201
+    org = client.get("/api/v1/auth/me").json()["organization"]
+    assert org["profession_code"] is None
+    assert org["use_cases"] is None
+    assert org["form_title"]  # generic profile still resolves a title
+    assert org["queue_received"]
+
+
+def test_login_returns_same_nomenclature_fields_as_me(client, register_payload):
+    payload = {**register_payload, "profession_code": "physiotherapist"}
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+    client.post("/api/v1/auth/logout")
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": payload["email"], "password": payload["password"]},
+    )
+    assert login.status_code == 200
+    me = client.get("/api/v1/auth/me").json()
+    assert login.json()["organization"]["form_title"] == me["organization"]["form_title"]
+    assert login.json()["organization"]["queue_received"] == me["organization"]["queue_received"]
+
+
+def test_me_nomenclature_fields_never_leak_across_organizations(client, register_payload):
+    """Cross-tenant isolation: org A's session must never surface org B's
+    profession-derived labels, and vice-versa."""
+    org_a = {**register_payload, "profession_code": "personal_trainer"}
+    assert client.post("/api/v1/auth/register", json=org_a).status_code == 201
+    me_a = client.get("/api/v1/auth/me").json()["organization"]
+    client.post("/api/v1/auth/logout")
+
+    org_b = {
+        **register_payload,
+        "email": "org-b-nomenclature@example.com",
+        "profession_code": "nutritionist",
+    }
+    assert client.post("/api/v1/auth/register", json=org_b).status_code == 201
+    me_b = client.get("/api/v1/auth/me").json()["organization"]
+
+    assert me_a["id"] != me_b["id"]
+    assert me_a["form_title"] != me_b["form_title"]
+    assert me_b["form_title"] == "Ficha inicial de acompanhamento nutricional"
+    # Re-login as org A confirms its own labels are unaffected by org B.
+    client.post("/api/v1/auth/logout")
+    client.post(
+        "/api/v1/auth/login",
+        json={"email": org_a["email"], "password": org_a["password"]},
+    )
+    me_a_again = client.get("/api/v1/auth/me").json()["organization"]
+    assert me_a_again["form_title"] == me_a["form_title"]
+
+
 def test_invalid_session_token(client):
     client.cookies.set("croniu_session", "token-invalido")
     response = client.get("/api/v1/auth/me")

@@ -145,6 +145,24 @@ describe("PwaInstallBanner", () => {
     expect(events).toContain("pwa_installed");
   });
 
+  it("never reappears on a fresh mount (e.g. new page navigation) once already installed", async () => {
+    // First mount: install completes.
+    const { unmount } = render(<PwaInstallBanner />);
+    capturePrompt(makePromptEvent().event);
+    expect(await screen.findByTestId("pwa-install-banner")).toBeTruthy();
+    simulateAppInstalled();
+    await waitFor(() => expect(screen.queryByTestId("pwa-install-banner")).toBeNull());
+    unmount();
+
+    // Simulates navigating to a new page (AppShell persists, but the
+    // banner itself only renders on Hoje — a fresh mount each time).
+    // Even with a brand-new beforeinstallprompt event available, the
+    // persisted installed mark must keep it hidden.
+    render(<PwaInstallBanner />);
+    capturePrompt(makePromptEvent().event);
+    expect(screen.queryByTestId("pwa-install-banner")).toBeNull();
+  });
+
   it("does not show in standalone mode even with prompt", async () => {
     mockMatchMedia(true);
     render(<PwaInstallBanner />);

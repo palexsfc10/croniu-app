@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiFetch, formatDateBR, type ProfessionProfile } from "@/lib/api";
+import { apiFetch, formatDateBR } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
 import { ROUTINE_NAME_SUGGESTIONS, routineTypes } from "@/lib/form-guidance";
 import { resolveCapabilities } from "@/lib/capabilities";
 import { SuggestionChips } from "@/components/ui/suggestion-chips";
@@ -56,6 +57,7 @@ type BoardGroup = {
 };
 
 export default function RoutinesPageInner() {
+  const { me } = useAuth();
   const search = useSearchParams();
   const returnTo = safeReturnTo(search.get("returnTo"));
   const clientId = search.get("clientId");
@@ -77,7 +79,6 @@ export default function RoutinesPageInner() {
   const [scopeClientId, setScopeClientId] = useState("");
   const [clients, setClients] = useState<Array<{ id: string; full_name: string }>>([]);
   const [preview, setPreview] = useState<string | null>(null);
-  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,13 +92,12 @@ export default function RoutinesPageInner() {
   }, [clientId]);
 
   async function load() {
-    const [routines, paused, groups, prof] = await Promise.all([
+    const [routines, paused, groups] = await Promise.all([
       apiFetch<Routine[]>("/api/v1/routines"),
       apiFetch<Routine[]>("/api/v1/routines?status=paused"),
       apiFetch<{ groups: BoardGroup[] }>(
         `/api/v1/routines/board${boardQuery ? `?${boardQuery}` : ""}`,
       ),
-      apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
     ]);
     const active = routines.error ? [] : (routines.data ?? []);
     const pausedRows = paused.error ? [] : (paused.data ?? []);
@@ -105,7 +105,6 @@ export default function RoutinesPageInner() {
     else setItems([...active, ...pausedRows]);
     if (groups.error) setError(groups.error.message);
     else if (groups.data) setBoard(groups.data.groups ?? []);
-    if (prof.data) setProfession(prof.data);
   }
 
   useEffect(() => {
@@ -381,7 +380,7 @@ export default function RoutinesPageInner() {
             value={taskType}
             onChange={(e) => setTaskType(e.target.value)}
           >
-            {routineTypes(resolveCapabilities(profession?.profession_code, profession?.use_cases).includes("workouts")).map(
+            {routineTypes(resolveCapabilities(me?.organization.profession_code, me?.organization.use_cases).includes("workouts")).map(
               (opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
