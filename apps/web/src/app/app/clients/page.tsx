@@ -9,8 +9,8 @@ import {
   type HomeSummary,
   type IntakeLink,
   type IntakeSubmissionListItem,
-  type ProfessionProfile,
 } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor } from "@/lib/nomenclature";
 import { clientInitials, clientListPresentation } from "@/lib/client-list";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -180,16 +180,16 @@ function InviteButton({ variant = "secondary" }: { variant?: "primary" | "second
 }
 
 export default function ClientsPage() {
+  const { me } = useAuth();
   const [items, setItems] = useState<Client[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [today, setToday] = useState("");
   const [pendingIntakes, setPendingIntakes] = useState<IntakeSubmissionListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"active" | "archived">("active");
   const [query, setQuery] = useState("");
-  const terms = nomenclatureFor(profession?.profession_code);
+  const terms = nomenclatureFor(me?.organization.profession_code);
   const title = terms.clients.charAt(0).toUpperCase() + terms.clients.slice(1);
   const addLabel = `Adicionar ${terms.client}`;
   const emptyTitle = `Nenhum ${terms.client} cadastrado`;
@@ -198,9 +198,8 @@ export default function ClientsPage() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      const [result, prof, cycleRes, home, pendingRes] = await Promise.all([
+      const [result, cycleRes, home, pendingRes] = await Promise.all([
         apiFetch<Client[]>(`/api/v1/clients?status=${statusFilter}`),
-        apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
         apiFetch<Cycle[]>("/api/v1/cycles"),
         apiFetch<HomeSummary>("/api/v1/home/summary"),
         apiFetch<IntakeSubmissionListItem[]>("/api/v1/intake-submissions?status=pending_review"),
@@ -211,7 +210,6 @@ export default function ClientsPage() {
         setError(null);
         setItems(result.data ?? []);
       }
-      if (prof.data) setProfession(prof.data);
       setCycles(cycleRes.data ?? []);
       setToday(home.data?.local_today ?? "");
       setPendingIntakes(pendingRes.data ?? []);

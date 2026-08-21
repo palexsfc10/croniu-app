@@ -1,126 +1,66 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { IconX } from "@/components/ui/icons";
 import {
   OFFICIAL_PWA_ICON_SRC,
-  type CroniuBeforeInstallPromptEvent,
   emitPwaInstallTelemetry,
-  isStandaloneDisplay,
-  readDismissedUntil,
-  readInstalledMark,
-  resolvePwaInstallSurface,
+  setDeferredInstallPrompt,
   writeDismiss,
-  writeInstalledMark,
-  type PwaInstallSurface,
 } from "@/lib/pwa-install";
+import { safeLocalStorage, usePwaInstallSurface } from "@/lib/use-pwa-install-surface";
 
-type Mode = PwaInstallSurface | "ios-help";
-
-function safeLocalStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
+type Mode = "hidden" | "native" | "ios-safari-guide" | "ios-help";
 
 export function PwaInstallBanner() {
-  const [surface, setSurface] = useState<Mode>("hidden");
-  const deferredPrompt = useRef<CroniuBeforeInstallPromptEvent | null>(null);
+  const { surface, promptEvent, recompute } = usePwaInstallSurface();
+  const [helpOpen, setHelpOpen] = useState(false);
   const prompting = useRef(false);
   const shownLogged = useRef(false);
 
-  const recompute = useCallback((hasNative: boolean) => {
-    if (typeof window === "undefined") {
-      setSurface("hidden");
-      return;
-    }
-    const storage = safeLocalStorage();
-    const next = resolvePwaInstallSurface({
-      standalone: isStandaloneDisplay(window),
-      installedMark: readInstalledMark(storage),
-      dismissed: readDismissedUntil(storage),
-      hasNativePrompt: hasNative,
-      userAgent: window.navigator.userAgent,
-      maxTouchPoints: window.navigator.maxTouchPoints ?? 0,
-    });
-    setSurface(next);
-  }, []);
+  const mode: Mode = surface === "hidden" ? "hidden" : helpOpen ? "ios-help" : surface;
 
   useEffect(() => {
-    recompute(Boolean(deferredPrompt.current));
-
-    function onBeforeInstall(event: Event) {
-      event.preventDefault();
-      deferredPrompt.current = event as CroniuBeforeInstallPromptEvent;
-      recompute(true);
-    }
-
-    function onAppInstalled() {
-      deferredPrompt.current = null;
-      const storage = safeLocalStorage();
-      if (storage) writeInstalledMark(storage);
-      emitPwaInstallTelemetry("pwa_installed");
-      setSurface("hidden");
-    }
-
-    window.addEventListener("beforeinstallprompt", onBeforeInstall);
-    window.addEventListener("appinstalled", onAppInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
-      window.removeEventListener("appinstalled", onAppInstalled);
-    };
-  }, [recompute]);
-
-  useEffect(() => {
-    if (surface === "hidden" || surface === "ios-help" || shownLogged.current) return;
+    if (mode === "hidden" || shownLogged.current) return;
     shownLogged.current = true;
     emitPwaInstallTelemetry("pwa_install_banner_shown");
-  }, [surface]);
+  }, [mode]);
 
   async function onInstallClick() {
     if (surface === "ios-safari-guide") {
-      setSurface("ios-help");
+      setHelpOpen(true);
       emitPwaInstallTelemetry("pwa_install_clicked");
       return;
     }
-    const promptEvent = deferredPrompt.current;
     if (!promptEvent || prompting.current) return;
     prompting.current = true;
     emitPwaInstallTelemetry("pwa_install_clicked");
     try {
       await promptEvent.prompt();
       const choice = await promptEvent.userChoice;
-      deferredPrompt.current = null;
+      setDeferredInstallPrompt(null);
       if (choice.outcome === "accepted") {
         emitPwaInstallTelemetry("pwa_install_accepted");
-        setSurface("hidden");
-      } else {
-        // Recusa do prompt nativo: não loop; limpa deferred e recalcula (some sem prompt).
-        recompute(false);
       }
     } catch {
-      deferredPrompt.current = null;
-      recompute(false);
+      setDeferredInstallPrompt(null);
     } finally {
       prompting.current = false;
+      recompute();
     }
   }
 
   function onDismiss() {
     const storage = safeLocalStorage();
     if (storage) writeDismiss(storage);
-    deferredPrompt.current = null;
     emitPwaInstallTelemetry("pwa_install_dismissed");
-    setSurface("hidden");
+    recompute();
   }
 
-  if (surface === "hidden") return null;
+  if (mode === "hidden") return null;
 
-  if (surface === "ios-help") {
+  if (mode === "ios-help") {
     return (
       <aside
         className="shrink-0 border-b border-[var(--color-border)]/80 bg-[var(--color-primary-subtle)]/55 px-4 py-3"

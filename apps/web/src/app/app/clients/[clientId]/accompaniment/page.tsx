@@ -7,8 +7,8 @@ import {
   apiFetch,
   type Client,
   type ClientJourney,
-  type ProfessionProfile,
 } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor, t } from "@/lib/nomenclature";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
@@ -37,30 +37,28 @@ type Status = "todo" | "done" | "later" | "na";
 
 export default function AccompanimentPreparePage() {
   const params = useParams<{ clientId: string }>();
+  const { me } = useAuth();
   const [client, setClient] = useState<Client | null>(null);
   const [journey, setJourney] = useState<ClientJourney | null>(null);
-  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [sheet, setSheet] = useState<StepKey | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const returnBase = `/app/clients/${params.clientId}/accompaniment`;
-  const terms = nomenclatureFor(profession?.profession_code);
+  const terms = nomenclatureFor(me?.organization.profession_code);
   const checklist = journey?.accompaniment_checklist ?? {};
   const summaries = journey?.accompaniment_summaries ?? {};
 
   const load = useCallback(async () => {
-    const [c, j, p, sub] = await Promise.all([
+    const [c, j, sub] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${params.clientId}`),
       apiFetch<ClientJourney>(`/api/v1/clients/${params.clientId}/journey`),
-      apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
       apiFetch<Array<{ id: string }>>(`/api/v1/intake-submissions?client_id=${params.clientId}`),
     ]);
     if (c.error) setError(c.error.message);
     else setClient(c.data ?? null);
     if (j.error) setError(j.error.message);
     else setJourney(j.data ?? null);
-    if (p.data) setProfession(p.data);
     if (sub.data?.length) setSubmissionId(sub.data[0].id);
   }, [params.clientId]);
 

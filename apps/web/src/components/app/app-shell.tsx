@@ -28,6 +28,13 @@ import {
 } from "@/components/ui/icons";
 import { BillingGate } from "@/components/billing/billing-gate";
 import { PwaInstallBanner } from "@/components/pwa/pwa-install-banner";
+import {
+  type CroniuBeforeInstallPromptEvent,
+  emitPwaInstallTelemetry,
+  setDeferredInstallPrompt,
+  writeInstalledMark,
+} from "@/lib/pwa-install";
+import { safeLocalStorage } from "@/lib/use-pwa-install-surface";
 
 const navItems: {
   href: string;
@@ -284,6 +291,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [me]);
 
+  // Captured once here, regardless of which page is mounted at the moment
+  // the browser fires it, so the "Instalar Croniu" entry in Mais can still
+  // offer the native prompt even if the user never saw the home banner.
+  useEffect(() => {
+    function onBeforeInstall(event: Event) {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as CroniuBeforeInstallPromptEvent);
+    }
+    function onAppInstalled() {
+      // Mark first: setDeferredInstallPrompt notifies subscribers
+      // synchronously, so the installed mark must already be on disk by
+      // then for that same recompute pass to see it.
+      const storage = safeLocalStorage();
+      if (storage) writeInstalledMark(storage);
+      setDeferredInstallPrompt(null);
+      emitPwaInstallTelemetry("pwa_installed");
+    }
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, []);
+
   if (loading) {
     return (
       <div
@@ -391,7 +423,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <PwaInstallBanner />
+        {pathname === "/app" ? <PwaInstallBanner /> : null}
 
         <main
           className={

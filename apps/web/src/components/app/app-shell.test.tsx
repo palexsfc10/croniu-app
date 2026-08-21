@@ -4,9 +4,10 @@ import { AppShell } from "@/components/app/app-shell";
 import { apiFetch } from "@/lib/api";
 
 const logout = vi.fn();
+const routeState = vi.hoisted(() => ({ pathname: "/app" }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/app",
+  usePathname: () => routeState.pathname,
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
 }));
 
@@ -55,6 +56,7 @@ describe("AppShell account navigation", () => {
   afterEach(() => {
     cleanup();
     logout.mockClear();
+    routeState.pathname = "/app";
   });
 
   it("exposes primary nav without Manual or mailto", () => {
@@ -124,6 +126,32 @@ describe("AppShell account navigation", () => {
     );
     expect(container.querySelectorAll('[data-testid="pwa-install-banner"]')).toHaveLength(0);
     expect(screen.getAllByRole("link", { name: "Hoje" }).length).toBeGreaterThan(0);
+  });
+
+  it("never shows the install banner outside the home screen, even with a captured native prompt", async () => {
+    const { setDeferredInstallPrompt } = await import("@/lib/pwa-install");
+    routeState.pathname = "/app/agenda";
+    const { container } = render(
+      <AppShell>
+        <p>content</p>
+      </AppShell>,
+    );
+    const event = new Event("beforeinstallprompt") as Event & {
+      prompt: () => Promise<void>;
+      userChoice: Promise<{ outcome: string; platform: string }>;
+    };
+    Object.assign(event, {
+      prompt: vi.fn(async () => undefined),
+      userChoice: Promise.resolve({ outcome: "accepted", platform: "web" }),
+    });
+    window.dispatchEvent(event);
+    const { getDeferredInstallPrompt } = await import("@/lib/pwa-install");
+    await waitFor(() => expect(getDeferredInstallPrompt()).not.toBeNull());
+    // AppShell's own listener still captures the prompt (so the "Mais"
+    // entry can use it later), but the banner itself must never render on
+    // a non-home route.
+    expect(container.querySelectorAll('[data-testid="pwa-install-banner"]')).toHaveLength(0);
+    setDeferredInstallPrompt(null);
   });
 });
 

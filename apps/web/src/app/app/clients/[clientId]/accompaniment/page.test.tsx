@@ -12,6 +12,14 @@ vi.mock("@/lib/api", async () => {
   return { ...actual, apiFetch };
 });
 
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => ({
+    me: {
+      organization: { profession_code: "personal_trainer" },
+    },
+  }),
+}));
+
 import AccompanimentPreparePage from "@/app/app/clients/[clientId]/accompaniment/page";
 
 function journey(overrides: Record<string, unknown> = {}) {

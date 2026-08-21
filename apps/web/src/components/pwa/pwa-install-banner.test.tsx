@@ -6,9 +6,27 @@ import {
   PWA_INSTALL_BANNER_DISMISS_KEY,
   PWA_INSTALL_DISMISS_MS,
   PWA_INSTALL_MARK_KEY,
+  emitPwaInstallTelemetry,
+  setDeferredInstallPrompt,
   subscribePwaInstallTelemetry,
+  writeInstalledMark,
   type CroniuBeforeInstallPromptEvent,
 } from "@/lib/pwa-install";
+
+/** Mirrors what AppShell's always-mounted listener does with a real
+ * `beforeinstallprompt` event: preventDefault, then store it in the shared
+ * singleton the banner reads from. */
+function capturePrompt(event: CroniuBeforeInstallPromptEvent) {
+  event.preventDefault();
+  setDeferredInstallPrompt(event);
+}
+
+/** Mirrors what AppShell's `appinstalled` listener does. */
+function simulateAppInstalled() {
+  setDeferredInstallPrompt(null);
+  writeInstalledMark(localStorage);
+  emitPwaInstallTelemetry("pwa_installed");
+}
 
 function mockMatchMedia(standalone = false) {
   Object.defineProperty(window, "matchMedia", {
@@ -58,6 +76,7 @@ describe("PwaInstallBanner", () => {
   beforeEach(() => {
     events.length = 0;
     localStorage.clear();
+    setDeferredInstallPrompt(null);
     mockMatchMedia(false);
     setUa("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0");
     unsub = subscribePwaInstallTelemetry((e) => events.push(e));
@@ -78,7 +97,7 @@ describe("PwaInstallBanner", () => {
   it("captures beforeinstallprompt and shows banner with official icon", async () => {
     render(<PwaInstallBanner />);
     const { event } = makePromptEvent();
-    window.dispatchEvent(event);
+    capturePrompt(event);
     expect(event.preventDefault).toHaveBeenCalled();
     expect(await screen.findByTestId("pwa-install-banner")).toBeTruthy();
     const img = screen.getByRole("presentation", { hidden: true }) as HTMLImageElement | null;
@@ -95,7 +114,7 @@ describe("PwaInstallBanner", () => {
   it("calls prompt() once on install click and hides on accept", async () => {
     render(<PwaInstallBanner />);
     const { event, prompt } = makePromptEvent("accepted");
-    window.dispatchEvent(event);
+    capturePrompt(event);
     const btn = await screen.findByRole("button", { name: "Instalar" });
     fireEvent.click(btn);
     fireEvent.click(btn);
@@ -108,7 +127,7 @@ describe("PwaInstallBanner", () => {
   it("does not loop when native prompt is dismissed", async () => {
     render(<PwaInstallBanner />);
     const { event, prompt } = makePromptEvent("dismissed");
-    window.dispatchEvent(event);
+    capturePrompt(event);
     fireEvent.click(await screen.findByRole("button", { name: "Instalar" }));
     await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByTestId("pwa-install-banner")).toBeNull());
@@ -118,9 +137,9 @@ describe("PwaInstallBanner", () => {
 
   it("hides permanently after appinstalled", async () => {
     render(<PwaInstallBanner />);
-    window.dispatchEvent(makePromptEvent().event);
+    capturePrompt(makePromptEvent().event);
     expect(await screen.findByTestId("pwa-install-banner")).toBeTruthy();
-    window.dispatchEvent(new Event("appinstalled"));
+    simulateAppInstalled();
     await waitFor(() => expect(screen.queryByTestId("pwa-install-banner")).toBeNull());
     expect(localStorage.getItem(PWA_INSTALL_MARK_KEY)).toBe("1");
     expect(events).toContain("pwa_installed");
@@ -129,7 +148,7 @@ describe("PwaInstallBanner", () => {
   it("does not show in standalone mode even with prompt", async () => {
     mockMatchMedia(true);
     render(<PwaInstallBanner />);
-    window.dispatchEvent(makePromptEvent().event);
+    capturePrompt(makePromptEvent().event);
     await waitFor(() => expect(screen.queryByTestId("pwa-install-banner")).toBeNull());
   });
 
@@ -158,7 +177,7 @@ describe("PwaInstallBanner", () => {
 
   it("persists dismiss for 7 days", async () => {
     render(<PwaInstallBanner />);
-    window.dispatchEvent(makePromptEvent().event);
+    capturePrompt(makePromptEvent().event);
     fireEvent.click(
       await screen.findByRole("button", { name: "Dispensar convite de instalação" }),
     );
@@ -171,7 +190,7 @@ describe("PwaInstallBanner", () => {
 
     cleanup();
     render(<PwaInstallBanner />);
-    window.dispatchEvent(makePromptEvent().event);
+    capturePrompt(makePromptEvent().event);
     expect(screen.queryByTestId("pwa-install-banner")).toBeNull();
 
     // Expire dismiss and allow re-show.
@@ -181,7 +200,7 @@ describe("PwaInstallBanner", () => {
     );
     cleanup();
     render(<PwaInstallBanner />);
-    window.dispatchEvent(makePromptEvent().event);
+    capturePrompt(makePromptEvent().event);
     expect(await screen.findByTestId("pwa-install-banner")).toBeTruthy();
   });
 
@@ -191,7 +210,7 @@ describe("PwaInstallBanner", () => {
         <PwaInstallBanner />
       </>,
     );
-    window.dispatchEvent(makePromptEvent().event);
+    capturePrompt(makePromptEvent().event);
     await screen.findByTestId("pwa-install-banner");
     expect(container.querySelectorAll('[data-testid="pwa-install-banner"]')).toHaveLength(1);
   });

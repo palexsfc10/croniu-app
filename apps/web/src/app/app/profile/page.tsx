@@ -1,6 +1,7 @@
 "use client";
 
 import { SettingsGroup, SettingsRow } from "@/components/app/settings-list";
+import { InstallCroniuRow } from "@/components/pwa/install-croniu-row";
 import {
   IconBriefcase,
   IconClipboardList,
@@ -84,6 +85,10 @@ export default function MorePage() {
           description="Manual rápido e envio de sugestões."
           Icon={IconLifeBuoy}
         />
+      </SettingsGroup>
+
+      <SettingsGroup title="Aplicativo">
+        <InstallCroniuRow />
       </SettingsGroup>
     </div>
   );

@@ -11,6 +11,14 @@ vi.mock("@/lib/api", () => ({
   apiFetch: vi.fn(),
 }));
 
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => ({
+    me: {
+      organization: { profession_code: "personal_trainer" },
+    },
+  }),
+}));
+
 import { apiFetch } from "@/lib/api";
 import { EvaluationEditor } from "@/components/app/evaluation-editor";
 
