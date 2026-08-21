@@ -8,6 +8,7 @@ import {
   type Cycle,
   type HomeSummary,
   type IntakeLink,
+  type IntakeSubmissionListItem,
   type ProfessionProfile,
 } from "@/lib/api";
 import { nomenclatureFor } from "@/lib/nomenclature";
@@ -15,7 +16,14 @@ import { clientInitials, clientListPresentation } from "@/lib/client-list";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { IconChevronRight, IconLink, IconPlus, IconUser, IconWhatsApp } from "@/components/ui/icons";
+import {
+  IconChevronRight,
+  IconClipboardList,
+  IconLink,
+  IconPlus,
+  IconUser,
+  IconWhatsApp,
+} from "@/components/ui/icons";
 
 type InviteState = "idle" | "loading" | "ready" | "error";
 
@@ -153,18 +161,16 @@ function InviteButton({ variant = "secondary" }: { variant?: "primary" | "second
               <Button fullWidth variant="secondary" onClick={() => void copyInvite()}>
                 Copiar convite
               </Button>
-              <p
-                role="status"
-                className={`text-center text-xs ${
-                  copyError ? "text-[var(--color-danger)]" : "text-[var(--color-ink-muted)]"
-                }`}
-              >
-                {copyError
-                  ? "Não foi possível copiar. Tente novamente."
-                  : copied
-                    ? "Convite copiado"
-                    : link.public_url}
-              </p>
+              {copyError || copied ? (
+                <p
+                  role="status"
+                  className={`text-center text-xs ${
+                    copyError ? "text-[var(--color-danger)]" : "text-[var(--color-ink-muted)]"
+                  }`}
+                >
+                  {copyError ? "Não foi possível copiar. Tente novamente." : "Convite copiado"}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -177,7 +183,7 @@ export default function ClientsPage() {
   const [items, setItems] = useState<Client[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [today, setToday] = useState("");
-  const [intakeCount, setIntakeCount] = useState(0);
+  const [pendingIntakes, setPendingIntakes] = useState<IntakeSubmissionListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -192,11 +198,12 @@ export default function ClientsPage() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      const [result, prof, cycleRes, home] = await Promise.all([
+      const [result, prof, cycleRes, home, pendingRes] = await Promise.all([
         apiFetch<Client[]>(`/api/v1/clients?status=${statusFilter}`),
         apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
         apiFetch<Cycle[]>("/api/v1/cycles"),
         apiFetch<HomeSummary>("/api/v1/home/summary"),
+        apiFetch<IntakeSubmissionListItem[]>("/api/v1/intake-submissions?status=pending_review"),
       ]);
       if (cancelled) return;
       if (result.error) setError(result.error.message);
@@ -207,7 +214,7 @@ export default function ClientsPage() {
       if (prof.data) setProfession(prof.data);
       setCycles(cycleRes.data ?? []);
       setToday(home.data?.local_today ?? "");
-      setIntakeCount(home.data?.new_submissions_count ?? 0);
+      setPendingIntakes(pendingRes.data ?? []);
       setLoading(false);
     })();
     return () => {
@@ -241,14 +248,37 @@ export default function ClientsPage() {
           </Link>
           <InviteButton />
         </div>
-        {intakeCount > 0 ? (
+        {pendingIntakes.length > 0 ? (
           <Link
-            href="/app/clients/intake"
-            className="inline-flex min-h-11 items-center text-sm font-medium text-[var(--color-primary)]"
+            href={
+              pendingIntakes.length === 1
+                ? `/app/clients/intake/${pendingIntakes[0]!.id}`
+                : "/app/clients/intake"
+            }
+            className="flex items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--color-primary)]/25 bg-[var(--color-primary-subtle)]/60 p-4 transition-colors hover:bg-[var(--color-primary-subtle)]"
           >
-            {intakeCount === 1
-              ? "1 cadastro para analisar"
-              : `${intakeCount} cadastros para analisar`}
+            <span
+              className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-primary)]"
+              aria-hidden
+            >
+              <IconClipboardList className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-[var(--color-ink)]">
+                {pendingIntakes.length === 1
+                  ? "Novo cadastro aguardando análise"
+                  : `${pendingIntakes.length} cadastros aguardando análise`}
+              </span>
+              <span className="mt-0.5 block text-sm text-[var(--color-ink-muted)]">
+                {pendingIntakes.length === 1
+                  ? `${pendingIntakes[0]!.full_name} enviou as informações para você analisar.`
+                  : `Revise as informações enviadas pelos novos ${terms.clients}.`}
+              </span>
+              <span className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-[var(--color-primary)]">
+                {pendingIntakes.length === 1 ? "Analisar cadastro" : "Ver cadastros"}
+                <IconChevronRight className="h-4 w-4" />
+              </span>
+            </span>
           </Link>
         ) : null}
       </header>

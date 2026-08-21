@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Client, IntakeLink, ProfessionProfile } from "@/lib/api";
+import type { Client, IntakeLink, IntakeSubmissionListItem, ProfessionProfile } from "@/lib/api";
 
 const copyTextToClipboard = vi.fn();
 
@@ -34,14 +34,30 @@ const activeLink: IntakeLink = {
     ),
 };
 
+function submission(id: string, full_name: string): IntakeSubmissionListItem {
+  return {
+    id,
+    client_id: null,
+    status: "pending_review",
+    full_name,
+    submitted_at: "2026-08-21T12:00:00.000Z",
+    requires_professional_attention: false,
+    duplicate_alert: false,
+    archived_match: false,
+    primary_goal: "Emagrecimento",
+  };
+}
+
 function mockApi({
   clients = [],
   link = noActiveLink,
   createResult = activeLink,
+  pending = [],
 }: {
   clients?: Client[];
   link?: IntakeLink;
   createResult?: IntakeLink;
+  pending?: IntakeSubmissionListItem[];
 } = {}) {
   vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
     if (path.startsWith("/api/v1/clients?")) return { data: clients, error: undefined, status: 200 };
@@ -50,10 +66,12 @@ function mockApi({
     if (path === "/api/v1/cycles") return { data: [], error: undefined, status: 200 };
     if (path === "/api/v1/home/summary")
       return {
-        data: { local_today: "2026-08-21", new_submissions_count: 0 },
+        data: { local_today: "2026-08-21", new_submissions_count: pending.length },
         error: undefined,
         status: 200,
       };
+    if (path === "/api/v1/intake-submissions?status=pending_review")
+      return { data: pending, error: undefined, status: 200 };
     if (path === "/api/v1/intake-link" && (!init || init.method === undefined)) {
       await new Promise((r) => setTimeout(r, 10));
       return { data: link, error: undefined, status: 200 };
@@ -64,6 +82,11 @@ function mockApi({
     }
     return { data: null, error: { code: "not_found", message: "unexpected path" }, status: 404 };
   });
+}
+
+async function openInviteSheetAndWaitReady() {
+  fireEvent.click(await screen.findByRole("button", { name: "Convidar aluno" }));
+  await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
 }
 
 describe("ClientsPage — invite flow", () => {
@@ -102,21 +125,19 @@ describe("ClientsPage — invite flow", () => {
     expect(screen.getByRole("button", { name: "Convidar aluno" })).toBeInTheDocument();
   });
 
-  it("reuses an existing link without ever asking to create one", async () => {
+  it("reuses an existing link without ever asking to create one, and never shows the raw URL", async () => {
     mockApi({ link: activeLink });
     render(<ClientsPage />);
-    await screen.findByRole("button", { name: "Convidar aluno" });
+    await openInviteSheetAndWaitReady();
 
-    fireEvent.click(screen.getByRole("button", { name: "Convidar aluno" }));
-
-    await screen.findByText(activeLink.public_url!);
     expect(screen.queryByText(/Crie o link/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(activeLink.public_url!)).not.toBeInTheDocument();
     expect(
       vi.mocked(apiFetch).mock.calls.filter(([path, init]) => path === "/api/v1/intake-link" && (init as RequestInit | undefined)?.method === "POST"),
     ).toHaveLength(0);
   });
 
-  it("creates the link automatically when none exists yet, with no 'create link' wording", async () => {
+  it("creates the link automatically when none exists yet, with no 'create link' wording and no visible URL", async () => {
     mockApi({ link: noActiveLink, createResult: activeLink });
     render(<ClientsPage />);
     await screen.findByRole("button", { name: "Convidar aluno" });
@@ -124,9 +145,10 @@ describe("ClientsPage — invite flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Convidar aluno" }));
     expect(await screen.findByText("Preparando convite…")).toBeInTheDocument();
 
-    await screen.findByText(activeLink.public_url!);
+    await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
     expect(screen.queryByText(/criar link/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/link ainda não criado/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(activeLink.public_url!)).not.toBeInTheDocument();
   });
 
   it("does not fire a second create request on rapid repeated taps", async () => {
@@ -138,7 +160,7 @@ describe("ClientsPage — invite flow", () => {
     fireEvent.click(trigger);
     fireEvent.click(trigger);
 
-    await screen.findByText(activeLink.public_url!);
+    await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
     const postCalls = vi
       .mocked(apiFetch)
       .mock.calls.filter(
@@ -147,11 +169,10 @@ describe("ClientsPage — invite flow", () => {
     expect(postCalls).toHaveLength(1);
   });
 
-  it("sends the exact same URL via WhatsApp and copy", async () => {
+  it("sends the exact same URL via WhatsApp and copy, without ever rendering the URL as text", async () => {
     mockApi({ link: activeLink });
     render(<ClientsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Convidar aluno" }));
-    await screen.findByText(activeLink.public_url!);
+    await openInviteSheetAndWaitReady();
 
     copyTextToClipboard.mockResolvedValue({ ok: true });
     fireEvent.click(screen.getByRole("button", { name: "Copiar convite" }));
@@ -168,14 +189,14 @@ describe("ClientsPage — invite flow", () => {
     const waText = decodeURIComponent(activeLink.wa_message_url!.split("text=")[1]!);
     expect(waText).toContain(activeLink.public_url);
     expect(waText).toBe(copiedText);
+    expect(screen.queryByText(activeLink.public_url!)).not.toBeInTheDocument();
   });
 
   it("shows 'Convite copiado' confirmation after copying", async () => {
     mockApi({ link: activeLink });
     copyTextToClipboard.mockResolvedValue({ ok: true });
     render(<ClientsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Convidar aluno" }));
-    await screen.findByText(activeLink.public_url!);
+    await openInviteSheetAndWaitReady();
 
     fireEvent.click(screen.getByRole("button", { name: "Copiar convite" }));
     expect(await screen.findByText("Convite copiado")).toBeInTheDocument();
@@ -193,6 +214,8 @@ describe("ClientsPage — invite flow", () => {
           error: undefined,
           status: 200,
         };
+      if (path === "/api/v1/intake-submissions?status=pending_review")
+        return { data: [], error: undefined, status: 200 };
       if (path === "/api/v1/intake-link")
         return { data: null, error: { code: "server_error", message: "boom" }, status: 500 };
       return { data: null, error: { code: "not_found", message: "unexpected" }, status: 404 };
@@ -216,5 +239,57 @@ describe("ClientsPage — invite flow", () => {
     fireEvent.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(await screen.findByRole("dialog", { name: "Convide um aluno" })).toBeInTheDocument();
+  });
+});
+
+describe("ClientsPage — pending intake discovery", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("shows no pending card when there are zero pending submissions", async () => {
+    mockApi({ clients: [], pending: [] });
+    render(<ClientsPage />);
+    await screen.findByText("Nenhum aluno cadastrado");
+    expect(screen.queryByText(/aguardando análise/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a singular card with the submitter's name and links directly to it", async () => {
+    mockApi({ clients: [], pending: [submission("sub-1", "Pedro Alves")] });
+    render(<ClientsPage />);
+
+    expect(await screen.findByText("Novo cadastro aguardando análise")).toBeInTheDocument();
+    expect(
+      screen.getByText("Pedro Alves enviou as informações para você analisar."),
+    ).toBeInTheDocument();
+    const cta = screen.getByRole("link", { name: /Analisar cadastro/i });
+    expect(cta).toHaveAttribute("href", "/app/clients/intake/sub-1");
+  });
+
+  it("shows a pluralized card and links to the pending queue for multiple submissions", async () => {
+    mockApi({
+      clients: [],
+      pending: [submission("sub-1", "Pedro Alves"), submission("sub-2", "Ana Costa")],
+    });
+    render(<ClientsPage />);
+
+    expect(await screen.findByText("2 cadastros aguardando análise")).toBeInTheDocument();
+    expect(
+      screen.getByText("Revise as informações enviadas pelos novos alunos."),
+    ).toBeInTheDocument();
+    const cta = screen.getByRole("link", { name: /Ver cadastros/i });
+    expect(cta).toHaveAttribute("href", "/app/clients/intake");
+  });
+
+  it("does not reserve blank space when there are no pending submissions", async () => {
+    mockApi({ clients: [], pending: [] });
+    const { container } = render(<ClientsPage />);
+    await screen.findByText("Nenhum aluno cadastrado");
+    expect(container.querySelector('a[href="/app/clients/intake"]')).not.toBeInTheDocument();
   });
 });
