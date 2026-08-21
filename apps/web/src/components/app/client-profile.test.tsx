@@ -8,6 +8,14 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(`tab=${nav.tab}`),
 }));
 
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => ({
+    me: {
+      organization: { profession_code: "personal_trainer" },
+    },
+  }),
+}));
+
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {

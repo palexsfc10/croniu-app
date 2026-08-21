@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Client, IntakeLink, IntakeSubmissionListItem, ProfessionProfile } from "@/lib/api";
+import type { Client, IntakeLink, IntakeSubmissionListItem } from "@/lib/api";
 
 const copyTextToClipboard = vi.fn();
+const authState = vi.hoisted(() => ({ professionCode: "personal_trainer" as string | null }));
 
 vi.mock("@/lib/api", () => ({
   apiFetch: vi.fn(),
@@ -12,12 +13,16 @@ vi.mock("@/lib/clipboard", () => ({
   copyTextToClipboard: (...args: unknown[]) => copyTextToClipboard(...args),
 }));
 
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => ({
+    me: {
+      organization: { profession_code: authState.professionCode },
+    },
+  }),
+}));
+
 import { apiFetch } from "@/lib/api";
 import ClientsPage from "@/app/app/clients/page";
-
-const profession: ProfessionProfile = {
-  profession_code: "personal_trainer",
-} as ProfessionProfile;
 
 const noActiveLink: IntakeLink = { has_active_link: false };
 
@@ -61,8 +66,6 @@ function mockApi({
 } = {}) {
   vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
     if (path.startsWith("/api/v1/clients?")) return { data: clients, error: undefined, status: 200 };
-    if (path === "/api/v1/organization/profession")
-      return { data: profession, error: undefined, status: 200 };
     if (path === "/api/v1/cycles") return { data: [], error: undefined, status: 200 };
     if (path === "/api/v1/home/summary")
       return {
@@ -91,6 +94,7 @@ async function openInviteSheetAndWaitReady() {
 
 describe("ClientsPage — invite flow", () => {
   beforeEach(() => {
+    authState.professionCode = "personal_trainer";
     vi.mocked(apiFetch).mockReset();
     copyTextToClipboard.mockReset();
     vi.spyOn(window, "open").mockImplementation(() => null);
@@ -205,8 +209,6 @@ describe("ClientsPage — invite flow", () => {
   it("shows a human error and retry action when the invite cannot be prepared, without opening WhatsApp", async () => {
     vi.mocked(apiFetch).mockImplementation(async (path: string) => {
       if (path.startsWith("/api/v1/clients?")) return { data: [], error: undefined, status: 200 };
-      if (path === "/api/v1/organization/profession")
-        return { data: profession, error: undefined, status: 200 };
       if (path === "/api/v1/cycles") return { data: [], error: undefined, status: 200 };
       if (path === "/api/v1/home/summary")
         return {
@@ -244,6 +246,7 @@ describe("ClientsPage — invite flow", () => {
 
 describe("ClientsPage — pending intake discovery", () => {
   beforeEach(() => {
+    authState.professionCode = "personal_trainer";
     vi.mocked(apiFetch).mockReset();
   });
 
@@ -291,5 +294,51 @@ describe("ClientsPage — pending intake discovery", () => {
     const { container } = render(<ClientsPage />);
     await screen.findByText("Nenhum aluno cadastrado");
     expect(container.querySelector('a[href="/app/clients/intake"]')).not.toBeInTheDocument();
+  });
+});
+
+describe("ClientsPage — nomenclature has no flash", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("renders 'Alunos' on the very first synchronous render for personal trainers, never 'Clientes'", () => {
+    authState.professionCode = "personal_trainer";
+    mockApi({ clients: [] });
+    render(<ClientsPage />);
+
+    // No `await`/`findBy` here on purpose: the profession is already known via
+    // useAuth() on mount (AppShell only renders children after `me` loads), so
+    // the correct term must be present in the very first render — not after a
+    // page-local fetch resolves.
+    expect(screen.getByRole("heading", { name: "Alunos" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Clientes" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Adicionar aluno/i })).toBeInTheDocument();
+  });
+
+  it("keeps 'Clientes' for a profession that isn't personal trainer, without forcing 'Alunos' globally", () => {
+    authState.professionCode = "nutritionist";
+    mockApi({ clients: [] });
+    render(<ClientsPage />);
+
+    expect(screen.getByRole("heading", { name: "Clientes" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Alunos" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Adicionar cliente/i })).toBeInTheDocument();
+  });
+
+  it("falls back to generic terms when the profession is still unknown, without ever showing the wrong specific term", () => {
+    authState.professionCode = null;
+    mockApi({ clients: [] });
+    render(<ClientsPage />);
+
+    // Generic "Clientes" is the correct neutral term here — it is never a
+    // flash, because there is no later re-render that changes it once
+    // profession_code stays unknown.
+    expect(screen.getByRole("heading", { name: "Clientes" })).toBeInTheDocument();
   });
 });

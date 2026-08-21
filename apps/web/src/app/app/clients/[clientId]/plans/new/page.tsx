@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiFetch, formatDateBR, type Client, type ProfessionProfile, type Protocol } from "@/lib/api";
+import { apiFetch, formatDateBR, type Client, type Protocol } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor, safeReturnTo, t, canonicalProfessionCode } from "@/lib/nomenclature";
 import { protocolStatusLabel } from "@/lib/status-labels";
 import { BackLink } from "@/components/app/back-link";
@@ -25,8 +26,8 @@ export default function PlanEditorPage() {
   const protocolId = params.protocolId;
   const returnTo =
     safeReturnTo(search.get("returnTo")) || `/app/clients/${params.clientId}?tab=acompanhamento`;
+  const { me } = useAuth();
   const [client, setClient] = useState<Client | null>(null);
-  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [title, setTitle] = useState("");
   const [objective, setObjective] = useState("");
   const [notes, setNotes] = useState("");
@@ -45,18 +46,14 @@ export default function PlanEditorPage() {
   const [loaded, setLoaded] = useState<Protocol | null>(null);
   const [loadingExisting, setLoadingExisting] = useState(Boolean(protocolId));
 
-  const terms = nomenclatureFor(profession?.profession_code);
-  const guide = planGuidance(profession?.profession_code);
-  const isPersonal = canonicalProfessionCode(profession?.profession_code) === "personal_trainer";
+  const terms = nomenclatureFor(me?.organization.profession_code);
+  const guide = planGuidance(me?.organization.profession_code);
+  const isPersonal = canonicalProfessionCode(me?.organization.profession_code) === "personal_trainer";
 
   useEffect(() => {
     void (async () => {
-      const [c, p] = await Promise.all([
-        apiFetch<Client>(`/api/v1/clients/${params.clientId}`),
-        apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
-      ]);
+      const c = await apiFetch<Client>(`/api/v1/clients/${params.clientId}`);
       if (c.data) setClient(c.data);
-      if (p.data) setProfession(p.data);
       if (protocolId) {
         const proto = await apiFetch<Protocol>(`/api/v1/protocols/${protocolId}`);
         if (proto.data) {

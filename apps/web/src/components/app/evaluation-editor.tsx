@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   apiFetch,
   type ClientEvaluation,
   type EvaluationCriterionInput,
-  type ProfessionProfile,
 } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
 import { evaluationGuidance } from "@/lib/form-guidance";
 import { SuggestionChips } from "@/components/ui/suggestion-chips";
 import { FormSectionIntro } from "@/components/ui/form-section-intro";
@@ -98,6 +98,7 @@ type Props = {
 
 export function EvaluationEditor({ clientId, evaluationId, initial = null }: Props) {
   const router = useRouter();
+  const { me } = useAuth();
   const [form, setForm] = useState<FormState>(
     initial ? fromEvaluation(initial) : emptyForm(),
   );
@@ -106,19 +107,11 @@ export function EvaluationEditor({ clientId, evaluationId, initial = null }: Pro
   const [busy, setBusy] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(evaluationId ?? initial?.id ?? null);
-  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [achievementDraft, setAchievementDraft] = useState("");
-  const guide = evaluationGuidance(profession?.profession_code);
+  const guide = evaluationGuidance(me?.organization.profession_code);
   const achievementItems = form.achievements
     ? form.achievements.split("\n").map((row) => row.trim()).filter(Boolean)
     : [];
-
-  useEffect(() => {
-    void (async () => {
-      const result = await apiFetch<ProfessionProfile>("/api/v1/organization/profession");
-      if (result?.data) setProfession(result.data);
-    })();
-  }, []);
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));

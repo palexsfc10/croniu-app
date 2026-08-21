@@ -1,8 +1,10 @@
 {
+  "id": "/app",
   "name": "Croniu",
   "short_name": "Croniu",
   "description": "Sua rotina. Seus ciclos. Tudo sob controle.",
   "start_url": "/app",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#020c28",
   "theme_color": "#2f3f8f",

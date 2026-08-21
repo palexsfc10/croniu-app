@@ -49,6 +49,46 @@ export function emitPwaInstallTelemetry(event: PwaInstallTelemetryEvent): void {
   }
 }
 
+/**
+ * Module-level singleton for the captured `beforeinstallprompt` event.
+ *
+ * The event fires once per page load, whenever the browser decides the page
+ * is installable — often before the user has navigated to wherever the
+ * install UI lives. A single always-mounted listener (see
+ * PwaInstallPromptCapture) stores it here so any later-mounted consumer
+ * (the home banner, the permanent "Instalar Croniu" item in Mais) can still
+ * offer the native prompt, instead of only the component that happened to
+ * be mounted at the exact moment the event fired.
+ */
+let deferredPromptSingleton: CroniuBeforeInstallPromptEvent | null = null;
+const deferredPromptListeners = new Set<
+  (event: CroniuBeforeInstallPromptEvent | null) => void
+>();
+
+export function getDeferredInstallPrompt(): CroniuBeforeInstallPromptEvent | null {
+  return deferredPromptSingleton;
+}
+
+export function setDeferredInstallPrompt(event: CroniuBeforeInstallPromptEvent | null): void {
+  deferredPromptSingleton = event;
+  for (const listener of deferredPromptListeners) {
+    try {
+      listener(event);
+    } catch {
+      // A broken consumer must never break other consumers.
+    }
+  }
+}
+
+export function subscribeDeferredInstallPrompt(
+  listener: (event: CroniuBeforeInstallPromptEvent | null) => void,
+): () => void {
+  deferredPromptListeners.add(listener);
+  return () => {
+    deferredPromptListeners.delete(listener);
+  };
+}
+
 export function isStandaloneDisplay(win: Window = window): boolean {
   try {
     if (win.matchMedia("(display-mode: standalone)").matches) return true;

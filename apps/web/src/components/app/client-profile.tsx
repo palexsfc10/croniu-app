@@ -10,9 +10,9 @@ import {
   type ClientAccess,
   type ClientJourney,
   type Cycle,
-  type ProfessionProfile,
   type Protocol,
 } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor, safeReturnTo, t } from "@/lib/nomenclature";
 import { EmptyStateGuide } from "@/components/ui/empty-state-guide";
 import {
@@ -56,13 +56,13 @@ function firstName(full: string) {
 export function ClientProfile({ clientId }: Props) {
   const router = useRouter();
   const search = useSearchParams();
+  const { me } = useAuth();
   const tab = (search.get("tab") as Tab) || "resumo";
   const [item, setItem] = useState<Client | null>(null);
   const [access, setAccess] = useState<ClientAccess | null>(null);
   const [journey, setJourney] = useState<ClientJourney | null>(null);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -72,19 +72,18 @@ export function ClientProfile({ clientId }: Props) {
   const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
 
-  const terms = nomenclatureFor(profession?.profession_code);
+  const terms = nomenclatureFor(me?.organization.profession_code);
   const returnAccomp = `/app/clients/${clientId}?tab=acompanhamento`;
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [c, a, j, p, cy, pr, pref, ev, rb, sub] = await Promise.all([
+    const [c, a, j, p, cy, pref, ev, rb, sub] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${clientId}`),
       apiFetch<ClientAccess>(`/api/v1/clients/${clientId}/public-access`),
       apiFetch<ClientJourney>(`/api/v1/clients/${clientId}/journey`),
       apiFetch<Protocol[]>(`/api/v1/protocols?client_id=${clientId}`),
       apiFetch<Cycle[]>(`/api/v1/cycles?client_id=${clientId}`),
-      apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
       apiFetch<{ local_today: string }>("/api/v1/organization/preferences"),
       apiFetch<ClientEvaluation[]>(`/api/v1/clients/${clientId}/evaluations`),
       apiFetch<{ groups: Array<{ occurrence_count?: number; count: number }> }>(
@@ -101,7 +100,6 @@ export function ClientProfile({ clientId }: Props) {
     if (j.data) setJourney(j.data);
     if (p.data) setProtocols(p.data);
     if (cy.data) setCycles(cy.data);
-    if (pr.data) setProfession(pr.data);
     if (pref.data?.local_today) setTodayIso(pref.data.local_today);
     if (ev.error && !c.error) setError(ev.error.message);
     if (ev.data) setEvaluations(ev.data);

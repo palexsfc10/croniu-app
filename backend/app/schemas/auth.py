@@ -16,6 +16,14 @@ class OrganizationOut(BaseModel):
     profession_specialty: str | None = None
     profession_other: str | None = None
     profession_onboarding_done: bool = False
+    # Additive nomenclature fields — same source of truth as
+    # GET /organization/profession (app.services.profession_profile.profile_for),
+    # so the authenticated session payload alone is enough for any screen
+    # that only reads (not edits) profession-adaptive labels. Avoids a
+    # second round-trip just to resolve terms already known at login.
+    use_cases: list[str] | None = None
+    form_title: str | None = None
+    queue_received: str | None = None
 
 
 class RegisterRequest(BaseModel):

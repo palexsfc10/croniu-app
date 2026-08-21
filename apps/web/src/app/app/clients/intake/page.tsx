@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch, type IntakeLink, type IntakeSubmissionListItem, type ProfessionProfile } from "@/lib/api";
+import { apiFetch, type IntakeLink, type IntakeSubmissionListItem } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor, recommendedFormLabel } from "@/lib/nomenclature";
 import { submissionStatusLabel } from "@/lib/intake";
 import { BackLink } from "@/components/app/back-link";
@@ -12,6 +13,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { IconMoreHorizontal, IconWhatsApp } from "@/components/ui/icons";
 
 export default function ClientsIntakePage() {
+  const { me } = useAuth();
   const [link, setLink] = useState<IntakeLink | null>(null);
   const [rawToken, setRawToken] = useState<string | null>(null);
   const [items, setItems] = useState<IntakeSubmissionListItem[]>([]);
@@ -20,21 +22,18 @@ export default function ClientsIntakePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profession, setProfession] = useState<ProfessionProfile | null>(null);
 
   const load = useCallback(async () => {
-    const [linkRes, listRes, profRes] = await Promise.all([
+    const [linkRes, listRes] = await Promise.all([
       apiFetch<IntakeLink>("/api/v1/intake-link"),
       apiFetch<IntakeSubmissionListItem[]>(
         "/api/v1/intake-submissions?status=pending_review",
       ),
-      apiFetch<ProfessionProfile>("/api/v1/organization/profession"),
     ]);
     if (linkRes.error) setError(linkRes.error.message);
     else setLink(linkRes.data ?? null);
     if (listRes.error) setError(listRes.error.message);
     else setItems(listRes.data ?? []);
-    if (profRes.data) setProfession(profRes.data);
     setLoading(false);
   }, []);
 
@@ -146,11 +145,11 @@ export default function ClientsIntakePage() {
     window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
   }
 
-  const terms = nomenclatureFor(profession?.profession_code);
-  const queueReceived = profession?.queue_received || "Cadastro recebido";
+  const terms = nomenclatureFor(me?.organization.profession_code);
+  const queueReceived = me?.organization.queue_received || "Cadastro recebido";
   const formTitle =
-    profession?.form_title ||
-    recommendedFormLabel(profession?.profession_code, profession?.profession_specialty);
+    me?.organization.form_title ||
+    recommendedFormLabel(me?.organization.profession_code, me?.organization.profession_specialty);
 
   return (
     <div className="space-y-5 animate-fade-up">
