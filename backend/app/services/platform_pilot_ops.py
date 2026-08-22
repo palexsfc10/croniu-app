@@ -199,7 +199,10 @@ def get_organization_timeline(db: Session, organization_id: uuid.UUID) -> dict |
 
     first_client = db.scalar(
         select(Client)
-        .where(Client.organization_id == organization_id)
+        .where(
+            Client.organization_id == organization_id,
+            Client.status != "pending_duplicate_review",
+        )
         .order_by(Client.created_at.asc())
         .limit(1)
     )

@@ -54,6 +54,11 @@ GENERIC_TOKEN_ERROR = AuthError(
     404,
 )
 
+AMBIGUOUS_SUBMISSION_MESSAGE = (
+    "Resolva a possível duplicidade (vincular a um aluno existente ou "
+    "manter como novo) antes de continuar."
+)
+
 ATTENTION_SAFE_MESSAGE = (
     "Suas respostas indicam que alguns pontos precisam ser analisados "
     "pelo profissional antes do início das atividades."
@@ -839,47 +844,43 @@ def submit_intake(
             client = active_candidates[0]
             dup, archived_match = None, False
         else:
-            # Ambiguous: 0 candidates never reaches this branch (handled
-            # below as genuinely new); 2+ candidates, or the single
-            # candidate being archived, both require a human decision —
-            # never an automatic guess. A client row still has to be
-            # created here (client_anamnesis_responses / consent_records /
-            # client_journeys all require a non-null client_id — no
-            # migration for this hotfix), but it is explicitly flagged:
-            # duplicate_alert=True with a best-guess duplicate_client_id
-            # (kept for the existing "ver cliente existente" shortcut),
-            # resolvable from the review screen via
-            # list_duplicate_candidates / link_submission_to_client
-            # instead of silently becoming a third, indistinguishable
-            # ficha.
             dup = candidates[0] if candidates else None
             archived_match = any(c.status == "archived" for c in candidates)
             is_new_client = True
-            client_email = email
-            if email:
-                # Not just dup's own email: an ambiguous submission (e.g.
-                # phone matches client A while the submitted email belongs
-                # to an unrelated client B) must still be able to create a
-                # new client row — dropping the email here, not the whole
-                # submission, is what keeps a genuinely ambiguous case
-                # "pending, reviewable" instead of a hard 409 for the
-                # student filling the public form.
-                email_conflict = db.scalar(
-                    select(Client).where(
-                        Client.organization_id == org.id,
-                        Client.email == email,
-                    )
-                )
-                if email_conflict is not None:
-                    client_email = None
+            is_ambiguous = len(candidates) > 0
+            # Ambiguous (2+ candidates, or the single candidate being
+            # archived) requires a human decision — never an automatic
+            # guess. A client row still has to be created here
+            # (client_anamnesis_responses / consent_records /
+            # client_journeys all require a non-null client_id — no
+            # migration for this hotfix), but it is QUARANTINED:
+            # status="pending_duplicate_review" instead of "active", so it
+            # never appears in the normal Alunos list, agenda, cycles, AI
+            # assistant context, or platform metrics (see
+            # app.services.domain.list_clients and the other
+            # status-filtered queries this status was added to) until the
+            # professional explicitly resolves it via
+            # list_duplicate_candidates / link_submission_to_client /
+            # keep_as_new_client. A genuinely new person (0 candidates) is
+            # not ambiguous at all — created "active" exactly as before.
+            #
+            # Never carries an email: the org-wide unique constraint on
+            # (organization_id, email) is enforced at the DB level
+            # regardless of status, so a quarantined placeholder holding
+            # an email could block a legitimate future client from ever
+            # being created with it. The submission's own `email` column
+            # already preserves it for review.
             client = Client(
                 id=uuid.uuid4(),
                 organization_id=org.id,
                 full_name=full_name,
                 phone=phone_normalized,
-                email=client_email,
+                # Genuinely new (0 candidates) means _duplicate_candidates
+                # already confirmed no existing client owns this email —
+                # safe to keep. Ambiguous never carries one (see above).
+                email=None if is_ambiguous else email,
                 notes=None,
-                status="active",
+                status="pending_duplicate_review" if is_ambiguous else "active",
             )
             db.add(client)
             try:
@@ -1200,6 +1201,28 @@ def list_duplicate_candidates(
     return [c for c in candidates if c.id != row.client_id]
 
 
+def _lock_submission_for_reconciliation(
+    db: Session, *, organization_id: uuid.UUID, submission_id: uuid.UUID
+) -> ClientIntakeSubmission:
+    """Row-locks the submission so two concurrent reconciliation attempts
+    (two clicks, two professionals) serialize instead of racing — the
+    second one always sees the first's already-committed result and is
+    rejected as "already resolved" rather than re-moving data or
+    double-archiving.
+    """
+    row = db.scalar(
+        select(ClientIntakeSubmission)
+        .where(
+            ClientIntakeSubmission.id == submission_id,
+            ClientIntakeSubmission.organization_id == organization_id,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise AuthError("submission_not_found", "Submissão não encontrada.", 404)
+    return row
+
+
 def link_submission_to_client(
     db: Session,
     *,
@@ -1207,22 +1230,33 @@ def link_submission_to_client(
     submission_id: uuid.UUID,
     target_client_id: uuid.UUID,
 ) -> ClientIntakeSubmission:
-    """Resolves an ambiguous submission by moving it onto an existing
-    client the professional explicitly picked — never automatic, never a
-    guess. Reactivates an archived target (the professional's explicit
-    choice to continue with them), moves the anamnesis/consents onto the
-    target, and archives the placeholder client created at submit time
-    (preserving it, not deleting it, for auditability) since nothing else
-    still points at it.
+    """Resolves an ambiguous (quarantined) submission by moving it onto an
+    existing ACTIVE client the professional explicitly picked — never
+    automatic, never a guess, and never a silent reactivation of an
+    archived one (see keep_as_new_client for the other explicit
+    resolution, and app.api.intake for why archived targets are rejected
+    in this version rather than auto-reactivated).
+
+    Moves the anamnesis/consents/portal access for THIS submission onto
+    the target without touching whatever the target already has (prior
+    journey/anamnesis/consents/portal survive untouched — see inline
+    comments), then archives the placeholder (never deleted, for
+    auditability). All of it in one transaction: any failure rolls back
+    completely, leaving neither a half-moved submission nor a
+    half-archived placeholder.
     """
-    row = db.scalar(
-        select(ClientIntakeSubmission).where(
-            ClientIntakeSubmission.id == submission_id,
-            ClientIntakeSubmission.organization_id == organization_id,
-        )
+    row = _lock_submission_for_reconciliation(
+        db, organization_id=organization_id, submission_id=submission_id
     )
-    if row is None:
-        raise AuthError("submission_not_found", "Submissão não encontrada.", 404)
+    if not row.duplicate_alert:
+        # Already resolved by a previous call (this one, a concurrent one,
+        # or a normal approve/keep-as-new) — reject instead of silently
+        # moving data again onto a second target.
+        raise AuthError(
+            "submission_already_resolved",
+            "Esta submissão já foi resolvida.",
+            422,
+        )
     if row.status != "pending_review":
         raise AuthError(
             "invalid_submission_status",
@@ -1236,64 +1270,149 @@ def link_submission_to_client(
     )
     if target is None:
         raise AuthError("client_not_found", "Cliente não encontrado.", 404)
+    if target.status == "archived":
+        # No silent reactivation in this version — see app.api.intake.
+        # The professional must reactivate the client explicitly first
+        # (PATCH /clients/{id} status=active) before linking to them.
+        raise AuthError(
+            "target_client_archived",
+            "Este aluno está arquivado. Reative-o antes de vincular.",
+            422,
+        )
 
     placeholder_id = row.client_id
     if target.id == placeholder_id:
-        # Already linked to this client — idempotent no-op.
+        # Already linked to this client — idempotent no-op, no mutation.
         return row
 
-    if target.status == "archived":
-        target.status = "active"
-        db.add(target)
-
-    db.execute(
-        update(ClientAnamnesisResponse)
-        .where(ClientAnamnesisResponse.submission_id == row.id)
-        .values(client_id=target.id)
-    )
-    db.execute(
-        update(ConsentRecord)
-        .where(ConsentRecord.submission_id == row.id)
-        .values(client_id=target.id)
-    )
-
-    target_journey = journey_svc.get_journey(
-        db, organization_id=organization_id, client_id=target.id
-    )
-    if target_journey is None:
-        # Target had no journey yet — reuse the placeholder's instead of
-        # creating a new one (client_journeys allows only one per client).
-        placeholder_journey = journey_svc.get_journey(
-            db, organization_id=organization_id, client_id=placeholder_id
+    try:
+        db.execute(
+            update(ClientAnamnesisResponse)
+            .where(ClientAnamnesisResponse.submission_id == row.id)
+            .values(client_id=target.id)
         )
-        if placeholder_journey is not None:
-            placeholder_journey.client_id = target.id
-            db.add(placeholder_journey)
-    else:
-        target_journey.next_action = "review_submission"
-        db.add(target_journey)
-        # The placeholder's own journey (if any) stays behind on the
-        # now-archived placeholder client — harmless, and preserves its
-        # audit trail rather than deleting rows.
+        db.execute(
+            update(ConsentRecord)
+            .where(ConsentRecord.submission_id == row.id)
+            .values(client_id=target.id)
+        )
 
-    row.client_id = target.id
-    row.duplicate_alert = False
-    row.duplicate_client_id = None
-    db.add(row)
+        # Journey: never create a second one for the target
+        # (uq_client_journeys_client_id). If the target already has one,
+        # its stage/history is left exactly as is — only next_action is
+        # nudged so the professional sees the new submission needs
+        # review. The placeholder's own journey (if any) is left behind
+        # on the now-archived placeholder rather than deleted, preserving
+        # its audit trail.
+        target_journey = journey_svc.get_journey(
+            db, organization_id=organization_id, client_id=target.id
+        )
+        if target_journey is None:
+            placeholder_journey = journey_svc.get_journey(
+                db, organization_id=organization_id, client_id=placeholder_id
+            )
+            if placeholder_journey is not None:
+                placeholder_journey.client_id = target.id
+                db.add(placeholder_journey)
+        else:
+            target_journey.next_action = "review_submission"
+            db.add(target_journey)
 
-    if placeholder_id is not None:
-        placeholder = db.get(Client, placeholder_id)
-        if placeholder is not None:
-            placeholder.status = "archived"
-            db.add(placeholder)
+        # Portal access: never create a second active one for the target
+        # (uq_client_public_accesses_one_active) and never touch one the
+        # target already has (that link, if any, keeps working exactly as
+        # before). If the target has none yet, the placeholder's access —
+        # already handed to the student as this submission's portal_token
+        # — is reassigned so that already-issued link keeps working, now
+        # pointing at the right client. If the target already has an
+        # active access of its own, the placeholder's is revoked instead
+        # of leaving an orphaned, confusing duplicate.
+        target_portal = db.scalar(
+            select(ClientPublicAccess).where(
+                ClientPublicAccess.organization_id == organization_id,
+                ClientPublicAccess.client_id == target.id,
+                ClientPublicAccess.revoked_at.is_(None),
+            )
+        )
+        placeholder_portal = db.scalar(
+            select(ClientPublicAccess).where(
+                ClientPublicAccess.organization_id == organization_id,
+                ClientPublicAccess.client_id == placeholder_id,
+                ClientPublicAccess.revoked_at.is_(None),
+            )
+        )
+        if placeholder_portal is not None:
+            if target_portal is None:
+                placeholder_portal.client_id = target.id
+                db.add(placeholder_portal)
+            else:
+                placeholder_portal.revoked_at = datetime.now(UTC)
+                db.add(placeholder_portal)
 
-    db.commit()
+        row.client_id = target.id
+        row.duplicate_alert = False
+        row.duplicate_client_id = None
+        db.add(row)
+
+        if placeholder_id is not None:
+            placeholder = db.get(Client, placeholder_id)
+            if placeholder is not None:
+                placeholder.status = "archived"
+                db.add(placeholder)
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(row)
     logger.info(
         "intake_submission_linked org=%s submission=%s target_client=%s",
         organization_id,
         submission_id,
         target.id,
+    )
+    return row
+
+
+def keep_as_new_client(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    submission_id: uuid.UUID,
+) -> ClientIntakeSubmission:
+    """Explicit, auditable resolution of an ambiguous submission: the
+    professional confirms this is genuinely a new person, not any of the
+    candidates. Promotes the quarantined placeholder to a normal active
+    client — no data moves, nothing else is touched.
+    """
+    row = _lock_submission_for_reconciliation(
+        db, organization_id=organization_id, submission_id=submission_id
+    )
+    if not row.duplicate_alert:
+        raise AuthError(
+            "submission_already_resolved",
+            "Esta submissão já foi resolvida.",
+            422,
+        )
+    if row.client_id is None:
+        raise AuthError("client_missing", "Submissão sem cliente associado.", 422)
+
+    client = db.get(Client, row.client_id)
+    if client is None:
+        raise AuthError("client_not_found", "Cliente não encontrado.", 404)
+
+    client.status = "active"
+    db.add(client)
+    row.duplicate_alert = False
+    row.duplicate_client_id = None
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    logger.info(
+        "intake_submission_kept_as_new org=%s submission=%s client=%s",
+        organization_id,
+        submission_id,
+        row.client_id,
     )
     return row
 
@@ -1316,6 +1435,17 @@ def approve_submission(
         raise AuthError(
             "invalid_submission_status",
             "Somente submissões aguardando análise podem ser aprovadas.",
+            422,
+        )
+    if row.duplicate_alert:
+        # Approving here would implicitly promote the quarantined
+        # placeholder to a real client without the professional ever
+        # making a conscious, auditable choice — see
+        # keep_as_new_client/link_submission_to_client, which is the only
+        # way out of an ambiguous submission.
+        raise AuthError(
+            "submission_ambiguous",
+            AMBIGUOUS_SUBMISSION_MESSAGE,
             422,
         )
     if row.client_id is None:
@@ -1408,6 +1538,12 @@ def request_changes_submission(
             "Somente submissões aguardando análise podem solicitar ajustes.",
             422,
         )
+    if row.duplicate_alert:
+        raise AuthError(
+            "submission_ambiguous",
+            AMBIGUOUS_SUBMISSION_MESSAGE,
+            422,
+        )
     row.status = "changes_requested"
     row.reviewed_at = datetime.now(UTC)
     row.reviewed_by_user_id = user_id
@@ -1443,6 +1579,12 @@ def reject_submission(
         raise AuthError(
             "invalid_submission_status",
             "Somente submissões aguardando análise podem ser recusadas.",
+            422,
+        )
+    if row.duplicate_alert:
+        raise AuthError(
+            "submission_ambiguous",
+            AMBIGUOUS_SUBMISSION_MESSAGE,
             422,
         )
     row.status = "rejected"

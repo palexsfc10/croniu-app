@@ -359,6 +359,27 @@ def link_submission_to_client(
 
 
 @router.post(
+    "/intake-submissions/{submission_id}/keep-as-new-client",
+    response_model=IntakeSubmissionDetailOut,
+)
+def keep_submission_as_new_client(
+    submission_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> IntakeSubmissionDetailOut:
+    try:
+        intake_svc.keep_as_new_client(
+            db, organization_id=auth.organization.id, submission_id=submission_id
+        )
+        data = intake_svc.get_submission(
+            db, organization_id=auth.organization.id, submission_id=submission_id
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return _submission_detail(data)
+
+
+@router.post(
     "/intake-submissions/{submission_id}/approve",
     response_model=IntakeSubmissionDetailOut,
 )

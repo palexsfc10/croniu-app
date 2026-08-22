@@ -85,23 +85,38 @@ describe("intake review order", () => {
   beforeEach(() => {
     apiFetch.mockImplementation(async (path: string) => {
       if (path.includes("/duplicate-candidates")) return { data: [] };
-      return { data: detail() };
+      return { data: detail({ duplicate_alert: false, duplicate_client_id: null }) };
     });
   });
 
-  it("places decision after anamnesis, alerts, duplicity and consents", async () => {
+  it("places decision after anamnesis and consents for a resolvable submission", async () => {
     render(<IntakeSubmissionDetailPage />);
     expect(await screen.findByRole("heading", { name: "Murilo Macedo" })).toBeInTheDocument();
     expect(screen.getByText("Aguardando análise")).toBeInTheDocument();
     const text = document.body.textContent || "";
     expect(text.indexOf("Resumo do cadastro")).toBeGreaterThan(-1);
     expect(text.indexOf("Resumo do cadastro")).toBeLessThan(text.indexOf("Atenção antes de iniciar"));
-    expect(text.indexOf("Atenção antes de iniciar")).toBeLessThan(text.indexOf("Possível cadastro duplicado"));
-    expect(text.indexOf("Possível cadastro duplicado")).toBeLessThan(text.indexOf("Consentimentos"));
+    expect(text.indexOf("Atenção antes de iniciar")).toBeLessThan(text.indexOf("Consentimentos"));
     expect(text.indexOf("Consentimentos")).toBeLessThan(text.indexOf("Finalizar análise"));
     expect(screen.queryByLabelText(/Motivo interno/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Aprovar" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Aprovar cadastro" })).toBeInTheDocument();
+  });
+
+  it("places the duplicate-review section after alerts, and blocks the decision section while ambiguous", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: [] };
+      return { data: detail() }; // default fixture: duplicate_alert true
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await screen.findByRole("heading", { name: "Murilo Macedo" });
+    const text = document.body.textContent || "";
+    expect(text.indexOf("Atenção antes de iniciar")).toBeLessThan(
+      text.indexOf("Possível cadastro duplicado"),
+    );
+    expect(text.indexOf("Possível cadastro duplicado")).toBeLessThan(text.indexOf("Consentimentos"));
+    expect(screen.queryByText("Finalizar análise")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aprovar cadastro" })).not.toBeInTheDocument();
   });
 
   it("opens approval in a dialog and keeps reject reason off the page", async () => {
@@ -144,19 +159,45 @@ describe("ambiguous duplicate resolution", () => {
     { id: "c-b", full_name: "Cliente B", phone: null, email: "b@example.com", status: "archived" },
   ];
 
-  it("lists every candidate for a human decision instead of a single guess", async () => {
+  it("explains the ambiguity and offers both explicit decisions", async () => {
     apiFetch.mockImplementation(async (path: string) => {
       if (path.includes("/duplicate-candidates")) return { data: candidates };
       return { data: detail() };
     });
     render(<IntakeSubmissionDetailPage />);
     await screen.findByText("Possível cadastro duplicado");
+    expect(
+      screen.getByText(/Encontramos mais de um aluno com dados semelhantes/i),
+    ).toBeInTheDocument();
     expect(await screen.findByText("Cliente A")).toBeInTheDocument();
     expect(screen.getByText("Cliente B")).toBeInTheDocument();
     expect(screen.getByText("(arquivado)")).toBeInTheDocument();
-    expect(
-      screen.getAllByRole("button", { name: "Vincular a este aluno" }),
-    ).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Manter como novo aluno" })).toBeInTheDocument();
+  });
+
+  it("disables linking to an archived candidate instead of reactivating it silently", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: candidates };
+      return { data: detail() };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await screen.findByText("Cliente B");
+    const buttons = screen.getAllByRole("button", { name: "Vincular a este aluno" });
+    // c-a (active) is buttons[0], c-b (archived) is buttons[1] — order follows `candidates`.
+    expect(buttons[1]).toBeDisabled();
+    expect(buttons[0]).not.toBeDisabled();
+    expect(screen.getByText(/Reative este aluno em Arquivados/i)).toBeInTheDocument();
+  });
+
+  it("hides the normal approve/reject decision section while still ambiguous", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: candidates };
+      return { data: detail() };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await screen.findByText("Possível cadastro duplicado");
+    expect(screen.queryByRole("button", { name: "Aprovar cadastro" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Recusar cadastro" })).not.toBeInTheDocument();
   });
 
   it("links to the chosen candidate via POST link-to-client", async () => {
@@ -175,6 +216,27 @@ describe("ambiguous duplicate resolution", () => {
     expect(apiFetch).toHaveBeenCalledWith(
       "/api/v1/intake-submissions/sub-1/link-to-client",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ client_id: "c-a" }) }),
+    );
+    // The decision section reappears once resolved.
+    expect(await screen.findByRole("button", { name: "Aprovar cadastro" })).toBeInTheDocument();
+  });
+
+  it("keeps the submission as a new client via an explicit, separate action", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: candidates };
+      if (path.includes("/keep-as-new-client")) {
+        return { data: detail({ duplicate_alert: false, duplicate_client_id: null }) };
+      }
+      return { data: detail() };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await screen.findByRole("button", { name: "Manter como novo aluno" });
+    await user.click(screen.getByRole("button", { name: "Manter como novo aluno" }));
+    expect(await screen.findByText("Cadastro mantido como novo aluno.")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/v1/intake-submissions/sub-1/keep-as-new-client",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 

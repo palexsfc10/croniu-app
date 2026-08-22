@@ -39,7 +39,10 @@ export default function IntakeSubmissionDetailPage() {
   const [approvedJustNow, setApprovedJustNow] = useState(false);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [candidates, setCandidates] = useState<DuplicateCandidate[]>([]);
-  const [linkingId, setLinkingId] = useState<string | null>(null);
+  // Single lock across both ambiguity-resolution actions (link to a
+  // specific candidate, or keep as a new person) so neither a double
+  // click nor clicking the other action mid-request can fire twice.
+  const [resolving, setResolving] = useState<"keep" | string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,20 +102,37 @@ export default function IntakeSubmissionDetailPage() {
   }
 
   async function linkToClient(candidateId: string) {
-    if (!item) return;
-    setLinkingId(candidateId);
+    if (!item || resolving) return;
+    setResolving(candidateId);
     setError(null);
     const result = await apiFetch<IntakeSubmissionDetail>(
       `/api/v1/intake-submissions/${item.id}/link-to-client`,
       { method: "POST", body: JSON.stringify({ client_id: candidateId }) },
     );
-    setLinkingId(null);
+    setResolving(null);
     if (result.error) {
       setError(result.error.message);
       return;
     }
     setItem(result.data ?? null);
     setInfo("Cadastro vinculado ao aluno existente.");
+  }
+
+  async function keepAsNewClient() {
+    if (!item || resolving) return;
+    setResolving("keep");
+    setError(null);
+    const result = await apiFetch<IntakeSubmissionDetail>(
+      `/api/v1/intake-submissions/${item.id}/keep-as-new-client`,
+      { method: "POST", body: "{}" },
+    );
+    setResolving(null);
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    setItem(result.data ?? null);
+    setInfo("Cadastro mantido como novo aluno.");
   }
 
   const pending = item?.status === "pending_review";
@@ -125,7 +145,8 @@ export default function IntakeSubmissionDetailPage() {
     [snapshot],
   );
   const answersReady = Boolean(item?.anamnesis);
-  const canDecide = Boolean(pending && answersReady && !loading && !error);
+  const ambiguous = Boolean(item?.duplicate_alert);
+  const canDecide = Boolean(pending && answersReady && !ambiguous && !loading && !error);
 
   const summary = item?.anamnesis?.summary;
   const formName = item?.anamnesis?.form_name || "Cadastro inicial";
@@ -233,53 +254,67 @@ export default function IntakeSubmissionDetailPage() {
           {item.duplicate_alert ? (
             <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
               <h2 className="text-sm font-semibold">Possível cadastro duplicado</h2>
+              <p className="mt-1 text-sm text-[var(--color-ink)]">
+                Encontramos mais de um aluno com dados semelhantes. Escolha a ficha correta
+                ou confirme que é uma pessoa nova.
+              </p>
               <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
                 Correspondência por contato {maskContact(item.phone_normalized)}.
-                {item.archived_match ? " Há um cadastro arquivado com dados semelhantes." : ""}
               </p>
               {candidates.length > 0 ? (
                 <div className="mt-3 space-y-2">
-                  <p className="text-sm text-[var(--color-ink-muted)]">
-                    Escolha o que fazer com este cadastro:
-                  </p>
-                  {candidates.map((c) => (
-                    <div
-                      key={c.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-[var(--color-ink)]">
-                          {c.full_name}
-                          {c.status === "archived" ? (
-                            <span className="ml-1.5 text-xs font-normal text-[var(--color-ink-muted)]">
-                              (arquivado)
-                            </span>
+                  {candidates.map((c) => {
+                    const archived = c.status === "archived";
+                    return (
+                      <div
+                        key={c.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[var(--color-ink)]">
+                            {c.full_name}
+                            {archived ? (
+                              <span className="ml-1.5 text-xs font-normal text-[var(--color-warning)]">
+                                (arquivado)
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="text-xs text-[var(--color-ink-muted)]">
+                            {maskContact(c.phone || c.email || "")}
+                          </p>
+                          {archived ? (
+                            <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                              Reative este aluno em Arquivados antes de vincular.
+                            </p>
                           ) : null}
-                        </p>
-                        <p className="text-xs text-[var(--color-ink-muted)]">
-                          {maskContact(c.phone || c.email || "")}
-                        </p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <Link href={`/app/clients/${c.id}`}>
+                            <Button variant="ghost">Ver ficha</Button>
+                          </Link>
+                          <Button
+                            variant="secondary"
+                            disabled={archived || resolving !== null}
+                            title={archived ? "Reative o aluno antes de vincular." : undefined}
+                            onClick={() => void linkToClient(c.id)}
+                          >
+                            {resolving === c.id ? "Vinculando…" : "Vincular a este aluno"}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex shrink-0 gap-2">
-                        <Link href={`/app/clients/${c.id}`}>
-                          <Button variant="ghost">Ver ficha</Button>
-                        </Link>
-                        <Button
-                          variant="secondary"
-                          disabled={linkingId !== null}
-                          onClick={() => void linkToClient(c.id)}
-                        >
-                          {linkingId === c.id ? "Vinculando…" : "Vincular a este aluno"}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : null}
-              <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
-                Se for realmente uma pessoa diferente, você pode aprovar este cadastro
-                normalmente como um novo aluno.
-              </p>
+              <Button
+                fullWidth
+                variant="ghost"
+                className="mt-3"
+                disabled={resolving !== null}
+                onClick={() => void keepAsNewClient()}
+              >
+                {resolving === "keep" ? "Confirmando…" : "Manter como novo aluno"}
+              </Button>
             </section>
           ) : null}
 

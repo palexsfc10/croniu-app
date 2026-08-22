@@ -370,7 +370,12 @@ def _validate_contextual_occurrence_selection(
     wants_future = "futur" in text
 
     clients = list(
-        ctx.db.scalars(select(Client).where(Client.organization_id == ctx.organization_id)).all()
+        ctx.db.scalars(
+            select(Client).where(
+                Client.organization_id == ctx.organization_id,
+                Client.status != "pending_duplicate_review",
+            )
+        ).all()
     )
     mentioned_client_ids: set[uuid.UUID] = set()
     for client in clients:

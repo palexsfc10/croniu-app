@@ -60,6 +60,16 @@ def _create_manual_client(
     return res.json()
 
 
+def _org_id_of(client: TestClient) -> str:
+    return client.get("/api/v1/auth/me").json()["organization"]["id"]
+
+
+def _fresh_session():
+    from tests.conftest import TestingSessionLocal
+
+    return TestingSessionLocal()
+
+
 def _submit(client: TestClient, token: str, *, full_name: str, phone: str, email: str | None,
             idempotency_key: str, extra: dict | None = None):
     body = {
@@ -382,10 +392,23 @@ def test_generic_link_conflicting_identifiers_stay_ambiguous(client, register_pa
     )
     assert submitted.status_code == 201, submitted.text
     body = submitted.json()
+    placeholder_id = body["client_id"]
     # Ambiguous: not silently merged into either candidate.
-    assert body["client_id"] not in {a["id"]}
+    assert placeholder_id not in {a["id"], b["id"]}
     assert body["duplicate_alert"] is True
-    assert len(client.get("/api/v1/clients").json()) == 3
+
+    # A client row exists to hold the anamnesis (schema requires it — see
+    # app.services.intake.submit_intake), but it is QUARANTINED: it does
+    # not show up as a normal active client next to the real two.
+    active = client.get("/api/v1/clients?status=active").json()
+    assert len(active) == 2
+    assert placeholder_id not in {c["id"] for c in active}
+    # Not archived either — it belongs to neither normal tab.
+    archived = client.get("/api/v1/clients?status=archived").json()
+    assert placeholder_id not in {c["id"] for c in archived}
+    # Nor does omitting the status filter leak it.
+    unfiltered = client.get("/api/v1/clients?status=").json()
+    assert placeholder_id not in {c["id"] for c in unfiltered}
 
     # Both real candidates are surfaced for a human decision — never a
     # silent guess between them.
@@ -439,7 +462,10 @@ def test_professional_resolves_ambiguous_submission_by_linking_to_existing_clien
     assert detail["anamnesis"] is not None
 
 
-def test_professional_can_reactivate_archived_client_via_link_to_client(client, register_payload):
+def test_link_to_client_never_silently_reactivates_an_archived_target(client, register_payload):
+    """No confirmation UX for reactivation exists yet in this version — see
+    app.api.intake — so linking to an archived client is rejected outright
+    rather than silently flipping its status."""
     _auth(client, register_payload)
     token = client.post("/api/v1/intake-link").json()["token"]
     created = _create_manual_client(client, full_name="Antiga Aluna", phone="11922220000")
@@ -452,20 +478,27 @@ def test_professional_can_reactivate_archived_client_via_link_to_client(client, 
     submission_id = submitted.json()["submission_id"]
     assert submitted.json()["duplicate_alert"] is True
 
-    linked = client.post(
+    rejected = client.post(
         f"/api/v1/intake-submissions/{submission_id}/link-to-client",
         json={"client_id": created["id"]},
     )
-    assert linked.status_code == 200, linked.text
-    reactivated = client.get(f"/api/v1/clients/{created['id']}").json()
-    assert reactivated["status"] == "active"
+    assert rejected.status_code == 422
+    still_archived = client.get(f"/api/v1/clients/{created['id']}").json()
+    assert still_archived["status"] == "archived"
+
+    # The submission stays ambiguous — the archived candidate is still
+    # listed (so the professional knows it exists) but wasn't touched.
+    still_pending = client.get(f"/api/v1/intake-submissions/{submission_id}").json()
+    assert still_pending["duplicate_alert"] is True
+    candidates = client.get(
+        f"/api/v1/intake-submissions/{submission_id}/duplicate-candidates"
+    ).json()
+    assert created["id"] in {c["id"] for c in candidates}
 
 
-def test_professional_can_keep_ambiguous_submission_as_a_genuinely_new_person(
-    client, register_payload
-):
-    """Not linking is a valid resolution too — the submission's own
-    placeholder client is a real, usable client once approved normally."""
+def test_approve_is_blocked_while_ambiguous(client, register_payload):
+    """Approving must never be the implicit way an ambiguous submission
+    quietly becomes a new person — see keep_as_new_client."""
     _auth(client, register_payload)
     token = client.post("/api/v1/intake-link").json()["token"]
     _create_manual_client(client, full_name="Cliente A", phone="11933330001")
@@ -476,13 +509,83 @@ def test_professional_can_keep_ambiguous_submission_as_a_genuinely_new_person(
         idempotency_key="conflict-keep-new-1",
     )
     submission_id = submitted.json()["submission_id"]
+    blocked = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/approve",
+        json={"evaluation_decision": "waived", "protocol_decision": "waived"},
+    )
+    assert blocked.status_code == 422
+    rejected_reason = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/reject",
+        json={},
+    )
+    assert rejected_reason.status_code == 422
+    changes = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/request-changes",
+        json={"message_to_client": "oi"},
+    )
+    assert changes.status_code == 422
+
+
+def test_professional_can_keep_ambiguous_submission_as_a_genuinely_new_person(
+    client, register_payload
+):
+    """The explicit "Manter como novo aluno" decision (not an implicit
+    approve) promotes the quarantined placeholder to a normal client."""
+    _auth(client, register_payload)
+    token = client.post("/api/v1/intake-link").json()["token"]
+    _create_manual_client(client, full_name="Cliente A", phone="11933330002")
+    _create_manual_client(client, full_name="Cliente B", email="cc2@example.com")
+
+    submitted = _submit(
+        client, token, full_name="Pessoa Diferente", phone="11933330002", email="cc2@example.com",
+        idempotency_key="conflict-keep-new-2",
+    )
+    submission_id = submitted.json()["submission_id"]
+    placeholder_id = submitted.json()["client_id"]
+
+    kept = client.post(f"/api/v1/intake-submissions/{submission_id}/keep-as-new-client")
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["duplicate_alert"] is False
+    assert kept.json()["client_id"] == placeholder_id
+
+    active = client.get("/api/v1/clients?status=active").json()
+    assert placeholder_id in {c["id"] for c in active}
+    assert len(active) == 3
+
+    # Now that it's resolved, the normal decision flow works.
     approved = client.post(
         f"/api/v1/intake-submissions/{submission_id}/approve",
         json={"evaluation_decision": "waived", "protocol_decision": "waived"},
     )
     assert approved.status_code == 200, approved.text
     assert approved.json()["status"] == "approved"
-    assert len(client.get("/api/v1/clients?status=active").json()) == 3
+
+
+def test_keep_as_new_client_is_idempotent_and_rejects_after_resolution(client, register_payload):
+    _auth(client, register_payload)
+    token = client.post("/api/v1/intake-link").json()["token"]
+    _create_manual_client(client, full_name="Cliente A", phone="11933330003")
+    _create_manual_client(client, full_name="Cliente B", email="cc3@example.com")
+    submitted = _submit(
+        client, token, full_name="Pessoa Diferente", phone="11933330003", email="cc3@example.com",
+        idempotency_key="conflict-keep-new-3",
+    )
+    submission_id = submitted.json()["submission_id"]
+
+    first = client.post(f"/api/v1/intake-submissions/{submission_id}/keep-as-new-client")
+    assert first.status_code == 200
+
+    second = client.post(f"/api/v1/intake-submissions/{submission_id}/keep-as-new-client")
+    assert second.status_code == 422
+
+    # Nor can it be linked to a candidate after being kept as new.
+    a = client.get("/api/v1/clients?status=active").json()
+    other = next(c for c in a if c["full_name"] == "Cliente A")
+    also_blocked = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": other["id"]},
+    )
+    assert also_blocked.status_code == 422
 
 
 def test_link_to_client_rejects_cross_org_target(client, register_payload):
@@ -535,26 +638,44 @@ def test_link_to_client_rejects_cross_org_target(client, register_payload):
     assert legit.status_code == 200
 
 
-def test_link_to_client_idempotent_when_already_linked(client, register_payload):
+def test_link_to_client_rejects_repeating_the_action_after_resolution(client, register_payload):
+    """Repeating the link action must not move data again — see
+    link_submission_to_client's duplicate_alert guard. Rejecting is safer
+    than a silent no-op: it makes "already resolved" explicit instead of
+    quietly re-running the transfer."""
     _auth(client, register_payload)
-    created = _create_manual_client(client, full_name="Já Vinculada", phone="11955550001")
-    token = client.post(f"/api/v1/clients/{created['id']}/intake-link").json()["token"]
+    token = client.post("/api/v1/intake-link").json()["token"]
+    a = _create_manual_client(client, full_name="Já Vinculada A", phone="11955550001")
+    b = _create_manual_client(client, full_name="Já Vinculada B", email="jav@example.com")
     submitted = _submit(
-        client, token, full_name="Já Vinculada", phone="11955550001", email=None,
+        client, token, full_name="Ambigua", phone="11955550001", email="jav@example.com",
         idempotency_key="already-linked-1",
     )
     submission_id = submitted.json()["submission_id"]
+
     first = client.post(
         f"/api/v1/intake-submissions/{submission_id}/link-to-client",
-        json={"client_id": created["id"]},
+        json={"client_id": a["id"]},
     )
     assert first.status_code == 200
-    second = client.post(
+    assert first.json()["client_id"] == a["id"]
+
+    # Repeating with the same target is rejected, not a silent no-op.
+    repeat_same = client.post(
         f"/api/v1/intake-submissions/{submission_id}/link-to-client",
-        json={"client_id": created["id"]},
+        json={"client_id": a["id"]},
     )
-    assert second.status_code == 200
-    assert second.json()["client_id"] == created["id"]
+    assert repeat_same.status_code == 422
+
+    # Repeating with a DIFFERENT target must never move data a second
+    # time (it would otherwise archive the already-real client "a").
+    repeat_other = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": b["id"]},
+    )
+    assert repeat_other.status_code == 422
+    a_after = client.get(f"/api/v1/clients/{a['id']}").json()
+    assert a_after["status"] == "active"
 
 
 def test_generic_link_archived_match_stays_alert_only(client, register_payload):
@@ -572,6 +693,10 @@ def test_generic_link_archived_match_stays_alert_only(client, register_payload):
     assert body["client_id"] != created["id"]
     assert body["duplicate_alert"] is True
     assert body["archived_match"] is True
+    # A single candidate that is archived is still ambiguous — quarantined,
+    # not silently created as a normal active client.
+    active = client.get("/api/v1/clients?status=active").json()
+    assert body["client_id"] not in {c["id"] for c in active}
 
 
 def test_generic_link_cross_org_identifiers_never_match(client, register_payload):
@@ -689,4 +814,214 @@ def test_concurrent_contextual_submissions_same_client_stay_single_client(
     client_ids = {r["client_id"] for r in results}
     assert client_ids == {created["id"]}
     assert len(client.get("/api/v1/clients").json()) == 1
-    assert len(client.get("/api/v1/clients").json()) == 1
+
+
+# --- Reconciliation: conflicts, transactions, concurrency -----------------
+
+
+def test_link_to_client_preserves_targets_existing_journey_and_anamnesis(
+    client, register_payload
+):
+    """The target may already be a real, active client with its own
+    history — linking must add to it, never overwrite or duplicate it."""
+    _auth(client, register_payload)
+    a = _create_manual_client(client, full_name="Com Historico", phone="11922221111")
+    # Give "a" its own prior journey/anamnesis/consents/portal by having
+    # them submit through their own contextual invite first.
+    ctx_token = client.post(f"/api/v1/clients/{a['id']}/intake-link").json()["token"]
+    prior = _submit(
+        client, ctx_token, full_name="Com Historico", phone="11922221111", email=None,
+        idempotency_key="prior-history-1",
+    )
+    assert prior.status_code == 201, prior.text
+    prior_submission_id = prior.json()["submission_id"]
+    prior_portal_token = prior.json()["portal_token"]
+
+    b = _create_manual_client(client, full_name="Outro Candidato", email="outro-hist@example.com")
+
+    # Now an ambiguous generic submission matches both "a" (phone) and "b"
+    # (email) — professional resolves it onto "a", which already has
+    # history from the submission above.
+    generic_token = client.post("/api/v1/intake-link").json()["token"]
+    ambiguous = _submit(
+        client, generic_token, full_name="Nova Tentativa", phone="11922221111",
+        email="outro-hist@example.com", idempotency_key="ambiguous-with-history-1",
+    )
+    assert ambiguous.status_code == 201, ambiguous.text
+    submission_id = ambiguous.json()["submission_id"]
+
+    linked = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": a["id"]},
+    )
+    assert linked.status_code == 200, linked.text
+
+    # Both submissions are still there — the earlier one was never
+    # deleted/overwritten — and both are readable, each with its own
+    # anamnesis.
+    prior_detail = client.get(f"/api/v1/intake-submissions/{prior_submission_id}").json()
+    assert prior_detail["client_id"] == a["id"]
+    assert prior_detail["anamnesis"] is not None
+    new_detail = client.get(f"/api/v1/intake-submissions/{submission_id}").json()
+    assert new_detail["client_id"] == a["id"]
+    assert new_detail["anamnesis"] is not None
+
+    # Only one journey exists for "a" — not a second one.
+    journey = client.get(f"/api/v1/clients/{a['id']}/journey")
+    assert journey.status_code == 200
+
+    # "a"'s already-issued portal link from the FIRST submission still
+    # resolves — linking a second, unrelated submission never invalidates
+    # a target's pre-existing portal.
+    still_valid = client.get(f"/api/v1/public/intake/portal/{prior_portal_token}/status")
+    assert still_valid.status_code == 200
+
+    # b was never touched — still active, standalone.
+    b_after = client.get(f"/api/v1/clients/{b['id']}").json()
+    assert b_after["status"] == "active"
+
+
+def test_link_to_client_rolls_back_completely_on_failure(client, register_payload, monkeypatch):
+    """A failure partway through must leave no partial state: submission
+    still points at the placeholder, placeholder still quarantined, target
+    untouched."""
+    from app.services import intake as intake_svc
+
+    _auth(client, register_payload)
+    a = _create_manual_client(client, full_name="Alvo Rollback", phone="11922223333")
+    _create_manual_client(client, full_name="Outro Rollback", email="rollback@example.com")
+    token = client.post("/api/v1/intake-link").json()["token"]
+    submitted = _submit(
+        client, token, full_name="Ambigua Rollback", phone="11922223333",
+        email="rollback@example.com", idempotency_key="rollback-1",
+    )
+    submission_id = submitted.json()["submission_id"]
+    placeholder_id = submitted.json()["client_id"]
+
+    import pytest
+
+    def boom(*args, **kwargs):
+        # Fires well after the anamnesis/consent UPDATE statements have
+        # already been sent to this same (uncommitted) transaction,
+        # proving they get rolled back too, not just the fields set
+        # afterward.
+        raise RuntimeError("forced failure mid-transaction")
+
+    monkeypatch.setattr(intake_svc.journey_svc, "get_journey", boom)
+    db = _fresh_session()
+    try:
+        with pytest.raises(RuntimeError):
+            intake_svc.link_submission_to_client(
+                db,
+                organization_id=uuid.UUID(_org_id_of(client)),
+                submission_id=uuid.UUID(submission_id),
+                target_client_id=uuid.UUID(a["id"]),
+            )
+    finally:
+        db.close()
+
+    # Nothing moved: submission still ambiguous and on the placeholder,
+    # placeholder still quarantined, target untouched.
+    detail = client.get(f"/api/v1/intake-submissions/{submission_id}").json()
+    assert detail["client_id"] == placeholder_id
+    assert detail["duplicate_alert"] is True
+    active = client.get("/api/v1/clients?status=active").json()
+    assert placeholder_id not in {c["id"] for c in active}
+    a_after = client.get(f"/api/v1/clients/{a['id']}").json()
+    assert a_after["status"] == "active"
+
+
+def test_concurrent_link_attempts_produce_exactly_one_valid_outcome(client, register_payload):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.services import intake as intake_svc
+    from tests.conftest import TestingSessionLocal
+
+    _auth(client, register_payload)
+    org_id = uuid.UUID(_org_id_of(client))
+    a = _create_manual_client(client, full_name="Concorrente Link A", phone="11922224444")
+    b = _create_manual_client(
+        client, full_name="Concorrente Link B", email="concurrentlink@example.com"
+    )
+    token = client.post("/api/v1/intake-link").json()["token"]
+    submitted = _submit(
+        client, token, full_name="Ambigua Concorrente", phone="11922224444",
+        email="concurrentlink@example.com", idempotency_key="concurrent-link-1",
+    )
+    submission_id = uuid.UUID(submitted.json()["submission_id"])
+
+    def run(target_id: str):
+        db = TestingSessionLocal()
+        try:
+            try:
+                return intake_svc.link_submission_to_client(
+                    db,
+                    organization_id=org_id,
+                    submission_id=submission_id,
+                    target_client_id=uuid.UUID(target_id),
+                )
+            except Exception as exc:  # noqa: BLE001 — capturing for assertion below
+                return exc
+        finally:
+            db.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(run, [a["id"], b["id"]]))
+
+    successes = [r for r in results if not isinstance(r, Exception)]
+    failures = [r for r in results if isinstance(r, Exception)]
+    assert len(successes) == 1
+    assert len(failures) == 1
+
+    detail = client.get(f"/api/v1/intake-submissions/{str(submission_id)}").json()
+    assert detail["duplicate_alert"] is False
+    assert detail["client_id"] in {a["id"], b["id"]}
+    # Whichever one won, the loser was never touched.
+    loser_id = b["id"] if detail["client_id"] == a["id"] else a["id"]
+    loser = client.get(f"/api/v1/clients/{loser_id}").json()
+    assert loser["status"] == "active"
+
+
+def test_link_to_client_manipulated_id_returns_generic_error(client, register_payload):
+    """A nonexistent client_id gets the same generic 404 as a real
+    cross-org id — never a different error that would reveal whether the
+    id exists at all."""
+    _auth(client, register_payload)
+    _create_manual_client(client, full_name="Cliente A", phone="11922225555")
+    _create_manual_client(client, full_name="Cliente B", email="manip@example.com")
+    token = client.post("/api/v1/intake-link").json()["token"]
+    submitted = _submit(
+        client, token, full_name="Ambigua Manip", phone="11922225555", email="manip@example.com",
+        idempotency_key="manip-1",
+    )
+    submission_id = submitted.json()["submission_id"]
+    resp = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 404
+
+
+def test_reconciliation_logs_never_include_sensitive_data(client, register_payload, caplog):
+    import logging
+
+    _auth(client, register_payload)
+    a = _create_manual_client(client, full_name="Log Seguro A", phone="11922226666")
+    _create_manual_client(client, full_name="Log Seguro B", email="logsafe@example.com")
+    token = client.post("/api/v1/intake-link").json()["token"]
+    submitted = _submit(
+        client, token, full_name="Nome Sensivel Log", phone="11922226666",
+        email="logsafe@example.com", idempotency_key="log-safe-1",
+    )
+    submission_id = submitted.json()["submission_id"]
+
+    with caplog.at_level(logging.INFO, logger="croniu.intake"):
+        linked = client.post(
+            f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+            json={"client_id": a["id"]},
+        )
+    assert linked.status_code == 200
+    blob = " ".join(r.message for r in caplog.records if r.name.startswith("croniu"))
+    assert "Nome Sensivel Log" not in blob
+    assert "11922226666" not in blob
+    assert "logsafe@example.com" not in blob
