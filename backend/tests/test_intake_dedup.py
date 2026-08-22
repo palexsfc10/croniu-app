@@ -907,6 +907,7 @@ def test_link_to_client_rolls_back_completely_on_failure(client, register_payloa
         # afterward.
         raise RuntimeError("forced failure mid-transaction")
 
+    original_get_journey = intake_svc.journey_svc.get_journey
     monkeypatch.setattr(intake_svc.journey_svc, "get_journey", boom)
     db = _fresh_session()
     try:
@@ -919,6 +920,11 @@ def test_link_to_client_rolls_back_completely_on_failure(client, register_payloa
             )
     finally:
         db.close()
+        # Restore before the assertions below, which go through
+        # get_submission -> journey_svc.get_journey via the normal HTTP
+        # client — only the call inside link_submission_to_client above
+        # was meant to fail.
+        monkeypatch.setattr(intake_svc.journey_svc, "get_journey", original_get_journey)
 
     # Nothing moved: submission still ambiguous and on the placeholder,
     # placeholder still quarantined, target untouched.
