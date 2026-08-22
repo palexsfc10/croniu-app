@@ -56,6 +56,12 @@ class PublicIntakeContextOut(BaseModel):
     prefill_full_name: str | None = None
     prefill_email: str | None = None
     prefill_phone: str | None = None
+    prefill_birth_date: date | None = None
+    prefill_primary_goal: str | None = None
+    prefill_occupation: str | None = None
+    prefill_emergency_contact: str | None = None
+    prefill_answers: dict[str, Any] | None = None
+    correction_message: str | None = None
 
 
 class IntakeSubmitIn(BaseModel):
@@ -278,6 +284,8 @@ class PortalIntakeStatusOut(BaseModel):
     attention_message: str | None = None
     protocol: dict[str, Any] | None = None
     nomenclature: dict[str, str] = Field(default_factory=dict)
+    correction_path: str | None = None
+    correction_url: str | None = None
 
 
 class ProtocolCreateIn(BaseModel):

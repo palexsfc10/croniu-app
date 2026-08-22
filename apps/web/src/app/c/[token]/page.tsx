@@ -60,7 +60,8 @@ export default function PublicMyCyclePage() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+
+    async function loadAll() {
       setError(null);
       const [res, intakeRes] = await Promise.all([
         fetch(`/api/v1/public/my-cycle/${token}`, {
@@ -92,9 +93,36 @@ export default function PublicMyCyclePage() {
         return;
       }
       setData(body as PublicMyCycle);
-    })();
+    }
+
+    // A professional's decision (request changes / approve / reject) can
+    // land while this tab is just sitting open — revalidate on return
+    // instead of leaving a stale "sem ciclo" or "aguardando análise"
+    // message up. No polling: only reacts to the visitor actually coming
+    // back to the tab, which is cheap and matches how they'd notice a
+    // WhatsApp notification anyway.
+    async function refreshIntakeStatusOnly() {
+      const intakeRes = await fetch(`/api/v1/public/intake/portal/${token}/status`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (cancelled) return;
+      if (intakeRes.ok) {
+        setIntakeStatus((await intakeRes.json()) as PortalIntakeStatus);
+      }
+    }
+
+    function onVisible() {
+      if (document.visibilityState === "visible") void refreshIntakeStatusOnly();
+    }
+
+    void loadAll();
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [token]);
 
@@ -208,7 +236,36 @@ export default function PublicMyCyclePage() {
           <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
         ) : null}
 
+        {intakeStatus?.submission_status === "changes_requested" ? (
+          // Highest priority: a pending correction always has precedence
+          // over "sem ciclo ainda" / the cycle card itself, on any device,
+          // an old portal link, or a page opened before the request was
+          // made (the effect below revalidates on focus/return).
+          <section className="mb-5 space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold text-[var(--color-ink)]">
+                Seu profissional solicitou alguns ajustes
+              </h2>
+              <Badge tone="warning">Ajustes solicitados</Badge>
+            </div>
+            <p className="text-sm text-[var(--color-ink)]">
+              Revise as informações abaixo para concluir seu cadastro.
+            </p>
+            {intakeStatus.message_to_client ? (
+              <p className="rounded-[var(--radius-md)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink)]">
+                {intakeStatus.message_to_client}
+              </p>
+            ) : null}
+            {intakeStatus.correction_path ? (
+              <a href={intakeStatus.correction_path} className="block">
+                <Button fullWidth>Corrigir cadastro</Button>
+              </a>
+            ) : null}
+          </section>
+        ) : null}
+
         {intakeStatus &&
+        intakeStatus.submission_status !== "changes_requested" &&
         (intakeStatus.journey_stage === "pending_review" ||
           intakeStatus.submission_status === "pending_review" ||
           !data) ? (

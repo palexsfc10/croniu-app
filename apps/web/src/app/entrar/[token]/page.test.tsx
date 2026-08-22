@@ -103,3 +103,55 @@ describe("Public intake page — contextual invite prefill", () => {
     expect(screen.getByDisplayValue("11988887777")).toBeInTheDocument();
   });
 });
+
+describe("Public intake page — correction (changes requested)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the professional's message and offers to continue the correction", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          professional_public_name: "Studio Alpha",
+          welcome_message: "Bem-vindo ao cadastro.",
+          process_summary: "Preencha identificação, anamnese e consentimentos.",
+          template_version_id: "tv1",
+          attention_client_message: "Alguns pontos precisam de análise.",
+          anamnesis_schema: { sections: [] },
+          prefill_full_name: "Murilo Macedo",
+          correction_message: "Indique os objetivos secundários.",
+          prefill_answers: { d_chest_pain: "nao" },
+        }),
+      })),
+    );
+    render(<PublicIntakePage />);
+    expect(await screen.findByText("Seu profissional pediu um ajuste")).toBeInTheDocument();
+    expect(screen.getByText("Indique os objetivos secundários.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continuar correção" })).toBeInTheDocument();
+  });
+
+  it("does not show the correction banner for a plain first-time invite", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          professional_public_name: "Studio Alpha",
+          welcome_message: "Bem-vindo ao cadastro.",
+          process_summary: "Preencha identificação, anamnese e consentimentos.",
+          template_version_id: "tv1",
+          attention_client_message: "Alguns pontos precisam de análise.",
+          anamnesis_schema: { sections: [] },
+        }),
+      })),
+    );
+    render(<PublicIntakePage />);
+    await screen.findByText(/Studio Alpha/i);
+    expect(screen.queryByText("Seu profissional pediu um ajuste")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Começar" })).toBeInTheDocument();
+  });
+});
