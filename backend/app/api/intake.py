@@ -11,6 +11,7 @@ from app.db import get_db
 from app.schemas.intake import (
     AccompanimentStepIn,
     ApproveSubmissionIn,
+    ClientIntakeLinkOut,
     EvaluationDecisionIn,
     IntakeLinkCreateIn,
     IntakeLinkOut,
@@ -251,6 +252,24 @@ def disable_link_by_id(
         db, organization_id=auth.organization.id, link_id=link_id
     )
     return IntakeLinkOut.model_validate(data)
+
+
+@router.post("/clients/{client_id}/intake-link", response_model=ClientIntakeLinkOut)
+def create_client_intake_link(
+    client_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> ClientIntakeLinkOut:
+    try:
+        data = intake_svc.create_client_intake_link(
+            db,
+            organization_id=auth.organization.id,
+            client_id=client_id,
+            user_id=auth.user.id,
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return ClientIntakeLinkOut.model_validate(data)
 
 
 @router.get("/intake-submissions", response_model=list[IntakeSubmissionListItem])

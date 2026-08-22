@@ -309,6 +309,9 @@ export type PublicIntakeContext = {
   form_kind?: string | null;
   form_name?: string | null;
   nomenclature?: Record<string, string>;
+  prefill_full_name?: string | null;
+  prefill_email?: string | null;
+  prefill_phone?: string | null;
 };
 
 export type IntakeSubmitPayload = {
@@ -356,6 +359,15 @@ export type IntakeLink = {
   public_path?: string | null;
   public_url?: string | null;
   wa_message_url?: string | null;
+};
+
+export type ClientIntakeLink = {
+  client_id: string;
+  full_name?: string | null;
+  token: string;
+  public_path: string;
+  public_url: string;
+  wa_message_url: string;
 };
 
 export type IntakeSubmissionListItem = {

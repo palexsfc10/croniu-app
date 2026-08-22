@@ -27,6 +27,11 @@ from app.models.intake import (
     ProtocolVersion,
 )
 from app.models.organization import Organization
+from app.security.client_intake_link_token import (
+    InvalidClientIntakeLinkToken,
+    mint_client_intake_link_token,
+    parse_client_intake_link_token,
+)
 from app.security.intake_link_token import (
     InvalidIntakeLinkToken,
     mint_intake_link_token,
@@ -107,7 +112,7 @@ def _portal_url(token: str) -> str:
     return f"{base}{_portal_path(token)}"
 
 
-def _wa_invite(url: str, *, form_noun: str) -> str:
+def _wa_invite(url: str, *, form_noun: str, greeting_name: str | None = None) -> str:
     noun = (form_noun or "cadastro").strip()
     if noun.lower() in {"anamnese", "anamnese de atividade física"}:
         preencha = "seu cadastro e sua anamnese"
@@ -115,8 +120,9 @@ def _wa_invite(url: str, *, form_noun: str) -> str:
         preencha = f"sua {noun}"
     else:
         preencha = f"seu {noun}"
+    greeting = f"Olá, {greeting_name}!" if greeting_name else "Olá!"
     msg = (
-        f"Olá! Para facilitar seu acompanhamento, preencha {preencha} "
+        f"{greeting} Para facilitar seu acompanhamento, preencha {preencha} "
         f"no Croniu pelo link abaixo:\n{url}"
     )
     return f"https://wa.me/?text={quote(msg)}"
@@ -251,6 +257,28 @@ def create_intake_link(
     form_kind: str | None = None,
     set_primary: bool = False,
 ) -> dict[str, Any]:
+    row, profile = _ensure_active_link_row(
+        db,
+        organization_id=organization_id,
+        user_id=user_id,
+        name=name,
+        purpose=purpose,
+        form_kind=form_kind,
+        set_primary=set_primary,
+    )
+    return _link_out(row, form_noun=profile["intake_form_noun"])
+
+
+def _ensure_active_link_row(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    name: str = "Link de entrada",
+    purpose: str = "new_client",
+    form_kind: str | None = None,
+    set_primary: bool = False,
+) -> tuple[OrganizationIntakeLink, dict[str, Any]]:
     # Serialize concurrent "invite" taps for the same organization (double
     # click, duplicate request) so at most one link ends up primary/active
     # from a single burst of create calls — no schema change required.
@@ -274,7 +302,7 @@ def create_intake_link(
         # organization lock above — reuse it instead of minting a second
         # active row for the same "invite" tap.
         primary = next((r for r in existing_active if r.is_primary), existing_active[0])
-        return _link_out(primary, form_noun=profile["intake_form_noun"])
+        return primary, profile
     make_primary = set_primary or len(existing_active) == 0
     if make_primary:
         for other in existing_active:
@@ -302,7 +330,54 @@ def create_intake_link(
         row.form_kind,
         profile["intake_template_code"],
     )
-    return _link_out(row, form_noun=profile["intake_form_noun"])
+    return row, profile
+
+
+def create_client_intake_link(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    client_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+) -> dict[str, Any]:
+    """Mint a contextual invite bound to one existing client.
+
+    Reuses the organization's active intake link (creating it if none
+    exists yet, exactly like the generic "Convidar aluno" invite) but
+    signs a token that also binds the target client id — see
+    app.security.client_intake_link_token. No new row or column is
+    created for the binding itself; it lives entirely inside the token
+    and is re-validated on every public use.
+    """
+    client = db.scalar(
+        select(Client).where(
+            Client.id == client_id, Client.organization_id == organization_id
+        )
+    )
+    if client is None:
+        raise AuthError("client_not_found", "Cliente não encontrado.", 404)
+    if client.status != "active":
+        raise AuthError(
+            "client_not_active",
+            "Reative o cliente antes de enviar um convite de cadastro.",
+            422,
+        )
+    row, profile = _ensure_active_link_row(
+        db, organization_id=organization_id, user_id=user_id
+    )
+    signed = mint_client_intake_link_token(row.id, client.id)
+    url = _public_intake_url(signed)
+    first_name = (client.full_name or "").strip().split()[0] if client.full_name else None
+    return {
+        "client_id": str(client.id),
+        "full_name": client.full_name,
+        "token": signed,
+        "public_path": _public_intake_path(signed),
+        "public_url": url,
+        "wa_message_url": _wa_invite(
+            url, form_noun=profile["intake_form_noun"], greeting_name=first_name
+        ),
+    }
 
 
 def set_primary_intake_link(
@@ -460,6 +535,48 @@ def _resolve_active_link_by_token(
     return row, org
 
 
+def _resolve_link_and_client_by_token(
+    db: Session, *, raw_token: str
+) -> tuple[OrganizationIntakeLink, Organization, Client | None]:
+    """Resolve a public intake token to (link, org, bound_client).
+
+    bound_client is not None only for a contextual invite minted by
+    create_client_intake_link (a "ci1." token) — every check below must
+    pass or the generic, uniform GENERIC_TOKEN_ERROR is raised, exactly
+    like any other invalid link, so a tampered or stale binding never
+    leaks which part of it was wrong. A generic ("l1." or legacy) token
+    always resolves with bound_client=None, unchanged from before.
+    """
+    token = (raw_token or "").strip()
+    if not token:
+        raise GENERIC_TOKEN_ERROR
+
+    try:
+        composite = parse_client_intake_link_token(token)
+    except InvalidClientIntakeLinkToken as exc:
+        raise GENERIC_TOKEN_ERROR from exc
+
+    if composite is None:
+        link, org = _resolve_active_link_by_token(db, raw_token=token)
+        return link, org, None
+
+    link_id, client_id = composite
+    link = db.get(OrganizationIntakeLink, link_id)
+    if link is None or link.status != "active":
+        raise GENERIC_TOKEN_ERROR
+    org = db.get(Organization, link.organization_id)
+    if org is None:
+        raise GENERIC_TOKEN_ERROR
+    client = db.scalar(
+        select(Client).where(
+            Client.id == client_id, Client.organization_id == org.id
+        )
+    )
+    if client is None or client.status != "active":
+        raise GENERIC_TOKEN_ERROR
+    return link, org, client
+
+
 def _schema_for_link(
     db: Session, link: OrganizationIntakeLink, org: Organization | None
 ) -> tuple[dict, str, str]:
@@ -505,14 +622,14 @@ def _schema_for_link(
 
 
 def get_public_intake_context(db: Session, *, raw_token: str) -> dict[str, Any]:
-    link, org = _resolve_active_link_by_token(db, raw_token=raw_token)
+    link, org, bound_client = _resolve_link_and_client_by_token(db, raw_token=raw_token)
     schema, template_version_id, form_name = _schema_for_link(db, link, org)
     link.last_used_at = datetime.now(UTC)
     db.add(link)
     db.commit()
     terms = profession_svc.nomenclature_for(org.profession_code)
     intake_noun = terms.get("intake_form") or form_name
-    return {
+    result: dict[str, Any] = {
         "professional_public_name": org.name,
         "welcome_message": f"Bem-vindo(a) ao acompanhamento com {org.name}.",
         "process_summary": (
@@ -526,6 +643,15 @@ def get_public_intake_context(db: Session, *, raw_token: str) -> dict[str, Any]:
         "form_name": form_name,
         "nomenclature": terms,
     }
+    # Only the minimum identity fields needed to spare the client from
+    # retyping what the professional already has — never anamnesis
+    # history, billing, cycles, or any other data about them or anyone
+    # else (see create_client_intake_link / _resolve_link_and_client_by_token).
+    if bound_client is not None:
+        result["prefill_full_name"] = bound_client.full_name
+        result["prefill_email"] = bound_client.email
+        result["prefill_phone"] = bound_client.phone
+    return result
 
 
 def _find_duplicate(
@@ -571,6 +697,50 @@ def _find_duplicate(
     return match, match.status == "archived"
 
 
+def _find_confident_match(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    phone_normalized: str,
+    email: str | None,
+) -> Client | None:
+    """A single active client matched by phone AND/OR email — safe to
+    auto-link without human review. Only trusted identifiers are used
+    (never name — see submit_intake's "generic invite" protection). If
+    phone and email point to two *different* active clients, or to more
+    than one, this returns None: the submission stays alertable via
+    _find_duplicate instead of being silently merged into a guess.
+    Archived clients are excluded on purpose — reactivating someone the
+    professional explicitly archived is a decision for a human, not an
+    inbound public form.
+    """
+    phone_variants = {phone_normalized}
+    if phone_normalized.startswith("55") and len(phone_normalized) in {12, 13}:
+        phone_variants.add(phone_normalized[2:])
+
+    active_clients = list(
+        db.scalars(
+            select(Client).where(
+                Client.organization_id == organization_id,
+                Client.status == "active",
+            )
+        ).all()
+    )
+    matched_ids: dict[uuid.UUID, Client] = {}
+    for candidate in active_clients:
+        stored = re.sub(r"\D", "", candidate.phone or "")
+        phone_hit = bool(stored) and (
+            stored in phone_variants
+            or (stored.startswith("55") and stored[2:] in phone_variants)
+        )
+        email_hit = bool(email) and bool(candidate.email) and candidate.email.lower() == email
+        if phone_hit or email_hit:
+            matched_ids[candidate.id] = candidate
+    if len(matched_ids) == 1:
+        return next(iter(matched_ids.values()))
+    return None
+
+
 def submit_intake(
     db: Session,
     *,
@@ -589,7 +759,7 @@ def submit_intake(
             422,
         )
 
-    link, org = _resolve_active_link_by_token(db, raw_token=raw_token)
+    link, org, bound_client = _resolve_link_and_client_by_token(db, raw_token=raw_token)
 
     existing = db.scalar(
         select(ClientIntakeSubmission).where(
@@ -655,42 +825,89 @@ def submit_intake(
             )
     attention = anam_svc.compute_attention_flag(answers, schema)
 
-    dup, archived_match = _find_duplicate(
-        db,
-        organization_id=org.id,
-        phone_normalized=phone_normalized,
-        email=email,
-    )
-
-    # Always create a new client row; duplicate is an alert for the professional.
-    # Avoid unique email collision while keeping email on the submission record.
-    client_email = email
-    if (
-        email
-        and dup is not None
-        and dup.email
-        and str(dup.email).lower() == email
-    ):
-        client_email = None
-    client = Client(
-        id=uuid.uuid4(),
-        organization_id=org.id,
-        full_name=full_name,
-        phone=phone_normalized,
-        email=client_email,
-        notes=None,
-        status="active",
-    )
-    db.add(client)
-    try:
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        raise AuthError(
-            "client_conflict",
-            "Não foi possível concluir o cadastro. Tente novamente.",
-            409,
-        ) from exc
+    is_new_client = False
+    if bound_client is not None:
+        # Contextual invite (see create_client_intake_link): the token
+        # cryptographically names this exact client, so there is no
+        # candidate search at all — complement the existing record
+        # in-place instead of ever creating a second one for the same
+        # person. Blanks only: a value the professional already entered
+        # is never silently overwritten by what the client typed.
+        client = bound_client
+        dup, archived_match = None, False
+        if not (client.full_name or "").strip():
+            client.full_name = full_name
+            db.add(client)
+        if not client.phone:
+            client.phone = phone_normalized
+            db.add(client)
+        if email and not client.email:
+            conflict = db.scalar(
+                select(Client).where(
+                    Client.organization_id == org.id,
+                    Client.email == email,
+                    Client.id != client.id,
+                )
+            )
+            if conflict is None:
+                client.email = email
+                db.add(client)
+    else:
+        confident = _find_confident_match(
+            db,
+            organization_id=org.id,
+            phone_normalized=phone_normalized,
+            email=email,
+        )
+        if confident is not None:
+            # Generic "Convidar aluno" link, but phone and/or email point
+            # to exactly one existing active client — same protection a
+            # contextual invite gives by construction, applied here via
+            # trusted identifiers instead of a signed client id. Already
+            # resolved, not merely flagged: duplicate_alert stays False so
+            # the review UI doesn't point "ver cliente existente" back at
+            # the very client this submission now belongs to.
+            client = confident
+            dup, archived_match = None, False
+        else:
+            dup, archived_match = _find_duplicate(
+                db,
+                organization_id=org.id,
+                phone_normalized=phone_normalized,
+                email=email,
+            )
+            # Genuinely ambiguous (0 or 2+ candidates) or only an archived
+            # match: create a new client and let the professional decide
+            # via the existing "possível duplicidade" review UI, exactly
+            # as before.
+            is_new_client = True
+            client_email = email
+            if (
+                email
+                and dup is not None
+                and dup.email
+                and str(dup.email).lower() == email
+            ):
+                client_email = None
+            client = Client(
+                id=uuid.uuid4(),
+                organization_id=org.id,
+                full_name=full_name,
+                phone=phone_normalized,
+                email=client_email,
+                notes=None,
+                status="active",
+            )
+            db.add(client)
+            try:
+                db.flush()
+            except IntegrityError as exc:
+                db.rollback()
+                raise AuthError(
+                    "client_conflict",
+                    "Não foi possível concluir o cadastro. Tente novamente.",
+                    409,
+                ) from exc
 
     now = datetime.now(UTC)
     submission = ClientIntakeSubmission(
@@ -758,26 +975,76 @@ def submit_intake(
             )
         )
 
-    journey_svc.create_journey(
-        db,
-        organization_id=org.id,
-        client_id=client.id,
-        stage="pending_review",
-        requires_professional_attention=attention,
-        next_action="review_submission",
-    )
+    if is_new_client:
+        journey_svc.create_journey(
+            db,
+            organization_id=org.id,
+            client_id=client.id,
+            stage="pending_review",
+            requires_professional_attention=attention,
+            next_action="review_submission",
+        )
+    else:
+        # Reused client (contextual invite or a confident identifier
+        # match) may already have an operational journey — e.g. lazily
+        # created as "active" the first time the professional opened a
+        # manually-added client's ficha. Do not force a stage transition:
+        # most later stages have no "pending_review" edge in
+        # VALID_TRANSITIONS, and rewinding one would discard real
+        # progress (cycles, evaluations, protocols already in place),
+        # which section 4 of this fix explicitly forbids. Surface the
+        # review as a next action instead, without touching stage.
+        existing_journey = journey_svc.get_journey(
+            db, organization_id=org.id, client_id=client.id
+        )
+        if existing_journey is None:
+            journey_svc.create_journey(
+                db,
+                organization_id=org.id,
+                client_id=client.id,
+                stage="pending_review",
+                requires_professional_attention=attention,
+                next_action="review_submission",
+            )
+        else:
+            existing_journey.next_action = "review_submission"
+            if attention:
+                existing_journey.requires_professional_attention = True
+            db.add(existing_journey)
 
-    portal_raw = generate_session_token()
-    portal = ClientPublicAccess(
-        id=uuid.uuid4(),
-        organization_id=org.id,
-        client_id=client.id,
-        token_hash=hash_session_token(portal_raw),
-        created_by_user_id=None,
+    # Reuse any active portal access this client already has instead of
+    # inserting a second row — client_public_accesses allows at most one
+    # non-revoked row per client (uq_client_public_accesses_one_active).
+    # Rotating the hash is safe: the raw value returned to the browser
+    # that just submitted is the only one this response ever promises to
+    # work, exactly like a brand-new client's portal token.
+    existing_portal = (
+        None
+        if is_new_client
+        else db.scalar(
+            select(ClientPublicAccess).where(
+                ClientPublicAccess.organization_id == org.id,
+                ClientPublicAccess.client_id == client.id,
+                ClientPublicAccess.revoked_at.is_(None),
+            )
+        )
     )
-    db.add(portal)
-    db.flush()
-    submission.portal_access_id = portal.id
+    portal_raw = generate_session_token()
+    if existing_portal is not None:
+        existing_portal.token_hash = hash_session_token(portal_raw)
+        db.add(existing_portal)
+        submission.portal_access_id = existing_portal.id
+    else:
+        portal = ClientPublicAccess(
+            id=uuid.uuid4(),
+            organization_id=org.id,
+            client_id=client.id,
+            token_hash=hash_session_token(portal_raw),
+            created_by_user_id=None,
+        )
+        db.add(portal)
+        db.flush()
+        submission.portal_access_id = portal.id
     db.add(submission)
 
     link.last_used_at = now

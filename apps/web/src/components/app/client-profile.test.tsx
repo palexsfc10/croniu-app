@@ -93,6 +93,10 @@ vi.mock("@/lib/api", async () => {
       }
       if (path.includes("/evaluations")) return { data: [] };
       if (path.includes("/public-access")) return { data: { has_active_link: false } };
+      if (path.includes("/intake-submissions?client_id=c2")) {
+        return { data: [{ id: "sub-c2", submitted_at: "2026-08-13T10:00:00Z" }] };
+      }
+      if (path.includes("/intake-submissions?client_id=")) return { data: [] };
       if (path.includes("/clients/c2")) {
         return {
           data: {
@@ -181,6 +185,26 @@ describe("ClientProfile", () => {
     expect(await screen.findByText("Próxima ação")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver ciclo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver plano" })).toBeInTheDocument();
+  });
+
+  it("offers a contextual invite to complete registration when there is no submission yet", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(
+      screen.getByText("Envie o formulário para Pedro completar o cadastro."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar cadastro" })).toBeInTheDocument();
+  });
+
+  it("hides the contextual invite once the student already has a submission", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c2" />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(
+      screen.queryByText(/completar o cadastro/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Enviar cadastro" })).not.toBeInTheDocument();
   });
 
   it("clears previous client name when switching fichas", async () => {

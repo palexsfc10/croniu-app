@@ -34,6 +34,15 @@ class IntakeLinkCreateIn(BaseModel):
     set_primary: bool = False
 
 
+class ClientIntakeLinkOut(BaseModel):
+    client_id: str
+    full_name: str | None = None
+    token: str
+    public_path: str
+    public_url: str
+    wa_message_url: str
+
+
 class PublicIntakeContextOut(BaseModel):
     professional_public_name: str
     welcome_message: str
@@ -44,6 +53,9 @@ class PublicIntakeContextOut(BaseModel):
     form_kind: str | None = None
     form_name: str | None = None
     nomenclature: dict[str, str] = Field(default_factory=dict)
+    prefill_full_name: str | None = None
+    prefill_email: str | None = None
+    prefill_phone: str | None = None
 
 
 class IntakeSubmitIn(BaseModel):
