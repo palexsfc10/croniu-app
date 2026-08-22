@@ -203,6 +203,13 @@ def list_clients(
     query: Select[tuple[Client]] = select(Client).where(Client.organization_id == organization_id)
     if status:
         query = query.where(Client.status == status)
+    else:
+        # "no filter" means every normal status, not literally every row:
+        # a quarantined ambiguous-intake placeholder (see
+        # app.services.intake.submit_intake, status="pending_duplicate_
+        # review") must never surface here regardless of how this is
+        # called — including a client-supplied empty status query param.
+        query = query.where(Client.status.in_(["active", "archived"]))
     return list(db.scalars(query.order_by(Client.full_name.asc())).all())
 
 

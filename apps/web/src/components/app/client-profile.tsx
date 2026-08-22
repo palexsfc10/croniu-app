@@ -28,6 +28,7 @@ import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AccompanimentCard } from "@/components/app/accompaniment-card";
+import { ClientIntakeInviteButton } from "@/components/app/client-intake-invite-button";
 import { ClientPortalCard } from "@/components/app/client-portal-card";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
@@ -415,6 +416,19 @@ export function ClientProfile({ clientId }: Props) {
               </Link>
             ) : null}
           </div>
+          {!submissionId ? (
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              <p className="text-sm font-semibold text-[var(--color-ink)]">
+                Envie o formulário para {item.full_name.split(/\s+/)[0]} completar o cadastro.
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                Um convite individual, já com os dados que você cadastrou.
+              </p>
+              <div className="mt-3">
+                <ClientIntakeInviteButton clientId={clientId} />
+              </div>
+            </div>
+          ) : null}
           {activeCycle ? (
             <p className="text-sm text-[var(--color-ink-muted)]">
               Ciclo atual · {activeCycle.service_name || "Serviço"} ·{" "}

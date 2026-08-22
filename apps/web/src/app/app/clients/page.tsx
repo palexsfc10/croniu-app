@@ -14,6 +14,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor } from "@/lib/nomenclature";
 import { clientInitials, clientListPresentation } from "@/lib/client-list";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { ActionSheet } from "@/components/ui/action-sheet";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -111,7 +112,7 @@ function InviteButton({ variant = "secondary" }: { variant?: "primary" | "second
   }
 
   return (
-    <div className="relative min-w-0">
+    <span className="min-w-0">
       <Button
         variant={variant}
         className="min-h-11 whitespace-nowrap"
@@ -122,60 +123,56 @@ function InviteButton({ variant = "secondary" }: { variant?: "primary" | "second
         <IconLink className="mr-1.5 h-4 w-4" />
         Convidar aluno
       </Button>
-      {open ? (
-        <div
-          role="dialog"
-          aria-label="Convide um aluno"
-          className="absolute right-0 z-30 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-md"
-        >
-          <h2 className="text-sm font-semibold text-[var(--color-ink)]">Convide um aluno</h2>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            Envie este convite para o aluno preencher o cadastro.
-          </p>
+      <ActionSheet open={open} onClose={() => setOpen(false)} labelledBy="generic-invite-title">
+        <h2 id="generic-invite-title" className="text-base font-semibold text-[var(--color-ink)]">
+          Convide um aluno
+        </h2>
+        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+          Envie este convite para o aluno preencher o cadastro.
+        </p>
 
-          {state === "loading" ? (
-            <p className="mt-3 text-sm text-[var(--color-ink-muted)]">Preparando convite…</p>
-          ) : null}
+        {state === "loading" ? (
+          <p className="mt-3 text-sm text-[var(--color-ink-muted)]">Preparando convite…</p>
+        ) : null}
 
-          {state === "error" ? (
-            <div className="mt-3 space-y-2">
-              <p role="alert" className="text-sm text-[var(--color-danger)]">
-                Não foi possível preparar o convite. Tente novamente.
-              </p>
-              <Button fullWidth variant="secondary" onClick={() => void ensureLink()}>
-                Tentar novamente
-              </Button>
-            </div>
-          ) : null}
+        {state === "error" ? (
+          <div className="mt-3 space-y-2">
+            <p role="alert" className="text-sm text-[var(--color-danger)]">
+              Não foi possível preparar o convite. Tente novamente.
+            </p>
+            <Button fullWidth variant="secondary" onClick={() => void ensureLink()}>
+              Tentar novamente
+            </Button>
+          </div>
+        ) : null}
 
-          {state === "ready" && link ? (
-            <div className="mt-3 flex flex-col gap-2">
-              <Button
-                fullWidth
-                onClick={sendWhatsApp}
-                className="inline-flex items-center justify-center gap-2"
+        {state === "ready" && link ? (
+          <div className="mt-3 flex flex-col gap-2">
+            <Button
+              fullWidth
+              onClick={sendWhatsApp}
+              className="inline-flex items-center justify-center gap-2"
+            >
+              <IconWhatsApp className="h-5 w-5" aria-hidden />
+              Enviar pelo WhatsApp
+            </Button>
+            <Button fullWidth variant="secondary" onClick={() => void copyInvite()}>
+              Copiar convite
+            </Button>
+            {copyError || copied ? (
+              <p
+                role="status"
+                className={`text-center text-xs ${
+                  copyError ? "text-[var(--color-danger)]" : "text-[var(--color-ink-muted)]"
+                }`}
               >
-                <IconWhatsApp className="h-5 w-5" aria-hidden />
-                Enviar pelo WhatsApp
-              </Button>
-              <Button fullWidth variant="secondary" onClick={() => void copyInvite()}>
-                Copiar convite
-              </Button>
-              {copyError || copied ? (
-                <p
-                  role="status"
-                  className={`text-center text-xs ${
-                    copyError ? "text-[var(--color-danger)]" : "text-[var(--color-ink-muted)]"
-                  }`}
-                >
-                  {copyError ? "Não foi possível copiar. Tente novamente." : "Convite copiado"}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+                {copyError ? "Não foi possível copiar. Tente novamente." : "Convite copiado"}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </ActionSheet>
+    </span>
   );
 }
 

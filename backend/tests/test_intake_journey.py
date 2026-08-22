@@ -214,7 +214,12 @@ def test_permanent_invite_creates_independent_submissions_and_survives_rotation(
     assert {a["submission_id"], b["submission_id"]} <= listed_ids
 
 
-def test_duplicate_alert_same_org(client, register_payload):
+def test_generic_link_confident_match_auto_links_existing_client(client, register_payload):
+    """A single active client matched by both phone and email on a generic
+    (non-contextual) link is auto-linked, not duplicated — see
+    app.services.intake._find_confident_match. This replaces the old
+    "just alert, still duplicate" behavior that caused the production
+    Sabrina Macedo x2 duplication."""
     _auth(client, register_payload)
     token = _create_link(client)
     created = client.post(
@@ -222,6 +227,7 @@ def test_duplicate_alert_same_org(client, register_payload):
         json={"full_name": "Existente", "phone": "11988887777", "email": "dup@example.com"},
     )
     assert created.status_code == 201
+    existing_client_id = created.json()["id"]
 
     submitted = client.post(
         f"/api/v1/public/intake/{token}/submit",
@@ -237,7 +243,12 @@ def test_duplicate_alert_same_org(client, register_payload):
         },
     )
     assert submitted.status_code == 201, submitted.text
-    assert submitted.json()["duplicate_alert"] is True
+    body = submitted.json()
+    assert body["client_id"] == existing_client_id
+    assert body["duplicate_alert"] is False
+
+    all_clients = client.get("/api/v1/clients").json()
+    assert len(all_clients) == 1
 
 
 def test_reject_and_protocol_versioning(client, register_payload):

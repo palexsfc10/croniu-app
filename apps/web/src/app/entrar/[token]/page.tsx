@@ -102,7 +102,20 @@ export default function PublicIntakePage() {
         setCtx(null);
         return;
       }
-      setCtx(body as PublicIntakeContext);
+      const context = body as PublicIntakeContext;
+      setCtx(context);
+      // Contextual invite (see app/clients/[id] "Enviar cadastro"): spare
+      // the student from retyping what the professional already has. Only
+      // fills fields still blank — never overwrites anything the visitor
+      // may already be typing.
+      if (context.prefill_full_name || context.prefill_email || context.prefill_phone) {
+        setIdentity((prev) => ({
+          ...prev,
+          full_name: prev.full_name || context.prefill_full_name || "",
+          email: prev.email || context.prefill_email || "",
+          phone: prev.phone || context.prefill_phone || "",
+        }));
+      }
     })();
     return () => {
       cancelled = true;
