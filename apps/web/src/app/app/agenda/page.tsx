@@ -13,7 +13,9 @@ import {
 } from "@/lib/api";
 import { formatHumanDate, formatNextLessonLine } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { appointmentStatusTone } from "@/lib/status-tone";
 
 function EmptyAgenda({
   day,
@@ -158,8 +160,9 @@ function AgendaRoutines({ day }: { day: string | null }) {
                 key={item.id}
                 className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-3"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
-                  Rotina{item.overdue ? " · vencida" : ""}
+                <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+                  Rotina
+                  {item.overdue ? <Badge tone="danger">Vencida</Badge> : null}
                 </p>
                 <p className="font-semibold">{item.name || item.type_label || g.label}</p>
                 <p className="text-sm text-[var(--color-ink-muted)]">
@@ -336,12 +339,15 @@ export default function AgendaPage() {
               href={`/app/appointments/${item.id}`}
               className="card-rail card-rail-primary block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-primary-subtle)]/35"
             >
-              <p className="font-semibold text-[var(--color-ink)]">
+              <p className="flex flex-wrap items-center gap-1.5 font-semibold text-[var(--color-ink)]">
                 {formatOrgDateTime(item.starts_at, agenda.timezone)}–
                 {formatOrgDateTime(item.ends_at, agenda.timezone)} · {item.client_name}
+                <Badge tone={appointmentStatusTone(item.status)}>
+                  {appointmentStatusLabel(item.status)}
+                </Badge>
               </p>
               <p className="text-sm text-[var(--color-ink-muted)]">
-                {item.location_name || "Sem local"} · {appointmentStatusLabel(item.status)}
+                {item.location_name || "Sem local"}
                 {item.service_name || item.cycle_service_name
                   ? ` · ${item.service_name || item.cycle_service_name}`
                   : ""}

@@ -63,6 +63,16 @@ export function clientStatusLabel(status: string | null | undefined): string {
   return labelOf(CLIENT_STATUS, status, "Ativo");
 }
 
+const CLIENT_STATUS_TONE: Record<string, "info" | "neutral" | "warning"> = {
+  active: "info",
+  archived: "neutral",
+  pending_duplicate_review: "warning",
+};
+
+export function clientStatusTone(status: string | null | undefined): "info" | "neutral" | "warning" {
+  return CLIENT_STATUS_TONE[status ?? "active"] ?? "info";
+}
+
 export function looksTechnical(value: string | null | undefined): boolean {
   if (!value) return false;
   return TECHNICAL.test(value);

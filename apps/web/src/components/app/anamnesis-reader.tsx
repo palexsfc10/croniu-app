@@ -196,7 +196,26 @@ export function AnamnesisReader({
                     <li key={item.id} className="space-y-1 text-sm">
                       <p className="font-medium text-[var(--color-ink)]">{item.label}</p>
                       {yn ? (
-                        <Badge tone={yn === "yes" ? "warning" : yn === "no" ? "success" : "neutral"}>
+                        <Badge
+                          tone={
+                            // Only color yes/no as a risk signal for
+                            // questions actually flagged attention-worthy —
+                            // the schema's convention is that "sim" is
+                            // always the concerning direction there (see
+                            // isRealAttentionItem / ATTENTION_ANSWER_VALUES
+                            // on the intake side). A plain positively-phrased
+                            // question ("pratica atividade física?") has no
+                            // risk direction at all, so "sim" must not read
+                            // as a warning.
+                            !item.attention
+                              ? "neutral"
+                              : yn === "yes"
+                                ? "warning"
+                                : yn === "no"
+                                  ? "success"
+                                  : "neutral"
+                          }
+                        >
                           {answer}
                         </Badge>
                       ) : item.type === "multi" || answer.includes(",") ? (

@@ -121,6 +121,18 @@ vi.mock("@/lib/api", async () => {
           },
         };
       }
+      if (path.includes("/clients/c3")) {
+        return {
+          data: {
+            id: "c3",
+            full_name: "Carla Nunes",
+            status: "archived",
+            phone: "11911112222",
+            email: "",
+            notes: "",
+          },
+        };
+      }
       return { data: null };
     }),
   };
@@ -210,6 +222,14 @@ describe("ClientProfile", () => {
       screen.queryByText(/completar o cadastro/i),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Enviar cadastro" })).not.toBeInTheDocument();
+  });
+
+  it("shows an archived client's status badge in a neutral tone, not the same info tone as an active client", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c3" />);
+    const badge = await screen.findByText("Arquivado");
+    expect(badge).toHaveClass("badge-neutral");
+    expect(badge).not.toHaveClass("badge-info");
   });
 
   it("clears previous client name when switching fichas", async () => {

@@ -17,6 +17,7 @@ import { nomenclatureFor, safeReturnTo, t } from "@/lib/nomenclature";
 import { EmptyStateGuide } from "@/components/ui/empty-state-guide";
 import {
   clientStatusLabel,
+  clientStatusTone,
   formatPhoneBR,
   journeyStageLabel,
   nextActionLabel,
@@ -372,7 +373,9 @@ export function ClientProfile({ clientId }: Props) {
             {item.full_name}
           </h1>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="info">{clientStatusLabel(item.status) || stageLabel}</Badge>
+            <Badge tone={clientStatusTone(item.status)}>
+              {clientStatusLabel(item.status) || stageLabel}
+            </Badge>
             {next.isPending && next.cta ? (
               <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
             ) : null}

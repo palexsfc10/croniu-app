@@ -6,6 +6,7 @@ import type { Appointment, AttentionItem, HomeSummary, PriorityAction } from "@/
 import { apiFetch, formatDateBR, formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   IconAlertCircle,
   IconBanknote,
@@ -299,9 +300,9 @@ function RestSummaryRow({ items }: { items: TodayActionItem[] }) {
       : `${items.length} pendência${items.length === 1 ? "" : "s"}`;
   return (
     <li className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-3">
-      <p className="font-semibold">
+      <p className="flex flex-wrap items-center gap-1.5 font-semibold">
         {items.length} {label.toLowerCase()}
-        {anyOverdue ? " · atrasadas" : ""}
+        {anyOverdue ? <Badge tone="danger">Atrasadas</Badge> : null}
       </p>
       <p className="text-sm text-[var(--color-ink-muted)]">{who}</p>
       <Link
@@ -346,9 +347,9 @@ function TodayActions() {
             key={item.id}
             className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
           >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+            <Badge tone={item.overdue ? "danger" : "neutral"} className="mb-1 uppercase tracking-wide">
               {item.overdue ? "Atrasada" : "Hoje"}
-            </p>
+            </Badge>
             <p className="font-semibold">{item.name || item.type_label}</p>
             <p className="text-sm text-[var(--color-ink-muted)]">
               {item.client_name || "Clientes elegíveis"} · até {formatDateBR(item.due_on)}
