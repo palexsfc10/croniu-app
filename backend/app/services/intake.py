@@ -779,6 +779,20 @@ def submit_intake(
             )
     attention = anam_svc.compute_attention_flag(answers, schema)
 
+    # Serialize concurrent submissions for the same organization — same
+    # lock already used by _ensure_active_link_row for concurrent "invite"
+    # taps. Covers every path below that reuses or creates shared state
+    # (client rows, client_journeys, client_public_accesses): without it,
+    # two simultaneous submissions — via the same contextual token, or a
+    # generic link for a genuinely new person — could each observe "no
+    # journey yet" / "no candidates yet" before either commits, and race
+    # on a client_journeys insert or create two Client rows. A unique
+    # index on phone isn't an option here: shared household/family phones
+    # are a real, valid case in this domain, not a bug — locking the
+    # decision instead of the data is what keeps that possibility open
+    # while still closing the race.
+    db.execute(select(Organization.id).where(Organization.id == org.id).with_for_update())
+
     is_new_client = False
     if bound_client is not None:
         # Contextual invite (see create_client_intake_link): the token
@@ -807,18 +821,6 @@ def submit_intake(
                 client.email = email
                 db.add(client)
     else:
-        # Serialize concurrent generic-link submissions for the same
-        # organization — same lock already used by _ensure_active_link_row
-        # for concurrent "invite" taps. Without it, two simultaneous
-        # submissions for a genuinely new person (0 candidates found by
-        # both, racing before either commits) could each create their own
-        # Client row. A unique index on phone isn't an option here: shared
-        # household/family phones are a real, valid case in this domain,
-        # not a bug — locking the decision instead of the data is what
-        # keeps that possibility open while still closing the race.
-        db.execute(
-            select(Organization.id).where(Organization.id == org.id).with_for_update()
-        )
         candidates = _duplicate_candidates(
             db,
             organization_id=org.id,
