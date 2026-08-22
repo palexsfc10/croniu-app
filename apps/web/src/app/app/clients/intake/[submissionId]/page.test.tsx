@@ -83,7 +83,10 @@ describe("intake review order", () => {
   });
 
   beforeEach(() => {
-    apiFetch.mockResolvedValue({ data: detail() });
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: [] };
+      return { data: detail() };
+    });
   });
 
   it("places decision after anamnesis, alerts, duplicity and consents", async () => {
@@ -127,5 +130,65 @@ describe("intake review order", () => {
     render(<IntakeSubmissionDetailPage />);
     await screen.findByRole("heading", { name: "Murilo Macedo" });
     expect(screen.queryByText("pending_review")).not.toBeInTheDocument();
+  });
+});
+
+describe("ambiguous duplicate resolution", () => {
+  afterEach(() => {
+    cleanup();
+    apiFetch.mockReset();
+  });
+
+  const candidates = [
+    { id: "c-a", full_name: "Cliente A", phone: "11911110000", email: null, status: "active" },
+    { id: "c-b", full_name: "Cliente B", phone: null, email: "b@example.com", status: "archived" },
+  ];
+
+  it("lists every candidate for a human decision instead of a single guess", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: candidates };
+      return { data: detail() };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await screen.findByText("Possível cadastro duplicado");
+    expect(await screen.findByText("Cliente A")).toBeInTheDocument();
+    expect(screen.getByText("Cliente B")).toBeInTheDocument();
+    expect(screen.getByText("(arquivado)")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "Vincular a este aluno" }),
+    ).toHaveLength(2);
+  });
+
+  it("links to the chosen candidate via POST link-to-client", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: candidates };
+      if (path.includes("/link-to-client")) {
+        return { data: detail({ client_id: "c-a", duplicate_alert: false, duplicate_client_id: null }) };
+      }
+      return { data: detail() };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await screen.findByText("Cliente A");
+    await user.click(screen.getAllByRole("button", { name: "Vincular a este aluno" })[0]!);
+    expect(await screen.findByText("Cadastro vinculado ao aluno existente.")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/v1/intake-submissions/sub-1/link-to-client",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ client_id: "c-a" }) }),
+    );
+  });
+
+  it("does not fetch candidates when there is no duplicate alert", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: candidates };
+      return { data: detail({ duplicate_alert: false, duplicate_client_id: null }) };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await screen.findByRole("heading", { name: "Murilo Macedo" });
+    expect(screen.queryByText("Possível cadastro duplicado")).not.toBeInTheDocument();
+    const calledCandidatePath = apiFetch.mock.calls.some((call: unknown[]) =>
+      String(call[0]).includes("/duplicate-candidates"),
+    );
+    expect(calledCandidatePath).toBe(false);
   });
 });

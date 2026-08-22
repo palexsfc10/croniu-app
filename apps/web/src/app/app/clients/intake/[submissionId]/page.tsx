@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { apiFetch, type IntakeSubmissionDetail } from "@/lib/api";
+import { apiFetch, type DuplicateCandidate, type IntakeSubmissionDetail } from "@/lib/api";
 import { CONSENT_LABELS_PT, submissionStatusLabel } from "@/lib/intake";
 import {
   AnamnesisReader,
@@ -38,6 +38,8 @@ export default function IntakeSubmissionDetailPage() {
   const [internalReason, setInternalReason] = useState("");
   const [approvedJustNow, setApprovedJustNow] = useState(false);
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [candidates, setCandidates] = useState<DuplicateCandidate[]>([]);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +61,24 @@ export default function IntakeSubmissionDetailPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!item?.duplicate_alert || item.status !== "pending_review") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale candidates from a previous submission
+      setCandidates([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<DuplicateCandidate[]>(
+        `/api/v1/intake-submissions/${item.id}/duplicate-candidates`,
+      );
+      if (!cancelled) setCandidates(result.data ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [item?.id, item?.duplicate_alert, item?.status]);
+
   async function postAction(path: string, body: Record<string, unknown>, okMessage: string) {
     setBusy(true);
     setError(null);
@@ -76,6 +96,23 @@ export default function IntakeSubmissionDetailPage() {
     setInfo(okMessage);
     setSheet(null);
     if (path.endsWith("/approve")) setApprovedJustNow(true);
+  }
+
+  async function linkToClient(candidateId: string) {
+    if (!item) return;
+    setLinkingId(candidateId);
+    setError(null);
+    const result = await apiFetch<IntakeSubmissionDetail>(
+      `/api/v1/intake-submissions/${item.id}/link-to-client`,
+      { method: "POST", body: JSON.stringify({ client_id: candidateId }) },
+    );
+    setLinkingId(null);
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    setItem(result.data ?? null);
+    setInfo("Cadastro vinculado ao aluno existente.");
   }
 
   const pending = item?.status === "pending_review";
@@ -200,13 +237,49 @@ export default function IntakeSubmissionDetailPage() {
                 Correspondência por contato {maskContact(item.phone_normalized)}.
                 {item.archived_match ? " Há um cadastro arquivado com dados semelhantes." : ""}
               </p>
-              {item.duplicate_client_id ? (
-                <Link href={`/app/clients/${item.duplicate_client_id}`} className="mt-3 inline-block">
-                  <Button variant="secondary">Ver cliente existente</Button>
-                </Link>
-              ) : (
-                <p className="mt-2 text-sm">Manter como novo cadastro até conferir a fila.</p>
-              )}
+              {candidates.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    Escolha o que fazer com este cadastro:
+                  </p>
+                  {candidates.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[var(--color-ink)]">
+                          {c.full_name}
+                          {c.status === "archived" ? (
+                            <span className="ml-1.5 text-xs font-normal text-[var(--color-ink-muted)]">
+                              (arquivado)
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs text-[var(--color-ink-muted)]">
+                          {maskContact(c.phone || c.email || "")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <Link href={`/app/clients/${c.id}`}>
+                          <Button variant="ghost">Ver ficha</Button>
+                        </Link>
+                        <Button
+                          variant="secondary"
+                          disabled={linkingId !== null}
+                          onClick={() => void linkToClient(c.id)}
+                        >
+                          {linkingId === c.id ? "Vinculando…" : "Vincular a este aluno"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
+                Se for realmente uma pessoa diferente, você pode aprovar este cadastro
+                normalmente como um novo aluno.
+              </p>
             </section>
           ) : null}
 

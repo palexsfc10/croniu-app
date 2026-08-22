@@ -191,6 +191,47 @@ def test_contextual_invite_complements_blank_fields_without_overwriting(client, 
     assert len(all_active) == 1
 
 
+def test_existing_portal_link_survives_a_second_submission(client, register_payload):
+    """A student who already has a working /c/... portal link must keep
+    it after a later submission for the same client — reusing the
+    existing client_public_accesses row must never rotate its hash (see
+    app.services.intake.submit_intake's existing_portal handling and
+    app.services.intake.get_portal_intake_status, which now also accepts
+    a signed "v1." token exactly like app.services.my_cycle does)."""
+    _auth(client, register_payload)
+    created = _create_manual_client(client, full_name="Carla Portal", phone="11988881234")
+    client_id = created["id"]
+
+    token1 = client.post(f"/api/v1/clients/{client_id}/intake-link").json()["token"]
+    first = _submit(
+        client, token1, full_name="Carla Portal", phone="11988881234", email=None,
+        idempotency_key="portal-preserve-1",
+    )
+    assert first.status_code == 201, first.text
+    old_portal_token = first.json()["portal_token"]
+    assert old_portal_token
+
+    old_status = client.get(f"/api/v1/public/intake/portal/{old_portal_token}/status")
+    assert old_status.status_code == 200
+
+    token2 = client.post(f"/api/v1/clients/{client_id}/intake-link").json()["token"]
+    second = _submit(
+        client, token2, full_name="Carla Portal", phone="11988881234", email=None,
+        idempotency_key="portal-preserve-2",
+    )
+    assert second.status_code == 201, second.text
+
+    # The OLD link, obtained before the second submission, must still work.
+    still_valid = client.get(f"/api/v1/public/intake/portal/{old_portal_token}/status")
+    assert still_valid.status_code == 200
+
+    # Exactly one active portal access exists for this client — reused,
+    # not duplicated.
+    access = client.get(f"/api/v1/clients/{client_id}/public-access")
+    assert access.status_code == 200
+    assert access.json()["has_active_link"] is True
+
+
 def test_contextual_invite_reuses_active_link_no_second_link_row(client, register_payload):
     _auth(client, register_payload)
     generic = client.post("/api/v1/intake-link").json()
@@ -333,7 +374,7 @@ def test_generic_link_conflicting_identifiers_stay_ambiguous(client, register_pa
     _auth(client, register_payload)
     token = client.post("/api/v1/intake-link").json()["token"]
     a = _create_manual_client(client, full_name="Cliente A", phone="11911110000")
-    _create_manual_client(client, full_name="Cliente B", email="b@example.com")
+    b = _create_manual_client(client, full_name="Cliente B", email="b@example.com")
 
     submitted = _submit(
         client, token, full_name="Novo", phone="11911110000", email="b@example.com",
@@ -345,6 +386,175 @@ def test_generic_link_conflicting_identifiers_stay_ambiguous(client, register_pa
     assert body["client_id"] not in {a["id"]}
     assert body["duplicate_alert"] is True
     assert len(client.get("/api/v1/clients").json()) == 3
+
+    # Both real candidates are surfaced for a human decision — never a
+    # silent guess between them.
+    candidates = client.get(
+        f"/api/v1/intake-submissions/{body['submission_id']}/duplicate-candidates"
+    )
+    assert candidates.status_code == 200
+    candidate_ids = {c["id"] for c in candidates.json()}
+    assert candidate_ids == {a["id"], b["id"]}
+
+
+def test_professional_resolves_ambiguous_submission_by_linking_to_existing_client(
+    client, register_payload
+):
+    _auth(client, register_payload)
+    token = client.post("/api/v1/intake-link").json()["token"]
+    a = _create_manual_client(client, full_name="Cliente A", phone="11911110001")
+    _create_manual_client(client, full_name="Cliente B", email="bb@example.com")
+
+    submitted = _submit(
+        client, token, full_name="Novo", phone="11911110001", email="bb@example.com",
+        idempotency_key="conflict-resolve-1",
+    )
+    submission_id = submitted.json()["submission_id"]
+    placeholder_id = submitted.json()["client_id"]
+    assert placeholder_id not in {a["id"]}
+
+    linked = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": a["id"]},
+    )
+    assert linked.status_code == 200, linked.text
+    assert linked.json()["client_id"] == a["id"]
+    assert linked.json()["duplicate_alert"] is False
+    assert linked.json()["duplicate_client_id"] is None
+
+    # The placeholder created at submit time is archived, not left behind
+    # as a live, indistinguishable-from-real second ficha.
+    placeholder = client.get(f"/api/v1/clients/{placeholder_id}").json()
+    assert placeholder["status"] == "archived"
+
+    active = client.get("/api/v1/clients?status=active").json()
+    active_ids = {c["id"] for c in active}
+    assert a["id"] in active_ids
+    assert placeholder_id not in active_ids
+
+    # The anamnesis moved with the submission — reviewing it now shows the
+    # real client's data, not an orphaned one.
+    detail = client.get(f"/api/v1/intake-submissions/{submission_id}").json()
+    assert detail["client_id"] == a["id"]
+    assert detail["anamnesis"] is not None
+
+
+def test_professional_can_reactivate_archived_client_via_link_to_client(client, register_payload):
+    _auth(client, register_payload)
+    token = client.post("/api/v1/intake-link").json()["token"]
+    created = _create_manual_client(client, full_name="Antiga Aluna", phone="11922220000")
+    client.patch(f"/api/v1/clients/{created['id']}", json={"status": "archived"})
+
+    submitted = _submit(
+        client, token, full_name="Antiga Aluna", phone="11922220000", email=None,
+        idempotency_key="reactivate-1",
+    )
+    submission_id = submitted.json()["submission_id"]
+    assert submitted.json()["duplicate_alert"] is True
+
+    linked = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": created["id"]},
+    )
+    assert linked.status_code == 200, linked.text
+    reactivated = client.get(f"/api/v1/clients/{created['id']}").json()
+    assert reactivated["status"] == "active"
+
+
+def test_professional_can_keep_ambiguous_submission_as_a_genuinely_new_person(
+    client, register_payload
+):
+    """Not linking is a valid resolution too — the submission's own
+    placeholder client is a real, usable client once approved normally."""
+    _auth(client, register_payload)
+    token = client.post("/api/v1/intake-link").json()["token"]
+    _create_manual_client(client, full_name="Cliente A", phone="11933330001")
+    _create_manual_client(client, full_name="Cliente B", email="cc@example.com")
+
+    submitted = _submit(
+        client, token, full_name="Pessoa Diferente", phone="11933330001", email="cc@example.com",
+        idempotency_key="conflict-keep-new-1",
+    )
+    submission_id = submitted.json()["submission_id"]
+    approved = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/approve",
+        json={"evaluation_decision": "waived", "protocol_decision": "waived"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "approved"
+    assert len(client.get("/api/v1/clients?status=active").json()) == 3
+
+
+def test_link_to_client_rejects_cross_org_target(client, register_payload):
+    _auth(client, register_payload)
+    token = client.post("/api/v1/intake-link").json()["token"]
+    a = _create_manual_client(client, full_name="Cliente A", phone="11944440001")
+    _create_manual_client(client, full_name="Cliente B", email="dd@example.com")
+    submitted = _submit(
+        client, token, full_name="Novo", phone="11944440001", email="dd@example.com",
+        idempotency_key="conflict-cross-org-1",
+    )
+    submission_id = submitted.json()["submission_id"]
+
+    other = {
+        "email": f"other-linkcli-{register_payload['email']}",
+        "password": register_payload["password"],
+        "full_name": "Other Pro",
+        "organization_name": "Other Org LinkCli",
+        "profession_code": "personal_trainer",
+    }
+    assert client.post("/api/v1/auth/register", json=other).status_code == 201
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": other["email"], "password": other["password"]},
+        ).status_code
+        == 200
+    )
+    cross_org_target = _create_manual_client(client, full_name="De outra org", phone="11900000099")
+
+    # Back to the original org's session to attempt the (illegitimate) link.
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": register_payload["email"], "password": register_payload["password"]},
+    ).status_code == 200
+    forged = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": cross_org_target["id"]},
+    )
+    assert forged.status_code == 404
+
+    # The submission is untouched — still ambiguous, still resolvable via
+    # a legitimate same-org candidate.
+    detail = client.get(f"/api/v1/intake-submissions/{submission_id}").json()
+    assert detail["duplicate_alert"] is True
+    legit = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": a["id"]},
+    )
+    assert legit.status_code == 200
+
+
+def test_link_to_client_idempotent_when_already_linked(client, register_payload):
+    _auth(client, register_payload)
+    created = _create_manual_client(client, full_name="Já Vinculada", phone="11955550001")
+    token = client.post(f"/api/v1/clients/{created['id']}/intake-link").json()["token"]
+    submitted = _submit(
+        client, token, full_name="Já Vinculada", phone="11955550001", email=None,
+        idempotency_key="already-linked-1",
+    )
+    submission_id = submitted.json()["submission_id"]
+    first = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": created["id"]},
+    )
+    assert first.status_code == 200
+    second = client.post(
+        f"/api/v1/intake-submissions/{submission_id}/link-to-client",
+        json={"client_id": created["id"]},
+    )
+    assert second.status_code == 200
+    assert second.json()["client_id"] == created["id"]
 
 
 def test_generic_link_archived_match_stays_alert_only(client, register_payload):
@@ -392,4 +602,91 @@ def test_generic_link_cross_org_identifiers_never_match(client, register_payload
     )
     assert submitted.status_code == 201, submitted.text
     assert submitted.json()["duplicate_alert"] is False
+
+
+# --- Real concurrency ---------------------------------------------------
+# Same pattern already used by test_routines_agenda_board.py
+# (test_concurrent_ensure_does_not_duplicate): call the service directly
+# from independent threads with independent DB sessions, bypassing the
+# HTTP layer, so the database actually sees two overlapping transactions
+# rather than whatever the TestClient's transport happens to serialize.
+
+
+def test_concurrent_generic_submissions_same_new_person_create_one_client(
+    client, register_payload
+):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.services import intake as intake_svc
+    from tests.conftest import TestingSessionLocal
+
+    _auth(client, register_payload)
+    token = client.post("/api/v1/intake-link").json()["token"]
+
+    def run(i: int):
+        db = TestingSessionLocal()
+        try:
+            return intake_svc.submit_intake(
+                db,
+                raw_token=token,
+                payload={
+                    "full_name": "Concorrente Novo",
+                    "phone": "11988770000",
+                    "email": "concorrente@example.com",
+                    "age_band": "18+",
+                    "primary_goal": "Força",
+                    "answers": _minimal_answers(),
+                    "consents": _required_consents(),
+                },
+                idempotency_key=f"concurrent-new-{i}",
+            )
+        finally:
+            db.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(run, range(2)))
+
+    client_ids = {r["client_id"] for r in results}
+    assert len(client_ids) == 1
+    assert len(client.get("/api/v1/clients").json()) == 1
+
+
+def test_concurrent_contextual_submissions_same_client_stay_single_client(
+    client, register_payload
+):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.services import intake as intake_svc
+    from tests.conftest import TestingSessionLocal
+
+    _auth(client, register_payload)
+    created = _create_manual_client(client, full_name="Concorrente Ctx", phone="11988770001")
+    token = client.post(f"/api/v1/clients/{created['id']}/intake-link").json()["token"]
+
+    def run(i: int):
+        db = TestingSessionLocal()
+        try:
+            return intake_svc.submit_intake(
+                db,
+                raw_token=token,
+                payload={
+                    "full_name": "Concorrente Ctx",
+                    "phone": "11988770001",
+                    "email": None,
+                    "age_band": "18+",
+                    "primary_goal": "Força",
+                    "answers": _minimal_answers(),
+                    "consents": _required_consents(),
+                },
+                idempotency_key=f"concurrent-ctx-{i}",
+            )
+        finally:
+            db.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(run, range(2)))
+
+    client_ids = {r["client_id"] for r in results}
+    assert client_ids == {created["id"]}
+    assert len(client.get("/api/v1/clients").json()) == 1
     assert len(client.get("/api/v1/clients").json()) == 1

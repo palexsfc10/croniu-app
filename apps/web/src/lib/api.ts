@@ -489,6 +489,14 @@ export type IntakeSubmissionDetail = {
   journey?: ClientJourney | null;
 };
 
+export type DuplicateCandidate = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  status: string;
+};
+
 export type PrepareStartResult = {
   journey_stage: string;
   evaluation_decision?: string | null;

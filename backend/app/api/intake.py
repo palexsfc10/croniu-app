@@ -12,12 +12,14 @@ from app.schemas.intake import (
     AccompanimentStepIn,
     ApproveSubmissionIn,
     ClientIntakeLinkOut,
+    DuplicateCandidateOut,
     EvaluationDecisionIn,
     IntakeLinkCreateIn,
     IntakeLinkOut,
     IntakeSubmissionDetailOut,
     IntakeSubmissionListItem,
     JourneyOut,
+    LinkToClientIn,
     PrepareStartOut,
     ProtocolDecisionIn,
     RejectSubmissionIn,
@@ -305,6 +307,49 @@ def get_submission(
     db: Session = Depends(get_db),
 ) -> IntakeSubmissionDetailOut:
     try:
+        data = intake_svc.get_submission(
+            db, organization_id=auth.organization.id, submission_id=submission_id
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return _submission_detail(data)
+
+
+@router.get(
+    "/intake-submissions/{submission_id}/duplicate-candidates",
+    response_model=list[DuplicateCandidateOut],
+)
+def get_duplicate_candidates(
+    submission_id: UUID,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> list[DuplicateCandidateOut]:
+    try:
+        rows = intake_svc.list_duplicate_candidates(
+            db, organization_id=auth.organization.id, submission_id=submission_id
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+    return [DuplicateCandidateOut.model_validate(r, from_attributes=True) for r in rows]
+
+
+@router.post(
+    "/intake-submissions/{submission_id}/link-to-client",
+    response_model=IntakeSubmissionDetailOut,
+)
+def link_submission_to_client(
+    submission_id: UUID,
+    payload: LinkToClientIn,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> IntakeSubmissionDetailOut:
+    try:
+        intake_svc.link_submission_to_client(
+            db,
+            organization_id=auth.organization.id,
+            submission_id=submission_id,
+            target_client_id=payload.client_id,
+        )
         data = intake_svc.get_submission(
             db, organization_id=auth.organization.id, submission_id=submission_id
         )

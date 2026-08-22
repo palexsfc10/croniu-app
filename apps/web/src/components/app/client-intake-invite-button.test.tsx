@@ -1,16 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
   apiFetch: vi.fn(),
 }));
 
-vi.mock("@/lib/clipboard", () => ({
-  copyTextToClipboard: vi.fn(async () => ({ ok: true })),
-}));
-
 import { apiFetch } from "@/lib/api";
-import { copyTextToClipboard } from "@/lib/clipboard";
 import { ClientIntakeInviteButton } from "@/components/app/client-intake-invite-button";
 
 const LINK = {
@@ -40,6 +35,15 @@ describe("ClientIntakeInviteButton", () => {
     );
   });
 
+  it("opens as a centered dialog, not a popover clipped to the trigger", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
+    render(<ClientIntakeInviteButton clientId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+  });
+
   it("does not show the invite URL or raw token in the sheet", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
     render(<ClientIntakeInviteButton clientId="c1" />);
@@ -49,15 +53,39 @@ describe("ClientIntakeInviteButton", () => {
     expect(screen.queryByText(LINK.token)).not.toBeInTheDocument();
   });
 
-  it("copies the same message baked into the WhatsApp link", async () => {
+  it("offers only the WhatsApp action — no separate copy button", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
     render(<ClientIntakeInviteButton clientId="c1" />);
     fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Copiar convite" }));
-    await waitFor(() => expect(copyTextToClipboard).toHaveBeenCalled());
-    const copiedText = vi.mocked(copyTextToClipboard).mock.calls[0]![0];
-    expect(copiedText).toContain(LINK.public_url);
-    await screen.findByText("Convite copiado");
+    await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
+    expect(screen.queryByRole("button", { name: /copiar/i })).not.toBeInTheDocument();
+  });
+
+  it("closes when clicking outside the sheet", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
+    render(<ClientIntakeInviteButton clientId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(dialog.parentElement!);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("closes on Escape", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
+    render(<ClientIntakeInviteButton clientId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not close when clicking inside the sheet content", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
+    render(<ClientIntakeInviteButton clientId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(dialog);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("shows an error state and allows retry when minting fails", async () => {

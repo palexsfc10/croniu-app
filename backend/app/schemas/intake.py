@@ -194,6 +194,18 @@ class IntakeSubmissionDetailOut(BaseModel):
     journey: JourneyOut | None = None
 
 
+class DuplicateCandidateOut(BaseModel):
+    id: UUID
+    full_name: str
+    phone: str | None = None
+    email: str | None = None
+    status: str
+
+
+class LinkToClientIn(BaseModel):
+    client_id: UUID
+
+
 class ApproveSubmissionIn(BaseModel):
     message_to_client: str | None = None
     evaluation_decision: str | None = None

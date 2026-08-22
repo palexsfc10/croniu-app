@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -38,6 +38,7 @@ from app.security.intake_link_token import (
     parse_intake_link_token,
 )
 from app.security.passwords import generate_session_token, hash_session_token
+from app.security.portal_token import InvalidPortalToken, mint_portal_token, parse_portal_token
 from app.services import anamnesis_snapshot as snap_svc
 from app.services import anamnesis_template as anam_svc
 from app.services import journey as journey_svc
@@ -654,80 +655,35 @@ def get_public_intake_context(db: Session, *, raw_token: str) -> dict[str, Any]:
     return result
 
 
-def _find_duplicate(
+def _duplicate_candidates(
     db: Session,
     *,
     organization_id: uuid.UUID,
     phone_normalized: str,
     email: str | None,
-) -> tuple[Client | None, bool]:
-    """Return (match, archived_match). Same org only."""
-    phone_variants = {phone_normalized}
-    if phone_normalized.startswith("55") and len(phone_normalized) in {12, 13}:
-        phone_variants.add(phone_normalized[2:])
+) -> list[Client]:
+    """Every client (any status) in the organization matched by phone
+    and/or email — never by name (see submit_intake's "generic invite"
+    protection; a shared name alone is never proof of identity).
 
-    clauses = [Client.phone.in_(list(phone_variants))]
-    # Also match digit-normalized stored phones loosely via LIKE not needed —
-    # compare normalized forms in Python for phone field variants.
-    candidates = list(
-        db.scalars(
-            select(Client).where(Client.organization_id == organization_id)
-        ).all()
-    )
-    match: Client | None = None
-    for client in candidates:
-        stored = re.sub(r"\D", "", client.phone or "")
-        if stored in phone_variants or (
-            stored.startswith("55") and stored[2:] in phone_variants
-        ) or (phone_normalized[2:] == stored if phone_normalized.startswith("55") else False):
-            match = client
-            break
-        if email and client.email and client.email.lower() == email:
-            match = client
-            break
-    if match is None and email:
-        match = db.scalar(
-            select(Client).where(
-                Client.organization_id == organization_id,
-                func.lower(Client.email) == email,
-            )
-        )
-    if match is None:
-        return None, False
-    return match, match.status == "archived"
-
-
-def _find_confident_match(
-    db: Session,
-    *,
-    organization_id: uuid.UUID,
-    phone_normalized: str,
-    email: str | None,
-) -> Client | None:
-    """A single active client matched by phone AND/OR email — safe to
-    auto-link without human review. Only trusted identifiers are used
-    (never name — see submit_intake's "generic invite" protection). If
-    phone and email point to two *different* active clients, or to more
-    than one, this returns None: the submission stays alertable via
-    _find_duplicate instead of being silently merged into a guess.
-    Archived clients are excluded on purpose — reactivating someone the
-    professional explicitly archived is a decision for a human, not an
-    inbound public form.
+    Callers decide what to do with the result:
+    - 1 candidate, active: safe to auto-link without human review.
+    - 0 candidates: genuinely new person.
+    - anything else (2+ candidates, or the only one archived): ambiguous
+      — a human decision is required (see list_duplicate_candidates /
+      link_submission_to_client), never an automatic guess.
     """
     phone_variants = {phone_normalized}
     if phone_normalized.startswith("55") and len(phone_normalized) in {12, 13}:
         phone_variants.add(phone_normalized[2:])
 
-    active_clients = list(
+    rows = list(
         db.scalars(
-            select(Client).where(
-                Client.organization_id == organization_id,
-                Client.status == "active",
-            )
+            select(Client).where(Client.organization_id == organization_id)
         ).all()
     )
-    matched_ids: dict[uuid.UUID, Client] = {}
-    for candidate in active_clients:
+    matched: dict[uuid.UUID, Client] = {}
+    for candidate in rows:
         stored = re.sub(r"\D", "", candidate.phone or "")
         phone_hit = bool(stored) and (
             stored in phone_variants
@@ -735,10 +691,8 @@ def _find_confident_match(
         )
         email_hit = bool(email) and bool(candidate.email) and candidate.email.lower() == email
         if phone_hit or email_hit:
-            matched_ids[candidate.id] = candidate
-    if len(matched_ids) == 1:
-        return next(iter(matched_ids.values()))
-    return None
+            matched[candidate.id] = candidate
+    return list(matched.values())
 
 
 def submit_intake(
@@ -853,33 +807,51 @@ def submit_intake(
                 client.email = email
                 db.add(client)
     else:
-        confident = _find_confident_match(
+        # Serialize concurrent generic-link submissions for the same
+        # organization — same lock already used by _ensure_active_link_row
+        # for concurrent "invite" taps. Without it, two simultaneous
+        # submissions for a genuinely new person (0 candidates found by
+        # both, racing before either commits) could each create their own
+        # Client row. A unique index on phone isn't an option here: shared
+        # household/family phones are a real, valid case in this domain,
+        # not a bug — locking the decision instead of the data is what
+        # keeps that possibility open while still closing the race.
+        db.execute(
+            select(Organization.id).where(Organization.id == org.id).with_for_update()
+        )
+        candidates = _duplicate_candidates(
             db,
             organization_id=org.id,
             phone_normalized=phone_normalized,
             email=email,
         )
-        if confident is not None:
+        active_candidates = [c for c in candidates if c.status == "active"]
+        if len(candidates) == 1 and len(active_candidates) == 1:
             # Generic "Convidar aluno" link, but phone and/or email point
-            # to exactly one existing active client — same protection a
+            # to exactly one existing ACTIVE client — same protection a
             # contextual invite gives by construction, applied here via
             # trusted identifiers instead of a signed client id. Already
             # resolved, not merely flagged: duplicate_alert stays False so
             # the review UI doesn't point "ver cliente existente" back at
             # the very client this submission now belongs to.
-            client = confident
+            client = active_candidates[0]
             dup, archived_match = None, False
         else:
-            dup, archived_match = _find_duplicate(
-                db,
-                organization_id=org.id,
-                phone_normalized=phone_normalized,
-                email=email,
-            )
-            # Genuinely ambiguous (0 or 2+ candidates) or only an archived
-            # match: create a new client and let the professional decide
-            # via the existing "possível duplicidade" review UI, exactly
-            # as before.
+            # Ambiguous: 0 candidates never reaches this branch (handled
+            # below as genuinely new); 2+ candidates, or the single
+            # candidate being archived, both require a human decision —
+            # never an automatic guess. A client row still has to be
+            # created here (client_anamnesis_responses / consent_records /
+            # client_journeys all require a non-null client_id — no
+            # migration for this hotfix), but it is explicitly flagged:
+            # duplicate_alert=True with a best-guess duplicate_client_id
+            # (kept for the existing "ver cliente existente" shortcut),
+            # resolvable from the review screen via
+            # list_duplicate_candidates / link_submission_to_client
+            # instead of silently becoming a third, indistinguishable
+            # ficha.
+            dup = candidates[0] if candidates else None
+            archived_match = any(c.status == "archived" for c in candidates)
             is_new_client = True
             client_email = email
             if email:
@@ -1024,9 +996,15 @@ def submit_intake(
     # Reuse any active portal access this client already has instead of
     # inserting a second row — client_public_accesses allows at most one
     # non-revoked row per client (uq_client_public_accesses_one_active).
-    # Rotating the hash is safe: the raw value returned to the browser
-    # that just submitted is the only one this response ever promises to
-    # work, exactly like a brand-new client's portal token.
+    # Never touch its token_hash: that would silently invalidate any
+    # /c/... link already handed to the client (e.g. from a prior
+    # submission, or one the professional generated manually). Instead,
+    # reconstruct a signed "v1." token deterministically from the row's
+    # id (app.security.portal_token, same scheme app.services.my_cycle
+    # already uses for the professional's own reconstructable copy) — the
+    # legacy raw token keeps resolving via its stored hash exactly as
+    # before, and this new signed one resolves via the same access row,
+    # so both work side by side.
     existing_portal = (
         None
         if is_new_client
@@ -1038,12 +1016,11 @@ def submit_intake(
             )
         )
     )
-    portal_raw = generate_session_token()
     if existing_portal is not None:
-        existing_portal.token_hash = hash_session_token(portal_raw)
-        db.add(existing_portal)
+        portal_token_out = mint_portal_token(existing_portal.id)
         submission.portal_access_id = existing_portal.id
     else:
+        portal_raw = generate_session_token()
         portal = ClientPublicAccess(
             id=uuid.uuid4(),
             organization_id=org.id,
@@ -1054,6 +1031,7 @@ def submit_intake(
         db.add(portal)
         db.flush()
         submission.portal_access_id = portal.id
+        portal_token_out = portal_raw
     db.add(submission)
 
     link.last_used_at = now
@@ -1086,7 +1064,7 @@ def submit_intake(
         attention,
         bool(dup),
     )
-    return _submission_public_result(submission, portal_token=portal_raw, idempotent=False)
+    return _submission_public_result(submission, portal_token=portal_token_out, idempotent=False)
 
 
 def _submission_public_result(
@@ -1189,6 +1167,133 @@ def get_submission(
         "template_version_number": version_number,
         "anamnesis_summary": summary,
     }
+
+
+def list_duplicate_candidates(
+    db: Session, *, organization_id: uuid.UUID, submission_id: uuid.UUID
+) -> list[Client]:
+    """Recomputes the candidate clients for an ambiguous submission from
+    its own stored phone_normalized/email — no column stores the
+    candidate list, so there is nothing to keep in sync; it is always
+    derived fresh, the same way submit_intake computed it. Only
+    meaningful when the submission's duplicate_alert is True (ambiguous);
+    callers should treat an empty list as "nothing left to resolve."
+    """
+    row = db.scalar(
+        select(ClientIntakeSubmission).where(
+            ClientIntakeSubmission.id == submission_id,
+            ClientIntakeSubmission.organization_id == organization_id,
+        )
+    )
+    if row is None:
+        raise AuthError("submission_not_found", "Submissão não encontrada.", 404)
+    candidates = _duplicate_candidates(
+        db,
+        organization_id=organization_id,
+        phone_normalized=row.phone_normalized,
+        email=row.email,
+    )
+    # The submission's own (placeholder) client is never offered as a
+    # candidate to link to itself.
+    return [c for c in candidates if c.id != row.client_id]
+
+
+def link_submission_to_client(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    target_client_id: uuid.UUID,
+) -> ClientIntakeSubmission:
+    """Resolves an ambiguous submission by moving it onto an existing
+    client the professional explicitly picked — never automatic, never a
+    guess. Reactivates an archived target (the professional's explicit
+    choice to continue with them), moves the anamnesis/consents onto the
+    target, and archives the placeholder client created at submit time
+    (preserving it, not deleting it, for auditability) since nothing else
+    still points at it.
+    """
+    row = db.scalar(
+        select(ClientIntakeSubmission).where(
+            ClientIntakeSubmission.id == submission_id,
+            ClientIntakeSubmission.organization_id == organization_id,
+        )
+    )
+    if row is None:
+        raise AuthError("submission_not_found", "Submissão não encontrada.", 404)
+    if row.status != "pending_review":
+        raise AuthError(
+            "invalid_submission_status",
+            "Somente submissões aguardando análise podem ser vinculadas.",
+            422,
+        )
+    target = db.scalar(
+        select(Client).where(
+            Client.id == target_client_id, Client.organization_id == organization_id
+        )
+    )
+    if target is None:
+        raise AuthError("client_not_found", "Cliente não encontrado.", 404)
+
+    placeholder_id = row.client_id
+    if target.id == placeholder_id:
+        # Already linked to this client — idempotent no-op.
+        return row
+
+    if target.status == "archived":
+        target.status = "active"
+        db.add(target)
+
+    db.execute(
+        update(ClientAnamnesisResponse)
+        .where(ClientAnamnesisResponse.submission_id == row.id)
+        .values(client_id=target.id)
+    )
+    db.execute(
+        update(ConsentRecord)
+        .where(ConsentRecord.submission_id == row.id)
+        .values(client_id=target.id)
+    )
+
+    target_journey = journey_svc.get_journey(
+        db, organization_id=organization_id, client_id=target.id
+    )
+    if target_journey is None:
+        # Target had no journey yet — reuse the placeholder's instead of
+        # creating a new one (client_journeys allows only one per client).
+        placeholder_journey = journey_svc.get_journey(
+            db, organization_id=organization_id, client_id=placeholder_id
+        )
+        if placeholder_journey is not None:
+            placeholder_journey.client_id = target.id
+            db.add(placeholder_journey)
+    else:
+        target_journey.next_action = "review_submission"
+        db.add(target_journey)
+        # The placeholder's own journey (if any) stays behind on the
+        # now-archived placeholder client — harmless, and preserves its
+        # audit trail rather than deleting rows.
+
+    row.client_id = target.id
+    row.duplicate_alert = False
+    row.duplicate_client_id = None
+    db.add(row)
+
+    if placeholder_id is not None:
+        placeholder = db.get(Client, placeholder_id)
+        if placeholder is not None:
+            placeholder.status = "archived"
+            db.add(placeholder)
+
+    db.commit()
+    db.refresh(row)
+    logger.info(
+        "intake_submission_linked org=%s submission=%s target_client=%s",
+        organization_id,
+        submission_id,
+        target.id,
+    )
+    return row
 
 
 def approve_submission(
@@ -1359,15 +1464,33 @@ def reject_submission(
 
 
 def get_portal_intake_status(db: Session, *, portal_token: str) -> dict[str, Any]:
-    if not portal_token or not portal_token.strip():
+    token = (portal_token or "").strip()
+    if not token:
         raise GENERIC_TOKEN_ERROR
-    digest = hash_session_token(portal_token.strip())
-    access = db.scalar(
-        select(ClientPublicAccess).where(
-            ClientPublicAccess.token_hash == digest,
-            ClientPublicAccess.revoked_at.is_(None),
+
+    # Same resolution as app.services.my_cycle._resolve_access: a signed
+    # "v1." token (see app.security.portal_token) is reconstructable from
+    # the access row's id alone — the same access can be reached by an
+    # old raw/legacy link AND a freshly-minted signed one at the same
+    # time, so a later submission never has to invalidate an already
+    # shared portal link just to hand back a working token of its own.
+    access: ClientPublicAccess | None = None
+    try:
+        signed_id = parse_portal_token(token)
+    except InvalidPortalToken as exc:
+        raise GENERIC_TOKEN_ERROR from exc
+    if signed_id is not None:
+        access = db.get(ClientPublicAccess, signed_id)
+        if access is not None and access.revoked_at is not None:
+            access = None
+    else:
+        digest = hash_session_token(token)
+        access = db.scalar(
+            select(ClientPublicAccess).where(
+                ClientPublicAccess.token_hash == digest,
+                ClientPublicAccess.revoked_at.is_(None),
+            )
         )
-    )
     if access is None:
         raise GENERIC_TOKEN_ERROR
 
