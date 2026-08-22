@@ -132,9 +132,12 @@ def test_manual_client_then_contextual_invite_completes_same_client(client, regi
 
     journey = client.get(f"/api/v1/clients/{client_id}/journey").json()
     # Stage is untouched (still "active" — no cycles/evaluations/plan were
-    # discarded), but the pending review is now surfaced.
+    # discarded). GET journey live-recomputes next_action from the
+    # accompaniment checklist (app.services.accompaniment.resolve_
+    # accompaniment) — since an anamnesis response now exists but isn't
+    # marked reviewed yet, it correctly points at reviewing it.
     assert journey["stage"] == "active"
-    assert journey["next_action"] == "review_submission"
+    assert journey["next_action"] == "review_anamnesis"
 
     submissions = client.get(f"/api/v1/intake-submissions?client_id={client_id}").json()
     assert len(submissions) == 1
@@ -160,7 +163,10 @@ def test_contextual_invite_complements_blank_fields_without_overwriting(client, 
     assert submitted.json()["client_id"] == client_id
 
     after_first = client.get(f"/api/v1/clients/{client_id}").json()
-    assert after_first["phone"] == "11977776655"
+    # Complemented with the normalized (country-code-prefixed) phone — same
+    # normalization the duplicate/confident matchers already compare
+    # against (app.services.intake._normalize_phone).
+    assert after_first["phone"] == "5511977776655"
     assert after_first["email"] == "pedro@example.com"
 
     # A second contextual invite (e.g. resent) must not let a re-submission
@@ -178,7 +184,7 @@ def test_contextual_invite_complements_blank_fields_without_overwriting(client, 
     assert resubmitted.json()["client_id"] == client_id
 
     after_second = client.get(f"/api/v1/clients/{client_id}").json()
-    assert after_second["phone"] == "11977776655"
+    assert after_second["phone"] == "5511977776655"
     assert after_second["email"] == "pedro@example.com"
 
     all_active = client.get("/api/v1/clients?status=active").json()

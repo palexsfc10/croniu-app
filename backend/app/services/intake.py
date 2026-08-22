@@ -882,13 +882,22 @@ def submit_intake(
             # as before.
             is_new_client = True
             client_email = email
-            if (
-                email
-                and dup is not None
-                and dup.email
-                and str(dup.email).lower() == email
-            ):
-                client_email = None
+            if email:
+                # Not just dup's own email: an ambiguous submission (e.g.
+                # phone matches client A while the submitted email belongs
+                # to an unrelated client B) must still be able to create a
+                # new client row — dropping the email here, not the whole
+                # submission, is what keeps a genuinely ambiguous case
+                # "pending, reviewable" instead of a hard 409 for the
+                # student filling the public form.
+                email_conflict = db.scalar(
+                    select(Client).where(
+                        Client.organization_id == org.id,
+                        Client.email == email,
+                    )
+                )
+                if email_conflict is not None:
+                    client_email = None
             client = Client(
                 id=uuid.uuid4(),
                 organization_id=org.id,
