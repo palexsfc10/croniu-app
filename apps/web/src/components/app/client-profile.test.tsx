@@ -1,11 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const nav = vi.hoisted(() => ({ tab: "resumo" }));
+const nav = vi.hoisted(() => ({ tab: "resumo", extraQuery: "", replace: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(`tab=${nav.tab}`),
+  useRouter: () => ({ replace: nav.replace, push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(`tab=${nav.tab}${nav.extraQuery}`),
 }));
 
 vi.mock("@/components/auth/auth-provider", () => ({
@@ -129,6 +129,11 @@ vi.mock("@/lib/api", async () => {
 import { ClientProfile } from "@/components/app/client-profile";
 
 describe("ClientProfile", () => {
+  beforeEach(() => {
+    nav.extraQuery = "";
+    nav.replace.mockClear();
+  });
+
   it("renders three tabs, readable status, and a single next action without technical enums", async () => {
     nav.tab = "resumo";
     render(<ClientProfile clientId="c1" />);
@@ -214,5 +219,29 @@ describe("ClientProfile", () => {
     rerender(<ClientProfile clientId="c2" />);
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Ana Souza");
     expect(screen.queryByText("Pedro Silva")).not.toBeInTheDocument();
+  });
+
+  it("shows a short success message after creating a cycle, lands on Acompanhamento with the cycle visible, and strips the one-time marker from the URL", async () => {
+    nav.tab = "acompanhamento";
+    nav.extraQuery = "&done=cycle";
+    render(<ClientProfile clientId="c1" />);
+
+    expect(await screen.findByText("Ciclo criado com sucesso.")).toBeInTheDocument();
+    expect(await screen.findByRole("tabpanel", { name: "Acompanhamento" })).toBeInTheDocument();
+    expect(screen.getByText("Ciclo atual")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver ciclo" })).toBeInTheDocument();
+
+    expect(nav.replace).toHaveBeenCalledWith("/app/clients/c1?tab=acompanhamento");
+  });
+
+  it("never leaves the ficha blank when the tab query value is unrecognized (defense against a malformed redirect URL)", async () => {
+    // Reproduces the exact corrupted value a naive `${returnTo}?done=cycle`
+    // used to produce when returnTo already had its own "?tab=...".
+    nav.tab = "acompanhamento?done=cycle";
+    render(<ClientProfile clientId="c1" />);
+
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("tabpanel", { name: "Resumo" })).toBeInTheDocument();
+    expect(screen.getByText("Próximo passo")).toBeInTheDocument();
   });
 });
