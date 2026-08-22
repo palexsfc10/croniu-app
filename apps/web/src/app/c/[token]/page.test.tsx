@@ -147,9 +147,9 @@ describe("changes-requested pending correction card", () => {
       correction_url: "https://app.croniu.com.br/entrar/ci1.abc",
     });
     render(<PublicMyCyclePage />);
-    expect(await screen.findByText("Seu profissional solicitou alguns ajustes")).toBeInTheDocument();
+    expect(await screen.findByText("Seu profissional solicitou um ajuste")).toBeInTheDocument();
     expect(screen.getByText("Indique os objetivos secundários.")).toBeInTheDocument();
-    const cta = screen.getByRole("link", { name: "Corrigir cadastro" });
+    const cta = screen.getByRole("link", { name: "Corrigir minha anamnese" });
     expect(cta).toHaveAttribute("href", "/entrar/ci1.abc");
     // The old, generic fallback text must not appear alongside it.
     expect(
@@ -171,7 +171,7 @@ describe("changes-requested pending correction card", () => {
       true,
     );
     render(<PublicMyCyclePage />);
-    expect(await screen.findByText("Seu profissional solicitou alguns ajustes")).toBeInTheDocument();
+    expect(await screen.findByText("Seu profissional solicitou um ajuste")).toBeInTheDocument();
     // Cycle content is not hidden by the pending correction.
     expect(await screen.findByText(/Personal/)).toBeInTheDocument();
   });
@@ -189,7 +189,7 @@ describe("changes-requested pending correction card", () => {
     render(<PublicMyCyclePage />);
     await screen.findByText(/Personal/);
     expect(
-      screen.queryByText("Seu profissional solicitou alguns ajustes"),
+      screen.queryByText("Seu profissional solicitou um ajuste"),
     ).not.toBeInTheDocument();
   });
 });

@@ -318,11 +318,14 @@ export default function PublicIntakePage() {
         {ctx && step === "welcome" ? (
           <div className="space-y-5">
             {ctx.correction_message ? (
-              <section className="rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-4">
-                <h2 className="text-sm font-semibold text-[var(--color-ink)]">
-                  Seu profissional pediu um ajuste
-                </h2>
-                <p className="mt-1 text-sm text-[var(--color-ink)]">{ctx.correction_message}</p>
+              <section
+                role="status"
+                className="rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-4"
+              >
+                <p className="text-sm text-[var(--color-ink)]">
+                  <span className="font-semibold">Ajuste solicitado pelo seu profissional:</span>{" "}
+                  {ctx.correction_message}
+                </p>
               </section>
             ) : null}
             <p className="text-base leading-relaxed text-[var(--color-ink)]">
@@ -565,7 +568,7 @@ export default function PublicIntakePage() {
             <section className="rounded-[var(--radius-lg)] border border-[var(--color-success)]/25 bg-[var(--color-success-subtle)] p-4">
               <h2 className="text-lg font-semibold text-[var(--color-ink)]">
                 {ctx?.correction_message
-                  ? "Informações atualizadas e enviadas para seu profissional"
+                  ? "Ajustes enviados. Seu profissional será avisado para revisar novamente."
                   : "Cadastro enviado"}
               </h2>
               <p className="mt-2 text-sm text-[var(--color-ink-muted)]">

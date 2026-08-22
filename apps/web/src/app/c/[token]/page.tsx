@@ -244,7 +244,7 @@ export default function PublicMyCyclePage() {
           <section className="mb-5 space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-4">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold text-[var(--color-ink)]">
-                Seu profissional solicitou alguns ajustes
+                Seu profissional solicitou um ajuste
               </h2>
               <Badge tone="warning">Ajustes solicitados</Badge>
             </div>
@@ -258,7 +258,7 @@ export default function PublicMyCyclePage() {
             ) : null}
             {intakeStatus.correction_path ? (
               <a href={intakeStatus.correction_path} className="block">
-                <Button fullWidth>Corrigir cadastro</Button>
+                <Button fullWidth>Corrigir minha anamnese</Button>
               </a>
             ) : null}
           </section>
