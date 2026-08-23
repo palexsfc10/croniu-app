@@ -3,16 +3,23 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { apiFetch, type DuplicateCandidate, type IntakeSubmissionDetail } from "@/lib/api";
+import {
+  apiFetch,
+  type ClientIntakeLink,
+  type DuplicateCandidate,
+  type IntakeSubmissionDetail,
+} from "@/lib/api";
 import { CONSENT_LABELS_PT, submissionStatusLabel } from "@/lib/intake";
 import {
   AnamnesisReader,
   formatAnamnesisAnswer,
+  isRealAttentionItem,
 } from "@/components/app/anamnesis-reader";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextArea } from "@/components/ui/text-area";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   IconActivity,
   IconAlertCircle,
@@ -21,6 +28,7 @@ import {
   IconPhone,
   IconShieldCheck,
   IconTarget,
+  IconWhatsApp,
 } from "@/components/ui/icons";
 import { formatSubmittedAt, maskContact } from "@/lib/date-format";
 
@@ -43,6 +51,8 @@ export default function IntakeSubmissionDetailPage() {
   // specific candidate, or keep as a new person) so neither a double
   // click nor clicking the other action mid-request can fire twice.
   const [resolving, setResolving] = useState<"keep" | string | null>(null);
+  const [correctionLink, setCorrectionLink] = useState<ClientIntakeLink | null>(null);
+  const [correctionCopied, setCorrectionCopied] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,6 +96,8 @@ export default function IntakeSubmissionDetailPage() {
     setBusy(true);
     setError(null);
     setInfo(null);
+    setCorrectionLink(null);
+    setCorrectionCopied(false);
     const result = await apiFetch<IntakeSubmissionDetail>(path, {
       method: "POST",
       body: JSON.stringify(body),
@@ -97,6 +109,18 @@ export default function IntakeSubmissionDetailPage() {
     }
     setItem(result.data ?? null);
     setInfo(okMessage);
+    if (path.endsWith("/request-changes") && result.data?.client_id) {
+      // Nothing is sent automatically — the portal now correctly shows
+      // the pending correction (see get_portal_intake_status), but the
+      // student still needs to be told to go look. Reuse the same
+      // contextual invite this client already has (see PR #30's "Enviar
+      // cadastro") so the professional can actually reach them.
+      const link = await apiFetch<ClientIntakeLink>(
+        `/api/v1/clients/${result.data.client_id}/intake-link`,
+        { method: "POST", body: "{}" },
+      );
+      if (link.data) setCorrectionLink(link.data);
+    }
     setSheet(null);
     if (path.endsWith("/approve")) setApprovedJustNow(true);
   }
@@ -141,7 +165,7 @@ export default function IntakeSubmissionDetailPage() {
     [item],
   );
   const attentionItems = useMemo(
-    () => snapshot.filter((q) => q.attention),
+    () => snapshot.filter((q) => isRealAttentionItem(q)),
     [snapshot],
   );
   const answersReady = Boolean(item?.anamnesis);
@@ -180,6 +204,50 @@ export default function IntakeSubmissionDetailPage() {
         <p role="status" className="text-sm text-[var(--color-success)]">
           {info}
         </p>
+      ) : null}
+
+      {correctionLink ? (
+        <section className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Ninguém foi avisado automaticamente — envie o link para o aluno saber que precisa
+            corrigir o cadastro.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Button
+              fullWidth
+              onClick={() => {
+                const message =
+                  "Olá! Preciso que você ajuste algumas informações do seu cadastro. " +
+                  `Acesse o link abaixo para atualizar:\n${correctionLink.public_url}`;
+                window.open(
+                  `https://wa.me/?text=${encodeURIComponent(message)}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                );
+              }}
+              className="inline-flex items-center justify-center gap-2"
+            >
+              <IconWhatsApp className="h-5 w-5" aria-hidden />
+              Enviar pelo WhatsApp
+            </Button>
+            <Button
+              fullWidth
+              variant="secondary"
+              onClick={() => {
+                void copyTextToClipboard(correctionLink.public_url).then((result) =>
+                  setCorrectionCopied(result.ok),
+                );
+              }}
+            >
+              Copiar link de correção
+            </Button>
+            {correctionCopied ? (
+              <p role="status" className="text-center text-xs text-[var(--color-ink-muted)]">
+                Link copiado
+              </p>
+            ) : null}
+          </div>
+        </section>
       ) : null}
 
       {item ? (
@@ -366,13 +434,33 @@ export default function IntakeSubmissionDetailPage() {
               <p className="text-sm text-[var(--color-ink-muted)]">
                 Depois de revisar as informações, escolha como deseja continuar.
               </p>
-              <Button fullWidth onClick={() => setSheet("approve")}>
+              <Button
+                fullWidth
+                onClick={() => {
+                  setError(null);
+                  setSheet("approve");
+                }}
+              >
                 Aprovar cadastro
               </Button>
-              <Button fullWidth variant="secondary" onClick={() => setSheet("changes")}>
+              <Button
+                fullWidth
+                variant="secondary"
+                onClick={() => {
+                  setError(null);
+                  setSheet("changes");
+                }}
+              >
                 Solicitar ajuste
               </Button>
-              <Button fullWidth variant="ghost" onClick={() => setSheet("reject")}>
+              <Button
+                fullWidth
+                variant="ghost"
+                onClick={() => {
+                  setError(null);
+                  setSheet("reject");
+                }}
+              >
                 Recusar cadastro
               </Button>
             </section>
@@ -415,6 +503,14 @@ export default function IntakeSubmissionDetailPage() {
           aria-labelledby="decision-sheet-title"
         >
           <div className="w-full max-w-md space-y-3 rounded-[var(--radius-lg)] bg-[var(--color-surface)] p-4 shadow-lg">
+            {error ? (
+              <p
+                role="alert"
+                className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
+              >
+                {error}
+              </p>
+            ) : null}
             {sheet === "approve" ? (
               <>
                 <h2 id="decision-sheet-title" className="text-base font-semibold">

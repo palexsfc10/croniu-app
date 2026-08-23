@@ -58,8 +58,13 @@ export function ClientProfile({ clientId }: Props) {
   const router = useRouter();
   const search = useSearchParams();
   const { me } = useAuth();
-  const tab = (search.get("tab") as Tab) || "resumo";
+  // Any value other than the two non-default tabs falls back to "resumo" —
+  // including a malformed/unrecognized query value — so an unexpected query
+  // string never leaves every tab panel unmatched and the ficha blank.
+  const rawTab = search.get("tab");
+  const tab: Tab = rawTab === "acompanhamento" || rawTab === "dados" ? rawTab : "resumo";
   const [item, setItem] = useState<Client | null>(null);
+  const [justCreatedCycle, setJustCreatedCycle] = useState(false);
   const [access, setAccess] = useState<ClientAccess | null>(null);
   const [journey, setJourney] = useState<ClientJourney | null>(null);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
@@ -117,6 +122,19 @@ export function ClientProfile({ clientId }: Props) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- remote hydrate
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (search.get("done") !== "cycle") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time mount marker
+    setJustCreatedCycle(true);
+    const params = new URLSearchParams(search.toString());
+    params.delete("done");
+    const qs = params.toString();
+    router.replace(`/app/clients/${clientId}${qs ? `?${qs}` : ""}`);
+    // Runs once against the URL this page mounted with — stripping "done"
+    // must not re-trigger itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function setTab(next: Tab) {
     router.replace(`/app/clients/${clientId}?tab=${next}`);
@@ -367,6 +385,15 @@ export function ClientProfile({ clientId }: Props) {
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}
+        </p>
+      ) : null}
+
+      {justCreatedCycle ? (
+        <p
+          role="status"
+          className="rounded-[var(--radius-md)] border border-[var(--color-success)]/25 bg-[var(--color-success-subtle)] px-3 py-2 text-sm font-medium text-[var(--color-success)]"
+        >
+          Ciclo criado com sucesso.
         </p>
       ) : null}
 

@@ -312,6 +312,12 @@ export type PublicIntakeContext = {
   prefill_full_name?: string | null;
   prefill_email?: string | null;
   prefill_phone?: string | null;
+  prefill_birth_date?: string | null;
+  prefill_primary_goal?: string | null;
+  prefill_occupation?: string | null;
+  prefill_emergency_contact?: string | null;
+  prefill_answers?: Record<string, unknown> | null;
+  correction_message?: string | null;
 };
 
 export type IntakeSubmitPayload = {
@@ -521,6 +527,8 @@ export type PortalIntakeStatus = {
     content_json?: Record<string, unknown>;
     published_at?: string | null;
   } | null;
+  correction_path?: string | null;
+  correction_url?: string | null;
 };
 
 export type ProtocolVersion = {
