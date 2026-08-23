@@ -19,6 +19,7 @@ import {
   clientStatusLabel,
   clientStatusTone,
   formatPhoneBR,
+  initials,
   journeyStageLabel,
   nextActionLabel,
   protocolStatusLabel,
@@ -366,20 +367,28 @@ export function ClientProfile({ clientId }: Props) {
       </div>
 
       {item ? (
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-            {t(terms, "client")}
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
-            {item.full_name}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={clientStatusTone(item.status)}>
-              {clientStatusLabel(item.status) || stageLabel}
-            </Badge>
-            {next.isPending && next.cta ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
-            ) : null}
+        <header className="flex items-start gap-3.5">
+          <span
+            aria-hidden
+            className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-base font-semibold text-[var(--color-primary)]"
+          >
+            {initials(item.full_name)}
+          </span>
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+              {t(terms, "client")}
+            </p>
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-[var(--color-ink)] md:text-[1.75rem]">
+              {item.full_name}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={clientStatusTone(item.status)}>
+                {clientStatusLabel(item.status) || stageLabel}
+              </Badge>
+              {next.isPending && next.cta ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
+              ) : null}
+            </div>
           </div>
         </header>
       ) : (
@@ -526,6 +535,7 @@ export function ClientProfile({ clientId }: Props) {
               }
             />
           ) : null}
+          <div className="grid gap-3 md:grid-cols-2 md:gap-4">
           <AccompanimentCard
             icon={<IconRefreshCw className="h-5 w-5" />}
             title="Ciclo atual"
@@ -655,6 +665,7 @@ export function ClientProfile({ clientId }: Props) {
               variant: "secondary",
             }}
           />
+          </div>
             </>
           )}
         </section>

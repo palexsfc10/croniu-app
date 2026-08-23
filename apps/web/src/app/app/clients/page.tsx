@@ -226,17 +226,17 @@ export default function ClientsPage() {
   const showSearch = items.length >= 8 || query.length > 0;
 
   return (
-    <div className="space-y-4 animate-fade-up pb-4">
+    <div className="space-y-5 animate-fade-up pb-4 md:space-y-6">
       <header className="space-y-3">
         <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">{title}</h1>
+          <h1 className="h-display text-3xl text-[var(--color-ink)] md:text-[2.25rem]">{title}</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             Pessoas que você atende, com o próximo passo à vista.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/app/clients/new" className="min-w-0">
-            <Button className="min-h-11 whitespace-nowrap">
+            <Button className="whitespace-nowrap">
               <IconPlus className="mr-1.5 h-4 w-4" />
               {addLabel}
             </Button>
@@ -327,17 +327,17 @@ export default function ClientsPage() {
         />
       ) : null}
 
-      <ul className="space-y-2">
+      <ul className="space-y-2.5">
         {visible.map((item) => {
           const row = clientListPresentation(item, cycles, today, terms);
           return (
             <li key={item.id}>
               <Link
                 href={`/app/clients/${item.id}`}
-                className="flex min-h-14 items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 transition-colors hover:bg-[var(--color-surface-subtle)]"
+                className="flex min-h-16 items-center gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-[var(--shadow-sm)] transition-all hover:-translate-y-px hover:shadow-[var(--shadow-md)]"
               >
                 <span
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-sm font-semibold text-[var(--color-primary)]"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-sm font-semibold text-[var(--color-primary)]"
                   aria-hidden
                 >
                   {clientInitials(item.full_name) || <IconUser className="h-4 w-4" />}

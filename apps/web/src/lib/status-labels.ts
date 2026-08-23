@@ -73,6 +73,15 @@ export function clientStatusTone(status: string | null | undefined): "info" | "n
   return CLIENT_STATUS_TONE[status ?? "active"] ?? "info";
 }
 
+/** First letter of the first two words — "Ana Paula Souza" → "AP". Never
+ * more than 2 characters, so it fits a small round avatar chip. */
+export function initials(fullName: string | null | undefined): string {
+  const parts = (fullName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
 export function looksTechnical(value: string | null | undefined): boolean {
   if (!value) return false;
   return TECHNICAL.test(value);

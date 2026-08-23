@@ -42,15 +42,19 @@ function PriorityCard({ action }: { action: PriorityAction }) {
   return (
     <section
       aria-label="Ação prioritária"
-      className="rounded-[var(--radius-md)] border border-[var(--color-primary)]/25 bg-[var(--color-primary-subtle)]/30 px-3.5 py-3"
+      className="card-rail card-rail-primary relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-primary)]/15 bg-[var(--color-primary-subtle)]/40 px-5 py-4 shadow-[var(--shadow-sm)]"
     >
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-        Prioridade
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+        Prioridade de hoje
       </p>
-      <h2 className="mt-0.5 text-base font-semibold text-[var(--color-ink)]">{action.title}</h2>
-      <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">{action.subtitle}</p>
-      <Link href={action.href} className="mt-2.5 inline-block">
-        <Button className="min-h-10 px-3 text-sm">{priorityCta(action)}</Button>
+      <h2 className="mt-1 text-xl font-semibold tracking-tight text-[var(--color-ink)]">
+        {action.title}
+      </h2>
+      <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink-muted)]">
+        {action.subtitle}
+      </p>
+      <Link href={action.href} className="mt-3.5 inline-block">
+        <Button>{priorityCta(action)}</Button>
       </Link>
     </section>
   );
@@ -232,7 +236,7 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
         Precisa de atenção · {items.length}
       </h2>
-      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]/80 bg-[var(--color-surface)]">
+      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-[var(--shadow-sm)]">
         {items.map((item) => {
           if (item.kind === "appointment_awaiting_confirmation") {
             return <AwaitingConfirmationSlot key={`${item.kind}-${item.entity_id}`} item={item} />;
@@ -241,7 +245,7 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
             <li key={`${item.kind}-${item.entity_id}`}>
               <Link
                 href={item.href}
-                className="flex min-h-11 items-start gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--color-surface-subtle)]"
+                className="flex min-h-11 items-start gap-3 px-3.5 py-3 transition-colors hover:bg-[var(--color-surface-subtle)]"
               >
                 <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-warning-subtle)] text-[var(--color-warning)]">
                   {attentionIcon(item.kind)}
@@ -345,7 +349,7 @@ function TodayActions() {
         {individual.map((item) => (
           <li
             key={item.id}
-            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+            className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)]"
           >
             <Badge tone={item.overdue ? "danger" : "neutral"} className="mb-1 uppercase tracking-wide">
               {item.overdue ? "Atrasada" : "Hoje"}
@@ -446,11 +450,13 @@ export function TodayBoard({ summary }: Props) {
   const showCalmLine = !priority && hasAgenda && !hasAttention && !setupIncomplete;
 
   return (
-    <div className="space-y-4 animate-fade-up md:space-y-5">
-      <header className="space-y-1">
-        <h1 className="h-display text-3xl text-[var(--color-ink)] md:text-[2rem]">{headline}</h1>
+    <div className="space-y-5 animate-fade-up md:space-y-7">
+      <header className="space-y-1.5 md:space-y-2">
+        <h1 className="h-display text-[1.75rem] text-[var(--color-ink)] md:text-[2.25rem]">
+          {headline}
+        </h1>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <p className="text-sm text-[var(--color-ink-muted)]">
+          <p className="text-sm text-[var(--color-ink-muted)] md:text-base">
             {summary.message || "Veja o que precisa da sua atenção hoje."}
           </p>
           <Link
@@ -495,8 +501,8 @@ export function TodayBoard({ summary }: Props) {
           }
         />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-8">
-          <div className="space-y-4">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-10">
+          <div className="space-y-5 md:space-y-6">
             {priority ? (
               <PriorityCard action={priority} />
             ) : hasAttention ? (

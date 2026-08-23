@@ -210,11 +210,11 @@ export default function PublicMyCyclePage() {
   return (
     <div className="min-h-dvh bg-[linear-gradient(165deg,var(--color-bg)_0%,var(--color-progress-subtle)_42%,var(--color-primary-subtle)_100%)]">
       <main className="mx-auto flex min-h-dvh max-w-md flex-col px-4 py-6">
-        <header className="mb-8 flex items-start justify-between gap-3">
+        <header className="mb-9 flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm text-[var(--color-ink-muted)]">Meu Ciclo</p>
+            <p className="text-sm font-medium text-[var(--color-ink-muted)]">Meu Ciclo</p>
             {data || intakeStatus?.client_first_name ? (
-              <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl text-[var(--color-ink)]">
+              <h1 className="mt-1 font-[family-name:var(--font-display)] text-[1.75rem] leading-tight text-[var(--color-ink)]">
                 Olá, {data?.client_first_name || intakeStatus?.client_first_name}
               </h1>
             ) : (
@@ -250,7 +250,7 @@ export default function PublicMyCyclePage() {
           // over "sem ciclo ainda" / the cycle card itself, on any device,
           // an old portal link, or a page opened before the request was
           // made (the effect below revalidates on focus/return).
-          <section className="mb-5 space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-4">
+          <section className="mb-5 space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-5 shadow-[var(--shadow-sm)]">
             <div className="flex flex-wrap items-center gap-2">
               <IconAlertCircle className="h-5 w-5 shrink-0 text-[var(--color-warning)]" aria-hidden />
               <h2 className="text-base font-semibold text-[var(--color-ink)]">
@@ -279,7 +279,7 @@ export default function PublicMyCyclePage() {
         (intakeStatus.journey_stage === "pending_review" ||
           intakeStatus.submission_status === "pending_review" ||
           !data) ? (
-          <section className="mb-5 space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <section className="mb-5 space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-sm)]">
             <div className="flex flex-wrap items-center gap-2">
               <IconClipboardList className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)]" aria-hidden />
               <h2 className="text-base font-semibold text-[var(--color-ink)]">Seu cadastro</h2>
@@ -305,7 +305,7 @@ export default function PublicMyCyclePage() {
         ) : null}
 
         {data ? (
-          <div className="space-y-5">
+          <div className="space-y-6">
             <p className="text-sm text-[var(--color-ink-muted)]">
               Com {data.professional_display_name}
             </p>
@@ -316,7 +316,7 @@ export default function PublicMyCyclePage() {
               <>
                 <section
                   className={[
-                    "space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4",
+                    "space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-sm)]",
                     data.cycle.status_summary === "encerrando"
                       ? "card-rail card-rail-warning"
                       : data.cycle.status_summary === "vigente"
@@ -398,7 +398,7 @@ export default function PublicMyCyclePage() {
                 </section>
 
                 {data.can_request_renewal && !data.cycle.renewal_request_status ? (
-                  <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                  <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-sm)]">
                     <h2 className="text-lg font-semibold text-[var(--color-ink)]">
                       Seu ciclo está chegando ao fim
                     </h2>

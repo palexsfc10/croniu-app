@@ -332,29 +332,35 @@ export default function AgendaPage() {
           Compromissos
         </h2>
       ) : null}
-      <ul className="space-y-2">
+      <ul className="space-y-2.5">
         {agenda?.appointments.map((item) => (
           <li key={item.id}>
             <Link
               href={`/app/appointments/${item.id}`}
-              className="card-rail card-rail-primary block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 transition-colors hover:bg-[var(--color-primary-subtle)]/35"
+              className="card-rail card-rail-primary flex items-start gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-[var(--shadow-sm)] transition-all hover:-translate-y-px hover:shadow-[var(--shadow-md)]"
             >
-              <p className="flex flex-wrap items-center gap-1.5 font-semibold text-[var(--color-ink)]">
-                {formatOrgDateTime(item.starts_at, agenda.timezone)}–
-                {formatOrgDateTime(item.ends_at, agenda.timezone)} · {item.client_name}
-                <Badge tone={appointmentStatusTone(item.status)}>
-                  {appointmentStatusLabel(item.status)}
-                </Badge>
-              </p>
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                {item.location_name || "Sem local"}
-                {item.service_name || item.cycle_service_name
-                  ? ` · ${item.service_name || item.cycle_service_name}`
-                  : ""}
-              </p>
-              <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                Atendimento
-              </p>
+              <div className="flex w-14 shrink-0 flex-col pt-0.5 text-right">
+                <time className="text-sm font-semibold tabular-nums text-[var(--color-ink)]">
+                  {formatOrgDateTime(item.starts_at, agenda.timezone)}
+                </time>
+                <time className="text-xs tabular-nums text-[var(--color-ink-muted)]">
+                  {formatOrgDateTime(item.ends_at, agenda.timezone)}
+                </time>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-[var(--color-ink)]">
+                  {item.client_name}
+                  <Badge tone={appointmentStatusTone(item.status)}>
+                    {appointmentStatusLabel(item.status)}
+                  </Badge>
+                </p>
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  {item.location_name || "Sem local"}
+                  {item.service_name || item.cycle_service_name
+                    ? ` · ${item.service_name || item.cycle_service_name}`
+                    : ""}
+                </p>
+              </div>
             </Link>
           </li>
         ))}
