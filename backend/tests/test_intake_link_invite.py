@@ -132,9 +132,9 @@ def test_signed_token_cannot_be_forged_or_reused_across_organizations(client, re
     # the corruption is guaranteed regardless of which random token this
     # run generates.
     valid = client.get("/api/v1/intake-link").json()["token"]
-    prefix, link_id_hex, mac = valid.rsplit(".", 1)
+    head, mac = valid.rsplit(".", 1)
     tampered_char = "A" if mac[0] != "A" else "B"
-    tampered = f"{prefix}.{link_id_hex}.{tampered_char}{mac[1:]}"
+    tampered = f"{head}.{tampered_char}{mac[1:]}"
     assert client.get(f"/api/v1/public/intake/{tampered}").status_code == 404
 
 
