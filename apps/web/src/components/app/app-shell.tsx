@@ -348,7 +348,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={[
-        "mx-auto flex w-full max-w-6xl flex-col md:flex-row",
+        "mx-auto flex w-full max-w-6xl flex-col md:flex-row xl:max-w-7xl 2xl:max-w-[90rem]",
         assistantActive ? "h-dvh overflow-hidden" : "min-h-dvh",
       ].join(" ")}
     >
