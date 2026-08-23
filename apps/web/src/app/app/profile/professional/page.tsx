@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch, type ProfessionProfile } from "@/lib/api";
 import {
   PROFESSION_OPTIONS,
@@ -12,8 +13,11 @@ import {
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { useAuth } from "@/components/auth/auth-provider";
 
 export default function ProfessionalProfilePage() {
+  const router = useRouter();
+  const { refresh } = useAuth();
   const [profile, setProfile] = useState<ProfessionProfile | null>(null);
   const [code, setCode] = useState("");
   const [specialty, setSpecialty] = useState("");
@@ -60,13 +64,28 @@ export default function ProfessionalProfilePage() {
         profession_onboarding_done: true,
       }),
     });
-    setBusy(false);
     if (result.error) {
+      setBusy(false);
       setError(result.error.message);
       return;
     }
     setProfile(result.data ?? null);
     setInfo("Perfil profissional atualizado. Dados históricos foram preservados.");
+    // AuthProvider's `me` (read by ProfessionNudge on /app) is separate
+    // client state that only refetches on its own trigger — router.refresh()
+    // re-renders server components, not this. Without this call the nudge
+    // still sees the pre-save organization and reappears on /app even
+    // though profession_onboarding_done is already true server-side.
+    await refresh();
+    // Saving completes this step — don't strand the user on the form. Keep
+    // the button disabled (busy stays true) through the redirect so a
+    // second click can't fire a duplicate PATCH in this window. Brief
+    // pause so the confirmation above is actually readable before leaving
+    // — matches how the 2-step register flow finishes.
+    setTimeout(() => {
+      router.push("/app");
+      router.refresh();
+    }, 900);
   }
 
   return (

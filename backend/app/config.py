@@ -64,6 +64,13 @@ class Settings(BaseSettings):
         alias="EMAIL_VERIFICATION_REQUIRED",
     )
     auth_rate_limit_per_minute: int = Field(default=10, alias="AUTH_RATE_LIMIT_PER_MINUTE")
+    # Google Identity Services (OIDC "Continuar com Google"). Disabled by
+    # default everywhere — see validate_google_oauth_contract(). The client
+    # ID is not a secret and is also exposed to the browser as
+    # NEXT_PUBLIC_GOOGLE_CLIENT_ID (apps/web build-time var); there is no
+    # client secret in this flow (browser-issued ID token, verified here).
+    google_oauth_enabled: bool = Field(default=False, alias="GOOGLE_OAUTH_ENABLED")
+    google_oauth_client_id: str = Field(default="", alias="GOOGLE_OAUTH_CLIENT_ID")
     trust_proxy: bool = Field(default=False, alias="TRUST_PROXY")
     trusted_proxy_ips: str = Field(
         default="127.0.0.1,::1",
@@ -260,6 +267,15 @@ class Settings(BaseSettings):
         if not (self.asaas_webhook_token or "").strip():
             raise ValueError(
                 "ASAAS_WEBHOOK_TOKEN must be set in production when BILLING_ENABLED=true"
+            )
+
+    def validate_google_oauth_contract(self) -> None:
+        """Fail-closed: never boot with the feature on but no client ID set."""
+        if not self.google_oauth_enabled:
+            return
+        if not (self.google_oauth_client_id or "").strip():
+            raise ValueError(
+                "GOOGLE_OAUTH_CLIENT_ID must be set when GOOGLE_OAUTH_ENABLED=true"
             )
 
     def validate_session_cookie_secure_contract(self) -> None:

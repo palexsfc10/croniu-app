@@ -10,6 +10,9 @@ from app.config import Settings, get_settings
 from app.db import get_db
 from app.models.organization import Organization
 from app.schemas.auth import (
+    GoogleAuthRequest,
+    GoogleAuthResponse,
+    GoogleLinkRequest,
     LoginRequest,
     MeResponse,
     MessageResponse,
@@ -45,6 +48,11 @@ from app.services.email_flow import (
     EMAIL_VERIFICATION_GENERIC_MESSAGE,
     confirm_email_verification,
     request_email_verification,
+)
+from app.services.google_auth import (
+    GoogleAuthResult,
+    authenticate_with_google,
+    link_google_identity_with_password,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -263,6 +271,93 @@ def email_verification_request(
         message=EMAIL_VERIFICATION_GENERIC_MESSAGE,
         dev_verification_token=dev_token,
     )
+
+
+def _onboarding_required(organization: Organization) -> bool:
+    return not organization.profession_code and not organization.profession_onboarding_done
+
+
+def _google_auth_response(result: GoogleAuthResult) -> GoogleAuthResponse:
+    message = (
+        "Conta criada. Verifique seu e-mail para acessar o Croniu."
+        if result.requires_email_verification
+        else None
+    )
+    return GoogleAuthResponse(
+        user=UserOut.model_validate(result.user),
+        organization=_organization_out(result.organization),
+        role=result.membership.role,
+        is_new_user=result.is_new_user,
+        onboarding_required=_onboarding_required(result.organization),
+        requires_email_verification=result.requires_email_verification,
+        message=message,
+    )
+
+
+def _issue_session_and_touch_activity(
+    db: Session,
+    response: Response,
+    settings: Settings,
+    result: GoogleAuthResult,
+) -> None:
+    _, token = create_session(
+        db, user=result.user, organization_id=result.organization.id, settings=settings
+    )
+    result.user.last_login_at = datetime.now(UTC)
+    db.add(result.user)
+    result.organization.last_activity_at = datetime.now(UTC)
+    db.add(result.organization)
+    db.commit()
+    set_session_cookie(response, token, settings)
+
+
+@router.post("/google", response_model=GoogleAuthResponse)
+def google_auth(
+    payload: GoogleAuthRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> GoogleAuthResponse:
+    if not settings.google_oauth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Recurso não encontrado."},
+        )
+    _enforce_auth_rate_limit(request, settings, "google")
+    try:
+        result = authenticate_with_google(db, credential=payload.credential, settings=settings)
+    except AuthError as exc:
+        raise _http_error(exc) from exc
+
+    if not result.requires_email_verification:
+        _issue_session_and_touch_activity(db, response, settings, result)
+    return _google_auth_response(result)
+
+
+@router.post("/google/link", response_model=GoogleAuthResponse)
+def google_link(
+    payload: GoogleLinkRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> GoogleAuthResponse:
+    if not settings.google_oauth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Recurso não encontrado."},
+        )
+    _enforce_auth_rate_limit(request, settings, "google-link")
+    try:
+        result = link_google_identity_with_password(
+            db, credential=payload.credential, password=payload.password, settings=settings
+        )
+    except AuthError as exc:
+        raise _http_error(exc) from exc
+
+    _issue_session_and_touch_activity(db, response, settings, result)
+    return _google_auth_response(result)
 
 
 @router.post("/email-verification/confirm", response_model=MessageResponse)

@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     settings.validate_client_portal_signing_key()
     settings.validate_asaas_webhook_token_contract()
     settings.validate_session_cookie_secure_contract()
+    settings.validate_google_oauth_contract()
     install_portal_log_filter()
     app = FastAPI(
         title="Croniu API",

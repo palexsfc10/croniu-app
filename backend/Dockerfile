@@ -37,7 +37,9 @@ RUN pip install --no-cache-dir \
     "pwdlib[argon2]==0.3.0" \
     "psycopg[binary]==3.3.4" \
     "email-validator==2.3.0" \
-    "python-dotenv==1.2.2"
+    "python-dotenv==1.2.2" \
+    "google-auth==2.35.0" \
+    "requests==2.32.3"
 
 EXPOSE 8000
 

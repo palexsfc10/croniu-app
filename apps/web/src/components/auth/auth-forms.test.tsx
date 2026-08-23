@@ -171,6 +171,13 @@ describe("Auth forms", () => {
       "/forgot-password",
     );
   });
+
+  it("hides the Google button and divider when NEXT_PUBLIC_GOOGLE_CLIENT_ID is unset", () => {
+    render(<LoginForm />);
+    expect(screen.queryByText("ou continue com seu e-mail")).toBeNull();
+    render(<RegisterForm />);
+    expect(screen.queryByText("ou continue com seu e-mail")).toBeNull();
+  });
 });
 
 describe("Verify email form", () => {
