@@ -56,7 +56,7 @@ def register_owner(
     db: Session,
     *,
     email: str,
-    password: str,
+    password: str | None,
     full_name: str,
     organization_name: str,
     profession_code: str | None = None,
@@ -64,7 +64,20 @@ def register_owner(
     profession_other: str | None = None,
     use_cases: list[str] | None = None,
     referral_code: str | None = None,
+    skip_email_verification_dispatch: bool = False,
 ) -> tuple[User, Organization, Membership]:
+    """Create a user + organization + membership + trial in one transaction.
+
+    `password=None` is reserved for identity-provider-only signups (Google):
+    no synthetic password is ever generated, and `authenticate_user` refuses
+    password login for those accounts. The traditional /auth/register
+    endpoint always passes a real password.
+
+    `skip_email_verification_dispatch=True` lets a caller that already holds
+    provider-verified proof of e-mail ownership (Google's `email_verified`
+    claim) skip issuing Croniu's own verification e-mail — the caller is
+    responsible for setting `user.email_verified_at` itself in that case.
+    """
     normalized_email = email.strip().lower()
     existing = db.scalar(select(User).where(User.email == normalized_email))
     if existing is not None:
@@ -90,7 +103,7 @@ def register_owner(
 
     user = User(
         email=normalized_email,
-        password_hash=hash_password(password),
+        password_hash=hash_password(password) if password is not None else None,
         full_name=full_name.strip(),
     )
     organization = Organization(name=organization_name.strip())
@@ -145,6 +158,9 @@ def register_owner(
     db.refresh(user)
     db.refresh(organization)
     db.refresh(membership)
+
+    if skip_email_verification_dispatch:
+        return user, organization, membership
 
     # Optional transactional mail (fake in tests; Resend in PRD). Never blocks signup.
     # Welcome is sent only after successful e-mail verification.
@@ -201,7 +217,13 @@ def ensure_organization_not_disabled(organization: Organization | None) -> None:
 def authenticate_user(db: Session, *, email: str, password: str) -> User:
     normalized_email = email.strip().lower()
     user = db.scalar(select(User).where(User.email == normalized_email))
-    if user is None or not verify_password(password, user.password_hash):
+    # user.password_hash is None for accounts created exclusively via an
+    # identity provider (Google) — never generated, so there is nothing to
+    # compare against. Same generic error as any other invalid attempt, so
+    # this can't be used to enumerate which accounts are Google-only.
+    if user is None or user.password_hash is None or not verify_password(
+        password, user.password_hash
+    ):
         raise AuthError(
             "invalid_credentials",
             "E-mail ou senha inválidos.",

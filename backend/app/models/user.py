@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.membership import Membership
     from app.models.platform_membership import PlatformMembership
     from app.models.session import Session
+    from app.models.user_auth_identity import UserAuthIdentity
 
 
 class User(Base):
@@ -21,7 +22,11 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nullable since 0025: accounts created exclusively via an external
+    # identity provider (e.g. Google) never get a Croniu password. Never set
+    # this to a synthetic/blank value — NULL means "no password login",
+    # enforced in app.services.auth.authenticate_user.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     account_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     email_verified_at: Mapped[datetime | None] = mapped_column(
@@ -41,3 +46,4 @@ class User(Base):
         back_populates="user",
         foreign_keys="PlatformMembership.user_id",
     )
+    auth_identities: Mapped[list[UserAuthIdentity]] = relationship(back_populates="user")

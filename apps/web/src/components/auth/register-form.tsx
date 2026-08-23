@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { apiFetch, type ApiError, type MeResponse } from "@/lib/api";
+import { apiFetch, type ApiError, type GoogleAuthResponse, type MeResponse } from "@/lib/api";
 import { registerSchema, type RegisterValues } from "@/lib/validators";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { GoogleAuthButton } from "@/components/auth/google-auth-button";
+import { isGoogleAuthConfigured } from "@/lib/google-auth";
 import {
   REGISTER_PROFESSION_OPTIONS,
   SPORTS_SPECIALTIES,
@@ -57,6 +59,10 @@ function RegisterFormInner() {
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const referralCode = (searchParams.get("ref") || "").trim();
   const [referralCheck, setReferralCheck] = useState<ReferralCheck | null>(null);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [pendingGoogleCredential, setPendingGoogleCredential] = useState<string | null>(null);
+  const [linkPassword, setLinkPassword] = useState("");
+  const [linkSubmitting, setLinkSubmitting] = useState(false);
 
   useEffect(() => {
     if (!referralCode) return;
@@ -193,6 +199,48 @@ function RegisterFormInner() {
     },
   );
 
+  async function handleGoogleCredential(credential: string) {
+    setFormError(null);
+    setPendingGoogleCredential(null);
+    setGoogleSubmitting(true);
+    const result = await apiFetch<GoogleAuthResponse>("/api/v1/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ credential }),
+    });
+    setGoogleSubmitting(false);
+    if (result.error) {
+      if (result.error.code === "google_link_required") {
+        setPendingGoogleCredential(credential);
+        setFormError({
+          title: "Já existe uma conta com este e-mail",
+          body: "Confirme sua senha para conectar o Google a essa conta.",
+        });
+        return;
+      }
+      setFormError(humanRegisterError({ ...result.error, status: result.status }));
+      return;
+    }
+    router.replace("/app");
+    router.refresh();
+  }
+
+  async function confirmGoogleLink() {
+    if (!pendingGoogleCredential || !linkPassword) return;
+    setLinkSubmitting(true);
+    setFormError(null);
+    const result = await apiFetch<GoogleAuthResponse>("/api/v1/auth/google/link", {
+      method: "POST",
+      body: JSON.stringify({ credential: pendingGoogleCredential, password: linkPassword }),
+    });
+    setLinkSubmitting(false);
+    if (result.error) {
+      setFormError({ title: "Não foi possível conectar", body: result.error.message || "Senha incorreta." });
+      return;
+    }
+    router.replace("/app");
+    router.refresh();
+  }
+
   async function resendVerification() {
     const email = pendingEmail || getValues("email");
     if (!email) return;
@@ -265,6 +313,42 @@ function RegisterFormInner() {
       ) : null}
 
       <div className={step === 1 ? "space-y-4" : "hidden"}>
+        {isGoogleAuthConfigured ? (
+          <div className="space-y-4">
+            <GoogleAuthButton
+              text="signup_with"
+              disabled={googleSubmitting || linkSubmitting}
+              onCredential={handleGoogleCredential}
+            />
+            <div className="flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-[var(--color-border)]" />
+              <span className="text-xs text-[var(--color-ink-muted)]">
+                ou continue com seu e-mail
+              </span>
+              <span className="h-px flex-1 bg-[var(--color-border)]" />
+            </div>
+          </div>
+        ) : null}
+        {pendingGoogleCredential ? (
+          <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+            <TextField
+              label="Confirme sua senha do Croniu"
+              type="password"
+              revealable
+              autoComplete="current-password"
+              value={linkPassword}
+              onChange={(event) => setLinkPassword(event.target.value)}
+            />
+            <Button
+              type="button"
+              fullWidth
+              disabled={linkSubmitting || !linkPassword}
+              onClick={() => void confirmGoogleLink()}
+            >
+              {linkSubmitting ? "Conectando…" : "Conectar Google e entrar"}
+            </Button>
+          </div>
+        ) : null}
         <TextField
           label="Seu nome"
           autoComplete="name"

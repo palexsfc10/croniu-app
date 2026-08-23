@@ -30,6 +30,13 @@ export type MeResponse = {
   role: string;
 };
 
+export type GoogleAuthResponse = MeResponse & {
+  is_new_user: boolean;
+  onboarding_required: boolean;
+  requires_email_verification: boolean;
+  message?: string | null;
+};
+
 export type MyReferral = {
   enabled: boolean;
   code: string | null;

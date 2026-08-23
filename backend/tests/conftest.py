@@ -74,6 +74,7 @@ from app.models import (  # noqa: F401
     Session,
     Subscription,
     User,
+    UserAuthIdentity,
     UserFeedback,
 )
 
@@ -144,6 +145,7 @@ def clean_tables():
                 "appointments, locations, password_reset_tokens, email_verification_tokens, "
                 "receivables, cycles, cycle_templates, services, clients, "
                 "admin_audit_logs, platform_sessions, platform_memberships, "
+                "user_auth_identities, "
                 "sessions, memberships, users, organizations "
                 "RESTART IDENTITY CASCADE"
             )

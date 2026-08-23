@@ -105,6 +105,12 @@ jobs:
             NEXT_PUBLIC_APP_VERSION=${{ inputs.version }}
             API_PROXY_TARGET=http://api:8000
             NEXT_PUBLIC_API_URL=
+            # One Google OAuth Client ID authorized for both HML and PRD
+            # JavaScript origins — same immutable image promoted across
+            # environments, same pattern as NEXT_PUBLIC_API_URL above.
+            # Empty until the repo variable is set: the button just stays
+            # hidden (see apps/web/src/lib/google-auth.ts).
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
             BUILD_TIME=${{ github.event.repository.updated_at }}
       - id: admin
         uses: docker/build-push-action@v6

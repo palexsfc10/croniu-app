@@ -51,6 +51,7 @@ from app.models.renewal_request import RenewalRequest
 from app.models.service import Service
 from app.models.session import Session
 from app.models.user import User
+from app.models.user_auth_identity import UserAuthIdentity
 from app.models.user_feedback import UserFeedback
 
 __all__ = [
@@ -61,6 +62,7 @@ __all__ = [
     "Session",
     "PlatformMembership",
     "PlatformSession",
+    "UserAuthIdentity",
     "AdminAuditLog",
     "AgentAuditLog",
     "AgentPendingAction",

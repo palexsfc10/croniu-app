@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { apiFetch, type MeResponse } from "@/lib/api";
+import { apiFetch, type GoogleAuthResponse, type MeResponse } from "@/lib/api";
 import { loginSchema, type LoginValues } from "@/lib/validators";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { GoogleAuthButton } from "@/components/auth/google-auth-button";
+import { isGoogleAuthConfigured } from "@/lib/google-auth";
 
 function valuesFromForm(form: HTMLFormElement): LoginValues {
   const data = new FormData(form);
@@ -24,6 +26,10 @@ function LoginFormInner() {
   const verified = searchParams.get("verified") === "1";
   const [formError, setFormError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [pendingGoogleCredential, setPendingGoogleCredential] = useState<string | null>(null);
+  const [linkPassword, setLinkPassword] = useState("");
+  const [linkSubmitting, setLinkSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +87,49 @@ function LoginFormInner() {
     router.refresh();
   }
 
+  async function handleGoogleCredential(credential: string) {
+    setFormError(null);
+    setErrorCode(null);
+    setPendingGoogleCredential(null);
+    setGoogleSubmitting(true);
+    const result = await apiFetch<GoogleAuthResponse>("/api/v1/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ credential }),
+    });
+    setGoogleSubmitting(false);
+    if (result.error) {
+      setErrorCode(result.error.code);
+      if (result.error.code === "google_link_required") {
+        setPendingGoogleCredential(credential);
+        setFormError(
+          "Já existe uma conta com este e-mail. Confirme sua senha para conectar o Google.",
+        );
+        return;
+      }
+      setFormError(result.error.message);
+      return;
+    }
+    router.replace("/app");
+    router.refresh();
+  }
+
+  async function confirmGoogleLink() {
+    if (!pendingGoogleCredential || !linkPassword) return;
+    setLinkSubmitting(true);
+    setFormError(null);
+    const result = await apiFetch<GoogleAuthResponse>("/api/v1/auth/google/link", {
+      method: "POST",
+      body: JSON.stringify({ credential: pendingGoogleCredential, password: linkPassword }),
+    });
+    setLinkSubmitting(false);
+    if (result.error) {
+      setFormError(result.error.message || "Senha incorreta.");
+      return;
+    }
+    router.replace("/app");
+    router.refresh();
+  }
+
   return (
     <form
       method="post"
@@ -103,6 +152,42 @@ function LoginFormInner() {
           >
             E-mail confirmado. Entre com sua senha para acessar o Croniu.
           </p>
+        ) : null}
+        {isGoogleAuthConfigured ? (
+          <div className="space-y-4">
+            <GoogleAuthButton
+              text="signin_with"
+              disabled={googleSubmitting || linkSubmitting}
+              onCredential={handleGoogleCredential}
+            />
+            <div className="flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-[var(--color-border)]" />
+              <span className="text-xs text-[var(--color-ink-muted)]">
+                ou continue com seu e-mail
+              </span>
+              <span className="h-px flex-1 bg-[var(--color-border)]" />
+            </div>
+          </div>
+        ) : null}
+        {pendingGoogleCredential ? (
+          <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+            <TextField
+              label="Confirme sua senha do Croniu"
+              type="password"
+              revealable
+              autoComplete="current-password"
+              value={linkPassword}
+              onChange={(event) => setLinkPassword(event.target.value)}
+            />
+            <Button
+              type="button"
+              fullWidth
+              disabled={linkSubmitting || !linkPassword}
+              onClick={() => void confirmGoogleLink()}
+            >
+              {linkSubmitting ? "Conectando…" : "Conectar Google e entrar"}
+            </Button>
+          </div>
         ) : null}
         <TextField
           label="E-mail"

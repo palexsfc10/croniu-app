@@ -80,3 +80,19 @@ class PasswordResetConfirm(BaseModel):
 class ErrorResponse(BaseModel):
     code: str
     message: str
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str = Field(min_length=20, max_length=4096)
+
+
+class GoogleLinkRequest(BaseModel):
+    credential: str = Field(min_length=20, max_length=4096)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class GoogleAuthResponse(MeResponse):
+    is_new_user: bool = False
+    onboarding_required: bool = False
+    requires_email_verification: bool = False
+    message: str | None = None
