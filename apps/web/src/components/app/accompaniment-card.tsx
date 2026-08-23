@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export type AccompanimentAction = {
@@ -13,6 +14,9 @@ type Props = {
   title: string;
   testId?: string;
   state?: string | null;
+  /** Semantic tone for `state` — defaults to neutral when omitted, never
+   * left as unstyled text so an urgent state can't blend into the rest. */
+  stateTone?: BadgeTone;
   summary: string;
   detail?: string | null;
   progress?: { value: number; max: number } | null;
@@ -26,6 +30,7 @@ export function AccompanimentCard({
   title,
   testId,
   state,
+  stateTone = "neutral",
   summary,
   detail,
   progress,
@@ -53,9 +58,9 @@ export function AccompanimentCard({
           <div className="flex items-start justify-between gap-2">
             <h2 className="text-sm font-semibold">{title}</h2>
             {state ? (
-              <span className="shrink-0 text-xs font-medium text-[var(--color-ink-muted)]">
+              <Badge tone={stateTone} className="shrink-0">
                 {state}
-              </span>
+              </Badge>
             ) : null}
           </div>
           <p className="text-sm text-[var(--color-ink)]">{summary}</p>

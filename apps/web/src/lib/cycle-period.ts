@@ -1,4 +1,5 @@
 import type { Cycle } from "@/lib/api";
+import type { BadgeTone } from "@/components/ui/badge";
 import { addDaysIso, endOfMonth, rangesOverlap, startOfMonth } from "@/lib/date-format";
 
 export type CycleBucket = "renewing" | "active" | "upcoming" | "ended" | "all";
@@ -75,6 +76,18 @@ export function cycleListStatus(cycle: Cycle, today: string): string {
   if (cycle.status === "paused") return "Pausado";
   if (!cycle.weekdays?.length && !cycle.default_starts_time) return "Sem agenda";
   return "Ativo";
+}
+
+/** Same branches as cycleListStatus, mapped to a semantic Badge tone. */
+export function cycleListStatusTone(cycle: Cycle, today: string): BadgeTone {
+  if (cycle.status === "cancelled") return "neutral";
+  if (cycle.status === "ended" || cycle.status === "completed") return "neutral";
+  if (cycle.starts_on > today) return "info";
+  if (cycle.ends_on <= today) return "neutral";
+  if (cycle.is_nearing_end) return "warning";
+  if (cycle.status === "paused") return "neutral";
+  if (!cycle.weekdays?.length && !cycle.default_starts_time) return "warning";
+  return "info";
 }
 
 export function filterCycles(

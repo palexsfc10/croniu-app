@@ -24,7 +24,8 @@ import {
   protocolStatusLabel,
 } from "@/lib/status-labels";
 import { formatCycleVigencyCard } from "@/lib/date-format";
-import { cycleListStatus, selectDisplayCycle } from "@/lib/cycle-period";
+import { cycleListStatus, cycleListStatusTone, selectDisplayCycle } from "@/lib/cycle-period";
+import { protocolStatusTone } from "@/lib/status-tone";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -529,6 +530,7 @@ export function ClientProfile({ clientId }: Props) {
             icon={<IconRefreshCw className="h-5 w-5" />}
             title="Ciclo atual"
             state={activeCycle ? cycleListStatus(activeCycle, todayIso) : "Vazio"}
+            stateTone={activeCycle ? cycleListStatusTone(activeCycle, todayIso) : "neutral"}
             summary={activeCycle?.service_name || "Sem ciclo"}
             detail={
               activeCycle
@@ -563,6 +565,7 @@ export function ClientProfile({ clientId }: Props) {
             testId="accompaniment-plan-card"
             title={t(terms, "plan")}
             state={published || draft ? protocolStatusLabel((published || draft)?.status) : "Vazio"}
+            stateTone={published || draft ? protocolStatusTone((published || draft)?.status) : "neutral"}
             summary={(published || draft)?.title || "Plano ainda não criado"}
             detail={
               (published || draft)?.duration_value
@@ -607,6 +610,7 @@ export function ClientProfile({ clientId }: Props) {
                 ? `${protocolStatusLabel(evaluations[0].status)} · ${evaluations.length}`
                 : "Vazio"
             }
+            stateTone={evaluations[0] ? protocolStatusTone(evaluations[0].status) : "neutral"}
             summary={
               evaluations[0]?.title || "Nenhuma avaliação registrada"
             }
@@ -639,6 +643,7 @@ export function ClientProfile({ clientId }: Props) {
                   ? `${routinePendingCount} pendente${routinePendingCount === 1 ? "" : "s"}`
                   : "Em dia"
             }
+            stateTone={routinePendingCount && routinePendingCount > 0 ? "warning" : "success"}
             summary={
               routinePendingCount
                 ? `${routinePendingCount} ocorrência${routinePendingCount === 1 ? "" : "s"} aguardando ação.`
