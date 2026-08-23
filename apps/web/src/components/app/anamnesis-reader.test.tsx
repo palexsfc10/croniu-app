@@ -109,4 +109,55 @@ describe("AnamnesisReader", () => {
     expect(screen.getByText("2 respostas")).toBeInTheDocument();
     expect(screen.queryByText(/pontos? para revisar/)).not.toBeInTheDocument();
   });
+
+  it("never colors a plain positively-phrased yes/no answer as a warning", () => {
+    // "Pratica atividade física?" has no risk direction — "Sim" answered to
+    // it must not read as amber/warning just because the literal word is
+    // "sim". Only attention-flagged questions carry a risk-colored answer.
+    render(
+      <AnamnesisReader
+        questions={[
+          {
+            id: "b_active",
+            label: "Pratica atividade física atualmente?",
+            section_title: "Hábitos",
+            answer: "sim",
+            answer_label: "Sim",
+          },
+        ]}
+      />,
+    );
+    const badge = screen.getByText("Sim");
+    expect(badge).toHaveClass("badge-neutral");
+    expect(badge).not.toHaveClass("badge-warning");
+  });
+
+  it("colors an attention-flagged question's concerning answer as a warning and the safe answer as success", () => {
+    render(
+      <AnamnesisReader
+        questions={[
+          {
+            id: "d_chest_pain",
+            label: "Dor no peito?",
+            section_title: "Saúde declarada",
+            answer: "sim",
+            answer_label: "Sim",
+            attention: true,
+          },
+          {
+            id: "d_dizziness",
+            label: "Tontura frequente?",
+            section_title: "Saúde declarada",
+            answer: "nao",
+            answer_label: "Não",
+            attention: true,
+          },
+        ]}
+      />,
+    );
+    const concerning = screen.getByText("Sim");
+    expect(concerning).toHaveClass("badge-warning");
+    const safe = screen.getByText("Não");
+    expect(safe).toHaveClass("badge-success");
+  });
 });

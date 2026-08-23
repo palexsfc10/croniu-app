@@ -60,7 +60,7 @@ function newClientMessageId() {
 function TypingIndicator() {
   return (
     <div
-      className="assistant-msg-enter mr-auto flex max-w-[88%] items-center gap-2 rounded-2xl rounded-bl-md bg-[var(--color-surface)] px-3.5 py-3 shadow-[var(--shadow-sm)] ring-1 ring-[var(--color-border)]/80"
+      className="assistant-msg-enter mr-auto flex max-w-[88%] items-center gap-2 rounded-2xl rounded-bl-md bg-[var(--color-surface)] px-3.5 py-3 shadow-sm ring-1 ring-[var(--color-border)]/80"
       aria-label="Assistente digitando"
     >
       <span className="assistant-typing-dot h-1.5 w-1.5 rounded-full bg-[var(--color-ink-muted)]" />
@@ -100,7 +100,7 @@ function MessageBubble({
         {message.pending ? (
           <>
             {message.content ? (
-              <div className="mb-1 rounded-2xl rounded-bl-md bg-[var(--color-surface)] px-3.5 py-2.5 shadow-[var(--shadow-sm)] ring-1 ring-[var(--color-border)]/70">
+              <div className="mb-1 rounded-2xl rounded-bl-md bg-[var(--color-surface)] px-3.5 py-2.5 shadow-sm ring-1 ring-[var(--color-border)]/70">
                 <SafeChatMarkdown text={message.content} />
               </div>
             ) : null}
@@ -117,8 +117,8 @@ function MessageBubble({
             className={[
               "px-3.5 py-2.5 text-sm leading-relaxed",
               isUser
-                ? "whitespace-pre-wrap rounded-2xl rounded-br-md bg-[var(--color-primary)] text-white shadow-[var(--shadow-sm)]"
-                : "rounded-2xl rounded-bl-md bg-[var(--color-surface)] text-[var(--color-ink)] shadow-[var(--shadow-sm)] ring-1 ring-[var(--color-border)]/70",
+                ? "whitespace-pre-wrap rounded-2xl rounded-br-md bg-[var(--color-primary)] text-white shadow-sm"
+                : "rounded-2xl rounded-bl-md bg-[var(--color-surface)] text-[var(--color-ink)] shadow-sm ring-1 ring-[var(--color-border)]/70",
             ].join(" ")}
           >
             {isUser ? message.content : <SafeChatMarkdown text={message.content} />}
@@ -851,7 +851,7 @@ export default function AssistantPage() {
               ref={threadsPanelRef}
               role="dialog"
               aria-label="Conversas recentes"
-              className="absolute left-2 right-2 top-full z-30 mt-1 max-h-[min(20rem,55vh)] overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-[var(--shadow-md)] md:hidden"
+              className="absolute left-2 right-2 top-full z-30 mt-1 max-h-[min(20rem,55vh)] overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-md md:hidden"
             >
               <button
                 type="button"
@@ -958,7 +958,7 @@ export default function AssistantPage() {
           {showJump ? (
             <button
               type="button"
-              className="absolute bottom-3 left-1/2 z-10 inline-flex min-h-11 -translate-x-1/2 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-semibold text-[var(--color-ink)] shadow-[var(--shadow-md)]"
+              className="absolute bottom-3 left-1/2 z-10 inline-flex min-h-11 -translate-x-1/2 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-semibold text-[var(--color-ink)] shadow-md"
               onClick={() => {
                 stickToBottomRef.current = true;
                 scrollToBottom();
@@ -1003,7 +1003,7 @@ export default function AssistantPage() {
 
             {recording ? (
               <div
-                className="flex flex-col gap-2 rounded-[var(--radius-lg)] border border-[var(--color-danger)]/20 bg-[var(--color-surface)] px-3 py-2.5 shadow-[var(--shadow-sm)] sm:flex-row sm:items-center sm:gap-3"
+                className="flex flex-col gap-2 rounded-[var(--radius-lg)] border border-[var(--color-danger)]/20 bg-[var(--color-surface)] px-3 py-2.5 shadow-sm sm:flex-row sm:items-center sm:gap-3"
                 role="status"
                 aria-live="polite"
               >
@@ -1085,7 +1085,7 @@ export default function AssistantPage() {
                       if (fromVoice && e.target.value !== input) setFromVoice(true);
                     }}
                     onKeyDown={onComposerKeyDown}
-                    className="max-h-[7.5rem] min-h-11 w-full resize-none rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 pr-11 text-sm text-[var(--color-ink)] shadow-[var(--shadow-sm)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] disabled:opacity-60"
+                    className="max-h-[7.5rem] min-h-11 w-full resize-none rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 pr-11 text-sm text-[var(--color-ink)] shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] disabled:opacity-60"
                   />
                   {fromVoice ? (
                     <span className="pointer-events-none absolute -top-2 right-3 rounded-full bg-[var(--color-ai-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-ai-hover)]">
@@ -1155,7 +1155,7 @@ export default function AssistantPage() {
                       <div
                         role="menu"
                         aria-label="Opções de voz"
-                        className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-[var(--shadow-md)]"
+                        className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-md"
                       >
                         <button
                           type="button"

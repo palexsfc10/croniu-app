@@ -153,7 +153,7 @@ function ProfileMenu({
           id={menuId}
           role="menu"
           aria-label="Conta"
-          className="absolute right-0 z-30 mt-2 w-[min(17.5rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-[var(--shadow-md)]"
+          className="absolute right-0 z-30 mt-2 w-[min(17.5rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-md"
         >
           <div className="border-b border-[var(--color-border)] px-3 py-2.5">
             <p className="truncate text-sm font-semibold text-[var(--color-ink)]">{fullName}</p>
@@ -348,7 +348,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={[
-        "mx-auto flex w-full max-w-6xl flex-col md:flex-row",
+        "mx-auto flex w-full max-w-6xl flex-col md:flex-row xl:max-w-7xl 2xl:max-w-[90rem]",
         assistantActive ? "h-dvh overflow-hidden" : "min-h-dvh",
       ].join(" ")}
     >

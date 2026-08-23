@@ -41,7 +41,7 @@ export function SuggestionGrid({
             onClick={() => onPick(item.prompt)}
             className={[
               "group flex min-h-12 items-center gap-2.5 rounded-[var(--radius-lg)] border border-[var(--color-border)]/80",
-              "bg-[var(--color-surface)] px-3 py-2.5 text-left shadow-[var(--shadow-sm)]",
+              "bg-[var(--color-surface)] px-3 py-2.5 text-left shadow-sm",
               "transition-[transform,background-color,border-color] duration-[var(--duration-fast)]",
               "hover:border-[var(--color-ai-border)] hover:bg-[var(--color-ai-subtle)]/40",
               "active:scale-[0.98] disabled:opacity-50",

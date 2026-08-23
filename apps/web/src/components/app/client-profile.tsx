@@ -17,13 +17,16 @@ import { nomenclatureFor, safeReturnTo, t } from "@/lib/nomenclature";
 import { EmptyStateGuide } from "@/components/ui/empty-state-guide";
 import {
   clientStatusLabel,
+  clientStatusTone,
   formatPhoneBR,
+  initials,
   journeyStageLabel,
   nextActionLabel,
   protocolStatusLabel,
 } from "@/lib/status-labels";
 import { formatCycleVigencyCard } from "@/lib/date-format";
-import { cycleListStatus, selectDisplayCycle } from "@/lib/cycle-period";
+import { cycleListStatus, cycleListStatusTone, selectDisplayCycle } from "@/lib/cycle-period";
+import { protocolStatusTone } from "@/lib/status-tone";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -327,14 +330,14 @@ export function ClientProfile({ clientId }: Props) {
           <div className="absolute right-0 z-20 mt-1 min-w-[14rem] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-sm">
             <Link
               href={`/app/clients/${clientId}?tab=dados`}
-              className="block min-h-11 rounded px-2 py-2 text-sm"
+              className="block min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
             >
               Editar dados
             </Link>
             {access?.has_active_link && access.public_url ? (
               <button
                 type="button"
-                className="block w-full min-h-11 rounded px-2 py-2 text-left text-sm"
+                className="block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
                 onClick={() => void copyMenuAccess()}
               >
                 Copiar acesso
@@ -342,7 +345,7 @@ export function ClientProfile({ clientId }: Props) {
             ) : (
               <button
                 type="button"
-                className="block w-full min-h-11 rounded px-2 py-2 text-left text-sm"
+                className="block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
                 onClick={() => {
                   setTab("dados");
                   setMenuOpen(false);
@@ -353,7 +356,7 @@ export function ClientProfile({ clientId }: Props) {
             )}
             <button
               type="button"
-              className="mt-1 block w-full min-h-11 rounded px-2 py-2 text-left text-sm text-[var(--color-danger)]"
+              className="mt-1 block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger-subtle)] focus-visible:bg-[var(--color-danger-subtle)] disabled:pointer-events-none disabled:opacity-55"
               disabled={busy}
               onClick={() => void archive()}
             >
@@ -364,18 +367,28 @@ export function ClientProfile({ clientId }: Props) {
       </div>
 
       {item ? (
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-            {t(terms, "client")}
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
-            {item.full_name}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="info">{clientStatusLabel(item.status) || stageLabel}</Badge>
-            {next.isPending && next.cta ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
-            ) : null}
+        <header className="flex items-start gap-3.5">
+          <span
+            aria-hidden
+            className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-base font-semibold text-[var(--color-primary)]"
+          >
+            {initials(item.full_name)}
+          </span>
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+              {t(terms, "client")}
+            </p>
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-[var(--color-ink)] md:text-[1.75rem]">
+              {item.full_name}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={clientStatusTone(item.status)}>
+                {clientStatusLabel(item.status) || stageLabel}
+              </Badge>
+              {next.isPending && next.cta ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">Próximo: {next.cta}</p>
+              ) : null}
+            </div>
           </div>
         </header>
       ) : (
@@ -522,10 +535,12 @@ export function ClientProfile({ clientId }: Props) {
               }
             />
           ) : null}
+          <div className="grid gap-3 md:grid-cols-2 md:gap-4">
           <AccompanimentCard
             icon={<IconRefreshCw className="h-5 w-5" />}
             title="Ciclo atual"
             state={activeCycle ? cycleListStatus(activeCycle, todayIso) : "Vazio"}
+            stateTone={activeCycle ? cycleListStatusTone(activeCycle, todayIso) : "neutral"}
             summary={activeCycle?.service_name || "Sem ciclo"}
             detail={
               activeCycle
@@ -560,6 +575,7 @@ export function ClientProfile({ clientId }: Props) {
             testId="accompaniment-plan-card"
             title={t(terms, "plan")}
             state={published || draft ? protocolStatusLabel((published || draft)?.status) : "Vazio"}
+            stateTone={published || draft ? protocolStatusTone((published || draft)?.status) : "neutral"}
             summary={(published || draft)?.title || "Plano ainda não criado"}
             detail={
               (published || draft)?.duration_value
@@ -604,6 +620,7 @@ export function ClientProfile({ clientId }: Props) {
                 ? `${protocolStatusLabel(evaluations[0].status)} · ${evaluations.length}`
                 : "Vazio"
             }
+            stateTone={evaluations[0] ? protocolStatusTone(evaluations[0].status) : "neutral"}
             summary={
               evaluations[0]?.title || "Nenhuma avaliação registrada"
             }
@@ -636,6 +653,7 @@ export function ClientProfile({ clientId }: Props) {
                   ? `${routinePendingCount} pendente${routinePendingCount === 1 ? "" : "s"}`
                   : "Em dia"
             }
+            stateTone={routinePendingCount && routinePendingCount > 0 ? "warning" : "success"}
             summary={
               routinePendingCount
                 ? `${routinePendingCount} ocorrência${routinePendingCount === 1 ? "" : "s"} aguardando ação.`
@@ -647,6 +665,7 @@ export function ClientProfile({ clientId }: Props) {
               variant: "secondary",
             }}
           />
+          </div>
             </>
           )}
         </section>

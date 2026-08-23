@@ -74,7 +74,7 @@ export function ProposalCard({
       role="region"
       aria-label={`Proposta: ${title}`}
       className={[
-        "mt-2 w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border shadow-[var(--shadow-sm)]",
+        "mt-2 w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border shadow-sm",
         actionStatus === "failed" || actionStatus === "expired"
           ? "border-[var(--color-danger)]/25 bg-[var(--color-surface)]"
           : actionStatus === "executed"

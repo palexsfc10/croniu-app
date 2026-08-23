@@ -168,6 +168,15 @@
   --color-warning: var(--color-warning);
   --font-sans: var(--font-manrope);
   --font-display: var(--font-manrope);
+  /* Registered here (not just under :root) so Tailwind v4 generates real
+     `shadow-sm`/`shadow-md` utilities from them — an arbitrary-value
+     `shadow-[var(--shadow-sm)]` does NOT work: Tailwind's shadow utility
+     composes box-shadow through its own --tw-shadow layering, which an
+     arbitrary bracket value referencing an unrelated custom property
+     doesn't feed into. Same brand-tinted values as :root, just exposed
+     as first-class tokens too. */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
 }
 
 @media (prefers-color-scheme: dark) {

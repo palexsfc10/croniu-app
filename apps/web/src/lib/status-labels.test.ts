@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clientStatusLabel,
   formatPhoneBR,
+  initials,
   journeyStageLabel,
   looksTechnical,
   nextActionLabel,
@@ -22,5 +23,12 @@ describe("status-labels", () => {
 
   it("formats Brazilian phone numbers", () => {
     expect(formatPhoneBR("11987654321")).toBe("(11) 98765-4321");
+  });
+
+  it("derives avatar initials from a full name", () => {
+    expect(initials("Ana Paula Souza")).toBe("AP");
+    expect(initials("Madonna")).toBe("MA");
+    expect(initials("  ")).toBe("?");
+    expect(initials(null)).toBe("?");
   });
 });
