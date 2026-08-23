@@ -3,7 +3,7 @@
 import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   WEEKDAY_OPTIONS,
   apiFetch,
@@ -18,6 +18,7 @@ import {
   type Service,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { TextField } from "@/components/ui/text-field";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
@@ -32,6 +33,19 @@ import {
 } from "@/components/app/cycle-overlap-alert";
 import { lastInclusiveIso } from "@/lib/date-format";
 import { safeReturnTo } from "@/lib/nomenclature";
+
+/**
+ * Appends `done=cycle` to a path, joining with `&` when the path already
+ * carries a query string (e.g. `?tab=acompanhamento`). A naive
+ * `${path}?done=cycle` produced a second `?`, which corrupts the value of
+ * whatever query param came before it once the browser/router re-parses it.
+ */
+export function withCycleCreatedMarker(path: string): string {
+  const [base, existingQuery] = path.split("?", 2);
+  const params = new URLSearchParams(existingQuery ?? "");
+  params.set("done", "cycle");
+  return `${base}?${params.toString()}`;
+}
 
 function NewIntelligentCycleForm() {
   const router = useRouter();
@@ -73,6 +87,10 @@ function NewIntelligentCycleForm() {
   >(null);
   const [existingCycleId, setExistingCycleId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Fixed for the lifetime of this form so a retry after a failed attempt
+  // reuses the same idempotency key instead of minting a new one that would
+  // let the backend treat it as a distinct request.
+  const idempotencyKeyRef = useRef(`web-${crypto.randomUUID()}`);
 
   const template = templates.find((t) => t.id === templateId);
   const service = services.find((s) => s.id === serviceId);
@@ -173,6 +191,7 @@ function NewIntelligentCycleForm() {
   }
 
   async function confirm() {
+    if (saving) return;
     if (!startsOn) {
       setError("Informe a data de início do ciclo.");
       return;
@@ -193,7 +212,7 @@ function NewIntelligentCycleForm() {
       generate_appointments: true,
       starts_time: `${startsTime}:00`,
       location_id: locationId || null,
-      idempotency_key: `web-${crypto.randomUUID()}`,
+      idempotency_key: idempotencyKeyRef.current,
     };
     if (finalReais.trim()) {
       body.final_cents = reaisToCents(finalReais);
@@ -235,11 +254,19 @@ function NewIntelligentCycleForm() {
       return;
     }
     const returnTo = search.get("returnTo");
-    if (returnTo && returnTo.startsWith("/app/") && !returnTo.includes("://")) {
-      router.replace(`${returnTo}?done=cycle`);
-      return;
-    }
-    router.replace(`/app/cycles/${result.data!.id}`);
+    const isSafeReturnTo =
+      returnTo && returnTo.startsWith("/app/") && !returnTo.includes("://");
+    // The canonical destination is always the same student's accompaniment —
+    // never the standalone cycle detail page, which drops the context the
+    // professional just came from. `returnTo` already points there for every
+    // real entry point; the clientId fallback covers the rare case where the
+    // form was opened without one (e.g. deep link).
+    const target = isSafeReturnTo
+      ? (returnTo as string)
+      : clientId
+        ? `/app/clients/${clientId}?tab=acompanhamento`
+        : `/app/cycles/${result.data!.id}`;
+    router.replace(withCycleCreatedMarker(target));
   }
 
   const lessonSummary = useMemo(() => {
@@ -391,24 +418,16 @@ function NewIntelligentCycleForm() {
               {template ? ` (${template.weekly_frequency})` : ""}
             </legend>
             <div className="mt-2 flex flex-wrap gap-2">
-              {WEEKDAY_OPTIONS.map((d) => {
-                const active = weekdays.includes(d.value);
-                return (
-                  <button
-                    key={d.value}
-                    type="button"
-                    aria-pressed={active}
-                    className={`min-h-11 min-w-11 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
-                      active
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                        : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)]"
-                    }`}
-                    onClick={() => toggleDay(d.value)}
-                  >
-                    {d.label}
-                  </button>
-                );
-              })}
+              {WEEKDAY_OPTIONS.map((d) => (
+                <SegmentedToggle
+                  key={d.value}
+                  square
+                  active={weekdays.includes(d.value)}
+                  onClick={() => toggleDay(d.value)}
+                >
+                  {d.label}
+                </SegmentedToggle>
+              ))}
             </div>
           </fieldset>
           <div className="flex gap-2">

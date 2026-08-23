@@ -11,7 +11,7 @@ export function ProductPreview() {
       <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] bg-[radial-gradient(ellipse_at_30%_20%,color-mix(in_srgb,var(--brand-200)_55%,transparent),transparent_55%),radial-gradient(ellipse_at_80%_70%,color-mix(in_srgb,var(--violet-200)_40%,transparent),transparent_50%)]" />
 
       <div className="public-entry-preview__stack relative space-y-3">
-        <article className="public-entry-card rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-md)]">
+        <article className="public-entry-card rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-md">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-primary)]">
             Hoje
           </p>
@@ -32,7 +32,7 @@ export function ProductPreview() {
         </article>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <article className="public-entry-card public-entry-card--offset rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3.5 shadow-[var(--shadow-sm)]">
+          <article className="public-entry-card public-entry-card--offset rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3.5 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
               Novo cliente
             </p>
@@ -45,7 +45,7 @@ export function ProductPreview() {
             </p>
           </article>
 
-          <article className="public-entry-card rounded-[var(--radius-lg)] border border-[var(--color-ai-border)] bg-[var(--color-ai-subtle)] p-3.5 shadow-[var(--shadow-sm)]">
+          <article className="public-entry-card rounded-[var(--radius-lg)] border border-[var(--color-ai-border)] bg-[var(--color-ai-subtle)] p-3.5 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ai)]">
               Croniu IA
             </p>
@@ -55,7 +55,7 @@ export function ProductPreview() {
           </article>
         </div>
 
-        <article className="public-entry-card public-entry-card--review hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-3.5 shadow-[var(--shadow-sm)] sm:block">
+        <article className="public-entry-card public-entry-card--review hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-3.5 shadow-sm sm:block">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
             Próxima revisão
           </p>

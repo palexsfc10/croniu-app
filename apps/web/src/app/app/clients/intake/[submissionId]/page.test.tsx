@@ -254,3 +254,138 @@ describe("ambiguous duplicate resolution", () => {
     expect(calledCandidatePath).toBe(false);
   });
 });
+
+describe("request changes — error visibility and share actions", () => {
+  afterEach(() => {
+    cleanup();
+    apiFetch.mockReset();
+  });
+
+  beforeEach(() => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: [] };
+      return { data: detail({ duplicate_alert: false, duplicate_client_id: null, client_id: "c1" }) };
+    });
+  });
+
+  it("shows a real error inside the sheet and keeps it open when the backend rejects the request", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: [] };
+      if (path.endsWith("/request-changes")) {
+        return { error: { code: "invalid_transition", message: "Não foi possível salvar." } };
+      }
+      return { data: detail({ duplicate_alert: false, duplicate_client_id: null, client_id: "c1" }) };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await user.click(await screen.findByRole("button", { name: "Solicitar ajuste" }));
+    const textarea = screen.getByLabelText("Mensagem ao aluno");
+    await user.type(textarea, "Indique os objetivos secundários.");
+    await user.click(screen.getByRole("button", { name: "Enviar pedido" }));
+
+    // Modal stays open, error is visible, typed message is preserved —
+    // this is the exact bug: previously nothing was shown at all.
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível salvar.");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mensagem ao aluno")).toHaveValue(
+      "Indique os objetivos secundários.",
+    );
+  });
+
+  it("closes the sheet, confirms success, and offers WhatsApp/copy after a successful request", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: [] };
+      if (path.endsWith("/request-changes")) {
+        return {
+          data: detail({
+            status: "changes_requested",
+            client_id: "c1",
+            message_to_client: "Indique os objetivos secundários.",
+            duplicate_alert: false,
+            duplicate_client_id: null,
+          }),
+        };
+      }
+      if (path === "/api/v1/clients/c1/intake-link") {
+        return {
+          data: {
+            client_id: "c1",
+            full_name: "Murilo Macedo",
+            token: "ci1.a.b.c",
+            public_path: "/entrar/ci1.a.b.c",
+            public_url: "https://app.croniu.com.br/entrar/ci1.a.b.c",
+            wa_message_url: "https://wa.me/?text=x",
+          },
+        };
+      }
+      return { data: detail({ duplicate_alert: false, duplicate_client_id: null, client_id: "c1" }) };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await user.click(await screen.findByRole("button", { name: "Solicitar ajuste" }));
+    await user.type(screen.getByLabelText("Mensagem ao aluno"), "Indique os objetivos secundários.");
+    await user.click(screen.getByRole("button", { name: "Enviar pedido" }));
+
+    expect(await screen.findByText("Ajustes solicitados ao aluno.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Enviar pelo WhatsApp" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar link de correção" })).toBeInTheDocument();
+    // Never expose the raw token/URL directly in the interface.
+    expect(screen.queryByText("https://app.croniu.com.br/entrar/ci1.a.b.c")).not.toBeInTheDocument();
+  });
+});
+
+describe("attention items reflect actual answers, not just eligibility", () => {
+  afterEach(() => {
+    cleanup();
+    apiFetch.mockReset();
+  });
+
+  it("does not show the attention card when every attention-eligible question was answered negatively", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/duplicate-candidates")) return { data: [] };
+      return {
+        data: detail({
+          duplicate_alert: false,
+          duplicate_client_id: null,
+          anamnesis: {
+            id: "a1",
+            template_version_id: "tv",
+            answers_json: {},
+            requires_professional_attention: false,
+            created_at: "",
+            form_name: "Anamnese de atividade física",
+            summary: {
+              primary_goal: "Ganho de massa",
+              attention_count: 0,
+            },
+            questions_snapshot: [
+              {
+                id: "d_chest_pain",
+                label: "Sente dor no peito?",
+                section_title: "Triagem de prontidão para atividade",
+                answer: "nao",
+                answer_label: "Não",
+                attention: true,
+              },
+              {
+                id: "d_dizziness",
+                label: "Sente tontura?",
+                section_title: "Triagem de prontidão para atividade",
+                answer: "nao",
+                answer_label: "Não",
+                attention: true,
+              },
+            ],
+          },
+        }),
+      };
+    });
+    render(<IntakeSubmissionDetailPage />);
+    await screen.findByRole("heading", { name: "Murilo Macedo" });
+    expect(screen.queryByText("Atenção antes de iniciar")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Nenhum ponto de atenção identificado no formulário."),
+    ).toBeInTheDocument();
+  });
+});

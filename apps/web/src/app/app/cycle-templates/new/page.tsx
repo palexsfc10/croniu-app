@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
+import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { TextField } from "@/components/ui/text-field";
 import { useAuth } from "@/components/auth/auth-provider";
 import { apiFetch, type CycleTemplate, type Service } from "@/lib/api";
@@ -132,33 +133,20 @@ function NewCycleTemplateForm() {
           <legend className="text-sm font-medium">Frequência</legend>
           <div className="mt-2 flex flex-wrap gap-2">
             {FREQ_PRESETS.map((n) => (
-              <button
+              <SegmentedToggle
                 key={n}
-                type="button"
-                className={`min-h-10 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
-                  !customFreq && weeklyFrequency === String(n)
-                    ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                    : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                }`}
+                active={!customFreq && weeklyFrequency === String(n)}
                 onClick={() => {
                   setCustomFreq(false);
                   setWeeklyFrequency(String(n));
                 }}
               >
                 {n}× por semana
-              </button>
+              </SegmentedToggle>
             ))}
-            <button
-              type="button"
-              className={`min-h-10 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
-                customFreq
-                  ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                  : "border-[var(--color-border)] bg-[var(--color-surface)]"
-              }`}
-              onClick={() => setCustomFreq(true)}
-            >
+            <SegmentedToggle active={customFreq} onClick={() => setCustomFreq(true)}>
               Personalizar
-            </button>
+            </SegmentedToggle>
           </div>
           {customFreq ? (
             <div className="mt-2">
@@ -183,18 +171,9 @@ function NewCycleTemplateForm() {
                 ["custom", "Personalizado"],
               ] as const
             ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                className={`min-h-10 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
-                  periodPreset === key
-                    ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                    : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                }`}
-                onClick={() => applyPeriod(key)}
-              >
+              <SegmentedToggle key={key} active={periodPreset === key} onClick={() => applyPeriod(key)}>
                 {label}
-              </button>
+              </SegmentedToggle>
             ))}
           </div>
         </fieldset>

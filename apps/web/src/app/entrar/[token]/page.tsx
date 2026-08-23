@@ -108,13 +108,32 @@ export default function PublicIntakePage() {
       // the student from retyping what the professional already has. Only
       // fills fields still blank — never overwrites anything the visitor
       // may already be typing.
-      if (context.prefill_full_name || context.prefill_email || context.prefill_phone) {
+      if (
+        context.prefill_full_name ||
+        context.prefill_email ||
+        context.prefill_phone ||
+        context.prefill_birth_date ||
+        context.prefill_primary_goal ||
+        context.prefill_occupation ||
+        context.prefill_emergency_contact
+      ) {
         setIdentity((prev) => ({
           ...prev,
           full_name: prev.full_name || context.prefill_full_name || "",
           email: prev.email || context.prefill_email || "",
           phone: prev.phone || context.prefill_phone || "",
+          birth_date: prev.birth_date || context.prefill_birth_date || "",
+          primary_goal: prev.primary_goal || context.prefill_primary_goal || "",
+          occupation: prev.occupation || context.prefill_occupation || "",
+          emergency_contact: prev.emergency_contact || context.prefill_emergency_contact || "",
         }));
+      }
+      // Correcting a submission the professional sent back (see
+      // get_public_intake_context's correction_message /
+      // prefill_answers): the anamnesis itself is prefilled too, so the
+      // student only has to touch what actually needs fixing.
+      if (context.prefill_answers) {
+        setAnswers((prev) => ({ ...context.prefill_answers, ...prev }));
       }
     })();
     return () => {
@@ -298,6 +317,17 @@ export default function PublicIntakePage() {
 
         {ctx && step === "welcome" ? (
           <div className="space-y-5">
+            {ctx.correction_message ? (
+              <section
+                role="status"
+                className="rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-4"
+              >
+                <p className="text-sm text-[var(--color-ink)]">
+                  <span className="font-semibold">Ajuste solicitado pelo seu profissional:</span>{" "}
+                  {ctx.correction_message}
+                </p>
+              </section>
+            ) : null}
             <p className="text-base leading-relaxed text-[var(--color-ink)]">
               {ctx.welcome_message}
             </p>
@@ -308,7 +338,7 @@ export default function PublicIntakePage() {
               </p>
             </section>
             <Button fullWidth onClick={() => setStep("identificacao")}>
-              Começar
+              {ctx.correction_message ? "Continuar correção" : "Começar"}
             </Button>
           </div>
         ) : null}
@@ -537,7 +567,9 @@ export default function PublicIntakePage() {
           <div className="space-y-5">
             <section className="rounded-[var(--radius-lg)] border border-[var(--color-success)]/25 bg-[var(--color-success-subtle)] p-4">
               <h2 className="text-lg font-semibold text-[var(--color-ink)]">
-                Cadastro enviado
+                {ctx?.correction_message
+                  ? "Ajustes enviados. Seu profissional será avisado para revisar novamente."
+                  : "Cadastro enviado"}
               </h2>
               <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
                 Seu profissional vai analisar as informações. Guarde o link abaixo para

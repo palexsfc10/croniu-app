@@ -117,8 +117,24 @@ def test_signed_token_cannot_be_forged_or_reused_across_organizations(client, re
     assert client.get(f"/api/v1/public/intake/{forged}").status_code == 404
 
     # Tampering the signature of an otherwise-valid token must fail closed.
+    #
+    # The MAC is 32 bytes, base64url-encoded without padding: 10 full
+    # 4-char/3-byte groups followed by one partial 3-char group covering
+    # the last 2 bytes. In a full group every character carries all 6 of
+    # its bits as real data, so substituting it for any other character
+    # is guaranteed to change the decoded bytes. In the trailing partial
+    # group, though, the final character carries only 4 significant bits
+    # (the other 2 are padding discarded on decode) — so for some random
+    # MACs, swapping just that last character can round-trip to the exact
+    # same bytes, leaving the "tampered" token still valid and making
+    # this assertion intermittently (and wrongly) fail. Tampering the
+    # MAC's *first* character instead keeps it inside a full group, so
+    # the corruption is guaranteed regardless of which random token this
+    # run generates.
     valid = client.get("/api/v1/intake-link").json()["token"]
-    tampered = valid[:-1] + ("A" if valid[-1] != "A" else "B")
+    head, mac = valid.rsplit(".", 1)
+    tampered_char = "A" if mac[0] != "A" else "B"
+    tampered = f"{head}.{tampered_char}{mac[1:]}"
     assert client.get(f"/api/v1/public/intake/{tampered}").status_code == 404
 
 

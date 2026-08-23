@@ -65,6 +65,34 @@ function isYesNo(label: string): "yes" | "no" | "unknown" | null {
   return null;
 }
 
+// Mirrors backend app.services.anamnesis_snapshot._is_attention_answer
+// exactly: a question flagged `attention` in the schema is only a real
+// concern when the actual answer VALUE indicates risk — a "Não" to
+// "Você sente dor no peito?" is attention-eligible but not itself
+// attention-worthy. Without this check, every section that merely
+// *contains* attention-eligible questions counted as "N pontos para
+// revisar" regardless of what was answered (e.g. "4 pontos" for four
+// questions all answered "Não").
+const ATTENTION_ANSWER_VALUES = new Set(["sim", "yes", "prefiro_detalhar", "prefer_detail"]);
+
+export function isRealAttentionItem(item: AnamnesisSnapshotItem): boolean {
+  if (!item.attention) return false;
+  const raw = item.answer;
+  if (raw != null) {
+    const values = Array.isArray(raw) ? raw : [raw];
+    if (values.some((v) => ATTENTION_ANSWER_VALUES.has(String(v).trim().toLowerCase()))) {
+      return true;
+    }
+    // A raw value was present and didn't match — trust it (e.g. "não")
+    // over a stale/mismatched label rather than falling through.
+    if (values.some((v) => v != null && String(v).trim() !== "")) return false;
+  }
+  // Fallback for callers that only ever populated the humanized label
+  // (answer_label) without the raw value — same semantics via the label.
+  const label = (item.answer_label ?? formatAnamnesisAnswer(item)).trim().toLowerCase();
+  return /^(sim|yes)\b/.test(label) || label.includes("prefiro detalhar");
+}
+
 export function AnamnesisReader({
   formName,
   submittedAt,
@@ -91,14 +119,14 @@ export function AnamnesisReader({
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
       sections.map(([title, items], idx) => {
-        const hasAttention = items.some((q) => q.attention);
+        const hasAttention = items.some((q) => isRealAttentionItem(q));
         return [title, idx === 0 || hasAttention];
       }),
     ),
   );
 
   const attentionCount =
-    summary?.attention_count ?? questions.filter((q) => q.attention).length;
+    summary?.attention_count ?? questions.filter((q) => isRealAttentionItem(q)).length;
 
   return (
     <div className="space-y-3">
@@ -127,7 +155,7 @@ export function AnamnesisReader({
       {sections.map(([title, items]) => {
         const isOpen = open[title] ?? false;
         const panelId = `anamnesis-section-${title.replace(/\s+/g, "-").toLowerCase()}`;
-        const attentionInSection = items.filter((q) => q.attention).length;
+        const attentionInSection = items.filter((q) => isRealAttentionItem(q)).length;
         return (
           <section
             key={title}
@@ -168,7 +196,26 @@ export function AnamnesisReader({
                     <li key={item.id} className="space-y-1 text-sm">
                       <p className="font-medium text-[var(--color-ink)]">{item.label}</p>
                       {yn ? (
-                        <Badge tone={yn === "yes" ? "warning" : yn === "no" ? "success" : "neutral"}>
+                        <Badge
+                          tone={
+                            // Only color yes/no as a risk signal for
+                            // questions actually flagged attention-worthy —
+                            // the schema's convention is that "sim" is
+                            // always the concerning direction there (see
+                            // isRealAttentionItem / ATTENTION_ANSWER_VALUES
+                            // on the intake side). A plain positively-phrased
+                            // question ("pratica atividade física?") has no
+                            // risk direction at all, so "sim" must not read
+                            // as a warning.
+                            !item.attention
+                              ? "neutral"
+                              : yn === "yes"
+                                ? "warning"
+                                : yn === "no"
+                                  ? "success"
+                                  : "neutral"
+                          }
+                        >
                           {answer}
                         </Badge>
                       ) : item.type === "multi" || answer.includes(",") ? (

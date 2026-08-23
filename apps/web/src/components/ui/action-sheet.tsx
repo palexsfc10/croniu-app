@@ -41,7 +41,7 @@ export function ActionSheet({ open, onClose, labelledBy, children, className }: 
         aria-labelledby={labelledBy}
         className={
           className ??
-          "w-full max-w-sm rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-md)]"
+          "w-full max-w-sm rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-md"
         }
         onClick={(e) => e.stopPropagation()}
       >

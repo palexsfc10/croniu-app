@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -657,6 +657,36 @@ def get_public_intake_context(db: Session, *, raw_token: str) -> dict[str, Any]:
         result["prefill_full_name"] = bound_client.full_name
         result["prefill_email"] = bound_client.email
         result["prefill_phone"] = bound_client.phone
+        # If this contextual link is being used to correct a submission the
+        # professional sent back (see request_changes_submission /
+        # submit_intake's correcting_submission), prefill the previous
+        # answers too — the client only needs to touch what the message
+        # actually asks about, not redo the whole anamnesis. Never
+        # surfaced for a submission still pending_review/approved/
+        # rejected: this is specifically the "changes requested" resume
+        # path, not a way to read back an already-decided submission.
+        pending_correction = db.scalar(
+            select(ClientIntakeSubmission)
+            .where(
+                ClientIntakeSubmission.organization_id == org.id,
+                ClientIntakeSubmission.client_id == bound_client.id,
+                ClientIntakeSubmission.status == "changes_requested",
+            )
+            .order_by(ClientIntakeSubmission.submitted_at.desc().nullslast())
+        )
+        if pending_correction is not None:
+            result["correction_message"] = pending_correction.message_to_client
+            prior_answer = db.scalar(
+                select(ClientAnamnesisResponse).where(
+                    ClientAnamnesisResponse.submission_id == pending_correction.id
+                )
+            )
+            if prior_answer is not None:
+                result["prefill_answers"] = prior_answer.answers_json
+                result["prefill_birth_date"] = pending_correction.birth_date
+                result["prefill_primary_goal"] = pending_correction.primary_goal
+                result["prefill_occupation"] = pending_correction.occupation
+                result["prefill_emergency_contact"] = pending_correction.emergency_contact
     return result
 
 
@@ -799,6 +829,7 @@ def submit_intake(
     db.execute(select(Organization.id).where(Organization.id == org.id).with_for_update())
 
     is_new_client = False
+    correcting_submission: ClientIntakeSubmission | None = None
     if bound_client is not None:
         # Contextual invite (see create_client_intake_link): the token
         # cryptographically names this exact client, so there is no
@@ -825,6 +856,22 @@ def submit_intake(
             if conflict is None:
                 client.email = email
                 db.add(client)
+        # A contextual invite reused for a client that already has a
+        # submission awaiting correction (request_changes_submission) is a
+        # resubmission, not a new event: correct that same submission row
+        # in place instead of creating an orphaned second one sitting next
+        # to it in the queue. A "pending_review" submission is left alone
+        # here — that's still mid-review, not something this new POST
+        # should silently overwrite out from under the professional.
+        correcting_submission = db.scalar(
+            select(ClientIntakeSubmission)
+            .where(
+                ClientIntakeSubmission.organization_id == org.id,
+                ClientIntakeSubmission.client_id == client.id,
+                ClientIntakeSubmission.status == "changes_requested",
+            )
+            .order_by(ClientIntakeSubmission.submitted_at.desc().nullslast())
+        )
     else:
         candidates = _duplicate_candidates(
             db,
@@ -894,49 +941,124 @@ def submit_intake(
                 ) from exc
 
     now = datetime.now(UTC)
-    submission = ClientIntakeSubmission(
-        id=uuid.uuid4(),
-        organization_id=org.id,
-        intake_link_id=link.id,
-        client_id=client.id,
-        idempotency_key=key,
-        status="pending_review",
-        full_name=full_name,
-        phone_normalized=phone_normalized,
-        email=email,
-        birth_date=birth_date,
-        primary_goal=primary_goal,
-        occupation=(str(payload.get("occupation")).strip()[:200] if payload.get("occupation") else None),
-        emergency_contact=(
+    is_resubmission = correcting_submission is not None
+    if is_resubmission:
+        # Correct the same submission in place — see the
+        # correcting_submission lookup above. Keeps the same id (so any
+        # link the professional already opened to review it still points
+        # at the right record), moves it back to "pending_review" (the
+        # same status a first-time submission gets — a dedicated
+        # "resubmitted" value would need a migration, and this is exactly
+        # what it means), and clears the fields that described the now-
+        # fulfilled request so the review screen doesn't show a stale
+        # "ajustes solicitados" message next to the fresh answers.
+        submission = correcting_submission
+        submission.idempotency_key = key
+        submission.status = "pending_review"
+        submission.full_name = full_name
+        submission.phone_normalized = phone_normalized
+        submission.email = email
+        submission.birth_date = birth_date
+        submission.primary_goal = primary_goal
+        submission.occupation = (
+            str(payload.get("occupation")).strip()[:200] if payload.get("occupation") else None
+        )
+        submission.emergency_contact = (
             str(payload.get("emergency_contact")).strip()[:200]
             if payload.get("emergency_contact")
             else None
-        ),
-        initial_notes=(
+        )
+        submission.initial_notes = (
             str(payload.get("initial_notes")).strip() if payload.get("initial_notes") else None
-        ),
-        duplicate_client_id=dup.id if dup else None,
-        duplicate_alert=dup is not None,
-        archived_match=archived_match,
-        requires_professional_attention=attention,
-        submitted_at=now,
-    )
-    db.add(submission)
+        )
+        submission.requires_professional_attention = attention
+        submission.submitted_at = now
+        submission.reviewed_at = None
+        submission.reviewed_by_user_id = None
+        submission.message_to_client = None
+        db.add(submission)
+    else:
+        submission = ClientIntakeSubmission(
+            id=uuid.uuid4(),
+            organization_id=org.id,
+            intake_link_id=link.id,
+            client_id=client.id,
+            idempotency_key=key,
+            status="pending_review",
+            full_name=full_name,
+            phone_normalized=phone_normalized,
+            email=email,
+            birth_date=birth_date,
+            primary_goal=primary_goal,
+            occupation=(str(payload.get("occupation")).strip()[:200] if payload.get("occupation") else None),
+            emergency_contact=(
+                str(payload.get("emergency_contact")).strip()[:200]
+                if payload.get("emergency_contact")
+                else None
+            ),
+            initial_notes=(
+                str(payload.get("initial_notes")).strip() if payload.get("initial_notes") else None
+            ),
+            duplicate_client_id=dup.id if dup else None,
+            duplicate_alert=dup is not None,
+            archived_match=archived_match,
+            requires_professional_attention=attention,
+            submitted_at=now,
+        )
+        db.add(submission)
     db.flush()
 
     snapshot = snap_svc.build_questions_snapshot(answers=answers, schema=schema)
 
-    response = ClientAnamnesisResponse(
-        id=uuid.uuid4(),
-        organization_id=org.id,
-        client_id=client.id,
-        submission_id=submission.id,
-        template_version_id=uuid.UUID(str(template_version_id)),
-        answers_json=answers,
-        questions_snapshot=snapshot,
-        requires_professional_attention=attention,
-    )
-    db.add(response)
+    if is_resubmission:
+        # client_anamnesis_responses has a unique constraint on
+        # submission_id — update the existing row instead of inserting a
+        # second one for the same submission. The prior answers this
+        # replaces already round-tripped through the correction form's
+        # prefill (see get_public_intake_context's prefill_answers), so
+        # unedited fields are naturally preserved rather than lost.
+        existing_response = db.scalar(
+            select(ClientAnamnesisResponse).where(
+                ClientAnamnesisResponse.submission_id == submission.id
+            )
+        )
+        if existing_response is not None:
+            existing_response.answers_json = answers
+            existing_response.questions_snapshot = snapshot
+            existing_response.template_version_id = uuid.UUID(str(template_version_id))
+            existing_response.requires_professional_attention = attention
+            db.add(existing_response)
+        else:
+            db.add(
+                ClientAnamnesisResponse(
+                    id=uuid.uuid4(),
+                    organization_id=org.id,
+                    client_id=client.id,
+                    submission_id=submission.id,
+                    template_version_id=uuid.UUID(str(template_version_id)),
+                    answers_json=answers,
+                    questions_snapshot=snapshot,
+                    requires_professional_attention=attention,
+                )
+            )
+        # Consents are a point-in-time acceptance record, not a log —
+        # replace with the freshly (re-)accepted set for this submission.
+        db.execute(
+            delete(ConsentRecord).where(ConsentRecord.submission_id == submission.id)
+        )
+    else:
+        db.add(
+            ClientAnamnesisResponse(
+                id=uuid.uuid4(),
+                organization_id=org.id,
+                client_id=client.id,
+                submission_id=submission.id,
+                template_version_id=uuid.UUID(str(template_version_id)),
+                answers_json=answers,
+                questions_snapshot=snapshot,
+                requires_professional_attention=attention,
+            )
+        )
 
     link.submissions_count = int(link.submissions_count or 0) + 1
 
@@ -1550,13 +1672,30 @@ def request_changes_submission(
     row.message_to_client = message_to_client
     db.add(row)
     if row.client_id:
-        journey_svc.transition_journey(
-            db,
-            organization_id=organization_id,
-            client_id=row.client_id,
-            to_stage="pending_anamnesis",
-            next_action="update_anamnesis",
+        journey = journey_svc.get_journey(
+            db, organization_id=organization_id, client_id=row.client_id
         )
+        # Only force the stage down to "pending_anamnesis" for a client
+        # still on their first review pass. A reused client (contextual
+        # invite / confident match — see submit_intake) can already be
+        # "active" with real progress (cycles, evaluations) by the time a
+        # later submission needs changes; "active" has no
+        # "pending_anamnesis" edge in VALID_TRANSITIONS, so forcing it
+        # raised (see approve_submission for the same guard pattern),
+        # silently rolling back the whole request and leaving the
+        # professional's modal with no feedback. Surface the pending
+        # correction as next_action instead, without discarding progress.
+        if journey is not None and journey.stage == "pending_review":
+            journey_svc.transition_journey(
+                db,
+                organization_id=organization_id,
+                client_id=row.client_id,
+                to_stage="pending_anamnesis",
+                next_action="update_anamnesis",
+            )
+        elif journey is not None:
+            journey.next_action = "update_anamnesis"
+            db.add(journey)
     db.commit()
     db.refresh(row)
     return row
@@ -1594,13 +1733,25 @@ def reject_submission(
     row.message_to_client = message_to_client
     db.add(row)
     if row.client_id:
-        journey_svc.transition_journey(
-            db,
-            organization_id=organization_id,
-            client_id=row.client_id,
-            to_stage="rejected",
-            next_action=None,
+        journey = journey_svc.get_journey(
+            db, organization_id=organization_id, client_id=row.client_id
         )
+        # Same guard as request_changes_submission / approve_submission:
+        # only force the journey itself to "rejected" when this is still
+        # the client's first review pass. A reused client already "active"
+        # with real progress must not have that progress wiped out because
+        # a later, unrelated submission (e.g. an ambiguous duplicate that
+        # was never linked) gets rejected — VALID_TRANSITIONS has no
+        # "active" -> "rejected" edge either way, so forcing it would
+        # raise and silently roll back the whole rejection.
+        if journey is not None and journey.stage == "pending_review":
+            journey_svc.transition_journey(
+                db,
+                organization_id=organization_id,
+                client_id=row.client_id,
+                to_stage="rejected",
+                next_action=None,
+            )
     db.commit()
     db.refresh(row)
     logger.info("intake_rejected org=%s submission=%s", organization_id, submission_id)
@@ -1681,6 +1832,22 @@ def get_portal_intake_status(db: Session, *, portal_token: str) -> dict[str, Any
                 "published_at": ver.published_at,
             }
 
+    # A signed "ci1." contextual token (see create_client_intake_link) is
+    # deterministic from (link_id, client_id) alone — no new secret, and
+    # exactly the same mechanism a professional could mint anyway for this
+    # client via the authenticated endpoint. Only offered when there is
+    # something to correct: the client re-opening this same portal after
+    # a submission is approved/rejected must not see a live "corrigir
+    # cadastro" link that would just start ANOTHER round.
+    correction_path: str | None = None
+    correction_url: str | None = None
+    if submission is not None and submission.status == "changes_requested":
+        active_link = _active_link(db, access.organization_id)
+        if active_link is not None:
+            signed = mint_client_intake_link_token(active_link.id, access.client_id)
+            correction_path = _public_intake_path(signed)
+            correction_url = _public_intake_url(signed)
+
     db.commit()
 
     stage = journey.stage if journey else "active"
@@ -1698,6 +1865,8 @@ def get_portal_intake_status(db: Session, *, portal_token: str) -> dict[str, Any
         if (journey and journey.requires_professional_attention)
         else None,
         "protocol": published_protocol,
+        "correction_path": correction_path,
+        "correction_url": correction_url,
     }
 
 

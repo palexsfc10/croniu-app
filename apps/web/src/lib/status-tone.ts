@@ -41,3 +41,11 @@ export function appointmentStatusTone(status: string): BadgeTone {
   if (status === "scheduled") return "info";
   return "neutral";
 }
+
+/** Matches PROTOCOL_STATUS in status-labels.ts (plans and evaluations share it). */
+export function protocolStatusTone(status: string | undefined): BadgeTone {
+  if (status === "published") return "info";
+  if (status === "draft") return "neutral";
+  if (status === "archived" || status === "superseded") return "neutral";
+  return "neutral";
+}
