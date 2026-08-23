@@ -337,7 +337,7 @@ export default function AgendaPage() {
           <li key={item.id}>
             <Link
               href={`/app/appointments/${item.id}`}
-              className="card-rail card-rail-primary flex items-start gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-[var(--shadow-sm)] transition-all hover:-translate-y-px hover:shadow-[var(--shadow-md)]"
+              className="card-rail card-rail-primary flex items-start gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm transition-all hover:-translate-y-px hover:shadow-md"
             >
               <div className="flex w-14 shrink-0 flex-col pt-0.5 text-right">
                 <time className="text-sm font-semibold tabular-nums text-[var(--color-ink)]">

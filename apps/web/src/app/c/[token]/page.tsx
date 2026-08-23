@@ -250,7 +250,7 @@ export default function PublicMyCyclePage() {
           // over "sem ciclo ainda" / the cycle card itself, on any device,
           // an old portal link, or a page opened before the request was
           // made (the effect below revalidates on focus/return).
-          <section className="mb-5 space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-5 shadow-[var(--shadow-sm)]">
+          <section className="mb-5 space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-5 shadow-sm">
             <div className="flex flex-wrap items-center gap-2">
               <IconAlertCircle className="h-5 w-5 shrink-0 text-[var(--color-warning)]" aria-hidden />
               <h2 className="text-base font-semibold text-[var(--color-ink)]">
@@ -279,7 +279,7 @@ export default function PublicMyCyclePage() {
         (intakeStatus.journey_stage === "pending_review" ||
           intakeStatus.submission_status === "pending_review" ||
           !data) ? (
-          <section className="mb-5 space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-sm)]">
+          <section className="mb-5 space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
             <div className="flex flex-wrap items-center gap-2">
               <IconClipboardList className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)]" aria-hidden />
               <h2 className="text-base font-semibold text-[var(--color-ink)]">Seu cadastro</h2>
@@ -316,7 +316,7 @@ export default function PublicMyCyclePage() {
               <>
                 <section
                   className={[
-                    "space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-sm)]",
+                    "space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm",
                     data.cycle.status_summary === "encerrando"
                       ? "card-rail card-rail-warning"
                       : data.cycle.status_summary === "vigente"
@@ -398,7 +398,7 @@ export default function PublicMyCyclePage() {
                 </section>
 
                 {data.can_request_renewal && !data.cycle.renewal_request_status ? (
-                  <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-sm)]">
+                  <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                     <h2 className="text-lg font-semibold text-[var(--color-ink)]">
                       Seu ciclo está chegando ao fim
                     </h2>

@@ -153,7 +153,7 @@ function ProfileMenu({
           id={menuId}
           role="menu"
           aria-label="Conta"
-          className="absolute right-0 z-30 mt-2 w-[min(17.5rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-[var(--shadow-md)]"
+          className="absolute right-0 z-30 mt-2 w-[min(17.5rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-md"
         >
           <div className="border-b border-[var(--color-border)] px-3 py-2.5">
             <p className="truncate text-sm font-semibold text-[var(--color-ink)]">{fullName}</p>

@@ -42,7 +42,7 @@ function PriorityCard({ action }: { action: PriorityAction }) {
   return (
     <section
       aria-label="Ação prioritária"
-      className="card-rail card-rail-primary relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-primary)]/15 bg-[var(--color-primary-subtle)]/40 px-5 py-4 shadow-[var(--shadow-sm)]"
+      className="card-rail card-rail-primary relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-primary)]/15 bg-[var(--color-primary-subtle)]/40 px-5 py-4 shadow-sm"
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
         Prioridade de hoje
@@ -236,7 +236,7 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
         Precisa de atenção · {items.length}
       </h2>
-      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-[var(--shadow-sm)]">
+      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
         {items.map((item) => {
           if (item.kind === "appointment_awaiting_confirmation") {
             return <AwaitingConfirmationSlot key={`${item.kind}-${item.entity_id}`} item={item} />;
@@ -349,7 +349,7 @@ function TodayActions() {
         {individual.map((item) => (
           <li
             key={item.id}
-            className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)]"
+            className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm transition-shadow hover:shadow-md"
           >
             <Badge tone={item.overdue ? "danger" : "neutral"} className="mb-1 uppercase tracking-wide">
               {item.overdue ? "Atrasada" : "Hoje"}
