@@ -1,9 +1,25 @@
 "use client";
 
+import { Suspense } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { EvaluationEditor } from "@/components/app/evaluation-editor";
-import { useParams } from "next/navigation";
+
+function NewEvaluationPageInner() {
+  const params = useParams<{ clientId: string }>();
+  const searchParams = useSearchParams();
+  return (
+    <EvaluationEditor
+      clientId={params.clientId}
+      returnTo={searchParams.get("returnTo") || undefined}
+      occurrenceId={searchParams.get("occurrenceId") || undefined}
+    />
+  );
+}
 
 export default function NewEvaluationPage() {
-  const params = useParams<{ clientId: string }>();
-  return <EvaluationEditor clientId={params.clientId} />;
+  return (
+    <Suspense fallback={null}>
+      <NewEvaluationPageInner />
+    </Suspense>
+  );
 }
