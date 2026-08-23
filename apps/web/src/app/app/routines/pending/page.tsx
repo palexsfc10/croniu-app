@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch, formatDateBR } from "@/lib/api";
 import { safeReturnTo } from "@/lib/nomenclature";
 import { BackLink } from "@/components/app/back-link";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 type BoardItem = {
@@ -153,13 +154,17 @@ export default function RoutinesPendingPage() {
                 className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
                 open
               >
-                <summary className="cursor-pointer min-h-11">
+                <summary className="flex flex-wrap items-center gap-x-2 gap-y-1 cursor-pointer min-h-11">
                   <span className="font-semibold">{group.label}</span>
-                  <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
+                  <span className="text-sm text-[var(--color-ink-muted)]">
                     {occ} ocorrência{occ === 1 ? "" : "s"} · {clients} cliente
                     {clients === 1 ? "" : "s"}
-                    {group.overdue_count ? ` · ${group.overdue_count} atrasado(s)` : ""}
                   </span>
+                  {group.overdue_count ? (
+                    <Badge tone="danger">
+                      {group.overdue_count} atrasado{group.overdue_count === 1 ? "" : "s"}
+                    </Badge>
+                  ) : null}
                 </summary>
                 <ul className="mt-2 space-y-3">
                   {groupByClient(group.items).map(({ next, rest }) => (
