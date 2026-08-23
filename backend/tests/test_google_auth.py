@@ -203,14 +203,17 @@ def test_google_token_expired_or_bad_signature_rejected(google_client, monkeypat
 
 
 def test_google_wrong_audience_rejected(google_client, monkeypatch):
-    """Confirms our code actually forwards settings.google_oauth_client_id as
-    the audience — a fake token minted for a different client ID must fail,
-    the same way google-auth's own verify_oauth2_token would reject it."""
+    """Confirms our code forwards settings.google_oauth_client_id as the
+    `audience` argument to the google-auth library (the real library
+    compares this against the token's internal `aud` claim and raises
+    ValueError on mismatch — simulated here), and that the rejection is
+    translated to a generic 401."""
+
+    received_audience: dict[str, str] = {}
 
     def fake_verify_oauth2_token(token, request, audience):  # noqa: ARG001
-        if audience != GOOGLE_CLIENT_ID:
-            raise ValueError("Wrong audience")
-        raise AssertionError("test bug: audience should not have matched")
+        received_audience["value"] = audience
+        raise ValueError("Token has wrong audience")
 
     import google.oauth2.id_token as google_id_token
 
@@ -220,6 +223,7 @@ def test_google_wrong_audience_rejected(google_client, monkeypatch):
     )
     assert response.status_code == 401
     assert response.json()["code"] == "invalid_google_token"
+    assert received_audience["value"] == GOOGLE_CLIENT_ID
 
 
 def test_google_email_verification_required_soft_gates_new_user(
