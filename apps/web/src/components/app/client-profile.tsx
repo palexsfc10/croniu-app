@@ -328,14 +328,14 @@ export function ClientProfile({ clientId }: Props) {
           <div className="absolute right-0 z-20 mt-1 min-w-[14rem] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-sm">
             <Link
               href={`/app/clients/${clientId}?tab=dados`}
-              className="block min-h-11 rounded px-2 py-2 text-sm"
+              className="block min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
             >
               Editar dados
             </Link>
             {access?.has_active_link && access.public_url ? (
               <button
                 type="button"
-                className="block w-full min-h-11 rounded px-2 py-2 text-left text-sm"
+                className="block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
                 onClick={() => void copyMenuAccess()}
               >
                 Copiar acesso
@@ -343,7 +343,7 @@ export function ClientProfile({ clientId }: Props) {
             ) : (
               <button
                 type="button"
-                className="block w-full min-h-11 rounded px-2 py-2 text-left text-sm"
+                className="block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
                 onClick={() => {
                   setTab("dados");
                   setMenuOpen(false);
@@ -354,7 +354,7 @@ export function ClientProfile({ clientId }: Props) {
             )}
             <button
               type="button"
-              className="mt-1 block w-full min-h-11 rounded px-2 py-2 text-left text-sm text-[var(--color-danger)]"
+              className="mt-1 block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger-subtle)] focus-visible:bg-[var(--color-danger-subtle)] disabled:pointer-events-none disabled:opacity-55"
               disabled={busy}
               onClick={() => void archive()}
             >

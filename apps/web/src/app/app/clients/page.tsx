@@ -288,10 +288,11 @@ export default function ClientsPage() {
           <button
             key={value}
             type="button"
-            className={`min-h-11 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
+            aria-pressed={statusFilter === value}
+            className={`min-h-11 rounded-[var(--radius-md)] border px-3 text-sm font-semibold transition-colors ${
               statusFilter === value
                 ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle)] text-[var(--color-primary)]"
-                : "border-[var(--color-border)] text-[var(--color-ink-muted)]"
+                : "border-[var(--color-border)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)]"
             }`}
             onClick={() => setStatusFilter(value)}
           >

@@ -4,6 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
+import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { TextField } from "@/components/ui/text-field";
 import { useAuth } from "@/components/auth/auth-provider";
 import { apiFetch, reaisToCents, type CycleTemplate, type Service } from "@/lib/api";
@@ -107,37 +108,24 @@ function NewServiceForm() {
         <fieldset>
           <legend className="text-sm font-medium">Duração</legend>
           <div className="mt-2 flex flex-wrap gap-2">
-            {DURATION_PRESETS.map((p) => {
-              const active = !customDuration && minutes === p.minutes;
-              return (
-                <button
-                  key={p.minutes}
-                  type="button"
-                  className={`min-h-10 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
-                    active
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                      : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                  }`}
-                  onClick={() => {
-                    setCustomDuration(false);
-                    setMinutes(p.minutes);
-                  }}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className={`min-h-10 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
-                customDuration || !presetActive
-                  ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                  : "border-[var(--color-border)] bg-[var(--color-surface)]"
-              }`}
+            {DURATION_PRESETS.map((p) => (
+              <SegmentedToggle
+                key={p.minutes}
+                active={!customDuration && minutes === p.minutes}
+                onClick={() => {
+                  setCustomDuration(false);
+                  setMinutes(p.minutes);
+                }}
+              >
+                {p.label}
+              </SegmentedToggle>
+            ))}
+            <SegmentedToggle
+              active={customDuration || !presetActive}
               onClick={() => setCustomDuration(true)}
             >
               Personalizar
-            </button>
+            </SegmentedToggle>
           </div>
           {customDuration ? (
             <div className="mt-2">

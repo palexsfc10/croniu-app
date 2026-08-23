@@ -13,7 +13,16 @@ import { EvolutionEntry } from "@/components/app/evolution-entry";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TextField } from "@/components/ui/text-field";
-import { IconWhatsApp } from "@/components/ui/icons";
+import {
+  IconActivity,
+  IconAlertCircle,
+  IconBanknote,
+  IconCalendarDays,
+  IconClipboardList,
+  IconLayers,
+  IconTarget,
+  IconWhatsApp,
+} from "@/components/ui/icons";
 
 const STATUS_LABEL: Record<string, string> = {
   vigente: "Ciclo em andamento",
@@ -243,6 +252,7 @@ export default function PublicMyCyclePage() {
           // made (the effect below revalidates on focus/return).
           <section className="mb-5 space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-warning)]/30 bg-[var(--color-warning-subtle)] p-4">
             <div className="flex flex-wrap items-center gap-2">
+              <IconAlertCircle className="h-5 w-5 shrink-0 text-[var(--color-warning)]" aria-hidden />
               <h2 className="text-base font-semibold text-[var(--color-ink)]">
                 Seu profissional solicitou um ajuste
               </h2>
@@ -271,6 +281,7 @@ export default function PublicMyCyclePage() {
           !data) ? (
           <section className="mb-5 space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
             <div className="flex flex-wrap items-center gap-2">
+              <IconClipboardList className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)]" aria-hidden />
               <h2 className="text-base font-semibold text-[var(--color-ink)]">Seu cadastro</h2>
               <Badge tone="warning">{intakeStatus.journey_label}</Badge>
             </div>
@@ -314,6 +325,7 @@ export default function PublicMyCyclePage() {
                   ].join(" ")}
                 >
                   <div className="flex flex-wrap items-center gap-2">
+                    <IconCalendarDays className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)]" aria-hidden />
                     <h2 className="text-lg font-semibold text-[var(--color-ink)]">
                       {STATUS_LABEL[data.cycle.status_summary] ?? data.cycle.status_summary}
                     </h2>
@@ -334,7 +346,10 @@ export default function PublicMyCyclePage() {
                 </section>
 
                 <section className="space-y-2">
-                  <p className="text-sm text-[var(--color-ink-muted)]">Aulas</p>
+                  <p className="flex items-center gap-1.5 text-sm text-[var(--color-ink-muted)]">
+                    <IconActivity className="h-4 w-4 shrink-0" aria-hidden />
+                    Aulas
+                  </p>
                   <p className="text-base font-semibold">
                     {Math.max(
                       0,
@@ -366,7 +381,10 @@ export default function PublicMyCyclePage() {
                 </section>
 
                 <section className="space-y-2">
-                  <p className="text-sm text-[var(--color-ink-muted)]">Valor e pagamento</p>
+                  <p className="flex items-center gap-1.5 text-sm text-[var(--color-ink-muted)]">
+                    <IconBanknote className="h-4 w-4 shrink-0" aria-hidden />
+                    Valor e pagamento
+                  </p>
                   <p className="text-xl font-semibold">{formatBRL(data.cycle.value_cents)}</p>
                   <p className="flex flex-wrap items-center gap-2 text-sm">
                     <Badge tone={PAY_TONE[data.cycle.payment_status] ?? "neutral"}>
@@ -590,7 +608,8 @@ export default function PublicMyCyclePage() {
             {data.plan ? (
               <section aria-label={data.plan.section_title} className="space-y-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--color-ink)]">
+                  <h2 className="flex items-center gap-1.5 text-lg font-semibold text-[var(--color-ink)]">
+                    <IconLayers className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)]" aria-hidden />
                     {data.plan.section_title}
                   </h2>
                   <p className="mt-0.5 text-sm font-medium text-[var(--color-ink)]">
@@ -631,7 +650,10 @@ export default function PublicMyCyclePage() {
 
             <section aria-label="Sua evolução" className="space-y-4">
               <div>
-                <h2 className="text-lg font-semibold text-[var(--color-ink)]">Sua evolução</h2>
+                <h2 className="flex items-center gap-1.5 text-lg font-semibold text-[var(--color-ink)]">
+                  <IconTarget className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)]" aria-hidden />
+                  Sua evolução
+                </h2>
                 <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
                   Acompanhamento compartilhado pelo seu profissional
                 </p>

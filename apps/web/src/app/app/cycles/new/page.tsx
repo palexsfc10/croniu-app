@@ -18,6 +18,7 @@ import {
   type Service,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { TextField } from "@/components/ui/text-field";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
@@ -417,24 +418,16 @@ function NewIntelligentCycleForm() {
               {template ? ` (${template.weekly_frequency})` : ""}
             </legend>
             <div className="mt-2 flex flex-wrap gap-2">
-              {WEEKDAY_OPTIONS.map((d) => {
-                const active = weekdays.includes(d.value);
-                return (
-                  <button
-                    key={d.value}
-                    type="button"
-                    aria-pressed={active}
-                    className={`min-h-11 min-w-11 rounded-[var(--radius-md)] border px-3 text-sm font-semibold ${
-                      active
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                        : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)]"
-                    }`}
-                    onClick={() => toggleDay(d.value)}
-                  >
-                    {d.label}
-                  </button>
-                );
-              })}
+              {WEEKDAY_OPTIONS.map((d) => (
+                <SegmentedToggle
+                  key={d.value}
+                  square
+                  active={weekdays.includes(d.value)}
+                  onClick={() => toggleDay(d.value)}
+                >
+                  {d.label}
+                </SegmentedToggle>
+              ))}
             </div>
           </fieldset>
           <div className="flex gap-2">

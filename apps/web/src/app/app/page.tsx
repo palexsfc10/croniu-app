@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react";
 import { apiFetch, type HomeSummary } from "@/lib/api";
 import { TodayBoard } from "@/components/app/today-board";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 
 export default function AppHomePage() {
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -17,6 +20,7 @@ export default function AppHomePage() {
       if (result.error) {
         setError(result.error.message);
       } else {
+        setError(null);
         setSummary(result.data ?? null);
       }
       setLoading(false);
@@ -25,7 +29,7 @@ export default function AppHomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   if (loading) {
     return <p className="text-sm text-[var(--color-ink-muted)]">Carregando painel…</p>;
@@ -33,14 +37,44 @@ export default function AppHomePage() {
 
   if (error) {
     return (
-      <p role="alert" className="text-sm text-[var(--color-danger)]">
-        {error}
-      </p>
+      <EmptyState
+        title="Não foi possível carregar seu painel"
+        description={error}
+        action={
+          <Button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              setReloadKey((k) => k + 1);
+            }}
+          >
+            Tentar novamente
+          </Button>
+        }
+      />
     );
   }
 
   if (!summary) {
-    return null;
+    // Genuinely unexpected (a healthy response with no body) — a blank
+    // screen here would look like the app crashed, with no way forward.
+    return (
+      <EmptyState
+        title="Painel indisponível no momento"
+        description="Não recebemos os dados do seu painel. Tente novamente em instantes."
+        action={
+          <Button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              setReloadKey((k) => k + 1);
+            }}
+          >
+            Tentar novamente
+          </Button>
+        }
+      />
+    );
   }
 
   return <TodayBoard summary={summary} />;
