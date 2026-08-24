@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch, type OverviewMetrics } from "@/lib/api";
 import { presentCroniuEnvironment } from "@/lib/environment";
+import { Card } from "@/components/ui/card";
+import { SkeletonMetricGrid } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 
 function MetricCard({
   label,
@@ -14,16 +17,16 @@ function MetricCard({
   value: number | string;
   tone?: "warn" | "danger" | "ok";
 }) {
-  const toneClass =
+  const railClass =
     tone === "danger"
-      ? "border-[var(--color-danger)]/40"
+      ? "border-[var(--color-danger)]/45"
       : tone === "warn"
-        ? "border-amber-500/40"
+        ? "border-[var(--color-warning)]/45"
         : "border-[var(--color-border)]";
   return (
-    <div className={`rounded-[var(--radius-lg)] border bg-[var(--color-surface)] p-3 ${toneClass}`}>
-      <p className="text-[11px] uppercase tracking-wide text-[var(--color-ink-muted)]">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+    <div className={`rounded-[var(--radius-lg)] border bg-[var(--color-surface)] p-3 ${railClass}`}>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-muted)]">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--color-ink)]">{value}</p>
     </div>
   );
 }
@@ -48,29 +51,36 @@ export default function DashboardPage() {
     };
   }, []);
 
-  if (loading) return <p className="text-sm text-[var(--color-ink-muted)]">Carregando métricas…</p>;
   if (error) {
     return (
-      <div className="space-y-2">
+      <Card rail="danger" className="space-y-2">
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}
         </p>
-        <button
-          type="button"
-          className="text-sm font-semibold text-[var(--color-primary)]"
-          onClick={() => window.location.reload()}
-        >
+        <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
           Tentar novamente
-        </button>
+        </Button>
+      </Card>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="h-display text-3xl">Visão operacional</h1>
+        </div>
+        <SkeletonMetricGrid count={11} />
       </div>
     );
   }
+
   if (!data) {
     return <p className="text-sm text-[var(--color-ink-muted)]">Sem dados disponíveis.</p>;
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="h-display text-3xl">Visão operacional</h1>
@@ -80,10 +90,10 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
-          <Link className="font-semibold text-[var(--color-primary)]" href="/cycle-agenda">
+          <Link className="font-semibold text-[var(--color-primary)] hover:underline" href="/cycle-agenda">
             Integridade ciclo–agenda
           </Link>
-          <Link className="font-semibold text-[var(--color-primary)]" href="/errors">
+          <Link className="font-semibold text-[var(--color-primary)] hover:underline" href="/errors">
             Erros
           </Link>
         </div>
