@@ -126,3 +126,107 @@ describe("TodayBoard — overdue vs. today never share the same visual treatment
     expect(restBadge).toHaveClass("badge-danger");
   });
 });
+
+describe("TodayBoard — evaluation card opens the form directly", () => {
+  it("shows the correct student and a single link straight to that client's evaluation form", async () => {
+    board.items = [
+      {
+        id: "occ-eval-1",
+        name: "Realizar avaliação",
+        type_label: "Revisar avaliação",
+        client_name: "Fernando",
+        client_id: "client-fernando",
+        overdue: true,
+        due_on: "2026-08-21",
+        occurrence_type: "evaluation_review",
+      },
+    ];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    const link = await screen.findByRole("link", { name: /Realizar avaliação/i });
+    expect(link).toHaveTextContent("Fernando");
+    expect(link).toHaveAttribute(
+      "href",
+      "/app/clients/client-fernando/evaluations/new?returnTo=%2Fapp&occurrenceId=occ-eval-1",
+    );
+
+    // Whole card is exactly one <a> — no nested/duplicate link that could
+    // double-fire navigation on a single tap.
+    const container = link.closest("li");
+    expect(container?.querySelectorAll("a")).toHaveLength(1);
+
+    // Never routed through the client profile or "Preparar acompanhamento".
+    expect(screen.queryByText("Abrir cliente")).not.toBeInTheDocument();
+  });
+
+  it("uses a danger badge for an overdue evaluation and never green", async () => {
+    board.items = [
+      {
+        id: "occ-eval-overdue",
+        name: "Realizar avaliação",
+        type_label: "Revisar avaliação",
+        client_name: "Marcos",
+        client_id: "client-marcos",
+        overdue: true,
+        due_on: "2026-08-20",
+        occurrence_type: "evaluation_review",
+      },
+    ];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    const badge = await screen.findByText("Atrasada");
+    expect(badge).toHaveClass("badge-danger");
+    expect(badge).not.toHaveClass("badge-success");
+    expect(screen.getByText(/venceu em/i)).toBeInTheDocument();
+  });
+
+  it("uses a warning badge (not danger) for an evaluation due today", async () => {
+    board.items = [
+      {
+        id: "occ-eval-today",
+        name: "Realizar avaliação",
+        type_label: "Revisar avaliação",
+        client_name: "Ana",
+        client_id: "client-ana",
+        overdue: false,
+        due_on: "2026-08-22",
+        occurrence_type: "evaluation_review",
+      },
+    ];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    const badge = await screen.findByText("Hoje");
+    expect(badge).toHaveClass("badge-warning");
+    expect(badge).not.toHaveClass("badge-danger");
+    expect(screen.getByText(/vence hoje/i)).toBeInTheDocument();
+  });
+
+  it("leaves other occurrence types on their existing destination (Abrir cliente)", async () => {
+    board.items = [
+      {
+        id: "occ-plan",
+        name: "Revisar plano",
+        type_label: "Revisão",
+        client_name: "Cliente Plano",
+        client_id: "client-plano",
+        overdue: false,
+        due_on: "2026-08-22",
+        occurrence_type: "plan_review",
+      },
+    ];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    const link = await screen.findByRole("link", { name: "Abrir cliente" });
+    expect(link).toHaveAttribute("href", "/app/clients/client-plano");
+  });
+
+  it("shows a success confirmation once, reading a sessionStorage flag set by the evaluation form", async () => {
+    sessionStorage.setItem("croniu.evaluation-saved-celebrate", "1");
+    board.items = [];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    expect(await screen.findByText("Avaliação registrada com sucesso")).toBeInTheDocument();
+    // Consumed — a fresh render (e.g. next visit) must not show it again.
+    expect(sessionStorage.getItem("croniu.evaluation-saved-celebrate")).toBeNull();
+  });
+});

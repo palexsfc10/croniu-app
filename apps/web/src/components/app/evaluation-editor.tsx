@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { evaluationGuidance } from "@/lib/form-guidance";
+import { EVALUATION_SAVED_KEY } from "@/lib/evaluation-flow";
 import { SuggestionChips } from "@/components/ui/suggestion-chips";
 import { FormSectionIntro } from "@/components/ui/form-section-intro";
 import { FieldHint } from "@/components/ui/field-hint";
@@ -94,9 +95,27 @@ type Props = {
   clientId: string;
   evaluationId?: string;
   initial?: ClientEvaluation | null;
+  /** Present only when opened from a directed, single-purpose entry point
+   * (e.g. the "Realizar avaliação" card on /app) — publishing then redirects
+   * here instead of staying on the editor, matching the existing intent of
+   * the `returnTo` query param already built into the accompaniment and
+   * client-profile "Registrar agora" links. Absent for the normal
+   * create/edit workflow, which keeps its current no-navigation behavior. */
+  returnTo?: string;
+  /** Routine pendency (OperationalOccurrence) this evaluation fulfills, if
+   * any — completed via the same /routines/occurrences/{id}/decide endpoint
+   * the routines board itself already uses, right before the returnTo
+   * redirect. */
+  occurrenceId?: string;
 };
 
-export function EvaluationEditor({ clientId, evaluationId, initial = null }: Props) {
+export function EvaluationEditor({
+  clientId,
+  evaluationId,
+  initial = null,
+  returnTo,
+  occurrenceId,
+}: Props) {
   const router = useRouter();
   const { me } = useAuth();
   const [form, setForm] = useState<FormState>(
@@ -200,13 +219,33 @@ export function EvaluationEditor({ clientId, evaluationId, initial = null }: Pro
       method: "POST",
       body: "{}",
     });
-    setBusy(false);
-    setConfirmPublish(false);
     if (result.error) {
+      setBusy(false);
+      setConfirmPublish(false);
       setError(result.error.message);
       return;
     }
     setStatus(result.data!.status);
+    if (!returnTo) {
+      setBusy(false);
+      setConfirmPublish(false);
+      return;
+    }
+    // Best-effort: the evaluation is already published either way. A failed
+    // decide() just leaves the routine pendency open — visible again next
+    // time, not a data-loss risk — so it must never block the return trip.
+    if (occurrenceId) {
+      await apiFetch(`/api/v1/routines/occurrences/${occurrenceId}/decide`, {
+        method: "POST",
+        body: JSON.stringify({ status: "completed" }),
+      });
+    }
+    try {
+      sessionStorage.setItem(EVALUATION_SAVED_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    router.replace(returnTo);
   }
 
   async function unpublish() {

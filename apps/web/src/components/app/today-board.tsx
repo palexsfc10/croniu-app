@@ -11,6 +11,8 @@ import {
   IconAlertCircle,
   IconBanknote,
   IconCalendarDays,
+  IconChevronRight,
+  IconClipboardList,
   IconRefreshCw,
 } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -27,6 +29,7 @@ import {
   SETUP_CELEBRATE_KEY,
   subscribeInitialSetupCollapse,
 } from "@/lib/setup-copy";
+import { EVALUATION_SAVED_KEY } from "@/lib/evaluation-flow";
 
 type Props = {
   summary: HomeSummary;
@@ -319,6 +322,51 @@ function RestSummaryRow({ items }: { items: TodayActionItem[] }) {
   );
 }
 
+/**
+ * "Realizar avaliação" opens the evaluation form directly — the occurrence
+ * already tells us exactly which client and which pendency, so there is no
+ * reason to route through the client profile or "Preparar acompanhamento"
+ * first. Whole card is one link (not a link nested inside another) so a
+ * single tap can never double-fire navigation.
+ */
+function EvaluationActionCard({ item }: { item: TodayActionItem }) {
+  const dueLabel = item.overdue
+    ? `venceu em ${formatDateBR(item.due_on)}`
+    : `vence hoje · ${formatDateBR(item.due_on)}`;
+  const href = `/app/clients/${item.client_id}/evaluations/new?returnTo=${encodeURIComponent("/app")}&occurrenceId=${item.id}`;
+
+  return (
+    <Link
+      href={href}
+      className={[
+        "card-rail flex min-h-11 items-start gap-3 rounded-[var(--radius-lg)] border bg-[var(--color-surface)] px-4 py-3.5 shadow-sm transition-shadow hover:shadow-md",
+        item.overdue ? "card-rail-danger border-[var(--color-border)]" : "card-rail-warning border-[var(--color-border)]",
+      ].join(" ")}
+    >
+      <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-primary-subtle)] text-[var(--color-primary)]">
+        <IconClipboardList className="h-4 w-4" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="font-semibold text-[var(--color-ink)]">
+            {item.name || "Realizar avaliação"}
+          </span>
+          <Badge tone={item.overdue ? "danger" : "warning"} className="uppercase tracking-wide">
+            {item.overdue ? "Atrasada" : "Hoje"}
+          </Badge>
+        </span>
+        <span className="mt-0.5 block text-sm text-[var(--color-ink-muted)]">
+          {item.client_name || "Cliente"} · {dueLabel}
+        </span>
+        <span className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-[var(--color-link)]">
+          Registrar avaliação
+          <IconChevronRight className="h-3.5 w-3.5" aria-hidden />
+        </span>
+      </span>
+    </Link>
+  );
+}
+
 function TodayActions() {
   const [items, setItems] = useState<TodayActionItem[]>([]);
   useEffect(() => {
@@ -346,26 +394,35 @@ function TodayActions() {
         Suas ações de hoje
       </h2>
       <ul className="space-y-2">
-        {individual.map((item) => (
-          <li
-            key={item.id}
-            className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm transition-shadow hover:shadow-md"
-          >
-            <Badge tone={item.overdue ? "danger" : "neutral"} className="mb-1 uppercase tracking-wide">
-              {item.overdue ? "Atrasada" : "Hoje"}
-            </Badge>
-            <p className="font-semibold">{item.name || item.type_label}</p>
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              {item.client_name || "Clientes elegíveis"} · até {formatDateBR(item.due_on)}
-            </p>
-            <Link
-              href={item.client_id ? `/app/clients/${item.client_id}` : "/app/routines"}
-              className="mt-1 inline-block text-sm font-medium text-[var(--color-link)]"
+        {individual.map((item) => {
+          if (item.occurrence_type === "evaluation_review" && item.client_id) {
+            return (
+              <li key={item.id}>
+                <EvaluationActionCard item={item} />
+              </li>
+            );
+          }
+          return (
+            <li
+              key={item.id}
+              className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm transition-shadow hover:shadow-md"
             >
-              {item.client_id ? "Abrir cliente" : "Ver rotinas"}
-            </Link>
-          </li>
-        ))}
+              <Badge tone={item.overdue ? "danger" : "neutral"} className="mb-1 uppercase tracking-wide">
+                {item.overdue ? "Atrasada" : "Hoje"}
+              </Badge>
+              <p className="font-semibold">{item.name || item.type_label}</p>
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                {item.client_name || "Clientes elegíveis"} · até {formatDateBR(item.due_on)}
+              </p>
+              <Link
+                href={item.client_id ? `/app/clients/${item.client_id}` : "/app/routines"}
+                className="mt-1 inline-block text-sm font-medium text-[var(--color-link)]"
+              >
+                {item.client_id ? "Abrir cliente" : "Ver rotinas"}
+              </Link>
+            </li>
+          );
+        })}
         {restGroups.map((group) => (
           <RestSummaryRow key={group[0].occurrence_type} items={group} />
         ))}
@@ -383,6 +440,7 @@ export function TodayBoard({ summary }: Props) {
     () => false,
   );
   const [setupCelebrate, setSetupCelebrate] = useState(false);
+  const [evaluationCelebrate, setEvaluationCelebrate] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000);
@@ -399,6 +457,27 @@ export function TodayBoard({ summary }: Props) {
         if (!cancelled) setSetupCelebrate(true);
         hideTimer = window.setTimeout(() => {
           if (!cancelled) setSetupCelebrate(false);
+        }, 3500);
+      }, 0);
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      cancelled = true;
+      window.clearTimeout(hideTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let hideTimer = 0;
+    try {
+      if (sessionStorage.getItem(EVALUATION_SAVED_KEY) !== "1") return;
+      sessionStorage.removeItem(EVALUATION_SAVED_KEY);
+      hideTimer = window.setTimeout(() => {
+        if (!cancelled) setEvaluationCelebrate(true);
+        hideTimer = window.setTimeout(() => {
+          if (!cancelled) setEvaluationCelebrate(false);
         }, 3500);
       }, 0);
     } catch {
@@ -484,6 +563,12 @@ export function TodayBoard({ summary }: Props) {
       {setupCelebrate && !setupIncomplete ? (
         <p role="status" className="text-sm text-[var(--color-ink-muted)]">
           Configuração inicial concluída
+        </p>
+      ) : null}
+
+      {evaluationCelebrate ? (
+        <p role="status" className="text-sm font-medium text-[var(--color-success)]">
+          Avaliação registrada com sucesso
         </p>
       ) : null}
 
