@@ -28,6 +28,7 @@ Permitir que qualquer agente ou pessoa entenda o que o Croniu é, o que já exis
 | [`PLATFORM_ADMIN.md`](./PLATFORM_ADMIN.md) | Painel da plataforma (detalhe) |
 | [`REFERRAL_PROGRAM.md`](./REFERRAL_PROGRAM.md) | Programa de indicação e cupom (regras, dados, API, billing, runbook, testes) |
 | [`ADR-043-referral-coupon-program.md`](./ADR-043-referral-coupon-program.md) | Decisões arquiteturais do programa de indicação |
+| [`AVAILABILITY.md`](./AVAILABILITY.md) | Disponibilidade inteligente de horários (jornada + slots) |
 | [`sprints/`](./sprints/) | Template, histórico 2A–2C.1 |
 | [`reports/`](./reports/) | Índice de relatórios |
 | [`VISION.md`](./VISION.md) | Visão inicial (histórica; ver PRODUCT_SPEC) |

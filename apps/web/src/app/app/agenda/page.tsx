@@ -8,6 +8,7 @@ import {
   apiFetch,
   appointmentStatusLabel,
   formatOrgDateTime,
+  type AvailabilityDay,
   type DayAgenda,
   type OrgPreferences,
 } from "@/lib/api";
@@ -221,6 +222,9 @@ export default function AgendaPage() {
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAvailability, setShowAvailability] = useState(false);
+  const [availability, setAvailability] = useState<AvailabilityDay | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const day = dayParam || prefs?.local_today || null;
 
   function setDay(next: string) {
@@ -255,6 +259,16 @@ export default function AgendaPage() {
       setError(null);
     })();
   }, [day, includeCancelled]);
+
+  useEffect(() => {
+    if (!day || !showAvailability) return;
+    void (async () => {
+      setAvailabilityLoading(true);
+      const result = await apiFetch<AvailabilityDay>(`/api/v1/availability/day?day=${day}`);
+      setAvailabilityLoading(false);
+      setAvailability(result.data ?? null);
+    })();
+  }, [day, showAvailability]);
 
   return (
     <div className="space-y-4 animate-fade-up">
@@ -298,14 +312,62 @@ export default function AgendaPage() {
         {day ? formatHumanDate(day) : "…"}
       </p>
 
-      <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
-        <input
-          type="checkbox"
-          checked={includeCancelled}
-          onChange={(e) => setIncludeCancelled(e.target.checked)}
-        />
-        Mostrar cancelados
-      </label>
+      <div className="flex flex-wrap gap-4">
+        <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
+          <input
+            type="checkbox"
+            checked={includeCancelled}
+            onChange={(e) => setIncludeCancelled(e.target.checked)}
+          />
+          Mostrar cancelados
+        </label>
+        <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
+          <input
+            type="checkbox"
+            checked={showAvailability}
+            onChange={(e) => setShowAvailability(e.target.checked)}
+          />
+          Ver horários livres
+        </label>
+      </div>
+
+      {showAvailability ? (
+        <div className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-3.5">
+          {availabilityLoading ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">Carregando horários livres…</p>
+          ) : !availability || !availability.configured ? (
+            <div className="space-y-2">
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Configure seus horários de atendimento para visualizar sua disponibilidade.
+              </p>
+              <Link href="/app/availability">
+                <Button variant="secondary">Configurar horários</Button>
+              </Link>
+            </div>
+          ) : !availability.is_active || availability.slots.length === 0 ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Nenhum horário disponível neste dia.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {availability.slots.map((slot) => {
+                const startLabel = slot.label;
+                const endLabel = formatOrgDateTime(slot.ends_at, availability.timezone);
+                return (
+                  <li key={slot.starts_at}>
+                    <Link
+                      href={`/app/appointments/new?day=${day ?? ""}&start=${startLabel}&end=${endLabel}`}
+                      className="inline-flex min-h-9 items-center rounded-full border border-[var(--color-success)]/40 bg-[var(--color-success-subtle)] px-3 text-sm font-semibold text-[var(--color-success)] transition-colors hover:bg-[var(--color-success-subtle)]/70"
+                    >
+                      {startLabel} · Disponível
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
 
       {agenda && agenda.conflict_count > 0 ? (
         <p

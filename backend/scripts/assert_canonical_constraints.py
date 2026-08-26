@@ -29,6 +29,13 @@ EXPECTED = {
     "ck_cycle_templates_status",
     "ck_client_evaluations_status",
     "uq_op_occ_org_idem",
+    "ck_availability_schedules_weekday_range",
+    "ck_availability_schedules_ends_after_starts",
+    "ck_availability_schedules_break_pair",
+    "ck_availability_schedules_break_ends_after_starts",
+    "ck_availability_schedules_break_within_journey",
+    "ck_availability_schedules_duration_positive",
+    "uq_availability_schedules_org_weekday",
 }
 
 

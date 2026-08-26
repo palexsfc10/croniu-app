@@ -22,16 +22,18 @@ function NewAppointmentForm() {
   const { me } = useAuth();
   const orgTz = me?.organization.timezone || "America/Sao_Paulo";
   const day = searchParams.get("day");
+  const startParam = searchParams.get("start");
+  const endParam = searchParams.get("end");
 
   const [clients, setClients] = useState<Client[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [clientId, setClientId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [startsLocal, setStartsLocal] = useState(
-    day ? `${day}T09:00` : isoToLocalInput(new Date().toISOString()),
+    day ? `${day}T${startParam || "09:00"}` : isoToLocalInput(new Date().toISOString()),
   );
   const [endsLocal, setEndsLocal] = useState(() => {
-    if (day) return `${day}T10:00`;
+    if (day) return `${day}T${endParam || "10:00"}`;
     const end = new Date();
     end.setHours(end.getHours() + 1);
     return isoToLocalInput(end.toISOString());

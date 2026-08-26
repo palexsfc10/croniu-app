@@ -914,3 +914,36 @@ export function appointmentStatusLabel(status: string) {
       return status;
   }
 }
+
+// --- Disponibilidade inteligente -------------------------------------------
+
+export type DaySchedule = {
+  weekday: number;
+  is_active: boolean;
+  starts_time: string;
+  ends_time: string;
+  break_starts_time: string | null;
+  break_ends_time: string | null;
+  default_duration_minutes: number;
+};
+
+export type AvailabilitySettings = {
+  configured: boolean;
+  days: DaySchedule[];
+};
+
+export type AvailabilitySlot = {
+  starts_at: string;
+  ends_at: string;
+  label: string;
+};
+
+export type AvailabilityDay = {
+  date: string;
+  weekday: number;
+  timezone: string;
+  configured: boolean;
+  is_active: boolean;
+  duration_minutes: number;
+  slots: AvailabilitySlot[];
+};
