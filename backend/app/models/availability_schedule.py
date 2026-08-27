@@ -4,7 +4,16 @@ import uuid
 from datetime import datetime, time
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, SmallInteger, Time, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    Time,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +30,28 @@ class AvailabilitySchedule(Base):
     __table_args__ = (
         UniqueConstraint(
             "organization_id", "weekday", name="uq_availability_schedules_org_weekday"
+        ),
+        CheckConstraint(
+            "weekday >= 0 AND weekday <= 6", name="ck_availability_schedules_weekday_range"
+        ),
+        CheckConstraint(
+            "ends_time > starts_time", name="ck_availability_schedules_ends_after_starts"
+        ),
+        CheckConstraint(
+            "(break_starts_time IS NULL) = (break_ends_time IS NULL)",
+            name="ck_availability_schedules_break_pair",
+        ),
+        CheckConstraint(
+            "break_starts_time IS NULL OR break_ends_time > break_starts_time",
+            name="ck_availability_schedules_break_ends_after_starts",
+        ),
+        CheckConstraint(
+            "break_starts_time IS NULL OR "
+            "(break_starts_time >= starts_time AND break_ends_time <= ends_time)",
+            name="ck_availability_schedules_break_within_journey",
+        ),
+        CheckConstraint(
+            "default_duration_minutes > 0", name="ck_availability_schedules_duration_positive"
         ),
     )
 
