@@ -131,7 +131,8 @@ export default function CycleDetailPage() {
           ) : null}
           {cycle.subtotal_cents != null ? (
             <p className="text-sm text-[var(--color-ink-muted)]">
-              Subtotal {formatBRL(cycle.subtotal_cents)}
+              {cycle.pricing_mode === "fixed_period" ? "Valor do plano" : "Subtotal"}{" "}
+              {formatBRL(cycle.subtotal_cents)}
               {cycle.adjustment_cents
                 ? ` · ajuste ${formatBRL(cycle.adjustment_cents)}`
                 : ""}

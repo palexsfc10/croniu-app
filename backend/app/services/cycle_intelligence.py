@@ -28,6 +28,7 @@ from app.services import agenda as agenda_svc
 from app.services import cycle_guard as cycle_guard_svc
 from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
+from app.services import cycle_calc
 from app.services.auth import AuthError
 from app.services.cycle_calc import compose_financial, compute_renewal_on, enumerate_lesson_dates
 
@@ -38,6 +39,7 @@ STRUCTURAL_RECALC_KEYS = frozenset(
 )
 SNAPSHOT_IMMUTABLE_KEYS = frozenset(
     {
+        "pricing_mode",
         "unit_price_cents",
         "unit_price_snapshot",
         "subtotal_cents",
@@ -207,18 +209,28 @@ def build_preview(
     except ValueError as exc:
         raise AuthError("invalid_weekdays", str(exc), 422) from exc
 
-    unit = (
-        payload.unit_price_cents
-        if payload.unit_price_cents is not None
-        else (service.default_price_cents or 0)
-    )
     try:
-        money = compose_financial(
-            lesson_count=len(lesson_dates),
-            unit_price_cents=unit,
-            adjustment_cents=payload.adjustment_cents,
-            final_cents=payload.final_cents,
-        )
+        if service.pricing_mode == cycle_calc.PRICING_FIXED_PERIOD:
+            money = compose_financial(
+                lesson_count=len(lesson_dates),
+                pricing_mode=service.pricing_mode,
+                fixed_price_cents=service.fixed_price_cents,
+                adjustment_cents=payload.adjustment_cents,
+                final_cents=payload.final_cents,
+            )
+        else:
+            unit = (
+                payload.unit_price_cents
+                if payload.unit_price_cents is not None
+                else (service.default_price_cents or 0)
+            )
+            money = compose_financial(
+                lesson_count=len(lesson_dates),
+                pricing_mode=service.pricing_mode,
+                unit_price_cents=unit,
+                adjustment_cents=payload.adjustment_cents,
+                final_cents=payload.final_cents,
+            )
     except ValueError as exc:
         raise AuthError("invalid_financial", str(exc), 422) from exc
 
@@ -230,6 +242,7 @@ def build_preview(
         weekdays=payload.weekdays,
         lesson_dates=lesson_dates,
         lesson_count=money.lesson_count,
+        pricing_mode=money.pricing_mode,
         unit_price_cents=money.unit_price_cents,
         subtotal_cents=money.subtotal_cents,
         adjustment_cents=money.adjustment_cents,
@@ -464,6 +477,7 @@ def create_intelligent_cycle(
         ends_on=preview.ends_on,
         weekdays=preview.weekdays,
         lesson_count=preview.lesson_count,
+        pricing_mode=preview.pricing_mode,
         unit_price_cents=preview.unit_price_cents,
         subtotal_cents=preview.subtotal_cents,
         adjustment_cents=preview.adjustment_cents,
@@ -823,19 +837,38 @@ def _apply_financial_composition(
     has_final: bool,
     has_adjustment: bool,
 ) -> None:
-    if cycle.lesson_count is None or cycle.unit_price_cents is None:
+    pricing_mode = cycle.pricing_mode or cycle_calc.PRICING_PER_LESSON
+    if cycle.lesson_count is None or cycle.subtotal_cents is None:
+        raise AuthError(
+            "incomplete_snapshot",
+            "Este ciclo não possui composição financeira completa.",
+            422,
+        )
+    if pricing_mode != cycle_calc.PRICING_FIXED_PERIOD and cycle.unit_price_cents is None:
         raise AuthError(
             "incomplete_snapshot",
             "Este ciclo não possui composição financeira completa.",
             422,
         )
     try:
-        money = compose_financial(
-            lesson_count=cycle.lesson_count,
-            unit_price_cents=cycle.unit_price_cents,
-            adjustment_cents=adjustment_cents if has_adjustment and not has_final else None,
-            final_cents=final_cents if has_final else None,
-        )
+        if pricing_mode == cycle_calc.PRICING_FIXED_PERIOD:
+            # The plan's contracted base value never changes after creation — only
+            # adjustment/final are recomposed on top of the immutable snapshot.
+            money = compose_financial(
+                lesson_count=cycle.lesson_count,
+                pricing_mode=pricing_mode,
+                fixed_price_cents=cycle.subtotal_cents,
+                adjustment_cents=adjustment_cents if has_adjustment and not has_final else None,
+                final_cents=final_cents if has_final else None,
+            )
+        else:
+            money = compose_financial(
+                lesson_count=cycle.lesson_count,
+                pricing_mode=pricing_mode,
+                unit_price_cents=cycle.unit_price_cents,
+                adjustment_cents=adjustment_cents if has_adjustment and not has_final else None,
+                final_cents=final_cents if has_final else None,
+            )
     except ValueError as exc:
         raise AuthError("invalid_financial", str(exc), 422) from exc
 

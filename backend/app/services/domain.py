@@ -342,6 +342,8 @@ def create_service(
     default_duration_days: int,
     default_price_cents: int | None,
     default_duration_minutes: int = 60,
+    pricing_mode: str = "per_lesson",
+    fixed_price_cents: int | None = None,
 ) -> Service:
     service = Service(
         organization_id=organization_id,
@@ -350,6 +352,8 @@ def create_service(
         default_duration_days=default_duration_days,
         default_duration_minutes=default_duration_minutes,
         default_price_cents=default_price_cents,
+        pricing_mode=pricing_mode,
+        fixed_price_cents=fixed_price_cents,
         status="active",
     )
     db.add(service)
@@ -372,6 +376,8 @@ def update_service(
         "default_duration_days",
         "default_duration_minutes",
         "default_price_cents",
+        "pricing_mode",
+        "fixed_price_cents",
         "status",
     ):
         if key in fields and fields[key] is not None:
@@ -389,6 +395,12 @@ def update_service(
         service.description = None
     if "name" in fields and fields["name"] is not None:
         service.name = str(fields["name"]).strip()
+    if service.pricing_mode == "fixed_period" and service.fixed_price_cents is None:
+        raise AuthError(
+            "fixed_price_required",
+            "Informe o valor do plano para cobrança de valor fixo pelo período.",
+            422,
+        )
     db.add(service)
     db.commit()
     db.refresh(service)

@@ -68,7 +68,9 @@ class RenewalPrepareOut(BaseModel):
     weekdays: list[int] | None
     duration_type: str | None
     duration_value: int | None
+    pricing_mode: str = "per_lesson"
     suggested_unit_price_cents: int | None
+    suggested_fixed_price_cents: int | None = None
     renewal_request_id: UUID
 
 

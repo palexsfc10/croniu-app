@@ -466,14 +466,23 @@ function NewIntelligentCycleForm() {
               <span className="text-[var(--color-ink-muted)]">Aulas</span> · {preview.lesson_count}{" "}
               ({lessonSummary})
             </p>
-            <p>
-              <span className="text-[var(--color-ink-muted)]">Valor/aula</span> ·{" "}
-              {formatBRL(preview.unit_price_cents)}
-            </p>
-            <p>
-              <span className="text-[var(--color-ink-muted)]">Subtotal</span> ·{" "}
-              {formatBRL(preview.subtotal_cents)}
-            </p>
+            {preview.pricing_mode === "fixed_period" ? (
+              <p>
+                <span className="text-[var(--color-ink-muted)]">Valor do plano</span> ·{" "}
+                {formatBRL(preview.subtotal_cents)}
+              </p>
+            ) : (
+              <>
+                <p>
+                  <span className="text-[var(--color-ink-muted)]">Valor/aula</span> ·{" "}
+                  {formatBRL(preview.unit_price_cents)}
+                </p>
+                <p>
+                  <span className="text-[var(--color-ink-muted)]">Subtotal</span> ·{" "}
+                  {formatBRL(preview.subtotal_cents)}
+                </p>
+              </>
+            )}
             <p>
               <span className="text-[var(--color-ink-muted)]">Ajuste</span> ·{" "}
               {formatBRL(preview.adjustment_cents)}

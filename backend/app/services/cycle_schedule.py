@@ -18,6 +18,7 @@ from app.services import agenda as agenda_svc
 from app.services import cycle_guard as cycle_guard_svc
 from app.services import domain as domain_svc
 from app.services.auth import AuthError
+from app.services import cycle_calc
 from app.services.cycle_calc import compose_financial, compute_renewal_on, enumerate_lesson_dates
 
 SCHEDULE_CONFLICT = "SCHEDULE_CONFLICT"
@@ -465,16 +466,31 @@ def create_cycle_with_schedule(
         lesson_count=len(occurrences),
     )
 
-    unit = unit_price_cents if unit_price_cents is not None else (service.default_price_cents or 0)
+    # Billing mode is a property of the Service, never chosen by the caller — a cycle
+    # always snapshots exactly how its service is configured to charge.
+    pricing_mode = service.pricing_mode
     # Prefer explicit package total from assistant when provided as value_cents/final_cents
     money_final = final_cents if final_cents is not None else value_cents
     try:
-        money = compose_financial(
-            lesson_count=len(occurrences),
-            unit_price_cents=unit,
-            adjustment_cents=adjustment_cents,
-            final_cents=money_final,
-        )
+        if pricing_mode == cycle_calc.PRICING_FIXED_PERIOD:
+            money = compose_financial(
+                lesson_count=len(occurrences),
+                pricing_mode=pricing_mode,
+                fixed_price_cents=service.fixed_price_cents,
+                adjustment_cents=adjustment_cents,
+                final_cents=money_final,
+            )
+        else:
+            unit = (
+                unit_price_cents if unit_price_cents is not None else (service.default_price_cents or 0)
+            )
+            money = compose_financial(
+                lesson_count=len(occurrences),
+                pricing_mode=pricing_mode,
+                unit_price_cents=unit,
+                adjustment_cents=adjustment_cents,
+                final_cents=money_final,
+            )
     except ValueError as exc:
         raise AuthError("invalid_financial", str(exc), 422) from exc
 
@@ -545,6 +561,7 @@ def create_cycle_with_schedule(
         ends_on=ends_on,
         weekdays=sorted(set(weekdays)),
         lesson_count=money.lesson_count,
+        pricing_mode=money.pricing_mode,
         unit_price_cents=money.unit_price_cents,
         subtotal_cents=money.subtotal_cents,
         adjustment_cents=money.adjustment_cents,

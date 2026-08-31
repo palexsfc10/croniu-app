@@ -29,6 +29,9 @@ EXPECTED = {
     "ck_cycle_templates_status",
     "ck_client_evaluations_status",
     "uq_op_occ_org_idem",
+    "ck_services_pricing_mode",
+    "ck_services_fixed_price_required",
+    "ck_cycles_pricing_mode",
 }
 
 
