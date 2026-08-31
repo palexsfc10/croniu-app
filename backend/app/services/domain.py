@@ -539,6 +539,7 @@ def _cycle_out(
         lessons_completed=int(lessons_completed),
         lessons_no_show=int(lessons_no_show),
         lessons_remaining=lessons_remaining,
+        pricing_mode=cycle.pricing_mode,
         unit_price_cents=cycle.unit_price_cents,
         subtotal_cents=cycle.subtotal_cents,
         adjustment_cents=cycle.adjustment_cents,

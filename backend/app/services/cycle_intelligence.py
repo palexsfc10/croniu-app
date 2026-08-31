@@ -756,7 +756,11 @@ def update_cycle_financial(
             "Ciclo legado não permite edição financeira inteligente.",
             422,
         )
-    if cycle.lesson_count is None or cycle.unit_price_cents is None:
+    cycle_pricing_mode = cycle.pricing_mode or cycle_calc.PRICING_PER_LESSON
+    incomplete = cycle.lesson_count is None or cycle.subtotal_cents is None
+    if not incomplete and cycle_pricing_mode != cycle_calc.PRICING_FIXED_PERIOD:
+        incomplete = cycle.unit_price_cents is None
+    if incomplete:
         raise AuthError(
             "incomplete_snapshot",
             "Este ciclo não possui composição financeira completa.",

@@ -238,7 +238,7 @@ def test_fixed_period_value_independent_of_lesson_frequency(client, register_pay
     template_2x = _create_template(client, name="2x", weekly_frequency=2)
     template_4x = _create_template(client, name="4x", weekly_frequency=4)
 
-    cycle_2x = client.post(
+    resp_2x = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": client_a,
@@ -248,8 +248,11 @@ def test_fixed_period_value_independent_of_lesson_frequency(client, register_pay
             "weekdays": [0, 2],
             "starts_time": "09:00:00",
         },
-    ).json()
-    cycle_4x = client.post(
+    )
+    assert resp_2x.status_code == 201, resp_2x.text
+    # Different start time so the two clients' agenda slots never collide —
+    # this test is only about pricing being independent of lesson frequency.
+    resp_4x = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": client_b,
@@ -257,9 +260,11 @@ def test_fixed_period_value_independent_of_lesson_frequency(client, register_pay
             "cycle_template_id": template_4x["id"],
             "starts_on": "2026-08-03",
             "weekdays": [0, 1, 2, 3],
-            "starts_time": "09:00:00",
+            "starts_time": "14:00:00",
         },
-    ).json()
+    )
+    assert resp_4x.status_code == 201, resp_4x.text
+    cycle_2x, cycle_4x = resp_2x.json(), resp_4x.json()
     assert cycle_2x["lesson_count"] != cycle_4x["lesson_count"]
     assert cycle_2x["value_cents"] == cycle_4x["value_cents"] == 60000
 
