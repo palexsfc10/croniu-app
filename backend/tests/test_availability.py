@@ -102,6 +102,16 @@ def test_worked_example_from_spec():
     assert _labels(slots) == ["08:00", "11:00", "13:00", "15:00", "17:00"]
 
 
+# Dia totalmente ocupado: cada slot possível da jornada tem um compromisso ativo
+def test_fully_booked_day_returns_no_slots():
+    journey = _journey(break_starts_time=None, break_ends_time=None)
+    busy = [_busy(time(h, 0), time(h + 1, 0)) for h in range(8, 18)]
+    slots = av.compute_free_slots(
+        day=DAY, journey=journey, busy=busy, tz=TZ, duration_minutes=60, now_utc=_now(0)
+    )
+    assert slots == []
+
+
 # 6. Intervalo de almoço nunca aparece como livre
 def test_lunch_break_excluded():
     slots = av.compute_free_slots(

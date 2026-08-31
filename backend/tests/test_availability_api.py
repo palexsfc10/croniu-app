@@ -7,7 +7,13 @@ DB-backed cases (20-22, 25, 27, 30-API) that need a real database.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
+from uuid import UUID
+
+from app.db import SessionLocal
+from app.services import agenda as agenda_svc
+from app.services.auth import AuthError
 
 
 def _auth_client(client, register_payload):
@@ -292,3 +298,48 @@ def test_tenant_isolation_settings_and_day(client, register_payload):
     day_b = client.get(f"/api/v1/availability/day?day={tuesday.isoformat()}").json()
     assert day_b["configured"] is False
     assert day_b["slots"] == []
+
+
+# Conflito/concorrência: dois fluxos concorrentes tentando reservar o MESMO horário
+# sugerido pela disponibilidade — a checagem de conflito na criação do compromisso
+# (agenda_svc.create_appointment, mesma autoridade final de sempre) precisa garantir
+# que só um vence, nunca os dois silenciosamente.
+def test_concurrent_booking_of_same_suggested_slot_only_one_succeeds(client, register_payload):
+    _auth_client(client, register_payload)
+    client.put("/api/v1/availability/settings", json=_full_week_payload())
+    person = _create_client(client)
+    org_id = UUID(client.get("/api/v1/auth/me").json()["organization"]["id"])
+    client_id = UUID(person["id"])
+    tuesday = _next_weekday(1)
+
+    # Confirm the slot is genuinely free before the race, exactly as a user would see it.
+    before = client.get(f"/api/v1/availability/day?day={tuesday.isoformat()}").json()
+    assert "09:00" in [s["label"] for s in before["slots"]]
+
+    def worker(_: int):
+        db = SessionLocal()
+        try:
+            return agenda_svc.create_appointment(
+                db,
+                organization_id=org_id,
+                client_id=client_id,
+                starts_at=datetime.fromisoformat(f"{tuesday.isoformat()}T09:00:00-03:00"),
+                ends_at=datetime.fromisoformat(f"{tuesday.isoformat()}T10:00:00-03:00"),
+            )
+        except AuthError as exc:
+            return exc
+        finally:
+            db.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(worker, [0, 1]))
+
+    errors = [r for r in results if isinstance(r, AuthError)]
+    successes = [r for r in results if not isinstance(r, AuthError)]
+    assert len(successes) == 1, results
+    assert len(errors) == 1, results
+    assert errors[0].code == "appointment_conflict"
+
+    # The slot is no longer offered — the suggestion engine and the real agenda agree.
+    after = client.get(f"/api/v1/availability/day?day={tuesday.isoformat()}").json()
+    assert "09:00" not in [s["label"] for s in after["slots"]]
