@@ -180,3 +180,27 @@ describe("Agenda page — disponibilidade integrada (Ver horários livres)", () 
     expect(screen.getByRole("link", { name: /11:00.*Dispon[ií]vel/i })).toBeInTheDocument();
   });
 });
+
+describe("Agenda page — desktop workspace layout", () => {
+  it("splits into a compromissos column plus a routines side column from lg upward, and both stay reachable", async () => {
+    const { container } = render(<AgendaPage />);
+    await screen.findByText("Falta do cliente");
+    await screen.findByText("Revisar plano");
+
+    const grid = container.querySelector(".lg\\:grid-cols-\\[minmax\\(0\\,1fr\\)_320px\\]");
+    expect(grid).not.toBeNull();
+    // Both the appointment card and the routine action must live inside that
+    // same responsive wrapper — neither one got dropped by the restructure.
+    expect(grid).toContainElement(screen.getByText("Aluna Teste"));
+    expect(grid).toContainElement(screen.getByText("Revisar plano"));
+  });
+
+  it("lays appointment cards out as a 2-column grid from xl upward, single column below that", async () => {
+    const { container } = render(<AgendaPage />);
+    await screen.findByText("Falta do cliente");
+    const list = container.querySelector('ul[class*="space-y-2.5"]');
+    expect(list).not.toBeNull();
+    expect(list!.className).toContain("xl:grid");
+    expect(list!.className).toContain("xl:grid-cols-2");
+  });
+});

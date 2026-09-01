@@ -189,3 +189,74 @@ describe("AppShell referral menu item", () => {
     });
   });
 });
+
+describe("AppShell desktop workspace structure", () => {
+  afterEach(() => {
+    cleanup();
+    logout.mockClear();
+    routeState.pathname = "/app";
+  });
+
+  it("keeps the bottom tab bar mobile-only", () => {
+    const { container } = render(
+      <AppShell>
+        <p>content</p>
+      </AppShell>,
+    );
+    const bottomNav = container.querySelector("nav.app-bottom-nav");
+    expect(bottomNav).not.toBeNull();
+    expect(bottomNav!.className).toContain("md:hidden");
+  });
+
+  it("keeps the sidebar hidden on mobile and persistent from md upward", () => {
+    const { container } = render(
+      <AppShell>
+        <p>content</p>
+      </AppShell>,
+    );
+    const aside = container.querySelector("aside.app-sidebar");
+    expect(aside).not.toBeNull();
+    expect(aside!.className).toContain("hidden");
+    expect(aside!.className).toContain("md:flex");
+  });
+
+  it("does not cap sidebar+content in one shared max-width (regression: that centered the whole shell and wasted the sides on wide screens instead of giving the sidebar+main a real workspace)", () => {
+    const { container } = render(
+      <AppShell>
+        <p>content</p>
+      </AppShell>,
+    );
+    const shellRoot = container.firstElementChild as HTMLElement;
+    expect(shellRoot.className).not.toMatch(/max-w-6xl|max-w-7xl|max-w-\[90rem\]/);
+    expect(shellRoot.className).toContain("w-full");
+  });
+
+  it("still renders the page content passed as children", async () => {
+    render(
+      <AppShell>
+        <p>conteúdo da página</p>
+      </AppShell>,
+    );
+    expect(await screen.findByText("conteúdo da página")).toBeInTheDocument();
+  });
+
+  it("keeps every primary nav destination reachable", () => {
+    render(
+      <AppShell>
+        <p>content</p>
+      </AppShell>,
+    );
+    const expected = [
+      "/app",
+      "/app/agenda",
+      "/app/clients",
+      "/app/routines",
+      "/app/profile",
+      "/app/assistant",
+    ];
+    const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+    for (const href of expected) {
+      expect(hrefs).toContain(href);
+    }
+  });
+});

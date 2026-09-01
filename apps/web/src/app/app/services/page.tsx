@@ -44,12 +44,12 @@ export default function ServicesPage() {
       {!items.length ? (
         <EmptyState title="Nenhum serviço" description="Cadastre um serviço antes de criar ciclos." />
       ) : null}
-      <ul className="space-y-2">
+      <ul className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 xl:grid-cols-3">
         {items.map((item) => (
           <li key={item.id}>
             <Link
               href={`/app/services/${item.id}`}
-              className="block rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+              className="block h-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
             >
               <p className="font-semibold text-[var(--color-ink)]">{item.name}</p>
               <p className="text-sm text-[var(--color-ink-muted)]">

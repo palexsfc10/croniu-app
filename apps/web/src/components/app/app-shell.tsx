@@ -348,11 +348,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={[
-        "mx-auto flex w-full max-w-6xl flex-col md:flex-row xl:max-w-7xl 2xl:max-w-[90rem]",
+        "flex w-full flex-col md:flex-row",
         assistantActive ? "h-dvh overflow-hidden" : "min-h-dvh",
       ].join(" ")}
     >
-      <aside className="app-sidebar hidden border-[var(--color-border)] md:flex md:w-56 md:shrink-0 md:flex-col md:border-r">
+      <aside className="app-sidebar hidden border-[var(--color-border)] md:flex md:w-56 md:shrink-0 md:flex-col md:border-r xl:w-64">
         <div className="sticky top-0 flex min-h-dvh flex-col">
           <div className="px-4 py-4">
             <BrandWordmark size="sm" surface="light" compact />
@@ -429,10 +429,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className={
             assistantActive
               ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
-              : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:px-6 md:pb-5"
+              : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:px-6 md:py-6 md:pb-5 xl:px-8"
           }
         >
-          <BillingGate>{children}</BillingGate>
+          {/* Sidebar+content no longer share one global max-width (that centered
+              the whole shell and wasted the sides on wide screens) — the cap
+              lives here instead, on main's own content, so it can be wide
+              enough for dashboards/grids without becoming an unreadable full-
+              bleed slab on ultrawide monitors. The assistant screen manages its
+              own internal columns and needs the full height chain intact. */}
+          <div
+            className={
+              assistantActive
+                ? "flex h-full min-h-0 w-full flex-1 flex-col"
+                : "mx-auto w-full max-w-[1600px] 2xl:max-w-[1760px]"
+            }
+          >
+            <BillingGate>{children}</BillingGate>
+          </div>
         </main>
 
         <nav

@@ -327,14 +327,14 @@ export default function ClientsPage() {
         />
       ) : null}
 
-      <ul className="space-y-2.5">
+      <ul className="space-y-2.5 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 xl:grid-cols-3">
         {visible.map((item) => {
           const row = clientListPresentation(item, cycles, today, terms);
           return (
-            <li key={item.id}>
+            <li key={item.id} className="lg:h-full">
               <Link
                 href={`/app/clients/${item.id}`}
-                className="flex min-h-16 items-center gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm transition-all hover:-translate-y-px hover:shadow-md"
+                className="flex min-h-16 items-center gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm transition-all hover:-translate-y-px hover:shadow-md lg:h-full"
               >
                 <span
                   className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-sm font-semibold text-[var(--color-primary)]"
