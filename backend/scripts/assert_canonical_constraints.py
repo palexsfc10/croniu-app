@@ -32,6 +32,13 @@ EXPECTED = {
     "ck_services_pricing_mode",
     "ck_services_fixed_price_required",
     "ck_cycles_pricing_mode",
+    "ck_availability_schedules_weekday_range",
+    "ck_availability_schedules_ends_after_starts",
+    "ck_availability_schedules_break_pair",
+    "ck_availability_schedules_break_ends_after_starts",
+    "ck_availability_schedules_break_within_journey",
+    "ck_availability_schedules_duration_positive",
+    "uq_availability_schedules_org_weekday",
 }
 
 

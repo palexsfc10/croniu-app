@@ -150,8 +150,8 @@ jobs:
           alembic current | tee /tmp/alembic-current.txt
           alembic heads | tee /tmp/alembic-heads.txt
           test "$(wc -l < /tmp/alembic-heads.txt)" -eq 1
-          grep -q "0026_fixed_period_plan_pricing" /tmp/alembic-heads.txt
-          grep -q "0026_fixed_period_plan_pricing" /tmp/alembic-current.txt
+          grep -q "0027_fixed_period_plan_pricing" /tmp/alembic-heads.txt
+          grep -q "0027_fixed_period_plan_pricing" /tmp/alembic-current.txt
           alembic check | tee /tmp/alembic-check.txt
           grep -q "No new upgrade operations detected" /tmp/alembic-check.txt
           python scripts/assert_canonical_constraints.py
@@ -276,6 +276,28 @@ jobs:
         uses: ludeeus/action-shellcheck@2.0.0
         with:
           scandir: deploy/release
+          severity: warning
+      - name: Shellcheck HML generic deploy script
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: deploy/hml
+          ignore_names: >-
+            _ops_audit_cycle_agenda.sh _ops_backup_and_dryrun_prune.sh _ops_debug_register.sh
+            _ops_deploy_admin_pilot.sh _ops_deploy_ai_assistant_v1.sh _ops_deploy_assistant_cycle.sh
+            _ops_deploy_assistant_premium_ui.sh _ops_deploy_assistant_premium_voice.sh
+            _ops_deploy_assistant_thread_limit.sh _ops_deploy_client_intake_journey.sh
+            _ops_deploy_cycle_agenda.sh _ops_deploy_cycle_agenda_integrity.sh
+            _ops_deploy_google_auth.sh _ops_deploy_mais_feedback.sh _ops_deploy_pending_hydration.sh
+            _ops_deploy_public_entry.sh _ops_deploy_rc28_pwa_icons.sh _ops_deploy_rc29_pwa_banner.sh
+            _ops_deploy_voice_auto_temporal.sh _ops_deploy_web_mic_fix.sh _ops_enable_voice_hml.sh
+            _ops_fix_cloudflared_admin.sh _ops_probe_transcription_models.sh
+            _ops_prune_agent_threads.sh _ops_rebuild_hml_ai.sh _ops_recover_api_voice_smoke.sh
+            _ops_recreate_cloudflared.sh _ops_reset_hml_application_data.sh
+            _ops_run_cycle_agenda_pytest.sh _ops_run_retention_pytest.sh _ops_smoke_admin_feedback.sh
+            _ops_smoke_ai_degraded.sh _ops_smoke_ai_message.sh _ops_smoke_assistant_cycle.sh
+            _ops_smoke_assistant_premium_ui.sh _ops_smoke_cycle_agenda.sh _ops_smoke_mais_feedback.sh
+            _ops_smoke_pending_hydration.sh _ops_smoke_voice_assistant.sh
+            _ops_smoke_voice_auto_temporal.sh _ops_smoke_voice_real.sh healthcheck.sh rollback.sh
           severity: warning
       - name: Compose config validation
         run: |

@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
@@ -29,6 +30,7 @@ from app.models.cycle import Cycle
 from app.models.intake import OperationalOccurrence
 from app.schemas.evaluations import EvaluationCreate
 from app.services import agenda as agenda_svc
+from app.services import availability as availability_svc
 from app.services import cycle_period as cycle_period_svc
 from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
@@ -166,6 +168,14 @@ class GetCalendarAvailabilityArgs(BaseModel):
         if not cleaned or any(v < 0 or v > 6 for v in cleaned):
             raise ValueError("weekdays must be 0–6 (Mon–Sun)")
         return cleaned
+
+
+class GetAvailableSlotsArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    starts_on: date
+    ends_on: date | None = None
+    duration_minutes: int | None = Field(default=None, ge=15, le=480)
+    period: Literal["manha", "tarde", "noite"] | None = None
 
 
 class ListRecentEvaluationsArgs(BaseModel):
@@ -968,6 +978,57 @@ def _get_calendar_availability(ctx: ToolContext, args: dict[str, Any]) -> dict[s
         "duration_minutes": parsed.duration_minutes,
         "suggestions": suggestions,
         "note": "Horários livres em TODAS as ocorrências do período (não invente outros).",
+    }
+
+
+def _slot_period(local_hour: int) -> str:
+    if local_hour < 12:
+        return "manha"
+    if local_hour < 18:
+        return "tarde"
+    return "noite"
+
+
+def _get_available_slots(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = GetAvailableSlotsArgs.model_validate(args)
+    end_date = parsed.ends_on or parsed.starts_on
+    result = availability_svc.compute_range(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        start_date=parsed.starts_on,
+        end_date=end_date,
+        duration_minutes=parsed.duration_minutes,
+    )
+    tz = ZoneInfo(result.timezone)
+    days_payload: list[dict[str, Any]] = []
+    for day in result.days:
+        slots = day.slots
+        if parsed.period is not None:
+            slots = [
+                s for s in slots if _slot_period(s.starts_at.astimezone(tz).hour) == parsed.period
+            ]
+        days_payload.append(
+            {
+                "date": day.date.isoformat(),
+                "weekday": day.weekday,
+                "is_active": day.is_active,
+                "slots": [s.label for s in slots],
+            }
+        )
+    if not result.configured:
+        note = (
+            "Jornada de trabalho não configurada — para identificar horários livres, "
+            "o usuário precisa configurar primeiro os horários de atendimento em "
+            "Configurações > Horários de atendimento. Não invente horários."
+        )
+    else:
+        note = "Horários livres reais da agenda, já excluindo intervalos e compromissos. Não invente outros."
+    return {
+        "timezone": result.timezone,
+        "configured": result.configured,
+        "duration_minutes": result.duration_minutes,
+        "days": days_payload,
+        "note": note,
     }
 
 
@@ -2026,6 +2087,44 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="read",
         requires_confirmation=False,
         handler=_get_calendar_availability,
+    ),
+    "get_available_slots": ToolDefinition(
+        name="get_available_slots",
+        description=(
+            "Consulta os horários realmente livres na agenda do profissional para um dia ou "
+            "período curto, a partir da jornada de trabalho configurada (não da agenda de "
+            "ciclos recorrentes). Use para perguntas como 'quais horários tenho hoje/amanhã', "
+            "'tenho vaga sexta à tarde', 'consigo encaixar uma aula de 60 min amanhã'. "
+            "Se a jornada não estiver configurada, o retorno indica isso — não invente horários "
+            "nesse caso, oriente o usuário a configurar primeiro."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "starts_on": {"type": "string", "format": "date"},
+                "ends_on": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Opcional. Se omitido, consulta só starts_on.",
+                },
+                "duration_minutes": {
+                    "type": "integer",
+                    "minimum": 15,
+                    "maximum": 480,
+                    "description": "Opcional. Sem isso, usa a duração padrão configurada por dia.",
+                },
+                "period": {
+                    "type": "string",
+                    "enum": ["manha", "tarde", "noite"],
+                    "description": "Opcional filtro de período do dia.",
+                },
+            },
+            "required": ["starts_on"],
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_get_available_slots,
     ),
     # --- Read: avaliações ----------------------------------------------------
     "list_recent_published_evaluations": ToolDefinition(

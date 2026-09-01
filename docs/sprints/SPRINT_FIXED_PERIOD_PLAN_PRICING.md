@@ -36,7 +36,7 @@ nenhum conceito de período novo.
 
 ## Escopo
 
-- Migration `0026_fixed_period_plan_pricing` (aditiva): `services.pricing_mode`,
+- Migration `0027_fixed_period_plan_pricing` (aditiva): `services.pricing_mode`,
   `services.fixed_price_cents`, `cycles.pricing_mode` (snapshot).
 - `cycle_calc.compose_financial`: ganha `pricing_mode`/`fixed_price_cents`, única fórmula para os
   dois modos.
@@ -77,12 +77,13 @@ em CHECK constraint no banco (defesa em profundidade).
 
 ## Migrations
 
-- [x] Sim — id: `0026_fixed_period_plan_pricing`, `down_revision = "0025_user_auth_identities"`.
+- [x] Sim — id: `0027_fixed_period_plan_pricing`, `down_revision = "0026_availability_schedules"`.
 
-**Atenção**: esta branch foi cortada do mesmo head (`0025_user_auth_identities`) que outra PR
-independente e ainda não mergeada (#37, disponibilidade inteligente), que também reivindica a
-revisão `0026`. Quem mergear primeiro fica com `0026`; a outra precisa ser renumerada para `0027`
-antes do próprio merge — mesma situação já resolvida uma vez nesta sessão para a PR #37.
+**Histórico**: esta branch foi cortada originalmente do mesmo head (`0025_user_auth_identities`)
+que a PR #37 (disponibilidade inteligente), e ambas reivindicavam a revisão `0026`. A PR #37
+mergeu primeiro em `main`, então `0026` ficou oficialmente com `0026_availability_schedules`; esta
+migration foi renumerada para `0027` e reencadeada logo em seguida, antes do próprio merge desta
+PR. Nunca foi aplicada em HML ou PRD, então a renumeração não tem risco de histórico de migration.
 
 Justificativa: `services.pricing_mode`/`fixed_price_cents` e `cycles.pricing_mode`, todos com
 `server_default='per_lesson'` — nenhuma linha existente é reescrita, nenhum valor histórico muda,

@@ -9,13 +9,15 @@ unit_price_cents, subtotal_cents or receivable is touched.
 `services.fixed_price_cents` is only meaningful (and required by a CHECK)
 when pricing_mode='fixed_period'.
 
-NOTE: this branch was cut from the same origin/main head (0025_user_auth_identities)
-as another independent, unmerged PR (#37, smart availability) that also claims
-revision id 0026. Whichever merges first keeps 0026; this migration must be
-renumbered to chain after the other before this PR merges, if it lands second.
+This migration was originally cut from origin/main @ 0025_user_auth_identities
+and briefly claimed revision id 0026, in parallel with an independent PR (#37,
+smart availability) that also claimed 0026. PR #37 merged first, so 0026 now
+belongs to 0026_availability_schedules; this migration was renumbered to 0027
+and rechained after it before this PR's own merge. It was never applied to
+HML or PRD, so the rename carries no migration-history risk.
 
-Revision ID: 0026_fixed_period_plan_pricing
-Revises: 0025_user_auth_identities
+Revision ID: 0027_fixed_period_plan_pricing
+Revises: 0026_availability_schedules
 Create Date: 2026-08-27
 """
 
@@ -26,8 +28,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0026_fixed_period_plan_pricing"
-down_revision: str | None = "0025_user_auth_identities"
+revision: str = "0027_fixed_period_plan_pricing"
+down_revision: str | None = "0026_availability_schedules"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

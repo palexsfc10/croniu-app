@@ -5,6 +5,7 @@ import { InstallCroniuRow } from "@/components/pwa/install-croniu-row";
 import {
   IconBriefcase,
   IconClipboardList,
+  IconClock,
   IconLayers,
   IconLifeBuoy,
   IconMapPin,
@@ -68,6 +69,12 @@ export default function MorePage() {
             title="Locais de atendimento"
             description="Onde você atende seus clientes."
             Icon={IconMapPin}
+          />
+          <SettingsRow
+            href="/app/availability"
+            title="Horários de atendimento"
+            description="Sua jornada semanal, para ver vagas livres na agenda."
+            Icon={IconClock}
           />
           <SettingsRow
             href="/app/preferences"
