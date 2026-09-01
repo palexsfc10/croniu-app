@@ -341,4 +341,21 @@ describe("ClientsPage — nomenclature has no flash", () => {
     // profession_code stays unknown.
     expect(screen.getByRole("heading", { name: "Clientes" })).toBeInTheDocument();
   });
+
+  it("lays the list out as a responsive grid from lg upward, single column below that", async () => {
+    mockApi({
+      clients: [
+        { id: "c1", full_name: "Ana Aluna", phone: null, email: null, notes: null, status: "active", created_at: "" } as Client,
+        { id: "c2", full_name: "Beto Aluno", phone: null, email: null, notes: null, status: "active", created_at: "" } as Client,
+      ],
+    });
+    const { container } = render(<ClientsPage />);
+    await screen.findByText("Ana Aluna");
+    const list = container.querySelector("ul");
+    expect(list).not.toBeNull();
+    expect(list!.className).toContain("space-y-2.5");
+    expect(list!.className).toContain("lg:grid");
+    expect(list!.className).toContain("lg:grid-cols-2");
+    expect(list!.className).toContain("xl:grid-cols-3");
+  });
 });

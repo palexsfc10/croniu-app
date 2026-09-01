@@ -303,11 +303,11 @@ export default function CyclesPage() {
         />
       ) : null}
 
-      <ul className="space-y-2">
+      <ul className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 xl:grid-cols-3">
         {visible.map((item) => (
           <li
             key={item.id}
-            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
+            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 lg:h-full"
           >
             <button type="button" className="w-full text-left" onClick={() => router.push(`/app/cycles/${item.id}`)}>
               <div className="flex items-start justify-between gap-2">

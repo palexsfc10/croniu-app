@@ -285,149 +285,155 @@ export default function AgendaPage() {
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="secondary"
-          onClick={() => day && setDay(shiftDay(day, -1))}
-          disabled={!day}
-        >
-          Anterior
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => prefs && setDay(prefs.local_today)}
-          disabled={!prefs}
-        >
-          Hoje
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => day && setDay(shiftDay(day, 1))}
-          disabled={!day}
-        >
-          Próximo
-        </Button>
-      </div>
-      <p className="text-sm font-semibold text-[var(--color-ink)]">
-        {day ? formatHumanDate(day) : "…"}
-      </p>
-
-      <div className="flex flex-wrap gap-4">
-        <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
-          <input
-            type="checkbox"
-            checked={includeCancelled}
-            onChange={(e) => setIncludeCancelled(e.target.checked)}
-          />
-          Mostrar cancelados
-        </label>
-        <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
-          <input
-            type="checkbox"
-            checked={showAvailability}
-            onChange={(e) => setShowAvailability(e.target.checked)}
-          />
-          Ver horários livres
-        </label>
-      </div>
-
-      {showAvailability ? (
-        <div className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-3.5">
-          {availabilityLoading ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">Carregando horários livres…</p>
-          ) : !availability || !availability.configured ? (
-            <div className="space-y-2">
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                Configure seus horários de atendimento para visualizar sua disponibilidade.
-              </p>
-              <Link href="/app/availability">
-                <Button variant="secondary">Configurar horários</Button>
-              </Link>
-            </div>
-          ) : !availability.is_active || availability.slots.length === 0 ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">
-              Nenhum horário disponível neste dia.
-            </p>
-          ) : (
-            <ul className="flex flex-wrap gap-2">
-              {availability.slots.map((slot) => {
-                const startLabel = slot.label;
-                const endLabel = formatOrgDateTime(slot.ends_at, availability.timezone);
-                return (
-                  <li key={slot.starts_at}>
-                    <Link
-                      href={`/app/appointments/new?day=${day ?? ""}&start=${startLabel}&end=${endLabel}`}
-                      className="inline-flex min-h-9 items-center rounded-full border border-[var(--color-success)]/40 bg-[var(--color-success-subtle)] px-3 text-sm font-semibold text-[var(--color-success)] transition-colors hover:bg-[var(--color-success-subtle)]/70"
-                    >
-                      {startLabel} · Disponível
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      ) : null}
-
-      {agenda && agenda.conflict_count > 0 ? (
-        <p
-          role="status"
-          className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/30 bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
-        >
-          Este dia tem {agenda.conflict_count} compromisso(s) com sobreposição.
-        </p>
-      ) : null}
-
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
-      {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
-
-      {!loading && agenda && agenda.appointments.length === 0 ? (
-        <EmptyAgenda day={day} timezone={agenda.timezone || prefs?.timezone || "America/Sao_Paulo"} />
-      ) : null}
-
-      {agenda && agenda.appointments.length > 0 ? (
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-          Compromissos
-        </h2>
-      ) : null}
-      <ul className="space-y-2.5">
-        {agenda?.appointments.map((item) => (
-          <li key={item.id}>
-            <Link
-              href={`/app/appointments/${item.id}`}
-              className="card-rail card-rail-primary flex items-start gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm transition-all hover:-translate-y-px hover:shadow-md"
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-6">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => day && setDay(shiftDay(day, -1))}
+              disabled={!day}
             >
-              <div className="flex w-14 shrink-0 flex-col pt-0.5 text-right">
-                <time className="text-sm font-semibold tabular-nums text-[var(--color-ink)]">
-                  {formatOrgDateTime(item.starts_at, agenda.timezone)}
-                </time>
-                <time className="text-xs tabular-nums text-[var(--color-ink-muted)]">
-                  {formatOrgDateTime(item.ends_at, agenda.timezone)}
-                </time>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-[var(--color-ink)]">
-                  {item.client_name}
-                  <Badge tone={appointmentStatusTone(item.status)}>
-                    {appointmentStatusLabel(item.status)}
-                  </Badge>
-                </p>
+              Anterior
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => prefs && setDay(prefs.local_today)}
+              disabled={!prefs}
+            >
+              Hoje
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => day && setDay(shiftDay(day, 1))}
+              disabled={!day}
+            >
+              Próximo
+            </Button>
+          </div>
+          <p className="text-sm font-semibold text-[var(--color-ink)]">
+            {day ? formatHumanDate(day) : "…"}
+          </p>
+
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
+              <input
+                type="checkbox"
+                checked={includeCancelled}
+                onChange={(e) => setIncludeCancelled(e.target.checked)}
+              />
+              Mostrar cancelados
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
+              <input
+                type="checkbox"
+                checked={showAvailability}
+                onChange={(e) => setShowAvailability(e.target.checked)}
+              />
+              Ver horários livres
+            </label>
+          </div>
+
+          {showAvailability ? (
+            <div className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-3.5">
+              {availabilityLoading ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">Carregando horários livres…</p>
+              ) : !availability || !availability.configured ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    Configure seus horários de atendimento para visualizar sua disponibilidade.
+                  </p>
+                  <Link href="/app/availability">
+                    <Button variant="secondary">Configurar horários</Button>
+                  </Link>
+                </div>
+              ) : !availability.is_active || availability.slots.length === 0 ? (
                 <p className="text-sm text-[var(--color-ink-muted)]">
-                  {item.location_name || "Sem local"}
-                  {item.service_name || item.cycle_service_name
-                    ? ` · ${item.service_name || item.cycle_service_name}`
-                    : ""}
+                  Nenhum horário disponível neste dia.
                 </p>
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ul>
-      <AgendaRoutines day={day} />
+              ) : (
+                <ul className="flex flex-wrap gap-2">
+                  {availability.slots.map((slot) => {
+                    const startLabel = slot.label;
+                    const endLabel = formatOrgDateTime(slot.ends_at, availability.timezone);
+                    return (
+                      <li key={slot.starts_at}>
+                        <Link
+                          href={`/app/appointments/new?day=${day ?? ""}&start=${startLabel}&end=${endLabel}`}
+                          className="inline-flex min-h-9 items-center rounded-full border border-[var(--color-success)]/40 bg-[var(--color-success-subtle)] px-3 text-sm font-semibold text-[var(--color-success)] transition-colors hover:bg-[var(--color-success-subtle)]/70"
+                        >
+                          {startLabel} · Disponível
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          ) : null}
+
+          {agenda && agenda.conflict_count > 0 ? (
+            <p
+              role="status"
+              className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/30 bg-[var(--color-danger-subtle)] px-3 py-2 text-sm text-[var(--color-danger)]"
+            >
+              Este dia tem {agenda.conflict_count} compromisso(s) com sobreposição.
+            </p>
+          ) : null}
+
+          {error ? (
+            <p role="alert" className="text-sm text-[var(--color-danger)]">
+              {error}
+            </p>
+          ) : null}
+          {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
+
+          {!loading && agenda && agenda.appointments.length === 0 ? (
+            <EmptyAgenda day={day} timezone={agenda.timezone || prefs?.timezone || "America/Sao_Paulo"} />
+          ) : null}
+
+          {agenda && agenda.appointments.length > 0 ? (
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+              Compromissos
+            </h2>
+          ) : null}
+          <ul className="space-y-2.5 xl:grid xl:grid-cols-2 xl:gap-3 xl:space-y-0">
+            {agenda?.appointments.map((item) => (
+              <li key={item.id}>
+                <Link
+                  href={`/app/appointments/${item.id}`}
+                  className="card-rail card-rail-primary flex h-full items-start gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm transition-all hover:-translate-y-px hover:shadow-md"
+                >
+                  <div className="flex w-14 shrink-0 flex-col pt-0.5 text-right">
+                    <time className="text-sm font-semibold tabular-nums text-[var(--color-ink)]">
+                      {formatOrgDateTime(item.starts_at, agenda.timezone)}
+                    </time>
+                    <time className="text-xs tabular-nums text-[var(--color-ink-muted)]">
+                      {formatOrgDateTime(item.ends_at, agenda.timezone)}
+                    </time>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-center gap-1.5 font-semibold text-[var(--color-ink)]">
+                      {item.client_name}
+                      <Badge tone={appointmentStatusTone(item.status)}>
+                        {appointmentStatusLabel(item.status)}
+                      </Badge>
+                    </p>
+                    <p className="text-sm text-[var(--color-ink-muted)]">
+                      {item.location_name || "Sem local"}
+                      {item.service_name || item.cycle_service_name
+                        ? ` · ${item.service_name || item.cycle_service_name}`
+                        : ""}
+                    </p>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="mt-4 lg:mt-0">
+          <AgendaRoutines day={day} />
+        </div>
+      </div>
     </div>
   );
 }
