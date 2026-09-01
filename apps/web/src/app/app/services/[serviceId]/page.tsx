@@ -3,8 +3,9 @@
 import { BackLink } from "@/components/app/back-link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiFetch, reaisToCents, type Service } from "@/lib/api";
+import { apiFetch, reaisToCents, type PricingMode, type Service } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { TextField } from "@/components/ui/text-field";
 
 function centsToInput(cents: number | null) {
@@ -17,7 +18,9 @@ export default function ServiceDetailPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [pricingMode, setPricingMode] = useState<PricingMode>("per_lesson");
   const [priceReais, setPriceReais] = useState("");
+  const [fixedPriceReais, setFixedPriceReais] = useState("");
   const [minutes, setMinutes] = useState(60);
   const [status, setStatus] = useState("active");
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +40,9 @@ export default function ServiceDetailPage() {
       if (!row) return;
       setName(row.name);
       setDescription(row.description ?? "");
+      setPricingMode(row.pricing_mode ?? "per_lesson");
       setPriceReais(centsToInput(row.default_price_cents));
+      setFixedPriceReais(centsToInput(row.fixed_price_cents));
       setMinutes(row.default_duration_minutes);
       setStatus(row.status);
       setLoaded(true);
@@ -51,11 +56,22 @@ export default function ServiceDetailPage() {
     e.preventDefault();
     setSaving(true);
     setError(null);
-    const cents = reaisToCents(priceReais);
-    if (cents == null) {
-      setSaving(false);
-      setError("Valor por aula inválido.");
-      return;
+    let cents: number | null = null;
+    let fixedCents: number | null = null;
+    if (pricingMode === "fixed_period") {
+      fixedCents = reaisToCents(fixedPriceReais);
+      if (fixedCents == null) {
+        setSaving(false);
+        setError("Informe o valor do plano.");
+        return;
+      }
+    } else {
+      cents = reaisToCents(priceReais);
+      if (cents == null) {
+        setSaving(false);
+        setError("Valor por aula inválido.");
+        return;
+      }
     }
     const result = await apiFetch<Service>(`/api/v1/services/${params.serviceId}`, {
       method: "PATCH",
@@ -64,6 +80,8 @@ export default function ServiceDetailPage() {
         description: description || null,
         default_duration_minutes: minutes,
         default_price_cents: cents,
+        pricing_mode: pricingMode,
+        fixed_price_cents: fixedCents,
       }),
     });
     setSaving(false);
@@ -112,13 +130,41 @@ export default function ServiceDetailPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
-          <TextField
-            label="Valor por aula (R$)"
-            inputMode="decimal"
-            value={priceReais}
-            onChange={(e) => setPriceReais(e.target.value)}
-            required
-          />
+          <fieldset>
+            <legend className="text-sm font-medium">Como você cobra por este serviço?</legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <SegmentedToggle
+                active={pricingMode === "per_lesson"}
+                onClick={() => setPricingMode("per_lesson")}
+              >
+                Por aula
+              </SegmentedToggle>
+              <SegmentedToggle
+                active={pricingMode === "fixed_period"}
+                onClick={() => setPricingMode("fixed_period")}
+              >
+                Valor fixo pelo período
+              </SegmentedToggle>
+            </div>
+          </fieldset>
+          {pricingMode === "fixed_period" ? (
+            <TextField
+              label="Valor do plano (R$)"
+              inputMode="decimal"
+              value={fixedPriceReais}
+              onChange={(e) => setFixedPriceReais(e.target.value)}
+              hint="Valor cobrado pelo período inteiro do plano, independente da quantidade de aulas."
+              required
+            />
+          ) : (
+            <TextField
+              label="Valor por aula (R$)"
+              inputMode="decimal"
+              value={priceReais}
+              onChange={(e) => setPriceReais(e.target.value)}
+              required
+            />
+          )}
           <TextField
             label="Duração padrão da aula (minutos)"
             type="number"

@@ -57,7 +57,7 @@ export default function CycleFinancialEditPage() {
   }, [params.cycleId]);
 
   const preview = useMemo(() => {
-    if (!cycle?.subtotal_cents || cycle.unit_price_cents == null || cycle.lesson_count == null) {
+    if (!cycle?.subtotal_cents || cycle.lesson_count == null) {
       return null;
     }
     const subtotal = cycle.subtotal_cents;
@@ -133,14 +133,23 @@ export default function CycleFinancialEditPage() {
           <p>
             <span className="text-[var(--color-ink-muted)]">Aulas</span> · {cycle.lesson_count}
           </p>
-          <p>
-            <span className="text-[var(--color-ink-muted)]">Valor por aula</span> ·{" "}
-            {formatBRL(cycle.unit_price_cents)} (congelado)
-          </p>
-          <p>
-            <span className="text-[var(--color-ink-muted)]">Subtotal</span> ·{" "}
-            {formatBRL(cycle.subtotal_cents)}
-          </p>
+          {cycle.pricing_mode === "fixed_period" ? (
+            <p>
+              <span className="text-[var(--color-ink-muted)]">Valor do plano</span> ·{" "}
+              {formatBRL(cycle.subtotal_cents)} (congelado)
+            </p>
+          ) : (
+            <>
+              <p>
+                <span className="text-[var(--color-ink-muted)]">Valor por aula</span> ·{" "}
+                {formatBRL(cycle.unit_price_cents)} (congelado)
+              </p>
+              <p>
+                <span className="text-[var(--color-ink-muted)]">Subtotal</span> ·{" "}
+                {formatBRL(cycle.subtotal_cents)}
+              </p>
+            </>
+          )}
           <p>
             <span className="text-[var(--color-ink-muted)]">Ajuste atual</span> ·{" "}
             {formatBRL(cycle.adjustment_cents ?? 0)}

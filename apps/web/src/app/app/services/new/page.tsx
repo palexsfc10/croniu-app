@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { TextField } from "@/components/ui/text-field";
 import { useAuth } from "@/components/auth/auth-provider";
-import { apiFetch, reaisToCents, type CycleTemplate, type Service } from "@/lib/api";
+import { apiFetch, reaisToCents, type CycleTemplate, type PricingMode, type Service } from "@/lib/api";
 import { safeReturnTo } from "@/lib/nomenclature";
 import { SETUP_CELEBRATE_KEY, setupCopyFor } from "@/lib/setup-copy";
 
@@ -26,7 +26,9 @@ function NewServiceForm() {
   const returnTo = safeReturnTo(search.get("returnTo")) ?? "/app/services";
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [pricingMode, setPricingMode] = useState<PricingMode>("per_lesson");
   const [priceReais, setPriceReais] = useState("");
+  const [fixedPriceReais, setFixedPriceReais] = useState("");
   const [free, setFree] = useState(false);
   const [minutes, setMinutes] = useState(60);
   const [customDuration, setCustomDuration] = useState(false);
@@ -44,7 +46,15 @@ function NewServiceForm() {
     setSaving(true);
     setError(null);
     let cents: number | null = null;
-    if (free) {
+    let fixedCents: number | null = null;
+    if (pricingMode === "fixed_period") {
+      fixedCents = reaisToCents(fixedPriceReais);
+      if (fixedCents == null) {
+        setSaving(false);
+        setError("Informe o valor do plano.");
+        return;
+      }
+    } else if (free) {
       cents = 0;
     } else if (priceReais.trim()) {
       cents = reaisToCents(priceReais);
@@ -62,6 +72,8 @@ function NewServiceForm() {
         default_duration_minutes: minutes,
         default_duration_days: 30,
         default_price_cents: cents,
+        pricing_mode: pricingMode,
+        fixed_price_cents: fixedCents,
       }),
     });
     if (result.error) {
@@ -139,24 +151,55 @@ function NewServiceForm() {
             </div>
           ) : null}
         </fieldset>
-        <label className="flex items-center gap-2 text-sm text-[var(--color-ink)]">
-          <input
-            type="checkbox"
-            checked={free}
-            onChange={(e) => setFree(e.target.checked)}
-          />
-          Gratuito
-        </label>
-        {!free ? (
+        <fieldset>
+          <legend className="text-sm font-medium">Como você cobra por este serviço?</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <SegmentedToggle
+              active={pricingMode === "per_lesson"}
+              onClick={() => setPricingMode("per_lesson")}
+            >
+              Por aula
+            </SegmentedToggle>
+            <SegmentedToggle
+              active={pricingMode === "fixed_period"}
+              onClick={() => setPricingMode("fixed_period")}
+            >
+              Valor fixo pelo período
+            </SegmentedToggle>
+          </div>
+        </fieldset>
+        {pricingMode === "fixed_period" ? (
           <TextField
-            label="Valor (R$)"
+            label="Valor do plano (R$)"
             inputMode="decimal"
-            value={priceReais}
-            onChange={(e) => setPriceReais(e.target.value)}
+            value={fixedPriceReais}
+            onChange={(e) => setFixedPriceReais(e.target.value)}
             placeholder="0,00"
-            hint="Informe o valor cobrado por atendimento. Deixe em branco se o valor for definido no ciclo."
+            hint="Valor cobrado pelo período inteiro do plano, independente da quantidade de aulas."
+            required
           />
-        ) : null}
+        ) : (
+          <>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-ink)]">
+              <input
+                type="checkbox"
+                checked={free}
+                onChange={(e) => setFree(e.target.checked)}
+              />
+              Gratuito
+            </label>
+            {!free ? (
+              <TextField
+                label="Valor por aula (R$)"
+                inputMode="decimal"
+                value={priceReais}
+                onChange={(e) => setPriceReais(e.target.value)}
+                placeholder="0,00"
+                hint="Informe o valor cobrado por atendimento. Deixe em branco se o valor for definido no ciclo."
+              />
+            ) : null}
+          </>
+        )}
         {error ? (
           <p role="alert" className="text-sm text-[var(--color-danger)]">
             {error}

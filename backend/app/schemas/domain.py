@@ -59,6 +59,14 @@ class ServiceCreate(BaseModel):
     default_duration_days: int = Field(default=30, ge=1, le=730)
     default_duration_minutes: int = Field(default=60, ge=15, le=480)
     default_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    pricing_mode: str = Field(default="per_lesson", pattern="^(per_lesson|fixed_period)$")
+    fixed_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+
+    @model_validator(mode="after")
+    def require_fixed_price_when_fixed_period(self) -> ServiceCreate:
+        if self.pricing_mode == "fixed_period" and self.fixed_price_cents is None:
+            raise ValueError("Informe o valor do plano para cobrança de valor fixo pelo período.")
+        return self
 
 
 class ServiceUpdate(BaseModel):
@@ -67,6 +75,8 @@ class ServiceUpdate(BaseModel):
     default_duration_days: int | None = Field(default=None, ge=1, le=730)
     default_duration_minutes: int | None = Field(default=None, ge=15, le=480)
     default_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    pricing_mode: str | None = Field(default=None, pattern="^(per_lesson|fixed_period)$")
+    fixed_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
     status: str | None = Field(default=None, pattern="^(active|archived)$")
 
 
@@ -79,6 +89,8 @@ class ServiceOut(BaseModel):
     default_duration_days: int
     default_duration_minutes: int
     default_price_cents: int | None
+    pricing_mode: str = "per_lesson"
+    fixed_price_cents: int | None = None
     status: str
     created_at: datetime
     updated_at: datetime
@@ -117,6 +129,7 @@ class CycleOut(BaseModel):
     lessons_completed: int = 0
     lessons_no_show: int = 0
     lessons_remaining: int | None = None
+    pricing_mode: str = "per_lesson"
     unit_price_cents: int | None = None
     subtotal_cents: int | None = None
     adjustment_cents: int | None = None

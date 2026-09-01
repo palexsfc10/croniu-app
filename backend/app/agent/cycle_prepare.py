@@ -282,9 +282,16 @@ def prepare_cycle_proposal(
         # Not on service — only ask if truly unknown after template lookup
         freq = None
 
-    # Without weekdays, assistant uses package value = service.default_price (legacy create_cycle).
-    # Manual intelligent flow multiplies unit×aulas only after weekdays are chosen.
-    price = value_cents if value_cents is not None else service.default_price_cents
+    # Billing mode belongs to the Service — the assistant never computes a per-lesson
+    # price for a fixed_period service, and never invents its own formula (AI-002).
+    pricing_mode = service.pricing_mode
+    if pricing_mode == "fixed_period":
+        price = value_cents if value_cents is not None else service.fixed_price_cents
+    else:
+        # Without weekdays, assistant uses package value = service.default_price (legacy create_cycle).
+        # Manual intelligent flow multiplies unit×aulas only after weekdays are chosen.
+        price = value_cents if value_cents is not None else service.default_price_cents
+    valor_key = "Valor do plano" if pricing_mode == "fixed_period" else "Valor"
     adj = adjustment_cents if adjustment_cents is not None else 0
     if adj > 0:
         adj = -abs(adj)
@@ -323,6 +330,7 @@ def prepare_cycle_proposal(
         "duration_type": duration_type,
         "duration_value": duration_value,
         "duration_days_estimate": duration_value if duration_type == "fixed_days" else None,
+        "pricing_mode": pricing_mode,
         "value_cents": price,
         "value_label": format_brl(price),
         "lesson_duration_minutes": service.default_duration_minutes,
@@ -473,6 +481,7 @@ def prepare_cycle_proposal(
             "lesson_count": planned,
             "duration_type": duration_type,
             "duration_value": duration_value,
+            "pricing_mode": pricing_mode,
             "value_cents": final_cents if final_cents is not None else price,
             "adjustment_cents": adj,
             "final_cents": final_cents,
@@ -485,7 +494,7 @@ def prepare_cycle_proposal(
                 "Serviço": service.name,
                 "Período": f"{_fmt_date(starts_on)} a {_fmt_date(last_inclusive)}",
                 "Frequência": f"{freq} aulas por semana — {planned} aulas previstas",
-                "Valor": valor_label,
+                valor_key: valor_label,
                 "Vencimento": _fmt_date(starts_on),
                 "Agenda": "Sem agenda (exceção explícita).",
             },
@@ -615,6 +624,7 @@ def prepare_cycle_proposal(
         "lesson_count": planned,
         "duration_type": duration_type,
         "duration_value": duration_value,
+        "pricing_mode": pricing_mode,
         "value_cents": final_cents if final_cents is not None else price,
         "adjustment_cents": adj,
         "final_cents": final_cents,
@@ -632,7 +642,7 @@ def prepare_cycle_proposal(
             "Frequência": f"{freq} aulas por semana",
             "Quantidade": f"{planned} aulas previstas",
             "Programação": "; ".join(schedule_lines),
-            "Valor": valor_label,
+            valor_key: valor_label,
             "Vencimento": _fmt_date(starts_on),
             "Agenda": f"{planned} compromissos serão criados",
             "Conflitos": "nenhum",

@@ -5,6 +5,7 @@ from datetime import date, datetime, time
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -32,6 +33,10 @@ class Cycle(Base):
             "idempotency_key",
             unique=True,
             postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "pricing_mode IN ('per_lesson', 'fixed_period')",
+            name="ck_cycles_pricing_mode",
         ),
     )
 
@@ -66,6 +71,9 @@ class Cycle(Base):
     ends_on: Mapped[date] = mapped_column(Date, nullable=False)
     weekdays: Mapped[list[int] | None] = mapped_column(ARRAY(Integer), nullable=True)
     lesson_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Snapshot of how this cycle was billed at creation time — never re-derived from the
+    # service later, so a future change to Service.pricing_mode never rewrites history.
+    pricing_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="per_lesson")
     unit_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     subtotal_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     adjustment_cents: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)

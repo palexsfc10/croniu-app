@@ -53,7 +53,10 @@ export default function ServicesPage() {
             >
               <p className="font-semibold text-[var(--color-ink)]">{item.name}</p>
               <p className="text-sm text-[var(--color-ink-muted)]">
-                {formatBRL(item.default_price_cents)} / aula · {item.default_duration_minutes} min
+                {item.pricing_mode === "fixed_period"
+                  ? `${formatBRL(item.fixed_price_cents)} / plano`
+                  : `${formatBRL(item.default_price_cents)} / aula`}{" "}
+                · {item.default_duration_minutes} min
               </p>
             </Link>
           </li>

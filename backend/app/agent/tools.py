@@ -1611,6 +1611,7 @@ def execute_create_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[st
         "lesson_count": cycle.lesson_count,
         "starts_on": cycle.starts_on.isoformat(),
         "ends_on": cycle.ends_on.isoformat(),
+        "pricing_mode": cycle.pricing_mode,
         "value_cents": cycle.value_cents,
         "creates_appointments": True,
         "appointment_ids": [str(a.id) for a in appts],
@@ -2243,7 +2244,10 @@ TOOLS: dict[str, ToolDefinition] = {
             "Passe o draft completo: weekdays, schedule_slots ou starts_time, "
             "generate_appointments=true, lesson_count, occurrence_dates. "
             "Na confirmação cria ciclo + recebível + compromissos atomicamente. "
-            "Exige confirmação. Correções: prepare de novo + nova proposta."
+            "Exige confirmação. Correções: prepare de novo + nova proposta. "
+            "O modo de cobrança (por aula ou valor fixo pelo período) vem do serviço — "
+            "nunca calcule valor por aula para um serviço de valor fixo; value_cents já "
+            "vem correto do draft de prepare_cycle_proposal, não multiplique por conta própria."
         ),
         parameters={
             "type": "object",

@@ -80,7 +80,8 @@ class CyclePreviewOut(BaseModel):
     weekdays: list[int]
     lesson_dates: list[date]
     lesson_count: int
-    unit_price_cents: int
+    pricing_mode: str = "per_lesson"
+    unit_price_cents: int | None
     subtotal_cents: int
     adjustment_cents: int
     final_cents: int

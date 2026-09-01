@@ -80,10 +80,10 @@ def test_empty_database_upgrade_head_unique(migration_db: str):
     assert heads.returncode == 0, heads.stderr
     lines = [ln for ln in heads.stdout.strip().splitlines() if ln.strip()]
     assert len(lines) == 1
-    assert "0026_availability_schedules" in lines[0]
+    assert "0027_fixed_period_plan_pricing" in lines[0]
 
     current = _run_alembic("current")
-    assert "0026_availability_schedules" in current.stdout
+    assert "0027_fixed_period_plan_pricing" in current.stdout
 
     engine = create_engine(migration_db)
     insp = inspect(engine)
@@ -156,7 +156,7 @@ def test_upgrade_from_0018_to_head(migration_db: str):
     to_head = _run_alembic("upgrade", "head")
     assert to_head.returncode == 0, to_head.stdout + to_head.stderr
     heads = _run_alembic("heads")
-    assert "0026_availability_schedules" in heads.stdout
+    assert "0027_fixed_period_plan_pricing" in heads.stdout
     assert len([ln for ln in heads.stdout.strip().splitlines() if ln.strip()]) == 1
 
     engine = create_engine(migration_db)
@@ -195,5 +195,5 @@ def test_upgrade_from_0020_to_0021(migration_db: str):
     to_21 = _run_alembic("upgrade", "head")
     assert to_21.returncode == 0, to_21.stdout + to_21.stderr
     current = _run_alembic("current")
-    assert "0026_availability_schedules" in current.stdout
+    assert "0027_fixed_period_plan_pricing" in current.stdout
 

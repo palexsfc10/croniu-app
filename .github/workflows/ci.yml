@@ -150,8 +150,8 @@ jobs:
           alembic current | tee /tmp/alembic-current.txt
           alembic heads | tee /tmp/alembic-heads.txt
           test "$(wc -l < /tmp/alembic-heads.txt)" -eq 1
-          grep -q "0026_availability_schedules" /tmp/alembic-heads.txt
-          grep -q "0026_availability_schedules" /tmp/alembic-current.txt
+          grep -q "0027_fixed_period_plan_pricing" /tmp/alembic-heads.txt
+          grep -q "0027_fixed_period_plan_pricing" /tmp/alembic-current.txt
           alembic check | tee /tmp/alembic-check.txt
           grep -q "No new upgrade operations detected" /tmp/alembic-check.txt
           python scripts/assert_canonical_constraints.py

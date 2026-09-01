@@ -55,6 +55,8 @@ export type Client = {
   updated_at: string;
 };
 
+export type PricingMode = "per_lesson" | "fixed_period";
+
 export type Service = {
   id: string;
   name: string;
@@ -62,6 +64,8 @@ export type Service = {
   default_duration_days: number;
   default_duration_minutes: number;
   default_price_cents: number | null;
+  pricing_mode: PricingMode;
+  fixed_price_cents: number | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -85,7 +89,8 @@ export type CyclePreview = {
   weekdays: number[];
   lesson_dates: string[];
   lesson_count: number;
-  unit_price_cents: number;
+  pricing_mode: PricingMode;
+  unit_price_cents: number | null;
   subtotal_cents: number;
   adjustment_cents: number;
   final_cents: number;
@@ -109,6 +114,7 @@ export type Cycle = {
   lessons_completed?: number;
   lessons_no_show?: number;
   lessons_remaining?: number | null;
+  pricing_mode?: PricingMode;
   unit_price_cents?: number | null;
   subtotal_cents?: number | null;
   adjustment_cents?: number | null;

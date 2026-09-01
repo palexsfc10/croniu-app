@@ -61,6 +61,7 @@ Nomenclatura interna: `Client` (UI pode dizer “Aluno” no futuro).
 | Modo `period` (datas) | `IMPLEMENTADO` |
 | Cálculo exato de aulas (enumeração) | `IMPLEMENTADO` |
 | Snapshot unitário / subtotal / ajuste / total | `IMPLEMENTADO` |
+| Modo de cobrança: `per_lesson` (padrão) ou `fixed_period` | `IMPLEMENTADO` — vem do `Service.pricing_mode`, snapshotado em `Cycle.pricing_mode` na criação (imutável depois). `fixed_period`: `subtotal_cents = Service.fixed_price_cents`, nunca `unit_price × lesson_count`; `unit_price_cents` fica `NULL`. Quantidade de aulas (`lesson_count`) continua existindo e contando normalmente para agenda/progresso em ambos os modos — só o cálculo financeiro muda. Ajuste/desconto continua funcionando sobre o valor base, em qualquer modo. |
 | Geração opcional de agenda (atômica) | `IMPLEMENTADO` |
 | Edição contratual/financeira | `IMPLEMENTADO` |
 | Edição financeira na UI (desconto XOR final) | `IMPLEMENTADO` (2C.1) |

@@ -47,6 +47,8 @@ def create_service(
             default_duration_days=payload.default_duration_days,
             default_duration_minutes=payload.default_duration_minutes,
             default_price_cents=payload.default_price_cents,
+            pricing_mode=payload.pricing_mode,
+            fixed_price_cents=payload.fixed_price_cents,
         )
     except AuthError as exc:
         raise _http(exc) from exc

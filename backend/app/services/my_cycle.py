@@ -1045,7 +1045,11 @@ def prepare_renewal(
         raise AuthError("renewal_closed", "Esta solicitação já foi encerrada.", 409)
     cycle = row.source_cycle
     service = cycle.service if cycle else None
-    price = service.default_price_cents if service else None
+    # Suggests the SERVICE's current billing configuration — never the expiring cycle's
+    # own frozen snapshot, since the professional may have since changed how they charge.
+    pricing_mode = service.pricing_mode if service else "per_lesson"
+    unit_price = service.default_price_cents if service else None
+    fixed_price = service.fixed_price_cents if service else None
     if row.status == "requested":
         row.status = "acknowledged"
         row.acknowledged_at = datetime.now(UTC)
@@ -1058,7 +1062,9 @@ def prepare_renewal(
         weekdays=list(cycle.weekdays) if cycle and cycle.weekdays else None,
         duration_type=cycle.duration_type if cycle else None,
         duration_value=cycle.duration_value if cycle else None,
-        suggested_unit_price_cents=price,
+        pricing_mode=pricing_mode,
+        suggested_unit_price_cents=unit_price if pricing_mode == "per_lesson" else None,
+        suggested_fixed_price_cents=fixed_price if pricing_mode == "fixed_period" else None,
         renewal_request_id=row.id,
     )
 

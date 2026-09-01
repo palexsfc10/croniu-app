@@ -9,6 +9,10 @@ from datetime import date, timedelta
 DURATION_CALENDAR_MONTHS = "calendar_months"
 DURATION_FIXED_DAYS = "fixed_days"
 
+PRICING_PER_LESSON = "per_lesson"
+PRICING_FIXED_PERIOD = "fixed_period"
+PRICING_MODES = (PRICING_PER_LESSON, PRICING_FIXED_PERIOD)
+
 
 def add_calendar_months(starts_on: date, months: int) -> date:
     """Return exclusive renewal date = start + N calendar months (day clamped)."""
@@ -67,7 +71,8 @@ def enumerate_lesson_dates(
 @dataclass(frozen=True)
 class FinancialComposition:
     lesson_count: int
-    unit_price_cents: int
+    pricing_mode: str
+    unit_price_cents: int | None
     subtotal_cents: int
     adjustment_cents: int
     final_cents: int
@@ -76,36 +81,52 @@ class FinancialComposition:
 def compose_financial(
     *,
     lesson_count: int,
-    unit_price_cents: int,
+    pricing_mode: str = PRICING_PER_LESSON,
+    unit_price_cents: int | None = None,
+    fixed_price_cents: int | None = None,
     adjustment_cents: int | None = None,
     final_cents: int | None = None,
 ) -> FinancialComposition:
+    """Single source of truth for a cycle's money math — never duplicate this formula
+    in the frontend or in the AI agent (AI-002 pattern).
+
+    `per_lesson` (default, unchanged behavior): subtotal = lesson_count * unit_price_cents.
+    `fixed_period`: subtotal = fixed_price_cents, independent of lesson_count — the number
+    of lessons keeps existing for agenda/progress, but never multiplies the price.
+    In both modes, `final_cents` (an explicit total) still wins when provided, and
+    `adjustment_cents` is derived to reconcile it — same override mechanics as before.
+    """
     if lesson_count < 0:
         raise ValueError("lesson_count must be >= 0")
-    if unit_price_cents < 0:
-        raise ValueError("unit_price_cents must be >= 0")
+    if pricing_mode not in PRICING_MODES:
+        raise ValueError(f"Unsupported pricing_mode: {pricing_mode}")
 
-    subtotal = lesson_count * unit_price_cents
+    if pricing_mode == PRICING_FIXED_PERIOD:
+        if fixed_price_cents is None or fixed_price_cents < 0:
+            raise ValueError("fixed_price_cents must be >= 0 for fixed_period pricing")
+        subtotal = fixed_price_cents
+        resolved_unit_price: int | None = None
+    else:
+        if unit_price_cents is None or unit_price_cents < 0:
+            raise ValueError("unit_price_cents must be >= 0 for per_lesson pricing")
+        subtotal = lesson_count * unit_price_cents
+        resolved_unit_price = unit_price_cents
 
     if final_cents is not None:
         if final_cents < 0:
             raise ValueError("final_cents must be >= 0")
         adjustment = final_cents - subtotal
-        return FinancialComposition(
-            lesson_count=lesson_count,
-            unit_price_cents=unit_price_cents,
-            subtotal_cents=subtotal,
-            adjustment_cents=adjustment,
-            final_cents=final_cents,
-        )
+        final = final_cents
+    else:
+        adjustment = adjustment_cents or 0
+        final = subtotal + adjustment
+        if final < 0:
+            raise ValueError("final amount cannot be negative")
 
-    adjustment = adjustment_cents or 0
-    final = subtotal + adjustment
-    if final < 0:
-        raise ValueError("final amount cannot be negative")
     return FinancialComposition(
         lesson_count=lesson_count,
-        unit_price_cents=unit_price_cents,
+        pricing_mode=pricing_mode,
+        unit_price_cents=resolved_unit_price,
         subtotal_cents=subtotal,
         adjustment_cents=adjustment,
         final_cents=final,
