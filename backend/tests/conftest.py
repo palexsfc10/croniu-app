@@ -38,6 +38,7 @@ from app.models import (  # noqa: F401
     AgentToolCall,
     AgentUsageDaily,
     Appointment,
+    AvailabilitySchedule,
     BillingCheckout,
     BillingPlan,
     BillingPrice,
@@ -142,7 +143,8 @@ def clean_tables():
                 "operational_occurrences, recurring_client_tasks, protocol_versions, protocols, "
                 "payment_proofs, payment_reports, renewal_requests, "
                 "organization_payment_settings, client_public_accesses, "
-                "appointments, locations, password_reset_tokens, email_verification_tokens, "
+                "appointments, availability_schedules, locations, password_reset_tokens, "
+                "email_verification_tokens, "
                 "receivables, cycles, cycle_templates, services, clients, "
                 "admin_audit_logs, platform_sessions, platform_memberships, "
                 "user_auth_identities, "

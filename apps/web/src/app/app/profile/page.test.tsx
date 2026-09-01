@@ -27,6 +27,10 @@ describe("Mais page", () => {
     );
     expect(screen.getByRole("link", { name: /^Manual/i })).toHaveAttribute("href", "/app/manual");
     expect(screen.getByRole("link", { name: /Locais/i })).toHaveAttribute("href", "/app/locations");
+    expect(screen.getByRole("link", { name: /Horários de atendimento/i })).toHaveAttribute(
+      "href",
+      "/app/availability",
+    );
     expect(screen.getByRole("link", { name: /Preferências gerais/i })).toHaveAttribute(
       "href",
       "/app/preferences",

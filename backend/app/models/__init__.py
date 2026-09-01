@@ -10,6 +10,7 @@ from app.models.agent import (
     AgentUsageDaily,
 )
 from app.models.appointment import Appointment
+from app.models.availability_schedule import AvailabilitySchedule
 from app.models.billing import (
     BillingCheckout,
     BillingPlan,
@@ -83,6 +84,7 @@ __all__ = [
     "PasswordResetToken",
     "Location",
     "Appointment",
+    "AvailabilitySchedule",
     "OrganizationPaymentSettings",
     "RenewalRequest",
     "ReferralPartner",
