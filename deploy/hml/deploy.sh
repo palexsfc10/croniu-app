@@ -49,6 +49,59 @@ load_env() {
     log "OK BILLING_CARD_ENABLED=${BILLING_CARD_ENABLED:-false} (guard HML)"
   fi
   : "${PUBLIC_APP_BASE_URL:=${NEXT_PUBLIC_APP_URL}}"
+  validate_google_oauth_contract
+}
+
+# Falha antes do build se o contrato do Google OAuth estiver inválido. Nunca
+# imprime os valores dos Client IDs — só presença/ausência e comprimento.
+validate_google_oauth_contract() {
+  local enabled="${GOOGLE_OAUTH_ENABLED:-false}"
+  log "GOOGLE_OAUTH_ENABLED=${enabled}"
+  if [[ "$enabled" != "true" ]]; then
+    return
+  fi
+  local server_id="${GOOGLE_OAUTH_CLIENT_ID:-}"
+  local web_id="${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}"
+  if [[ -n "$server_id" ]]; then
+    log "GOOGLE_OAUTH_CLIENT_ID=SET len=${#server_id}"
+  else
+    log "GOOGLE_OAUTH_CLIENT_ID=MISSING"
+  fi
+  if [[ -n "$web_id" ]]; then
+    log "NEXT_PUBLIC_GOOGLE_CLIENT_ID=SET len=${#web_id}"
+  else
+    log "NEXT_PUBLIC_GOOGLE_CLIENT_ID=MISSING"
+  fi
+  [[ -n "$server_id" ]] || die "GOOGLE_OAUTH_ENABLED=true mas GOOGLE_OAUTH_CLIENT_ID está vazio/ausente em .env.hml"
+  [[ -n "$web_id" ]] || die "GOOGLE_OAUTH_ENABLED=true mas NEXT_PUBLIC_GOOGLE_CLIENT_ID está vazio/ausente em .env.hml"
+  [[ "$server_id" == "$web_id" ]] || die "GOOGLE_OAUTH_CLIENT_ID e NEXT_PUBLIC_GOOGLE_CLIENT_ID precisam ser idênticos (contrato de build inválido) — o botão Google usa o mesmo Client ID no frontend e no backend"
+  log "GOOGLE_OAUTH contrato OK (client ids idênticos)"
+}
+
+# O checkout implantado em HML normalmente não tem .git (os scripts de ops
+# extraem a árvore de um tarball/rsync sem .git) — por isso o SHA real
+# precisa ser informado explicitamente pelo operador via GIT_SHA=<sha>,
+# exceto quando este script roda de dentro de um checkout git de verdade.
+resolve_git_sha() {
+  if [[ -n "${GIT_SHA:-}" ]]; then
+    printf '%s' "$GIT_SHA"
+    return
+  fi
+  if [[ -d "${REPO_ROOT}/.git" ]]; then
+    git -C "$REPO_ROOT" rev-parse HEAD
+    return
+  fi
+  die "GIT_SHA não pôde ser determinado: ${REPO_ROOT} não é um checkout git e a variável de ambiente GIT_SHA não foi definida. Rode como: GIT_SHA=<sha-do-commit-implantado> $0 $cmd"
+}
+
+# Nunca cai silenciosamente em 0.0.0-dev: usa CRONIU_VERSION (.env.hml) por
+# padrão, ou APP_VERSION se o operador exportar explicitamente um override.
+resolve_app_version() {
+  local v="${APP_VERSION:-${CRONIU_VERSION:-}}"
+  if [[ -z "$v" ]]; then
+    die "APP_VERSION não pôde ser determinado: defina CRONIU_VERSION em .env.hml ou exporte APP_VERSION explicitamente."
+  fi
+  printf '%s' "$v"
 }
 
 compose() {
@@ -56,19 +109,44 @@ compose() {
 }
 
 build_images() {
+  local git_sha app_version build_time
+  git_sha="$(resolve_git_sha)"
+  app_version="$(resolve_app_version)"
+  build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  log "GIT_SHA=${git_sha}"
+  log "APP_VERSION=${app_version}"
+  log "BUILD_TIME=${build_time}"
+
   log "Construindo imagem da API"
-  docker build -t "${CRONIU_API_IMAGE:-croniu-hml-api:local}" -f "${REPO_ROOT}/backend/Dockerfile" "${REPO_ROOT}/backend"
+  docker build \
+    --build-arg "GIT_SHA=${git_sha}" \
+    --build-arg "APP_VERSION=${app_version}" \
+    --build-arg "BUILD_TIME=${build_time}" \
+    -t "${CRONIU_API_IMAGE:-croniu-hml-api:local}" \
+    -f "${REPO_ROOT}/backend/Dockerfile" \
+    "${REPO_ROOT}/backend"
   log "Construindo imagem do web"
   # Browser uses same-origin /api; rewrite target must be the docker service name.
   docker build \
+    --build-arg "GIT_SHA=${git_sha}" \
+    --build-arg "APP_VERSION=${app_version}" \
+    --build-arg "BUILD_TIME=${build_time}" \
+    --build-arg "NEXT_PUBLIC_APP_VERSION=${app_version}" \
+    --build-arg "NEXT_PUBLIC_GIT_SHA=${git_sha}" \
     --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
     --build-arg "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}" \
     --build-arg "API_PROXY_TARGET=${API_PROXY_TARGET:-http://croniu-hml-api:8000}" \
+    --build-arg "NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}" \
     -t "${CRONIU_WEB_IMAGE:-croniu-hml-web:local}" \
     -f "${REPO_ROOT}/apps/web/Dockerfile" \
     "${REPO_ROOT}/apps/web"
   log "Construindo imagem do admin"
   docker build \
+    --build-arg "GIT_SHA=${git_sha}" \
+    --build-arg "APP_VERSION=${app_version}" \
+    --build-arg "BUILD_TIME=${build_time}" \
+    --build-arg "NEXT_PUBLIC_APP_VERSION=${app_version}" \
+    --build-arg "NEXT_PUBLIC_GIT_SHA=${git_sha}" \
     --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
     --build-arg "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_ADMIN_URL}" \
     -t "${CRONIU_ADMIN_IMAGE:-croniu-hml-admin:local}" \
