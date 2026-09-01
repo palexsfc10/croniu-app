@@ -1523,7 +1523,11 @@ def _propose_create_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
         fields["Quantidade"] = f"{lesson_count} aulas previstas"
     if schedule_lines:
         fields["Programação"] = "; ".join(schedule_lines)
-    fields["Valor"] = cycle_prep.format_brl(value)
+    # Same label convention as cycle_prepare.py (AI-002): a fixed_period service
+    # sells a flat plan value, never a per-lesson price, so the confirmation
+    # summary must say so explicitly.
+    valor_key = "Valor do plano" if service.pricing_mode == "fixed_period" else "Valor"
+    fields[valor_key] = cycle_prep.format_brl(value)
     fields["Vencimento"] = cycle_prep._fmt_date(
         parsed.receivable_due_on or parsed.starts_on
     )

@@ -27,6 +27,41 @@ def _me(client: TestClient) -> tuple[UUID, UUID]:
     return UUID(me["organization"]["id"]), UUID(me["user"]["id"])
 
 
+def _seed_fixed_period(client: TestClient) -> dict:
+    c = client.post(
+        "/api/v1/clients",
+        json={"full_name": "Maria Souza", "phone": "11977776666"},
+    )
+    assert c.status_code == 201, c.text
+    s = client.post(
+        "/api/v1/services",
+        json={
+            "name": "Plano mensal",
+            "default_duration_minutes": 60,
+            "default_duration_days": 30,
+            "default_price_cents": 0,
+            "pricing_mode": "fixed_period",
+            "fixed_price_cents": 30000,
+        },
+    )
+    assert s.status_code == 201, s.text
+    t = client.post(
+        "/api/v1/cycle-templates",
+        json={
+            "name": "Plano mensal",
+            "weekly_frequency": 2,
+            "duration_type": "fixed_days",
+            "duration_value": 30,
+        },
+    )
+    assert t.status_code == 201, t.text
+    return {
+        "client_id": c.json()["id"],
+        "service_id": s.json()["id"],
+        "template_id": t.json()["id"],
+    }
+
+
 def _seed_aula_padrao(client: TestClient) -> dict:
     c = client.post(
         "/api/v1/clients",
@@ -400,6 +435,112 @@ def test_propose_create_cycle_card_and_execute_structured(client, register_paylo
             ).all()
         )
         assert len(linked) == 8
+    finally:
+        db.close()
+
+
+def test_propose_create_cycle_fixed_period_shows_valor_do_plano_label(
+    client, register_payload
+):
+    _auth(client, register_payload)
+    ids = _seed_fixed_period(client)
+    org_id, user_id = _me(client)
+    db = SessionLocal()
+    try:
+        ctx = ToolContext(
+            organization_id=org_id,
+            user_id=user_id,
+            db=db,
+            today=date(2026, 8, 7),
+        )
+        propose = get_tool("propose_create_cycle").handler(
+            ctx,
+            {
+                "client_id": ids["client_id"],
+                "service_id": ids["service_id"],
+                "starts_on": "2026-08-07",
+                "ends_on": "2026-09-06",
+                "value_cents": 30000,
+                "weekly_frequency": 2,
+                "lesson_count": 8,
+                "duration_type": "fixed_days",
+                "duration_value": 30,
+                "cycle_template_id": ids["template_id"],
+                "create_receivable": True,
+                "receivable_due_on": "2026-08-07",
+                "weekdays": [1, 3],
+                "starts_time": "19:00",
+                "generate_appointments": True,
+                "idempotency_key": "propose-fixed-period-label",
+            },
+        )
+        assert propose["needs_confirmation"] is True
+        fields = propose["summary_fields"]
+        # AI-002: a fixed_period service sells a flat plan value, independent of
+        # lesson count — the confirmation summary must label it "Valor do plano",
+        # matching the wording already used by cycle_prepare.py's own preview.
+        assert fields["Valor do plano"] == "R$ 300,00"
+        assert "Valor" not in fields
+
+        # No mutation happened yet — propose_create_cycle only ever returns a
+        # proposal; the cycle must not exist until execute_create_cycle runs.
+        from sqlalchemy import select
+
+        from app.models.cycle import Cycle
+
+        assert (
+            db.scalar(select(Cycle).where(Cycle.organization_id == org_id)) is None
+        )
+    finally:
+        db.close()
+
+
+def test_propose_create_cycle_per_lesson_keeps_valor_label(client, register_payload):
+    _auth(client, register_payload)
+    ids = _seed_aula_padrao(client)
+    org_id, user_id = _me(client)
+    db = SessionLocal()
+    try:
+        ctx = ToolContext(
+            organization_id=org_id,
+            user_id=user_id,
+            db=db,
+            today=date(2026, 8, 7),
+        )
+        propose = get_tool("propose_create_cycle").handler(
+            ctx,
+            {
+                "client_id": ids["client_id"],
+                "service_id": ids["service_id"],
+                "starts_on": "2026-08-07",
+                "ends_on": "2026-09-06",
+                "value_cents": 30000,
+                "weekly_frequency": 2,
+                "lesson_count": 8,
+                "duration_type": "fixed_days",
+                "duration_value": 30,
+                "cycle_template_id": ids["template_id"],
+                "create_receivable": True,
+                "receivable_due_on": "2026-08-07",
+                "weekdays": [1, 3],
+                "starts_time": "19:00",
+                "generate_appointments": True,
+                "idempotency_key": "propose-per-lesson-label",
+            },
+        )
+        assert propose["needs_confirmation"] is True
+        fields = propose["summary_fields"]
+        # per_lesson behavior must stay exactly as before this fix.
+        assert fields["Valor"] == "R$ 300,00"
+        assert "Valor do plano" not in fields
+
+        from sqlalchemy import select
+
+        from app.models.cycle import Cycle
+
+        assert (
+            db.scalar(select(Cycle).where(Cycle.organization_id == org_id)) is None
+        )
     finally:
         db.close()
 
