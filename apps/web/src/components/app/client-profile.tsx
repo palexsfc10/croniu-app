@@ -555,7 +555,7 @@ export function ClientProfile({ clientId }: Props) {
         role="tablist"
         aria-label="Ficha"
         onKeyDown={onTabKey}
-        className="grid h-12 w-full grid-cols-6 items-stretch gap-0.5 overflow-x-auto rounded-[var(--radius-md)] border border-[var(--color-border)]/60 bg-[var(--color-surface-subtle)] p-0.5 shadow-[inset_0_1px_2px_rgba(15,15,20,0.04)]"
+        className="flex h-12 w-full items-stretch gap-0.5 overflow-x-auto rounded-[var(--radius-md)] border border-[var(--color-border)]/60 bg-[var(--color-surface-subtle)] p-0.5 shadow-[inset_0_1px_2px_rgba(15,15,20,0.04)] lg:grid lg:grid-cols-6"
       >
         {TABS.map((entry) => (
           <button
@@ -566,7 +566,7 @@ export function ClientProfile({ clientId }: Props) {
             aria-selected={tab === entry.id}
             aria-controls={`ficha-panel-${entry.id}`}
             tabIndex={tab === entry.id ? 0 : -1}
-            className="flex min-h-11 min-w-0 items-center justify-center rounded-[10px] px-1 text-center text-[11px] font-medium leading-tight text-[var(--color-ink-muted)] whitespace-nowrap transition-all duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:font-semibold aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_3px_rgba(15,15,20,0.08)] sm:text-[13px]"
+            className="flex min-h-11 min-w-0 shrink-0 items-center justify-center rounded-[10px] px-3 text-center text-[13px] font-medium leading-tight whitespace-nowrap text-[var(--color-ink-muted)] transition-all duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-primary)] aria-selected:bg-[var(--color-surface)] aria-selected:font-semibold aria-selected:text-[var(--color-ink)] aria-selected:shadow-[0_1px_3px_rgba(15,15,20,0.08)] lg:px-1 lg:text-[13px]"
             onClick={() => setTab(entry.id)}
           >
             {entry.label}
