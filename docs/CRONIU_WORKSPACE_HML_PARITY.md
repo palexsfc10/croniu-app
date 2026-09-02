@@ -4,6 +4,23 @@
 > (merge PR#41 `feature/desktop-workspace-experience`). Atualizado incrementalmente a cada fatia
 > implantada em `croniu-hml.ntws.cloud`. PRD não é tocada nesta iniciativa.
 
+## Fatias implantadas em HML
+
+| # | Fatia | Commit | Deploy | Situação |
+|---|---|---|---|---|
+| 1 | Identidade e shell (rótulo "Croniu Workspace", badge "Ambiente de homologação" só em HML, "Início" no lugar de "Hoje" em toda a navegação/back-links, "by NTWS Labs" discreto) | `f9f51fe` | recreated `croniu-hml-web` | **feito** — smoke com conta throwaway confirmou em desktop e mobile |
+| 2 | Entrada pública ("/") recomposta: duas colunas, ProductPreview em camadas real (Início/Agenda/Financeiro/IA + Cliente 360°), fonte serifada removida de todo o app, 2 correções de contraste WCAG AA | `e578e97` | recreated `croniu-hml-web` (api também recriado como efeito colateral do rebuild — mesmo código, sem risco) | **feito** — validado em 8 breakpoints + zoom 125% + teclado + contraste + reduced motion |
+
+Conta sintética de smoke usada nas duas fatias (não removida, mesmo padrão já usado pela suíte
+`e2e/cycle-integrity.spec.ts` existente neste ambiente): organização `Smoke Workspace
+1788319536198` (`org_id 02153aa4-b312-47fd-9bbe-d2dbb27f853a`), usuário
+`workspace_smoke_1788319536198@example.com`.
+
+As demais 12 áreas da matriz abaixo (Clientes, Cliente 360°, Agenda Board, Rotinas,
+Acompanhamentos, Onboarding, Serviços/ciclos/avaliações, Financeiro, Portal, Assistente/command
+bar) seguem `pendente` — a promoção completa do conceito do Lab é uma iniciativa maior, ainda em
+andamento fatia a fatia.
+
 ## Como ler esta matriz
 
 Para cada funcionalidade: **rota atual**, **ações existentes**, **API(s) usada(s)**, **destino no
