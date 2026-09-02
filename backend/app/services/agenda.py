@@ -18,6 +18,7 @@ from app.models.organization import Organization
 from app.models.service import Service
 from app.schemas.agenda import (
     DEFAULT_ORG_TIMEZONE,
+    AgendaRangeOut,
     AppointmentConflictItem,
     AppointmentOut,
     DayAgendaOut,
@@ -583,6 +584,41 @@ def list_day_agenda(
         appointments=[_appointment_out(row) for row in active],
         conflict_count=conflict_count,
     )
+
+
+def list_range_agenda(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    include_cancelled: bool = False,
+) -> AgendaRangeOut:
+    """Powers the desktop Week view — one `list_day_agenda` call per day in
+    the range, so the exact same conflict/cancelled/routine-materialization
+    logic already proven for `/agenda/day` applies to every day, with no
+    separate implementation to keep in sync."""
+    if end_date < start_date:
+        raise AuthError("invalid_range", "A data final deve ser igual ou posterior à inicial.", 422)
+    span_days = (end_date - start_date).days + 1
+    if span_days > MAX_AGENDA_RANGE_DAYS:
+        raise AuthError(
+            "date_range_limited", f"Consulta limitada a {MAX_AGENDA_RANGE_DAYS} dias.", 400
+        )
+    org = get_organization(db, organization_id)
+    tz_name = get_org_timezone(org)
+    days_out: list[DayAgendaOut] = []
+    for offset in range(span_days):
+        day = start_date + timedelta(days=offset)
+        days_out.append(
+            list_day_agenda(
+                db,
+                organization_id=organization_id,
+                day=day,
+                include_cancelled=include_cancelled,
+            )
+        )
+    return AgendaRangeOut(timezone=tz_name, days=days_out)
 
 
 def appointment_to_out(row: Appointment) -> AppointmentOut:

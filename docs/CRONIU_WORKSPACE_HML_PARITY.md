@@ -277,6 +277,111 @@ Workspace`, cliente `Cliente Mobile Smoke` com ciclo ativo `is_nearing_end=true`
   (`permanently_delete_organization` + `DELETE FROM users WHERE id = ...`); contagens do banco
   confirmadas de volta ao baseline exato — 273 orgs / 278 users / 273 memberships / 155 clients.
 
+## Fatia 5 — Agenda: inspeção pré-implementação
+
+Princípio de produto desta fatia: **a Agenda não é um quadro de tarefas** — compromissos têm
+data/horário real, rotinas são trabalho a concluir; nenhum compromisso exige "finalização", e todos
+os estados/regras existentes são preservados. Aplicada a mesma diretriz da fatia 4: **desktop
+administra** (calendário profissional Dia/Semana), **mobile consulta e age, principalmente pela
+IA** (timeline diária, nunca a grade semanal comprimida).
+
+### O que já existia (achado na inspeção, antes de qualquer linha de código)
+
+**Frontend** (`apps/web/src/app/app/agenda/page.tsx`): uma lista de um único dia (não um
+calendário) com navegação Anterior/Hoje/Próximo, checkbox "Mostrar cancelados", checkbox "Ver
+horários livres" (abria uma lista de links, não um fundo contínuo), banner de conflito e um
+sidebar de rotinas do dia (`AgendaRoutines`, reaproveita `GET /routines/board`). Sem visão Semana.
+Criação/edição/reagendamento/cancelamento já existiam, mas só na página de detalhe
+(`/app/appointments/[id]`, via `PATCH .../status`) e no formulário `/app/appointments/new`
+(compartilhado com o "Agendar" do Cliente 360°, via `clientId`+`returnTo`).
+
+**Backend** (`agenda.py` api/service): `GET /agenda/day`, `GET /agenda/next`,
+`GET /agenda/next-appointments`, `POST/GET/PATCH /appointments` — **sem rota de intervalo (semana)**.
+Conflito é **org-wide, não por cliente/profissional**: qualquer sobreposição de horário em qualquer
+compromisso não-cancelado da organização é bloqueada (`find_conflicts`,
+`starts_at < ends_at AND ends_at > starts_at`, intervalo semiaberto — back-to-back é permitido).
+Cancelado nunca conflita; edição própria se auto-exclui do conflito; criação por ciclo é
+tudo-ou-nada (qualquer conflito no lote reverte o ciclo inteiro, sem órfãos). `Appointment.status`
+é uma string livre validada só no Pydantic (`scheduled|completed|no_show|cancelled`), sem
+constraint de banco — logo nenhuma migração é necessária para nada desta fatia.
+
+**Disponibilidade**: `AvailabilitySchedule` é **uma linha por dia da semana por organização**
+(nunca assumir segunda–sexta — o requisito do produto já reflete essa realidade real do schema),
+com `starts_time/ends_time/break_*` reais. `GET /availability/settings` já expõe exatamente os
+dados necessários para o fundo contínuo do calendário — nenhuma rota nova foi precisa para isso.
+
+**IA**: a maior surpresa da inspeção — o agente **já tinha quase todos os comandos pedidos**
+implementados como tools (`list_today_appointments`, `get_today_summary`,
+`list_upcoming_appointments`, `get_calendar_availability`, `get_available_slots`,
+`propose_create_appointment`/`execute_create_appointment`,
+`propose_reschedule_appointment`/`execute_reschedule_appointment`, todos com o fluxo real de
+`needs_confirmation` → confirmação explícita do profissional → execução). A única lacuna real:
+**não havia tool de cancelamento** ("Cancele o compromisso das 14h." não tinha como ser executado
+pela IA — só `propose_mark_appointment_outcome` para `completed`/`no_show`).
+
+### O que foi construído
+
+1. **`GET /agenda/range`** (aditivo, `backend/app/api/agenda.py` + `services/agenda.py` +
+   `schemas/agenda.py`) — mesma validação/limite de `/agenda/day`, reaproveita
+   `list_day_agenda` dia a dia dentro do mesmo request (nenhuma lógica de conflito/cancelamento
+   duplicada), alimenta a visão Semana do desktop. Testado: ordem/paginação por dia, dia certo por
+   fuso, `include_cancelled`, `end_date < start_date` (422), span acima do limite (400), isolamento
+   por tenant.
+2. **`propose_cancel_appointment` / `execute_cancel_appointment`** (aditivo, `backend/app/agent/tools.py`)
+   — mesmo padrão de `propose_reschedule_appointment`: resume cliente+horário reais, exige
+   confirmação, executa via `agenda_svc.update_appointment(status="cancelled")` (a mesma função já
+   usada pelo cancelamento manual — nenhuma regra nova). Testado: registro como tool de escrita com
+   confirmação, resumo com dados reais, execução real muda o status, rejeita cancelar duas vezes,
+   isolado por tenant.
+3. **`apps/web/src/lib/calendar-grid.ts`** — matemática pura de layout (sem DOM): conversão de ISO
+   para minutos no fuso da organização, empacotamento de sobreposição em colunas (grafo de
+   intervalos, greedy), bandas de disponibilidade contínuas (nunca caixas por slot), limites
+   verticais da grade derivados da configuração real + dos compromissos exibidos (nunca um
+   09h–18h fixo). 20 testes unitários.
+4. **`apps/web/src/components/app/calendar-grid.tsx`** — o componente de calendário desktop
+   (`CalendarGrid`), usado tanto para Dia (1 coluna) quanto Semana (7 colunas): compromissos
+   posicionados por horário/duração real, situação identificável por texto+cor (nunca só cor),
+   cancelados como tarja fina e discreta (nunca do tamanho real, para não dominar a tela), linha do
+   horário atual, clique em espaço livre cria compromisso pré-preenchido (bloqueado no passado).
+5. **`apps/web/src/app/app/agenda/page.tsx`** reescrita com **duas árvores JSX** (mesmo padrão da
+   fatia 4): `hidden lg:block` com o calendário Dia/Semana completo (intocado nada do desktop foi
+   "reduzido"); `lg:hidden` com a timeline diária nova — próxima atividade, compromissos do dia,
+   horários livres resumidos e expansíveis, alerta de conflito/cancelamento, "Agendar" manual
+   sempre visível, "Perguntar à IA" em destaque (prefill `/app/assistant?prompt=`, nunca
+   autoenvio), e as ações de rotina preservadas em ambas as árvores.
+
+### Correção de diretriz aplicada a esta fatia
+
+| Funcionalidade | Gestão completa (desktop) | Resumo (mobile) | Ação via IA | Alternativa manual essencial | Prioridade desktop |
+|---|---|---|---|---|---|
+| Agenda — visão | Grade Dia/Semana real, horário+duração, sobreposição visual, fundo de disponibilidade contínuo | Timeline do dia selecionado, sem grade semanal | "O que tenho hoje?", "Qual meu próximo compromisso?", "Mostre meus horários livres amanhã" — já existiam como tools | Trocar de dia, ver lista do dia, abrir compromisso | Sim |
+| Criar compromisso | Clique em espaço livre da grade ou botão "Novo compromisso" | Botão "Agendar" sempre visível, topo da tela | "Agende a Ana sexta às 10h." — já existia (`propose_create_appointment`) | Formulário `/app/appointments/new` sempre acessível sem IA | Sim |
+| Reagendar | Abrir compromisso → editar horário | Abrir compromisso → editar horário (mesma rota) | "Reagende o Gabriel para segunda." — já existia (`propose_reschedule_appointment`) | Mesmo formulário de edição | Sim |
+| Cancelar | Abrir compromisso → Cancelar | Abrir compromisso → Cancelar (mesma rota) | "Cancele o compromisso das 14h." — **novo nesta fatia** (`propose_cancel_appointment`) | Botão "Cancelar compromisso" já existente, inalterado | Sim |
+| Disponibilidade | Configuração completa (`/app/availability`) + fundo contínuo na grade | Resumo "N horário(s) livre(s) hoje", expansível | implícito em "Mostre meus horários livres" | Link "Configurar horários" sempre visível quando não configurado | Sim |
+| Rotinas do dia | Painel lateral fixo ao lado da grade | Lista ao final da timeline, mesmas ações (Concluir/Adiar) | fora de escopo desta fatia | Concluir/Adiar diretamente na lista | Sim |
+
+Implementação: mesma escolha da fatia 4 — duplicar a árvore mobile em vez de compartilhar JSX com o
+desktop, para zero risco de regressão no calendário desktop novo. `dayAgenda` (o dia selecionado) é
+buscado **independente** da view Dia/Semana do desktop, para que a timeline mobile nunca fique
+desatualizada só porque o desktop está em modo Semana.
+
+**Proteção operacional confirmada**: nenhuma ação essencial depende da IA — consultar agenda, abrir
+compromisso, criar, reagendar e cancelar continuam 100% acionáveis manualmente, com ou sem o
+Assistente disponível.
+
+**Regressão de backend**: as mudanças são **puramente aditivas** no código (nenhuma função/rota
+existente foi modificada — só novas funções, uma nova rota, uma nova tool) o que limita
+estruturalmente o risco de regressão. O ambiente de teste descartável (Postgres efêmero via SSH)
+tem custo de bcrypt por teste HTTP muito alto (~20–30s/teste, característica já documentada em
+fatias anteriores) — os 11 testes novos (rota `/agenda/range` + tool de cancelamento) passaram
+100%, e uma amostra dos testes puros de disponibilidade (sem HTTP/bcrypt, 24 testes) confirmou o
+ambiente saudável. A reexecução exaustiva das suítes HTTP pré-existentes de agenda/disponibilidade
+(`test_agenda_sprint2b.py`, `test_availability_api.py`, `test_cycle_agenda_integrity.py`,
+`test_isolation_agenda_routines.py`, `test_availability_tool.py`) **não foi completada** nesta
+rodada por custo de tempo — permanece pendente junto com a suíte completa de 634 testes, mandatória
+antes de qualquer merge para `main`/PRD, mas não bloqueia esta validação reversível em HML.
+
 ## Como ler esta matriz
 
 Para cada funcionalidade: **rota atual**, **ações existentes**, **API(s) usada(s)**, **destino no
@@ -376,7 +481,7 @@ utilizada. Esta branch nasce exclusivamente de `origin/main` @ `35ca1e6`, como i
 | Templates de ciclo | `/app/cycle-templates` | Criar, editar template | `cycles.py`? (a confirmar router) | Serviços e ciclos → Templates | Lista | Lista | CRUD preservado | pendente |
 | Ciclos | `/app/cycles` | Criar, editar, encerrar, renovar | `cycles.py`, `cycle_intelligence.py` | Serviços e ciclos → Ciclos ativos / Histórico; renovação ganha peso visual quando próxima | Tabela | Lista | Valor, periodicidade, sessões, status preservados | pendente |
 | Disponibilidade | `/app/availability` | Configurar horários de trabalho | `availability.py` (`/availability/settings`, `/day`, `/range`) | Agenda → aba Disponibilidade + fundo contínuo na grade | Grade + config | Horários livres na timeline | Configuração existente não é sobrescrita | pendente |
-| Agenda | `/app/agenda` | Criar, editar, reagendar, cancelar compromisso | `agenda.py` (`/agenda/day`, `/agenda/next`, `/appointments`) | Agenda Board: Dia / Semana / Disponibilidade, grade temporal, sem exigir conclusão | Grade temporal | Timeline diária | Todas as ações de compromisso preservadas; conflito pela regra já existente | pendente |
+| Agenda | `/app/agenda` | Criar, editar, reagendar, cancelar compromisso | `agenda.py` (`/agenda/day`, `/agenda/range` novo, `/agenda/next`, `/appointments`) | Calendário Dia/Semana com grade temporal real, disponibilidade como fundo contínuo | Grade temporal (Dia/Semana) | Timeline diária + Assistente | Todas as ações de compromisso preservadas; conflito pela regra já existente, nunca exige "concluir" | **feito** (fatia 5) |
 | Rotinas | `/app/routines` | Criar, completar, pular, board, templates, defaults | `routines.py` (rico: preview, board, occurrences/decide) | Rotinas: Atrasadas / Hoje / Próximas / Concluídas | Lista com filtro | Lista | Recorrência, prioridade, origem, sugestão IA preservados | pendente |
 | Acompanhamentos | a confirmar (`operational_occurrences`?) | a confirmar | a confirmar | Acompanhamentos: Pendentes / Histórico | Feed + aba por cliente | Feed | — | pendente — requer leitura do router real |
 | Avaliações | dentro do cliente | Criar, editar, publicar, despublicar, arquivar | `evaluations.py` | Avaliações (lista global) + Prontuário do Cliente 360° | Lista/tabela | Lista | Rascunho/publicada preservados, visibilidade no portal preservada | pendente |

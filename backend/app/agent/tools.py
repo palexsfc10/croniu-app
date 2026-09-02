@@ -1195,6 +1195,11 @@ class ProposeRescheduleAppointmentArgs(BaseModel):
         return self
 
 
+class ProposeCancelAppointmentArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    appointment_id: uuid.UUID
+
+
 class ProposeCreateCycleArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     client_id: uuid.UUID
@@ -1406,6 +1411,42 @@ def execute_reschedule_appointment(ctx: ToolContext, arguments: dict[str, Any]) 
         organization_id=ctx.organization_id,
         appointment_id=parsed.appointment_id,
         fields={"starts_at": parsed.starts_at, "ends_at": parsed.ends_at},
+    )
+    return {"id": str(row.id), "kind": "appointment", "status": row.status}
+
+
+def _propose_cancel_appointment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCancelAppointmentArgs.model_validate(args)
+    appointment = agenda_svc.get_appointment(
+        ctx.db, organization_id=ctx.organization_id, appointment_id=parsed.appointment_id
+    )
+    if appointment.status == "cancelled":
+        raise AuthError(
+            "already_cancelled", "Este compromisso já está cancelado.", 422
+        )
+    client_name = appointment.client.full_name if appointment.client else "cliente"
+    tz_name = resolve_org_timezone(ctx.timezone)
+    when = format_human_datetime_range(appointment.starts_at, appointment.ends_at, timezone=tz_name)
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_cancel_appointment",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": f"Cancelar compromisso de {client_name}: {when}.",
+        "summary_fields": {
+            "Cliente": client_name,
+            "Quando": when,
+        },
+        "risk_class": "write_common",
+    }
+
+
+def execute_cancel_appointment(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCancelAppointmentArgs.model_validate(arguments)
+    row = agenda_svc.update_appointment(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        appointment_id=parsed.appointment_id,
+        fields={"status": "cancelled"},
     )
     return {"id": str(row.id), "kind": "appointment", "status": row.status}
 
@@ -2220,6 +2261,22 @@ TOOLS: dict[str, ToolDefinition] = {
         handler=_propose_reschedule_appointment,
         risk_class="write_common",
     ),
+    "propose_cancel_appointment": ToolDefinition(
+        name="propose_cancel_appointment",
+        description="Propõe cancelar um compromisso existente. Exige confirmação do usuário.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "appointment_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["appointment_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_cancel_appointment,
+        risk_class="write_common",
+    ),
     "propose_mark_appointment_outcome": ToolDefinition(
         name="propose_mark_appointment_outcome",
         description=(
@@ -2449,6 +2506,7 @@ WRITE_EXECUTORS: dict[str, Callable[[ToolContext, dict[str, Any]], dict[str, Any
     "create_client": execute_create_client,
     "create_appointment": execute_create_appointment,
     "reschedule_appointment": execute_reschedule_appointment,
+    "cancel_appointment": execute_cancel_appointment,
     "mark_appointment_outcome": execute_mark_appointment_outcome,
     "create_cycle": execute_create_cycle,
     "record_payment": execute_record_payment,

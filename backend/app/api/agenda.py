@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.agenda import (
+    AgendaRangeOut,
     AppointmentCreate,
     AppointmentOut,
     AppointmentUpdate,
@@ -153,6 +154,26 @@ def agenda_day(
         day=target,
         include_cancelled=include_cancelled,
     )
+
+
+@router.get("/agenda/range", response_model=AgendaRangeOut)
+def agenda_range(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    include_cancelled: bool = Query(default=False),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> AgendaRangeOut:
+    try:
+        return agenda_svc.list_range_agenda(
+            db,
+            organization_id=auth.organization.id,
+            start_date=start_date,
+            end_date=end_date,
+            include_cancelled=include_cancelled,
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
 
 
 @router.get("/agenda/next")

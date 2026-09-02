@@ -217,6 +217,11 @@ export type DayAgenda = {
   conflict_count: number;
 };
 
+export type AgendaRange = {
+  timezone: string;
+  days: DayAgenda[];
+};
+
 export type OrgPreferences = {
   id: string;
   name: string;

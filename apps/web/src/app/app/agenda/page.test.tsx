@@ -1,6 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { Appointment, AvailabilityDay, DayAgenda, OrgPreferences } from "@/lib/api";
+import type {
+  Appointment,
+  AvailabilityDay,
+  AvailabilitySettings,
+  DayAgenda,
+  OrgPreferences,
+} from "@/lib/api";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
@@ -40,16 +46,19 @@ const AGENDA: DayAgenda = {
   conflict_count: 0,
 };
 
-let availabilityResponse: { data?: AvailabilityDay; error?: unknown } = {
-  data: {
-    date: "2026-08-22",
-    weekday: 5,
-    timezone: "America/Sao_Paulo",
-    configured: false,
-    is_active: false,
-    duration_minutes: 60,
-    slots: [],
-  },
+const UNCONFIGURED_SETTINGS: AvailabilitySettings = {
+  configured: false,
+  days: [],
+};
+
+const AVAILABILITY_DAY: AvailabilityDay = {
+  date: "2026-08-22",
+  weekday: 5,
+  timezone: "America/Sao_Paulo",
+  configured: true,
+  is_active: true,
+  duration_minutes: 60,
+  slots: [{ starts_at: "2026-08-22T14:00:00Z", ends_at: "2026-08-22T15:00:00Z", label: "11:00" }],
 };
 
 vi.mock("@/lib/api", async () => {
@@ -58,8 +67,17 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     apiFetch: vi.fn(async (path: string) => {
       if (path.includes("/organization/preferences")) return { data: PREFS };
-      if (path.includes("/availability/day")) return availabilityResponse;
+      if (path.includes("/availability/settings")) return { data: UNCONFIGURED_SETTINGS };
+      if (path.includes("/availability/day")) return { data: AVAILABILITY_DAY };
       if (path.includes("/agenda/day")) return { data: AGENDA };
+      if (path.includes("/agenda/range")) {
+        return {
+          data: {
+            timezone: "America/Sao_Paulo",
+            days: [AGENDA, { ...AGENDA, date: "2026-08-23", appointments: [] }],
+          },
+        };
+      }
       if (path.includes("/routines/board")) {
         return {
           data: {
@@ -91,116 +109,104 @@ vi.mock("@/lib/api", async () => {
 
 import AgendaPage from "@/app/app/agenda/page";
 
-describe("Agenda page — status is color-coded, not plain text", () => {
-  it("shows the appointment status as a badge with the correct tone, separate from location/service text", async () => {
-    render(<AgendaPage />);
-    const badge = await screen.findByText("Falta do cliente");
-    expect(badge).toHaveClass("badge-neutral");
+describe("Agenda page — desktop: professional calendar, never a stretched list", () => {
+  it("renders inside the hidden lg:block tree with a Day/Week toggle and the appointment's real client name", async () => {
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block");
+    expect(desktop).not.toBeNull();
+    await within(desktop as HTMLElement).findByText("Aluna Teste");
+    expect(within(desktop as HTMLElement).getByRole("button", { name: "Dia" })).toBeInTheDocument();
+    expect(within(desktop as HTMLElement).getByRole("button", { name: "Semana" })).toBeInTheDocument();
   });
 
-  it("marks an overdue routine action with a danger badge instead of plain accent text", async () => {
-    render(<AgendaPage />);
-    const badge = await screen.findByText("Vencida");
-    expect(badge).toHaveClass("badge-danger");
-  });
-});
-
-describe("Agenda page — disponibilidade integrada (Ver horários livres)", () => {
-  it("does not fetch availability until the toggle is turned on", async () => {
-    render(<AgendaPage />);
-    await screen.findByText("Falta do cliente");
-    expect(screen.getByLabelText("Ver horários livres")).not.toBeChecked();
-    expect(screen.queryByText(/Configure seus horários de atendimento/i)).not.toBeInTheDocument();
-    expect(screen.queryByText("Nenhum horário disponível neste dia.")).not.toBeInTheDocument();
+  it("shows the appointment's status label as real text inside the calendar block", async () => {
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Falta do cliente");
   });
 
-  it("prompts to configure the journey when none exists yet", async () => {
-    availabilityResponse = {
-      data: {
-        date: "2026-08-22",
-        weekday: 5,
-        timezone: "America/Sao_Paulo",
-        configured: false,
-        is_active: false,
-        duration_minutes: 60,
-        slots: [],
-      },
-    };
-    render(<AgendaPage />);
-    fireEvent.click(screen.getByLabelText("Ver horários livres"));
-    expect(
-      await screen.findByText(/Configure seus horários de atendimento/i),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Configurar horários" })).toHaveAttribute(
+  it("keeps the routines side panel reachable alongside the grid", async () => {
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Revisar plano");
+    await within(desktop).findByText("Aluna Teste");
+  });
+
+  it("offers a visible link to Disponibilidade config and a Novo compromisso action", async () => {
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Aluna Teste");
+    expect(within(desktop).getByRole("link", { name: /Disponibilidade/i })).toHaveAttribute(
       "href",
       "/app/availability",
     );
+    expect(within(desktop).getByRole("link", { name: /Novo compromisso/i })).toBeInTheDocument();
   });
 
-  it("shows a day-off message distinctly from an unconfigured journey", async () => {
-    availabilityResponse = {
-      data: {
-        date: "2026-08-22",
-        weekday: 5,
-        timezone: "America/Sao_Paulo",
-        configured: true,
-        is_active: false,
-        duration_minutes: 60,
-        slots: [],
-      },
-    };
-    render(<AgendaPage />);
-    fireEvent.click(screen.getByLabelText("Ver horários livres"));
-    expect(await screen.findByText("Nenhum horário disponível neste dia.")).toBeInTheDocument();
-    expect(screen.queryByText(/Configurar horários/i)).not.toBeInTheDocument();
-  });
-
-  it("renders real free slots as links that prefill the new-appointment form", async () => {
-    availabilityResponse = {
-      data: {
-        date: "2026-08-22",
-        weekday: 5,
-        timezone: "America/Sao_Paulo",
-        configured: true,
-        is_active: true,
-        duration_minutes: 60,
-        slots: [
-          { starts_at: "2026-08-22T11:00:00Z", ends_at: "2026-08-22T12:00:00Z", label: "08:00" },
-          { starts_at: "2026-08-22T14:00:00Z", ends_at: "2026-08-22T15:00:00Z", label: "11:00" },
-        ],
-      },
-    };
-    render(<AgendaPage />);
-    fireEvent.click(screen.getByLabelText("Ver horários livres"));
-    const slotLink = await screen.findByRole("link", { name: /08:00.*Dispon[ií]vel/i });
-    expect(slotLink).toHaveAttribute(
-      "href",
-      "/app/appointments/new?day=2026-08-22&start=08:00&end=09:00",
-    );
-    expect(screen.getByRole("link", { name: /11:00.*Dispon[ií]vel/i })).toBeInTheDocument();
+  it("shows the unconfigured-availability nudge without inventing a configured schedule", async () => {
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText(/Configure seus horários de atendimento/i);
   });
 });
 
-describe("Agenda page — desktop workspace layout", () => {
-  it("splits into a compromissos column plus a routines side column from lg upward, and both stay reachable", async () => {
+describe("Agenda page — mobile: daily timeline + assistant, never the desktop grid compressed", () => {
+  it("renders inside a lg:hidden tree, independent from the desktop grid", async () => {
     const { container } = render(<AgendaPage />);
-    await screen.findByText("Falta do cliente");
-    await screen.findByText("Revisar plano");
-
-    const grid = container.querySelector(".lg\\:grid-cols-\\[minmax\\(0\\,1fr\\)_320px\\]");
-    expect(grid).not.toBeNull();
-    // Both the appointment card and the routine action must live inside that
-    // same responsive wrapper — neither one got dropped by the restructure.
-    expect(grid).toContainElement(screen.getByText("Aluna Teste"));
-    expect(grid).toContainElement(screen.getByText("Revisar plano"));
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]');
+    expect(mobile).not.toBeNull();
+    expect(mobile!.className).toContain("lg:hidden");
+    await within(mobile as HTMLElement).findByText("Aluna Teste");
   });
 
-  it("lays appointment cards out as a 2-column grid from xl upward, single column below that", async () => {
+  it("shows the appointment status as a real Badge with the correct tone", async () => {
     const { container } = render(<AgendaPage />);
-    await screen.findByText("Falta do cliente");
-    const list = container.querySelector('ul[class*="space-y-2.5"]');
-    expect(list).not.toBeNull();
-    expect(list!.className).toContain("xl:grid");
-    expect(list!.className).toContain("xl:grid-cols-2");
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
+    const badge = await within(mobile).findByText("Falta do cliente");
+    expect(badge).toHaveClass("badge-neutral");
+  });
+
+  it("offers a manual 'Abrir cliente' link per appointment — the AI is never the only path", async () => {
+    const { container } = render(<AgendaPage />);
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
+    const clientNameEl = await within(mobile).findByText("Aluna Teste");
+    // Scoped to the appointment row itself — the routines panel below also
+    // links to the same client with an identically-labeled "Abrir cliente"
+    // link, so a page-wide query would be ambiguous.
+    const row = clientNameEl.closest("li") as HTMLElement;
+    const clientLink = within(row).getByRole("link", { name: "Abrir cliente" });
+    expect(clientLink).toHaveAttribute("href", "/app/clients/c1");
+  });
+
+  it("offers a prominent 'Perguntar à IA' entry point prefilling the assistant, never auto-sending", async () => {
+    const { container } = render(<AgendaPage />);
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
+    const aiLink = within(mobile).getByRole("link", { name: /Perguntar à IA/i });
+    expect(aiLink.getAttribute("href")).toContain("/app/assistant?prompt=");
+  });
+
+  it("shows real free slots as a collapsed, expandable summary — not the full desktop availability list", async () => {
+    const { container } = render(<AgendaPage />);
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
+    await within(mobile).findByText(/horário\(s\) livre\(s\) hoje/i);
+    const slotLink = within(mobile).getByRole("link", { name: /11:00.*Dispon[ií]vel/i });
+    expect(slotLink).toHaveAttribute(
+      "href",
+      "/app/appointments/new?day=2026-08-22&start=11:00&end=12:00",
+    );
+  });
+
+  it("offers a manual Agendar action independent of the assistant", async () => {
+    const { container } = render(<AgendaPage />);
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
+    await within(mobile).findByText("Aluna Teste"); // wait for org-local day to resolve
+    const link = within(mobile).getByRole("link", { name: /^Agendar$/i });
+    expect(link).toHaveAttribute("href", "/app/appointments/new?day=2026-08-22");
+  });
+
+  it("keeps routine actions reachable on mobile too — nothing existing disappears", async () => {
+    const { container } = render(<AgendaPage />);
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
+    await within(mobile).findByText("Revisar plano");
   });
 });
