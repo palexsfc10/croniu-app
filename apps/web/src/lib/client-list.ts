@@ -144,3 +144,34 @@ export function matchesView(row: ClientRow, view: ClientListView): boolean {
   if (view === "attention") return row.reasons.length > 0;
   return row.reasons.includes(view);
 }
+
+/** Urgency order for picking a single headline reason on mobile, where
+ * space only fits one — money owed outranks a scheduling/onboarding
+ * concern. The desktop table still shows every reason as its own badge. */
+const REASON_PRIORITY: AttentionReason[] = ["financial", "renewal", "onboarding", "no_accompaniment"];
+
+export function primaryAttentionReason(row: ClientRow): AttentionReason | null {
+  for (const reason of REASON_PRIORITY) {
+    if (row.reasons.includes(reason)) return reason;
+  }
+  return null;
+}
+
+/**
+ * The mobile card's single attention line — the reason label plus its
+ * concrete number when that number is what makes it worth surfacing
+ * (an amount owed, a renewal countdown). Never a bare badge when a real
+ * figure is available; never a number for reasons that don't have one.
+ */
+export function mobileAttentionDetail(row: ClientRow): string | null {
+  const reason = primaryAttentionReason(row);
+  if (!reason) return null;
+  if (reason === "financial") {
+    return `${ATTENTION_REASON_LABEL.financial} · atrasado`;
+  }
+  if (reason === "renewal" && row.activeCycle?.days_remaining != null) {
+    const days = row.activeCycle.days_remaining;
+    return `${ATTENTION_REASON_LABEL.renewal} em ${days} ${days === 1 ? "dia" : "dias"}`;
+  }
+  return ATTENTION_REASON_LABEL[reason];
+}

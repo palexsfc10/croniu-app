@@ -5,7 +5,14 @@ const apiFetch = vi.fn();
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
+  nav.query = "";
 });
+
+const nav = vi.hoisted(() => ({ query: "" }));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(nav.query),
+}));
 
 vi.mock("next/link", () => ({
   default: ({
@@ -133,6 +140,19 @@ describe("AssistantPage premium shell", () => {
     expect(screen.getByRole("button", { name: /Novo compromisso/i })).toBeInTheDocument();
 
     expect(screen.getByLabelText(/Pergunte ou peça algo/i)).toBeInTheDocument();
+  });
+
+  it("prefills the composer from ?prompt= without sending automatically (Perguntar sobre este cliente)", async () => {
+    nav.query = "prompt=" + encodeURIComponent("Sobre Ana Martins: ");
+    mockStatus();
+    render(<AssistantPage />);
+
+    const textbox = (await screen.findByLabelText(/Pergunte ou peça algo/i)) as HTMLTextAreaElement;
+    expect(textbox.value).toBe("Sobre Ana Martins: ");
+    // Prefilling is not sending — no message pipeline call should have fired.
+    expect(
+      apiFetch.mock.calls.some((call: unknown[]) => String(call[0]).includes("/messages")),
+    ).toBe(false);
   });
 
   it("opens thread selector and starts a new conversation", async () => {

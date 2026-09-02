@@ -226,6 +226,36 @@ Perfil/Preferências, Feedback) seguem `pendente` — a promoção completa do c
 iniciativa maior, ainda em andamento fatia a fatia. Clientes e Cliente 360° (fatia 4) são as
 primeiras da lista original a fechar.
 
+## Correção de diretriz — desktop administra, mobile consulta e age pela IA
+
+**Substitui a diretriz anterior** ("paridade visual, todas as funções igualmente expostas em
+mobile") por um princípio diferente: **desktop é a experiência principal de gestão** (CRM
+completo, tabelas, densidade profissional); **mobile é um resumo operacional + assistente de
+bolso**, nunca uma cópia comprimida do desktop. Aplicada já nesta fatia (Clientes + Cliente 360°),
+sem alterar uma linha do que já existe no desktop.
+
+| Funcionalidade | Gestão completa (desktop) | Resumo (mobile) | Ação via IA | Alternativa manual essencial (sem IA) | Prioridade desktop |
+|---|---|---|---|---|---|
+| Lista de Clientes | Tabela densa — 7 colunas (Cliente/Atendimento/Agenda/Evolução/Financeiro/Renovação/Atenção), todas as views, ordenação | Cards: nome, situação/próxima sessão numa linha, **um** ponto de atenção principal (nunca todos os badges) | "Quem está sem acompanhamento?" — fatia futura do Assistente | Busca por nome + filtros Todos/Atenção/Onboarding/Renovação/Financeiro/Sem acompanhamento, sempre visíveis | Sim — é a visão CRM |
+| Cliente 360° — visão geral | 6 abas completas, todas acessíveis a qualquer momento | Um único Resumo consolidado (próxima sessão, plano/ciclo, alertas, última evolução, financeiro compacto) — nunca as 6 abas simultâneas nem comprimidas | "Perguntar sobre este cliente" — pré-preenche o Assistente com o contexto do cliente (`/app/assistant?prompt=`), profissional revisa antes de enviar | Ações rápidas diretas sempre visíveis: Agendar, Registrar acompanhamento, Adicionar anotação, Criar rotina, Editar | Sim |
+| Agenda do cliente | Lista completa de sessões futuras na aba Agenda | Próxima sessão no Resumo; lista completa por trás de `<details>` "Agenda completa" (fechado por padrão) | fatia futura ("Agende a Ana amanhã às 10h") | Botão Agendar sempre visível na linha de ações | Sim |
+| Prontuário | Anamnese + todas as avaliações na aba Prontuário | Status da anamnese + lista de avaliações por trás de `<details>` "Prontuário" | — (fora de escopo desta fatia) | Botão Registrar acompanhamento sempre visível | Sim |
+| Financeiro do cliente | Lista completa de recebíveis com status na aba Financeiro | Em aberto/atrasadas no Resumo; lista completa por trás de `<details>` "Financeiro completo" | "Quanto tenho para receber?" — fatia futura | Indicador financeiro sempre visível no Resumo (nunca escondido) | Sim |
+| Histórico | Linha do tempo completa na aba Histórico | Por trás de `<details>` "Histórico" | — | — (informativo, não uma ação essencial) | Sim |
+| Rotinas do cliente | Card dedicado na aba Resumo (desktop) | Ação "Ver rotinas pendentes" só aparece no alerta quando há pendência real — nunca um tile permanente | "Crie uma rotina para revisar a avaliação da Carla" — fatia futura | Botão Criar rotina sempre visível na linha de ações | Sim |
+
+Implementação: o Cliente 360° passou a renderizar **duas árvores JSX distintas** dentro do mesmo
+componente — a existente (6 abas, intocada, envolvida em `hidden lg:block`) e uma nova, só para
+mobile (`lg:hidden`), com o Resumo sempre visível e o resto atrás de `<details>`. Escolha
+deliberada: duplicar um pouco de JSX em vez de refatorar/compartilhar código entre as duas, para
+zero risco de regressão no desktop já validado. A lista de Clientes já usava o mesmo padrão CSS
+(`hidden lg:block` / `lg:hidden`) desde a implementação original desta fatia — só a densidade do
+card mobile mudou (um badge de atenção em vez de todos).
+
+**Proteção operacional confirmada**: nenhuma ação essencial depende da IA. Agendar, abrir cliente,
+registrar acompanhamento/anotação, criar compromisso e ver cobrança continuam acionáveis
+manualmente em toda tela, com ou sem o Assistente disponível.
+
 ## Como ler esta matriz
 
 Para cada funcionalidade: **rota atual**, **ações existentes**, **API(s) usada(s)**, **destino no

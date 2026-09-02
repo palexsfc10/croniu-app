@@ -22,6 +22,8 @@ import {
   buildClientRow,
   clientInitials,
   matchesView,
+  mobileAttentionDetail,
+  primaryAttentionReason,
   type ClientListView,
   type ClientRow,
 } from "@/lib/client-list";
@@ -396,13 +398,11 @@ function ClientCard({
               ? cycleListStatus(row.activeCycle, today)
               : "Sem agendamento"}
         </span>
-        {row.reasons.length ? (
-          <span className="mt-1.5 flex flex-wrap gap-1">
-            {row.reasons.map((reason) => (
-              <Badge key={reason} tone={reason === "financial" ? "danger" : "warning"}>
-                {ATTENTION_REASON_LABEL[reason]}
-              </Badge>
-            ))}
+        {mobileAttentionDetail(row) ? (
+          <span className="mt-1.5 inline-block">
+            <Badge tone={primaryAttentionReason(row) === "financial" ? "danger" : "warning"}>
+              {mobileAttentionDetail(row)}
+            </Badge>
           </span>
         ) : null}
       </span>

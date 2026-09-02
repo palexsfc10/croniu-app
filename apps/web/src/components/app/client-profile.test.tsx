@@ -212,37 +212,65 @@ describe("ClientProfile", () => {
     nav.tab = "resumo";
     render(<ClientProfile clientId="c1" />);
     await screen.findByRole("heading", { level: 1 });
-    expect(screen.getByRole("link", { name: /Agendar/i })).toHaveAttribute(
+    const actions = within(screen.getByLabelText("Ações do cliente"));
+    expect(actions.getByRole("link", { name: /Agendar/i })).toHaveAttribute(
       "href",
       expect.stringContaining("/app/appointments/new?clientId=c1"),
     );
-    expect(screen.getByRole("link", { name: /Registrar acompanhamento/i })).toHaveAttribute(
+    expect(actions.getByRole("link", { name: /Registrar acompanhamento/i })).toHaveAttribute(
       "href",
       expect.stringContaining("/app/clients/c1/evaluations/new"),
     );
-    expect(screen.getByRole("button", { name: /Adicionar anotação/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Criar rotina/i })).toHaveAttribute(
+    expect(actions.getByRole("button", { name: /Adicionar anotação/i })).toBeInTheDocument();
+    expect(actions.getByRole("link", { name: /Criar rotina/i })).toHaveAttribute(
       "href",
       "/app/routines?clientId=c1",
     );
-    expect(screen.getByRole("link", { name: /Perguntar à IA/i })).toHaveAttribute(
+    expect(actions.getByRole("link", { name: /Perguntar sobre este cliente/i })).toHaveAttribute(
       "href",
-      "/app/assistant",
+      expect.stringContaining("/app/assistant?prompt="),
     );
-    expect(screen.getByRole("link", { name: "Editar" })).toHaveAttribute(
+    expect(actions.getByRole("link", { name: "Editar" })).toHaveAttribute(
       "href",
       "/app/clients/c1/edit",
     );
   });
 
-  it("Resumo shows contact, service, progress, next session, and financeiro from real data", async () => {
+  it("Resumo (desktop tab) shows contact, service, progress, next session, and financeiro from real data", async () => {
     nav.tab = "resumo";
     render(<ClientProfile clientId="c1" />);
     await screen.findByRole("heading", { level: 1 });
-    expect(screen.getByText("(11) 98765-4321")).toBeInTheDocument();
-    expect(screen.getByText("Aula padrão")).toBeInTheDocument();
-    expect(screen.getByText("8 de 12 sessões")).toBeInTheDocument();
-    expect(screen.getByText(/R\$\s*150,00/)).toBeInTheDocument();
+    const panel = within(screen.getByRole("tabpanel", { name: "Resumo" }));
+    expect(panel.getByText("(11) 98765-4321")).toBeInTheDocument();
+    expect(panel.getByText("Aula padrão")).toBeInTheDocument();
+    expect(panel.getByText("8 de 12 sessões")).toBeInTheDocument();
+    expect(panel.getByText(/R\$\s*150,00/)).toBeInTheDocument();
+  });
+
+  it("Resumo (mobile consolidated view) shows the same real data, without the desktop tab bar", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    const mobile = within(screen.getByLabelText("Resumo do cliente"));
+    expect(mobile.getByText("Aula padrão")).toBeInTheDocument();
+    expect(mobile.getByText("8 de 12 sessões")).toBeInTheDocument();
+    expect(mobile.getAllByText(/R\$\s*150,00/).length).toBeGreaterThan(0);
+    // Detailed lists are behind disclosure, not shown flat — the collapsed
+    // <details> summaries are present, their content isn't forced open.
+    expect(mobile.getByText("Agenda completa")).toBeInTheDocument();
+    expect(mobile.getByText("Prontuário")).toBeInTheDocument();
+    expect(mobile.getByText("Financeiro completo")).toBeInTheDocument();
+    expect(mobile.getByText("Histórico")).toBeInTheDocument();
+  });
+
+  it("desktop tabs stay hidden on mobile; the mobile summary stays hidden on desktop (CSS-driven split)", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    const desktopWrapper = screen.getByRole("tabpanel", { name: "Resumo" }).closest(".hidden.lg\\:block");
+    expect(desktopWrapper).not.toBeNull();
+    const mobileWrapper = screen.getByLabelText("Resumo do cliente");
+    expect(mobileWrapper.className).toContain("lg:hidden");
   });
 
   it("Resumo always links to Rotinas, even with zero pending — the action never disappears", async () => {
@@ -257,11 +285,12 @@ describe("ClientProfile", () => {
     expect(rotinasLink).toHaveTextContent("Em dia");
   });
 
-  it("Agenda tab lists the client's upcoming appointments from the new per-client endpoint", async () => {
+  it("Agenda tab (desktop) lists the client's upcoming appointments from the new per-client endpoint", async () => {
     nav.tab = "agenda";
     render(<ClientProfile clientId="c1" />);
-    expect(await screen.findByText("Próximas sessões")).toBeInTheDocument();
-    expect(screen.getByText(/Treino/)).toBeInTheDocument();
+    const panel = within(await screen.findByRole("tabpanel", { name: "Agenda" }));
+    expect(panel.getByText("Próximas sessões")).toBeInTheDocument();
+    expect(panel.getByText(/Treino/)).toBeInTheDocument();
   });
 
   it("Agenda tab offers a real empty-state action when there is nothing scheduled", async () => {
@@ -355,8 +384,8 @@ describe("ClientProfile", () => {
     render(<ClientProfile clientId="c1" />);
 
     await screen.findByRole("heading", { level: 1 });
-    expect(screen.getByRole("tabpanel", { name: "Resumo" })).toBeInTheDocument();
-    expect(screen.getByText("Próximo passo")).toBeInTheDocument();
+    const panel = within(screen.getByRole("tabpanel", { name: "Resumo" }));
+    expect(panel.getByText("Próximo passo")).toBeInTheDocument();
   });
 
   it("Adicionar anotação saves through the existing PATCH /clients/{id} endpoint", async () => {

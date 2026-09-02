@@ -11,6 +11,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -136,6 +137,7 @@ function MessageBubble({
 
 export default function AssistantPage() {
   const { me } = useAuth();
+  const search = useSearchParams();
   const liveId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -151,7 +153,10 @@ export default function AssistantPage() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
+  // "Perguntar sobre este cliente" (Cliente 360°) and similar contextual
+  // entry points prefill the composer via ?prompt= — never auto-sent, the
+  // professional still reviews/edits before choosing to send.
+  const [input, setInput] = useState(() => search.get("prompt") || "");
   const [fromVoice, setFromVoice] = useState(false);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<string | null>(null);

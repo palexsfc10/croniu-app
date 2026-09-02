@@ -46,6 +46,7 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   IconCalendarDays,
   IconCalendarPlus,
+  IconChevronDown,
   IconClipboardList,
   IconExternalLink,
   IconLayers,
@@ -537,10 +538,13 @@ export function ClientProfile({ clientId }: Props) {
               Criar rotina
             </Button>
           </Link>
-          <Link href="/app/assistant" className="shrink-0">
+          <Link
+            href={`/app/assistant?prompt=${encodeURIComponent(`Sobre ${item.full_name}: `)}`}
+            className="shrink-0"
+          >
             <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
               <IconSparkles className="mr-1.5 h-4 w-4" aria-hidden />
-              Perguntar à IA
+              Perguntar sobre este cliente
             </Button>
           </Link>
           <Link href={`/app/clients/${clientId}/edit`} className="shrink-0">
@@ -551,6 +555,10 @@ export function ClientProfile({ clientId }: Props) {
         </div>
       ) : null}
 
+      {/* Desktop: full tabbed CRM view — never compressed onto mobile.
+          Mobile gets its own consolidated, progressively-disclosed layout
+          below instead of these same 6 tabs squeezed into a small screen. */}
+      <div className="hidden lg:block">
       <div
         role="tablist"
         aria-label="Ficha"
@@ -1165,6 +1173,293 @@ export function ClientProfile({ clientId }: Props) {
             );
           })()}
         </section>
+      ) : null}
+      </div>
+
+      {/* Mobile: not a compressed copy of the 6 desktop tabs. A single
+          consolidated summary — the professional's pocket view — with
+          deeper detail behind explicit disclosure, never all at once. */}
+      {item ? (
+        <div className="space-y-3 lg:hidden" aria-label="Resumo do cliente">
+          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+              {next.title}
+            </p>
+            <p className="mt-1 text-sm text-[var(--color-ink)]">{next.text}</p>
+            {next.cta && next.href ? (
+              <Link href={next.href} className="mt-3 inline-block">
+                <Button>{next.cta}</Button>
+              </Link>
+            ) : null}
+          </div>
+
+          {alerts.length > 0 ? (
+            <div className="space-y-1.5 rounded-[var(--radius-md)] border border-[var(--color-warning)]/25 bg-[var(--color-warning-subtle)] p-3">
+              {alerts.map((text) => (
+                <p key={text} className="text-sm text-[var(--color-warning)]">
+                  {text}
+                </p>
+              ))}
+              {routinePendingCount && routinePendingCount > 0 ? (
+                <Link
+                  href={`/app/routines/pending?clientId=${clientId}&returnTo=${encodeURIComponent(returnResumo)}`}
+                  className="inline-block text-sm font-medium text-[var(--color-link)]"
+                >
+                  Ver rotinas pendentes
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!submissionId ? (
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              <p className="text-sm font-semibold text-[var(--color-ink)]">
+                Envie o formulário para {firstName(item.full_name)} completar o cadastro.
+              </p>
+              <div className="mt-3">
+                <ClientIntakeInviteButton clientId={clientId} />
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Próxima sessão
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink)]">
+                {nextAppointment
+                  ? `${formatOrgDate(nextAppointment.starts_at, timeZone)} · ${formatOrgDateTime(nextAppointment.starts_at, timeZone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`
+                  : "Sem agendamento"}
+              </p>
+            </div>
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Plano e ciclo
+              </p>
+              <p className="mt-1 truncate text-sm text-[var(--color-ink)]">
+                {activeCycle?.service_name || "Sem ciclo ativo"}
+              </p>
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                {activeCycle
+                  ? activeCycle.lesson_count != null
+                    ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} sessões`
+                    : cycleListStatus(activeCycle, todayIso)
+                  : "—"}
+              </p>
+            </div>
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Última evolução
+              </p>
+              <p className="mt-1 truncate text-sm text-[var(--color-ink)]">
+                {latestEvaluation
+                  ? `${protocolStatusLabel(latestEvaluation.status)} · ${formatDateBR((latestEvaluation.published_at || latestEvaluation.created_at).slice(0, 10))}`
+                  : "Nenhuma registrada"}
+              </p>
+            </div>
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Financeiro
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-ink)]">
+                {pendingReceivables.length > 0 ? formatBRL(pendingTotalCents) : "Em dia"}
+              </p>
+              {overdueReceivables.length > 0 ? (
+                <Badge tone="danger">
+                  {overdueReceivables.length}{" "}
+                  {overdueReceivables.length === 1 ? "atrasada" : "atrasadas"}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+
+          <details className="group rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm font-semibold text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">
+              Agenda completa
+              <IconChevronDown className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)] transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="space-y-2 border-t border-[var(--color-border)] p-3">
+              <Link
+                href={`/app/appointments/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnResumo)}`}
+              >
+                <Button variant="secondary" className="min-h-10 px-3 text-sm">
+                  <IconCalendarPlus className="mr-1.5 h-4 w-4" aria-hidden />
+                  Agendar
+                </Button>
+              </Link>
+              {appointments.length === 0 ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  Nenhuma sessão futura agendada.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {appointments.map((appt) => (
+                    <li key={appt.id}>
+                      <Link
+                        href={`/app/appointments/${appt.id}`}
+                        className="flex min-h-11 items-center justify-between gap-3 rounded-[var(--radius-sm)] px-2 py-2 text-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+                      >
+                        <span className="min-w-0">
+                          <span className="font-medium text-[var(--color-ink)]">
+                            {formatOrgDate(appt.starts_at, timeZone)} ·{" "}
+                            {formatOrgDateTime(appt.starts_at, timeZone, {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hourCycle: "h23",
+                            })}
+                          </span>
+                          <span className="block truncate text-[var(--color-ink-muted)]">
+                            {appt.service_name || appt.cycle_service_name || "Sessão"}
+                          </span>
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </details>
+
+          <details className="group rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm font-semibold text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">
+              Prontuário
+              <IconChevronDown className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)] transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="space-y-2 border-t border-[var(--color-border)] p-3 text-sm">
+              <p>
+                <span className="font-medium text-[var(--color-ink)]">Anamnese: </span>
+                <span className="text-[var(--color-ink-muted)]">
+                  {anamnesisDone ? "Revisada" : submissionId ? "Aguardando revisão" : "Não enviada"}
+                </span>
+                {submissionId ? (
+                  <>
+                    {" · "}
+                    <Link href={`/app/clients/intake/${submissionId}`} className="text-[var(--color-link)]">
+                      Ver
+                    </Link>
+                  </>
+                ) : null}
+              </p>
+              {evaluations.length === 0 ? (
+                <p className="text-[var(--color-ink-muted)]">Nenhuma avaliação registrada.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {evaluations.map((ev) => (
+                    <li key={ev.id}>
+                      <Link
+                        href={`/app/clients/${clientId}/evaluations/${ev.id}?returnTo=${encodeURIComponent(returnResumo)}`}
+                        className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 hover:bg-[var(--color-surface-subtle)]"
+                      >
+                        <span className="truncate text-[var(--color-ink)]">{ev.title}</span>
+                        <span className="shrink-0 text-[var(--color-ink-muted)]">
+                          {formatDateBR((ev.published_at || ev.created_at).slice(0, 10))}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link
+                href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnResumo)}`}
+                className="inline-block"
+              >
+                <Button variant="secondary" className="min-h-10 px-3 text-sm">
+                  Nova avaliação
+                </Button>
+              </Link>
+            </div>
+          </details>
+
+          <details className="group rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm font-semibold text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">
+              Financeiro completo
+              <IconChevronDown className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)] transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-[var(--color-border)] p-3">
+              {receivables.length === 0 ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">Nenhuma cobrança registrada.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {receivables.map((r) => {
+                    const overdue = isReceivableOverdue(r, todayIso);
+                    return (
+                      <li key={r.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span>
+                          <span className="font-medium text-[var(--color-ink)]">
+                            {formatBRL(r.amount_cents)}
+                          </span>
+                          <span className="block text-[var(--color-ink-muted)]">
+                            Vencimento {formatDateBR(r.due_on)}
+                          </span>
+                        </span>
+                        <Badge tone={receivableStatusTone(r.status, overdue)}>
+                          {receivableStatusLabel(r.status, overdue)}
+                        </Badge>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </details>
+
+          <details className="group rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm font-semibold text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">
+              Histórico
+              <IconChevronDown className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)] transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-[var(--color-border)] p-3">
+              {(() => {
+                type HistoryEntry = { date: string; label: string; detail: string };
+                const entries: HistoryEntry[] = [
+                  ...evaluations.map((ev) => ({
+                    date: (ev.published_at || ev.created_at).slice(0, 10),
+                    label: "Avaliação",
+                    detail: ev.title,
+                  })),
+                  ...receivables
+                    .filter((r) => r.status === "paid" || r.status === "received")
+                    .map((r) => ({
+                      date: r.paid_at ? r.paid_at.slice(0, 10) : r.due_on,
+                      label: "Pagamento recebido",
+                      detail: formatBRL(r.amount_cents),
+                    })),
+                ].sort((a, b) => b.date.localeCompare(a.date));
+                if (!entries.length) {
+                  return <p className="text-sm text-[var(--color-ink-muted)]">Sem histórico ainda.</p>;
+                }
+                return (
+                  <ul className="space-y-2 text-sm">
+                    {entries.map((entry, index) => (
+                      <li key={`${entry.label}-${entry.date}-${index}`} className="flex gap-2">
+                        <span className="w-14 shrink-0 tabular-nums text-[var(--color-ink-muted)]">
+                          {formatHumanDate(entry.date)}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-medium text-[var(--color-ink)]">{entry.label}</span>
+                          <span className="block truncate text-[var(--color-ink-muted)]">{entry.detail}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+            </div>
+          </details>
+
+          <ClientPortalCard
+            clientId={clientId}
+            firstName={firstName(item.full_name)}
+            phone={item.phone}
+            access={access}
+            onAccessChange={setAccess}
+            onFeedback={(message, tone) => {
+              if (tone === "error" && message) setError(message);
+              else if (!message) setError(null);
+            }}
+          />
+        </div>
       ) : null}
 
       <ActionSheet

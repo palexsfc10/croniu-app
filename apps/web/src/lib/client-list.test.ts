@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildClientRow, clientInitials, clientListPresentation, matchesView } from "@/lib/client-list";
+import {
+  buildClientRow,
+  clientInitials,
+  clientListPresentation,
+  matchesView,
+  mobileAttentionDetail,
+  primaryAttentionReason,
+} from "@/lib/client-list";
 import type { Appointment, Client, Cycle, Receivable } from "@/lib/api";
 
 const client: Client = {
@@ -226,5 +233,45 @@ describe("matchesView", () => {
   it("a specific view only matches rows carrying that exact reason", () => {
     expect(matchesView(row, "onboarding")).toBe(true);
     expect(matchesView(row, "financial")).toBe(false);
+  });
+});
+
+describe("primaryAttentionReason / mobileAttentionDetail — mobile shows one headline, never the whole badge row", () => {
+  const today = "2026-08-14";
+  const baseOpts = {
+    cycles: [] as Cycle[],
+    receivables: [] as Receivable[],
+    nextAppointmentByClientId: {} as Record<string, Appointment>,
+    pendingIntakeClientIds: new Set<string>(),
+    today,
+  };
+
+  it("returns null with no detail when the client has no attention reasons", () => {
+    const cycle = baseCycle();
+    const row = buildClientRow(client, { ...baseOpts, cycles: [cycle] });
+    expect(primaryAttentionReason(row)).toBeNull();
+    expect(mobileAttentionDetail(row)).toBeNull();
+  });
+
+  it("picks 'financial' over 'onboarding' when both apply, and includes 'atrasado' — never a bare badge", () => {
+    const overdue = baseReceivable({ due_on: "2026-08-01" });
+    const row = buildClientRow(client, { ...baseOpts, receivables: [overdue] });
+    expect(row.reasons).toContain("financial");
+    expect(row.reasons).toContain("onboarding");
+    expect(primaryAttentionReason(row)).toBe("financial");
+    expect(mobileAttentionDetail(row)).toContain("atrasado");
+  });
+
+  it("shows the real days-remaining count for 'renewal', never a generic label alone", () => {
+    const cycle = baseCycle({ is_nearing_end: true, days_remaining: 4 });
+    const row = buildClientRow(client, { ...baseOpts, cycles: [cycle] });
+    expect(primaryAttentionReason(row)).toBe("renewal");
+    expect(mobileAttentionDetail(row)).toBe("Renovação em 4 dias");
+  });
+
+  it("falls back to the plain reason label when there is no numeric detail to show (e.g. onboarding)", () => {
+    const row = buildClientRow(client, baseOpts);
+    expect(primaryAttentionReason(row)).toBe("onboarding");
+    expect(mobileAttentionDetail(row)).toBe("Onboarding");
   });
 });
