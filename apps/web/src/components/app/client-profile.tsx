@@ -539,7 +539,7 @@ export function ClientProfile({ clientId }: Props) {
             </Button>
           </Link>
           <Link
-            href={`/app/assistant?prompt=${encodeURIComponent(`Sobre ${item.full_name}: `)}`}
+            href={`/app/assistant?prompt=${encodeURIComponent(`Sobre ${item.full_name}: `)}&context=${encodeURIComponent(`Cliente: ${item.full_name}`)}&returnTo=${encodeURIComponent(returnResumo)}`}
             className="shrink-0"
           >
             <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">

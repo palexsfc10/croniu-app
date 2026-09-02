@@ -383,6 +383,106 @@ ambiente saudável. A reexecução exaustiva das suítes HTTP pré-existentes de
 rodada por custo de tempo — permanece pendente junto com a suíte completa de 634 testes, mandatória
 antes de qualquer merge para `main`/PRD, mas não bloqueia esta validação reversível em HML.
 
+## Fatia 6 — Assistente: inspeção pré-implementação
+
+Objetivo: transformar o Assistente na camada operacional real do Croniu Workspace —
+**desktop**: workspace de consulta, execução e histórico; **mobile**: experiência principal para
+consultar e alimentar o sistema (texto + voz). Não apenas "uma página de chat mais bonita".
+
+### O que já existia (achado na inspeção, antes de qualquer linha de código)
+
+A inspeção revelou um backend **muito mais completo** do que qualquer UI expunha — a maior parte
+desta fatia é reorganização de front-end sobre um backend de agente já maduro:
+
+- **32 tools já registradas** (20 leitura + 12 escrita `propose_*`/`execute_*`), cobrindo agenda,
+  clientes, ciclos, pagamentos, avaliações e rotinas — inclusive `propose_create_appointment`,
+  `propose_reschedule_appointment`, `get_available_slots`, `get_today_summary` já prontos antes
+  desta fatia começar (fatia 5 só precisou adicionar `propose_cancel_appointment`).
+- **Máquina de estados de confirmação já robusta**: `pending → executing → executed/cancelled/
+  expired/failed`, TTL de 10 min, idempotência por `client_message_id` (turnos) e por
+  `confirmation_key`/hash de argumentos (propostas), isolamento estrito por `(organization_id,
+  user_id)` — nada disso foi tocado nesta fatia, só consumido pela UI.
+- **`POST /agent/chat`** já existia como "convenience endpoint" — reaproveita a última conversa
+  ativa ou deixa `run_turn` iniciar uma, sem o chamador gerenciar thread — exatamente o contrato
+  que o `Ctrl+K` precisava, usado tal como está.
+- **Voz já completa**: gravação, transcrição (Whisper), limites próprios e independentes do texto
+  (`voice_user_requests_per_minute`, `voice_org_daily_request_limit`), sem persistência de áudio.
+- **Achado que limita o design da UI de histórico**: `AgentThread` tem um teto de **5 conversas por
+  organização** (não por usuário — compartilhado entre toda a equipe), aplicado em toda
+  `append_message` — as mais antigas são apagadas em cascata (mensagens, runs, tool calls,
+  pending actions) automaticamente. A sidebar de "Conversas" já existente não avisava isso;
+  mantido como está (não é desta fatia mexer no limite), só documentado aqui.
+- **Achado importante sobre "contexto atual"**: não existe nenhum campo `client_id`/contexto na
+  API de chat — o modelo só reconstrói contexto a partir do próprio histórico da conversa
+  (`collect_thread_entity_refs`, últimas ~30 mensagens). Ou seja, **não há como a UI "empurrar"**
+  um contexto estruturado para viesar a escolha de tools sem mudar o contrato do backend. Decisão:
+  não mudar o contrato agora (evita risco); o painel "Contexto atual" do desktop é **só um rótulo
+  de exibição** — de onde a conversa começou — nunca algo que influencia o modelo. O texto
+  pré-preenchido (`?prompt=`) continua sendo o único mecanismo real de dar contexto à IA.
+- **`Ctrl+K` não existia** — busca exaustiva confirmou zero infraestrutura de atalho de teclado, zero
+  pacote `cmdk`, nenhum componente de command palette. Era necessário construir do zero, não uma
+  "preservação" (ainda que a instrução tenha pedido para "preservar" o atalho — tratado como um
+  malentendido sobre o estado real do código, no mesmo espírito de "Lab não reflete o backend real"
+  já documentado em fatias anteriores).
+- **Nenhum endpoint novo foi necessário** — toda a fatia roda sobre a API já existente
+  (`/agent/status`, `/agent/chat`, `/agent/threads*`, `/agent/pending/*`, `/agent/transcribe`,
+  `/home/summary`). Zero migration, zero mudança de schema, zero mudança de contrato, **API e Admin
+  permaneceram 100% intocados** — deploy é só `up-web`.
+
+### O que foi construído
+
+1. **Painel lateral direito no desktop** (`apps/web/src/app/app/assistant/page.tsx`, `<aside
+   aria-label="Painel lateral do Assistente">`, `hidden lg:flex`): "Contexto atual" (só quando a
+   conversa começou via `?context=`, com link "Voltar" via `?returnTo=` — mesmo padrão já usado em
+   Cliente 360°/Agenda), "Atalhos" (Agenda completa, Novo compromisso, Clientes, Rotinas
+   pendentes — rotas reais), "Atividade recente" (derivada das mensagens já carregadas da conversa
+   atual — nenhuma requisição nova — mostrando ações confirmadas com link real para o registro
+   quando o `kind` do resultado mapeia para uma rota conhecida: cliente/compromisso/ciclo/
+   recebível).
+2. **Extensão dos pontos de entrada contextual já existentes** — "Perguntar sobre este cliente"
+   (Cliente 360°) e "Perguntar à IA" (Agenda) agora também passam `context=` (rótulo real: "Cliente:
+   {nome}" / "Agenda: {data}") e `returnTo=` — alimentando o painel "Contexto atual" sem qualquer
+   mudança de backend.
+3. **Mobile como camada operacional**: dentro do estado vazio existente (antes das sugestões),
+   três blocos novos, todos `md:hidden`: card "Resumo do dia" (contagem real de
+   `today_appointments`/`attention_items` via `GET /home/summary`, link para a Agenda), "Acesso
+   rápido" (chips Agenda/Clientes/Rotinas), "Consultas recentes" (as até 3 conversas mais recentes,
+   reaproveitando o `threads` já carregado — zero fetch novo — tocáveis para reabrir a conversa).
+4. **`Ctrl+K` / `Cmd+K`** (`apps/web/src/components/app/command-palette.tsx`, montado uma vez em
+   `app-shell.tsx`): modal leve e deliberadamente raso — sem sidebar de conversas, sem voz, sem
+   histórico — só campo de consulta + resposta + `ProposalCard` real quando a IA propõe uma ação
+   (reaproveita o mesmo componente e os mesmos endpoints de confirmação da página completa) + link
+   "Abrir Assistente completo". Usa `POST /agent/chat`, então qualquer coisa perguntada ali também
+   aparece depois no histórico da página Assistente — a mesma conversa, só um atalho mais rápido
+   para ela.
+5. **Assistente em destaque na navegação mobile** (`app-shell.tsx`): novo array `mobileNavItems`
+   (só para a bottom tab bar) coloca Assistente no slot central — Início / Agenda / **Assistente** /
+   Clientes / Mais — deslocando Rotinas para dentro de "Mais" (nova linha em
+   `apps/web/src/app/app/profile/page.tsx`, grupo "Configurações do trabalho"). O sidebar desktop
+   (`navItems`) **não muda** — continua com Rotinas visível e o atalho "Assistente" already
+   existente abaixo da navegação principal.
+
+### Correção de diretriz aplicada a esta fatia
+
+| Funcionalidade | Gestão completa (desktop) | Resumo/ação (mobile) | Ação via IA | Alternativa manual essencial | Prioridade desktop |
+|---|---|---|---|---|---|
+| Conversar com a IA | Página completa: sidebar de conversas, transcrição, composer, painel de contexto/atalhos/atividade | Mesmo pipeline de chat, tela cheia, sem os painéis laterais do desktop | é o próprio produto | Nenhuma — mas toda ação real da IA tem equivalente manual na tela de origem (ver linhas abaixo) | Sim, mas mobile é o canal operacional primário |
+| Consulta rápida | `Ctrl+K` também funciona no desktop (teclado físico) | Não aplicável (sem teclado físico dedicado) — mobile usa a página cheia + sugestões/resumo do dia | qualquer consulta de leitura já suportada (`get_today_summary`, `get_available_slots`, etc.) | Abrir a tela correspondente diretamente (Agenda, Clientes…) | Sim (atalho de teclado) |
+| Histórico de conversas | Sidebar persistente, sempre visível | Dropdown a partir do cabeçalho + chips "Consultas recentes" no estado vazio | — | — | Sim |
+| Contexto de origem (Cliente 360°/Agenda) | Painel "Contexto atual" com link de volta | O texto pré-preenchido já carrega o contexto (mesma UX de antes) | o texto em si já direciona a IA | Voltar pela navegação normal | Neutro — mesma informação, forma diferente |
+| Confirmação de ações | `ProposalCard` completo na transcrição | Idêntico (mesmo componente) | toda escrita exige confirmação explícita — inalterado | Confirmar/cancelar são sempre manuais (não existe auto-confirmação) | — (idêntico nos dois) |
+| Atalhos para Agenda/Clientes/Rotinas | Painel lateral "Atalhos", sempre visível | Chips "Acesso rápido" no estado vazio | — | Nav principal (sidebar/bottom-tabs) | — (idêntico nos dois) |
+
+**Proteção operacional confirmada**: a IA nunca é o único caminho. Toda ação que a IA propõe
+(criar/reagendar/cancelar compromisso, criar cliente/ciclo, registrar pagamento, completar
+rotina) já tinha e continua tendo uma tela manual equivalente (Agenda, Cliente 360°, Rotinas,
+Recebíveis) — a fatia não removeu nem escondeu nenhuma delas.
+
+**Regressão de backend**: zero — nenhum endpoint, schema, migration ou contrato foi alterado; a
+fatia inteira consome API já existente e testada em fatias anteriores. Por isso não há suíte de
+backend nova a rodar para esta fatia especificamente (a suíte completa de 634 testes segue
+pendente, como já registrado, mandatória antes de `main`/PRD).
+
 ## Como ler esta matriz
 
 Para cada funcionalidade: **rota atual**, **ações existentes**, **API(s) usada(s)**, **destino no
@@ -489,7 +589,7 @@ utilizada. Esta branch nasce exclusivamente de `origin/main` @ `35ca1e6`, como i
 | Recebíveis / Financeiro | `/app/receivables`, `/app/payment-reports` | Ver, registrar/confirmar recebimento | `receivables.py` | Financeiro — já é a melhor tela do Lab, vira referência de qualidade + seletor de período + navegação para registros | Cards + gráfico + tabela acionável | Cards compactos | Nenhum valor tratado como lucro/contábil | pendente |
 | Renovações | `renewal_requests` | Solicitar/gerenciar renovação | a confirmar router | Financeiro (receita em risco) + Serviços e ciclos | Destaque quando próxima | Destaque quando próxima | Fluxo de renovação preservado | pendente |
 | Portal do cliente | `/c/[token]` | Cliente vê ciclo, avaliações publicadas, financeiro aplicável | `public_my_cycle.py`, `client_public_accesses` | Inalterado como experiência externa; Cliente 360° ganha ação "Visualizar como cliente" | — (rota do cliente) | — (rota do cliente) | Nenhuma informação interna exposta | pendente |
-| Assistente / IA | `/app/assistant` | Conversar, threads, tool calls | `agent.py` | Página Assistente + command bar global `Ctrl+K` + contexto `Perguntar sobre [cliente]` no 360° | Página + atalho global | Destaque no mobile | Nenhuma ação sem confirmação explícita; usa só tools/dados oficiais | pendente |
+| Assistente / IA | `/app/assistant` | Conversar, threads, tool calls | `agent.py` | Página Assistente workspace (histórico + contexto + atalhos + atividade) + palette global `Ctrl+K` + contexto `Perguntar sobre [cliente]`/`Perguntar à IA` no 360°/Agenda | Workspace 3 colunas | Camada operacional (resumo + acesso rápido + consultas recentes + destaque na nav) | Nenhuma ação sem confirmação explícita; usa só tools/dados oficiais | **feito** (fatia 6) |
 | Billing | `/app/billing` | Ver plano, checkout, portal Asaas | `billing.py`, `billing_webhooks.py` | Mantido em local adequado (provavelmente sob "Mais"/configurações) | Inalterado | Inalterado | Fluxo de cobrança preservado | pendente |
 | Perfil / Preferências | `/app/profile`, `/app/preferences` | Editar dados, preferências | a confirmar | Mantido sob "Mais" | Inalterado | Inalterado | — | pendente |
 | Feedback | rota a confirmar | Enviar feedback | `feedback.py` | Mantido sob "Mais" | Inalterado | Inalterado | — | pendente |

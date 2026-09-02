@@ -546,7 +546,9 @@ export default function AgendaPage() {
       <div className="space-y-3 lg:hidden" aria-label="Agenda do dia">
         <div className="flex items-center justify-between gap-2">
           <h1 className="h-display text-2xl text-[var(--color-ink)]">Agenda</h1>
-          <Link href={`/app/assistant?prompt=${encodeURIComponent("Sobre minha agenda: ")}`}>
+          <Link
+            href={`/app/assistant?prompt=${encodeURIComponent("Sobre minha agenda: ")}&context=${encodeURIComponent(`Agenda: ${day ? formatHumanDate(day) : "hoje"}`)}&returnTo=${encodeURIComponent(`/app/agenda?day=${day ?? ""}&view=${view}`)}`}
+          >
             <Button variant="secondary" className="min-h-10 px-3 text-sm">
               <IconSparkles className="mr-1.5 h-4 w-4" aria-hidden />
               Perguntar à IA

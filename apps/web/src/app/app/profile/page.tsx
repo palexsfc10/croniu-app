@@ -44,6 +44,12 @@ export default function MorePage() {
             Icon={IconRefreshCw}
           />
           <SettingsRow
+            href="/app/routines"
+            title="Rotinas"
+            description="Atrasadas, hoje, próximas e concluídas."
+            Icon={IconClipboardList}
+          />
+          <SettingsRow
             href="/app/cycle-templates"
             title="Modelos de ciclo"
             description="Frequência e período reutilizáveis."

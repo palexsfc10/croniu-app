@@ -15,16 +15,20 @@ import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
+  IconCalendarDays,
+  IconCalendarPlus,
   IconChevronDown,
   IconChevronLeft,
+  IconClipboardList,
   IconMic,
   IconPlus,
   IconSend,
   IconShieldCheck,
   IconStop,
+  IconUsersRound,
   IconX,
 } from "@/components/ui/icons";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, type HomeSummary } from "@/lib/api";
 import {
   readVoiceAutoSend,
   writeVoiceAutoSend,
@@ -38,6 +42,7 @@ import {
   ASSISTANT_SUGGESTIONS,
   actionHeadline,
   formatThreadWhen,
+  proposalTitle,
   type ActionUiStatus,
   type AgentChatResponse,
   type AgentStatus,
@@ -56,6 +61,26 @@ function newClientMessageId() {
     return crypto.randomUUID();
   }
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Only the tool-result "kind"s that map to a real, single-record detail
+ * route get a link — anything else (evaluation, milestone, occurrence
+ * completions) still shows in "Atividade recente" but without a link,
+ * rather than guessing a route that doesn't exist. */
+function resolveResultLink(kind: unknown, id: unknown): string | null {
+  if (typeof id !== "string" || !id) return null;
+  switch (kind) {
+    case "client":
+      return `/app/clients/${id}`;
+    case "appointment":
+      return `/app/appointments/${id}`;
+    case "cycle":
+      return `/app/cycles/${id}`;
+    case "receivable":
+      return `/app/receivables/${id}`;
+    default:
+      return null;
+  }
 }
 
 function TypingIndicator() {
@@ -169,6 +194,14 @@ export default function AssistantPage() {
   const [micMenuOpen, setMicMenuOpen] = useState(false);
   const [voiceUiPhase, setVoiceUiPhase] = useState<VoicePhase>("idle");
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  // Where this conversation started from — Cliente 360°'s "Perguntar sobre
+  // este cliente" and Agenda's "Perguntar à IA" pass a human label + an
+  // optional back-link via ?context=/&returnTo=. Display-only: it never
+  // biases tool selection (the backend has no such field today), the LLM
+  // still resolves everything from the message text + conversation history.
+  const [contextLabel] = useState(() => search.get("context") || null);
+  const [contextReturnTo] = useState(() => search.get("returnTo") || null);
+  const [homeSummary, setHomeSummary] = useState<HomeSummary | null>(null);
   const sendLockRef = useRef(false);
   const voicePipelineAbortRef = useRef(false);
   const mountedRef = useRef(true);
@@ -309,6 +342,20 @@ export default function AssistantPage() {
       cancelled = true;
     };
   }, [loadThreads]);
+
+  useEffect(() => {
+    // Real counts for the mobile "Resumo do dia" card — same endpoint the
+    // Início screen already uses, fetched fresh here (no shared cache/store)
+    // so this never drifts from what Início itself shows.
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<HomeSummary>("/api/v1/home/summary");
+      if (!cancelled && result.data) setHomeSummary(result.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const node = textareaRef.current;
@@ -750,6 +797,25 @@ export default function AssistantPage() {
     void send(input, fromVoice ? "voice_transcript" : "text");
   }
 
+  // "Atividade recente" — derived from this thread's own messages already
+  // in memory, never a separate fetch/store: any pending card whose live
+  // status reached a real terminal outcome (executed/cancelled/failed/
+  // expired), most recent first.
+  const recentActivity = useMemo(
+    () =>
+      [...messages]
+        .reverse()
+        .filter(
+          (m) =>
+            m.pending &&
+            m.actionStatus &&
+            m.actionStatus !== "pending" &&
+            m.actionStatus !== "executing",
+        )
+        .slice(0, 6),
+    [messages],
+  );
+
   const disabled =
     !statusLoaded || !status?.enabled || status.entitlement_ok === false;
   const recording =
@@ -927,6 +993,73 @@ export default function AssistantPage() {
                       Nada é alterado sem sua confirmação.
                     </p>
                   </div>
+
+                  {/* Mobile only — desktop gets its own persistent right
+                      panel below instead (context/atalhos/atividade). This
+                      is the "camada operacional principal" surface: real
+                      counts, real recent conversations, real shortcuts. */}
+                  {homeSummary ? (
+                    <Link
+                      href="/app/agenda"
+                      className="flex items-center justify-between gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 md:hidden"
+                    >
+                      <span className="text-sm text-[var(--color-ink)]">
+                        <strong className="font-semibold">
+                          {homeSummary.today_appointments.length}
+                        </strong>{" "}
+                        compromisso(s) hoje
+                        {homeSummary.attention_items && homeSummary.attention_items.length > 0
+                          ? ` · ${homeSummary.attention_items.length} pedindo atenção`
+                          : ""}
+                      </span>
+                      <span className="shrink-0 text-xs font-medium text-[var(--color-link)]">
+                        Ver agenda
+                      </span>
+                    </Link>
+                  ) : null}
+
+                  <div
+                    role="group"
+                    aria-label="Acesso rápido"
+                    className="flex flex-wrap justify-center gap-2 md:hidden"
+                  >
+                    {[
+                      { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
+                      { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
+                      { href: "/app/routines/pending", label: "Rotinas", Icon: IconClipboardList },
+                    ].map(({ href, label, Icon }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-semibold text-[var(--color-ink)]"
+                      >
+                        <Icon className="h-3.5 w-3.5" aria-hidden />
+                        {label}
+                      </Link>
+                    ))}
+                  </div>
+
+                  {threads.length > 0 ? (
+                    <div className="md:hidden">
+                      <p className="mb-1.5 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)] sm:text-left">
+                        Consultas recentes
+                      </p>
+                      <ul className="flex flex-wrap justify-center gap-1.5 sm:justify-start">
+                        {threads.slice(0, 3).map((t) => (
+                          <li key={t.id}>
+                            <button
+                              type="button"
+                              onClick={() => void openThread(t.id)}
+                              className="max-w-[12rem] truncate rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)]"
+                            >
+                              {t.title || "Conversa"}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
                   <SuggestionGrid
                     items={ASSISTANT_SUGGESTIONS}
                     disabled={disabled || busy}
@@ -1222,6 +1355,92 @@ export default function AssistantPage() {
           </div>
         </div>
       </div>
+
+      {/* Desktop-only right column: current context + shortcuts + recent
+          activity — fills the width instead of leaving it empty next to a
+          narrow centered transcript. Nothing here is a separate data store:
+          context is a display-only label from the referring page, recent
+          activity reads the already-loaded thread messages, shortcuts are
+          static real routes. */}
+      <aside
+        aria-label="Painel lateral do Assistente"
+        className="hidden w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-[var(--color-border)]/70 bg-[var(--color-surface)]/60 p-4 lg:flex"
+      >
+        {contextLabel ? (
+          <section className="rounded-[var(--radius-lg)] border border-[var(--color-ai-border)] bg-[var(--color-ai-subtle)] p-3.5">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ai-hover)]">
+              Contexto atual
+            </h2>
+            <p className="mt-1 text-sm font-medium text-[var(--color-ink)]">{contextLabel}</p>
+            {contextReturnTo ? (
+              <Link
+                href={contextReturnTo}
+                className="mt-1.5 inline-block text-xs font-medium text-[var(--color-link)]"
+              >
+                Voltar
+              </Link>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+            Atalhos
+          </h2>
+          <ul className="mt-2 space-y-1">
+            {[
+              { href: "/app/agenda", label: "Agenda completa", Icon: IconCalendarDays },
+              { href: "/app/appointments/new", label: "Novo compromisso", Icon: IconCalendarPlus },
+              { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
+              { href: "/app/routines/pending", label: "Rotinas pendentes", Icon: IconClipboardList },
+            ].map(({ href, label, Icon }) => (
+              <li key={href}>
+                <Link
+                  href={href}
+                  className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 text-sm text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)]" aria-hidden />
+                  {label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+            Atividade recente
+          </h2>
+          {recentActivity.length === 0 ? (
+            <p className="mt-2 text-sm text-[var(--color-ink-subtle)]">
+              Ações confirmadas nesta conversa aparecem aqui.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {recentActivity.map((m, idx) => {
+                const link = resolveResultLink(m.pending?.result?.kind, m.pending?.result?.id);
+                const title = m.pending ? proposalTitle(m.pending.tool_name, m.pending.summary) : "";
+                return (
+                  <li
+                    key={m.pending?.id || idx}
+                    className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-2.5 py-2"
+                  >
+                    <p className="text-sm font-medium text-[var(--color-ink)]">{title}</p>
+                    <p className="text-xs text-[var(--color-ink-subtle)]">
+                      {actionHeadline(m.actionStatus || "executed")}
+                    </p>
+                    {link ? (
+                      <Link href={link} className="text-xs font-medium text-[var(--color-link)]">
+                        Abrir registro
+                      </Link>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </aside>
     </div>
   );
 }

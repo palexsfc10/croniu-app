@@ -538,7 +538,11 @@ describe("AssistantPage premium shell", () => {
     expect(screen.getByRole("button", { name: "Confirmar" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
-    expect(await screen.findByText("Ação concluída")).toBeInTheDocument();
+    // Scoped to the proposal card itself — the desktop "Atividade recente"
+    // panel now also echoes "Ação concluída" for the same action, so a
+    // page-wide query would be ambiguous.
+    const card = await screen.findByRole("region", { name: /Proposta:/i });
+    expect(await within(card).findByText("Ação concluída")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
 
     // Simulate leave/reopen via Conversas → same thread
@@ -546,7 +550,8 @@ describe("AssistantPage premium shell", () => {
     const dialog = await screen.findByRole("dialog", { name: /Conversas recentes/i });
     fireEvent.click(within(dialog).getByText(/Criar/i));
 
-    expect(await screen.findByText("Ação concluída")).toBeInTheDocument();
+    const reopenedCard = await screen.findByRole("region", { name: /Proposta:/i });
+    expect(await within(reopenedCard).findByText("Ação concluída")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
     expect(detailLoads).toBeGreaterThanOrEqual(2);
@@ -583,5 +588,187 @@ describe("AssistantPage premium shell", () => {
       "href",
       "/app/preferences",
     );
+  });
+});
+
+describe("AssistantPage desktop workspace — contexto, atalhos, atividade recente", () => {
+  afterEach(() => {
+    cleanup();
+    apiFetch.mockReset();
+  });
+
+  it("shows a 'Contexto atual' panel with a real back-link when arriving from ?context=&returnTo= (Cliente 360°/Agenda entry points)", async () => {
+    nav.query =
+      "prompt=" +
+      encodeURIComponent("Sobre Ana Martins: ") +
+      "&context=" +
+      encodeURIComponent("Cliente: Ana Martins") +
+      "&returnTo=" +
+      encodeURIComponent("/app/clients/c1");
+    mockStatus();
+    render(<AssistantPage />);
+    const panel = await screen.findByRole("complementary", { name: /Painel lateral/i });
+    expect(within(panel).getByText("Contexto atual")).toBeInTheDocument();
+    expect(within(panel).getByText("Cliente: Ana Martins")).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: "Voltar" })).toHaveAttribute(
+      "href",
+      "/app/clients/c1",
+    );
+  });
+
+  it("does not show a context panel without ?context= — never invents one", async () => {
+    mockStatus();
+    render(<AssistantPage />);
+    const panel = await screen.findByRole("complementary", { name: /Painel lateral/i });
+    expect(within(panel).queryByText("Contexto atual")).not.toBeInTheDocument();
+  });
+
+  it("offers real Atalhos links to Agenda, Clientes and Rotinas pendentes", async () => {
+    mockStatus();
+    render(<AssistantPage />);
+    const panel = await screen.findByRole("complementary", { name: /Painel lateral/i });
+    expect(within(panel).getByRole("link", { name: /Agenda completa/i })).toHaveAttribute(
+      "href",
+      "/app/agenda",
+    );
+    expect(within(panel).getByRole("link", { name: /Rotinas pendentes/i })).toHaveAttribute(
+      "href",
+      "/app/routines/pending",
+    );
+  });
+
+  it("lists a confirmed action in Atividade recente with a link to the real record", async () => {
+    const pending = {
+      id: "pend-recent",
+      tool_name: "propose_cancel_appointment",
+      summary: "Cancelar compromisso de Ana: hoje às 14h.",
+      summary_fields: { Cliente: "Ana Martins" },
+      arguments: { appointment_id: "appt-9" },
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+      status: "pending",
+    };
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (String(path).includes("/agent/status")) {
+        return { data: { enabled: true, provider: "fake", model: "fake", tools: [], entitlement_ok: true } };
+      }
+      if (String(path) === "/api/v1/agent/threads" && init?.method === "POST") {
+        return { data: { id: "t-recent", title: "Cancelar", status: "active", updated_at: "" } };
+      }
+      if (String(path).endsWith("/agent/threads") && !String(path).includes("messages")) {
+        return { data: { items: [] } };
+      }
+      if (String(path).includes("/agent/threads") && String(path).endsWith("/messages")) {
+        return {
+          data: {
+            reply: "Posso cancelar o compromisso das 14h?",
+            status: "awaiting_confirmation",
+            pending_action: pending,
+            thread_id: "t-recent",
+          },
+        };
+      }
+      if (String(path).includes("/agent/pending/") && String(path).endsWith("/confirm")) {
+        return {
+          data: {
+            reply: "Cancelado.",
+            status: "ok",
+            action_status: "executed",
+            result: { id: "appt-9", kind: "appointment", status: "cancelled" },
+          },
+        };
+      }
+      return { data: null };
+    });
+    render(<AssistantPage />);
+    const textbox = await screen.findByLabelText(/Pergunte ou peça algo/i);
+    fireEvent.change(textbox, { target: { value: "Cancele o compromisso das 14h" } });
+    fireEvent.submit(textbox.closest("form")!);
+    await screen.findByRole("button", { name: "Confirmar" });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    const panel = screen.getByRole("complementary", { name: /Painel lateral/i });
+    await waitFor(() => {
+      expect(within(panel).getByText("Cancelar compromisso")).toBeInTheDocument();
+    });
+    expect(within(panel).getByRole("link", { name: "Abrir registro" })).toHaveAttribute(
+      "href",
+      "/app/appointments/appt-9",
+    );
+  });
+});
+
+describe("AssistantPage mobile — camada operacional (resumo, acesso rápido, consultas recentes)", () => {
+  afterEach(() => {
+    cleanup();
+    apiFetch.mockReset();
+  });
+
+  it("shows a real day summary card from /home/summary, never a mocked count", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (String(path).includes("/agent/status")) {
+        return { data: { enabled: true, provider: "fake", model: "fake", tools: [], entitlement_ok: true } };
+      }
+      if (String(path).endsWith("/agent/threads")) return { data: { items: [] } };
+      if (String(path).includes("/home/summary")) {
+        return {
+          data: {
+            organization_id: "o1",
+            timezone: "America/Sao_Paulo",
+            local_today: "2026-08-14",
+            today_appointments: [{ id: "a1" }, { id: "a2" }],
+            cycles_nearing_end: [],
+            renewals: [],
+            pending_payments: [],
+            attention_items: [{ id: "x1" }],
+          },
+        };
+      }
+      return { data: null };
+    });
+    render(<AssistantPage />);
+    const summary = await screen.findByRole("link", { name: /2.*compromisso.*hoje.*1 pedindo atenção/i });
+    expect(summary).toHaveAttribute("href", "/app/agenda");
+  });
+
+  it("offers quick-access chips to Agenda, Clientes and Rotinas", async () => {
+    mockStatus();
+    render(<AssistantPage />);
+    await screen.findByText("O que vamos organizar hoje?");
+    const quickAccess = screen.getByRole("group", { name: "Acesso rápido" });
+    expect(within(quickAccess).getByRole("link", { name: /^Agenda$/ })).toHaveAttribute(
+      "href",
+      "/app/agenda",
+    );
+    expect(within(quickAccess).getByRole("link", { name: /^Clientes$/ })).toHaveAttribute(
+      "href",
+      "/app/clients",
+    );
+    expect(within(quickAccess).getByRole("link", { name: /^Rotinas$/ })).toHaveAttribute(
+      "href",
+      "/app/routines/pending",
+    );
+  });
+
+  it("shows Consultas recentes chips from the already-loaded threads list (no separate fetch)", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (String(path).includes("/agent/status")) {
+        return { data: { enabled: true, provider: "fake", model: "fake", tools: [], entitlement_ok: true } };
+      }
+      if (String(path).endsWith("/agent/threads")) {
+        return {
+          data: {
+            items: [
+              { id: "t1", title: "Clientes em atenção hoje", status: "active", updated_at: "2026-08-14T10:00:00Z" },
+            ],
+          },
+        };
+      }
+      return { data: null };
+    });
+    render(<AssistantPage />);
+    expect(await screen.findByText("Consultas recentes")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Clientes em atenção hoje" }),
+    ).toBeInTheDocument();
   });
 });

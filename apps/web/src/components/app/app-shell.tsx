@@ -12,6 +12,7 @@ import {
   type SVGProps,
 } from "react";
 import { BrandMark, BrandWordmark } from "@/components/brand";
+import { CommandPalette } from "@/components/app/command-palette";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch, type MyReferral } from "@/lib/api";
@@ -24,6 +25,7 @@ import {
   IconLogOut,
   IconClipboardList,
   IconLink,
+  IconSparkles,
   IconUser,
   IconUsersRound,
 } from "@/components/ui/icons";
@@ -46,6 +48,23 @@ const navItems: {
   { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
   { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
   { href: "/app/routines", label: "Rotinas", Icon: IconClipboardList },
+  { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
+];
+
+/** Mobile bottom tab bar only — Assistente takes the center slot, in
+ * destaque, per "mobile é a camada operacional principal da IA". Rotinas
+ * stays a full desktop sidebar item (`navItems` above, untouched) and is
+ * still reachable on mobile via Mais → Rotinas (profile/page.tsx), so
+ * nothing existing disappears — it just isn't a primary tab anymore. */
+const mobileNavItems: {
+  href: string;
+  label: string;
+  Icon: ComponentType<SVGProps<SVGSVGElement> & { title?: string }>;
+}[] = [
+  { href: "/app", label: "Início", Icon: IconHome },
+  { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
+  { href: "/app/assistant", label: "Assistente", Icon: IconSparkles },
+  { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
   { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
 ];
 
@@ -487,7 +506,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="app-bottom-nav fixed inset-x-0 bottom-0 border-t border-[var(--color-border)]/70 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden"
         >
           <div className="mx-auto flex max-w-lg items-stretch justify-between gap-0.5 px-1.5 py-1.5">
-            {navItems.map((item) => {
+            {mobileNavItems.map((item) => {
               const active = isNavActive(pathname, item.href);
               const { Icon } = item;
               return (
@@ -516,6 +535,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       </div>
+      <CommandPalette />
     </div>
   );
 }
