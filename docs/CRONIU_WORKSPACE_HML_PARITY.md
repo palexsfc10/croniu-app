@@ -13,6 +13,7 @@
 | — | docs: registra Gate 1 (organização) | `d068f2f` | nenhum (só doc) | **feito** |
 | — | docs: conclui Gate 1 (usuário) | `33ce895` | nenhum (só doc) | **feito** |
 | — | feat(deploy): `up-web`/`build-web` (Gate 2) | `144ad14` | recreated `croniu-hml-web` via `up-web` (api/admin preservados, provado) | **feito** |
+| 3 | Home/Início mais limpa e orientada a decisões: mantida a hierarquia já existente (saudação, resumo curto, agenda do dia, lista única de prioridades via `attention_items`), adicionado Financeiro compacto (contagem + total real de `pending_payments`, nunca mockado) e Ações rápidas (novo cliente / novo ciclo / agenda completa, apontando para rotas reais) | `f55da4c` | recreated `croniu-hml-web` via `up-web` (api/admin preservados, provado) | **feito** — 14/14 testes automatizados + verificado ao vivo em HML com conta throwaway (removida por ID exato ao final) |
 
 ## Gate 1 — reconciliação da conta sintética de smoke
 
