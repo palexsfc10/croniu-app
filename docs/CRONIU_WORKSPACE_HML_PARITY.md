@@ -256,6 +256,27 @@ card mobile mudou (um badge de atenção em vez de todos).
 registrar acompanhamento/anotação, criar compromisso e ver cobrança continuam acionáveis
 manualmente em toda tela, com ou sem o Assistente disponível.
 
+**Verificação ao vivo em HML (2026-09-02)**: conta sintética dedicada (org `Fatia4 Mobile Smoke
+Workspace`, cliente `Cliente Mobile Smoke` com ciclo ativo `is_nearing_end=true` +
+`days_remaining=6` e um recebível vencido) usada para exercitar simultaneamente `financial` e
+`renewal` no mesmo cliente e confirmar a priorização real (`REASON_PRIORITY`):
+
+- **Desktop (1280×900)**: lista de Clientes inalterada — badges "Renovação" e "Financeiro" lado a
+  lado na coluna Atenção; Cliente 360° com as 6 abas intactas, ação "Perguntar sobre este cliente"
+  visível, alerta "1 cobrança atrasada." real.
+- **Mobile 390×844**: card do cliente mostra **um único** badge, `"Financeiro · atrasado"` —
+  confirma que `financial` vence `renewal` na priorização. Cliente 360° não renderiza abas —
+  cabeçalho → ações rápidas (linha rolável) → PRÓXIMO PASSO → alerta de cobrança → convite
+  pendente → grade de 4 blocos (Próxima sessão/Plano e ciclo/Última evolução/Financeiro) → as
+  quatro seções `<details>` (Agenda completa/Prontuário/Financeiro completo/Histórico), todas
+  fechadas por padrão e com conteúdo real dentro (confirmado abrindo "Financeiro completo": R$
+  1.200,00, vencimento 08/08/2026, "Atrasado") → card do Portal do cliente.
+- **Mobile 360×800**: mesmo comportamento confirmado — lista com badge único, Cliente 360° sem
+  abas, Resumo consolidado idêntico ao de 390×844.
+- **Limpeza**: organização, usuário e cliente sintéticos removidos por ID exato
+  (`permanently_delete_organization` + `DELETE FROM users WHERE id = ...`); contagens do banco
+  confirmadas de volta ao baseline exato — 273 orgs / 278 users / 273 memberships / 155 clients.
+
 ## Como ler esta matriz
 
 Para cada funcionalidade: **rota atual**, **ações existentes**, **API(s) usada(s)**, **destino no
