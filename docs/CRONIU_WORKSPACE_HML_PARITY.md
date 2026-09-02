@@ -97,6 +97,91 @@ o que está realmente implantado. Procedimento documentado em
 [`deploy/hml/README.md`](../deploy/hml/README.md#deploy-só-de-frontend-appsweb). **Gate 2
 concluído.**
 
+## Fatia 4 — Clientes + Cliente 360° (jornada única): inspeção pré-implementação
+
+### Rotas atuais (preservadas, nenhuma removida)
+
+| Rota | Arquivo | Função |
+|---|---|---|
+| `/app/clients` | `clients/page.tsx` | Lista — busca, filtro ativo/arquivado, convite, cadastro. |
+| `/app/clients/new` | `clients/new/page.tsx` | Cadastro manual. |
+| `/app/clients/intake` | `clients/intake/page.tsx` | Fila de cadastros por convite. |
+| `/app/clients/intake/[submissionId]` | `clients/intake/[submissionId]/page.tsx` | Revisão de submissão (aprovar/rejeitar/pedir mudança, `AnamnesisReader`, dedup). |
+| `/app/clients/[clientId]` | `clients/[clientId]/page.tsx` → `ClientProfile` | Cliente 360° (3 abas hoje: Resumo/Acompanhamento/Dados). |
+| `/app/clients/[clientId]/accompaniment` | `.../accompaniment/page.tsx` | Checklist de preparação passo a passo. |
+| `/app/clients/[clientId]/plans/new`, `/plans/[protocolId]` | — | Criar/editar plano (protocolo). |
+| `/app/clients/[clientId]/evaluations/new`, `/evaluations/[evaluationId]` | — | Criar/editar avaliação. |
+
+### APIs já existentes reaproveitadas (nenhuma nova lógica de negócio)
+
+`GET/POST/PATCH /clients`, `/clients/{id}`, `/clients/{id}/journey`, `/clients/{id}/public-access`
+(+rotate+DELETE), `/clients/{id}/intake-link`, `/clients/{id}/evaluations`, `/evaluations/{id}`
+(+publish/unpublish/archive), `/protocols?client_id=` (+publish/extend/schedule-review),
+`/intake-submissions?client_id=`, `/cycles?client_id=`, `/routines/board?client_id=`,
+`/receivables` (org-wide, hoje sem filtro por cliente no frontend).
+
+### Achado central: `PATCH /clients/{id}` já aceita `full_name`/`phone`/`email`/`notes`/`status`
+
+O menu "Editar dados" atual só troca de aba (`?tab=dados`) — a aba mostra os campos **somente
+leitura**. Não existe formulário de edição hoje, apesar do endpoint já aceitar a atualização
+completa. A ação "Editar" desta fatia usa esse endpoint já existente e testado — zero lógica nova
+no backend, só o formulário que faltava no frontend.
+
+### Achado: `list_receivables_for_client` já existe no backend, sem rota HTTP
+
+`backend/app/services/domain.py:840` já implementa a listagem de recebíveis por cliente — hoje só é
+usada internamente pelas tools do agente de IA (`backend/app/agent/tools.py`), nunca exposta via
+API REST ao frontend. A aba Financeiro do Cliente 360° e a coluna Financeiro/Renovação da lista
+reaproveitam essa função já existente e implicitamente testada pelo uso do agente.
+
+### Achado: não existe "nota interna" separada — só o campo único `Client.notes`
+
+Não há tabela de notas/timeline/atividade ligada a cliente (nem no backend nem no frontend). A ação
+"Adicionar anotação" desta fatia grava no mesmo campo `notes` já existente via `PATCH /clients/{id}`
+— continua sendo um campo de texto único, não um histórico de anotações com múltiplas entradas
+datadas. Registrado aqui explicitamente porque é uma limitação real herdada do modelo atual, não
+uma simplificação minha: criar uma tabela de anotações exigiria migration, proibida nesta rodada.
+
+### Achado: "Visualizar como cliente" já existe — é literalmente o link do portal
+
+`ClientPortalCard` já abre `access.public_path` (a mesma URL que o cliente usaria) em nova aba. Não
+existe (nem esta fatia cria) uma prévia sandboxed separada — é o link real do portal, já existente.
+
+### Achado: sem endpoint em lote para "próxima sessão" nem para "avaliação mais recente" por cliente
+
+`GET /agenda/next` e `GET /clients/{id}/evaluations` só respondem por um cliente por vez — usá-los
+em loop na lista (dezenas de clientes) seria N+1. Endpoints aditivos necessários, justificados
+abaixo. Decisão de escopo: a coluna "Evolução" da lista usa progresso do ciclo (`lessons_completed`/
+`lesson_count`, já vem em lote via `GET /cycles`) em vez de buscar a última avaliação de cada
+cliente em lote — evita um 4º endpoint novo; o Cliente 360° (Prontuário) continua mostrando a
+avaliação mais recente de verdade via `GET /clients/{id}/evaluations`, sem nenhuma perda.
+
+### Endpoints aditivos planejados (read-only, sem alteração de schema, sem migration)
+
+| Endpoint | Justificativa | Reaproveita |
+|---|---|---|
+| `GET /api/v1/agenda/next-appointments` (lote, todos os clientes, um `starts_at` mínimo por `client_id`) | Coluna "Agenda: próxima sessão" da lista sem N+1 | Mesma query shape de `next_visible_appointment_after`, reduzida em Python (sem `DISTINCT ON`, mais portável e fácil de testar) |
+| `GET /api/v1/clients/{client_id}/appointments?limit=` | Aba Agenda do Cliente 360° (mais que só a próxima) | Mesmo padrão de `list_upcoming_appointments`, sem o limite de `within_days` |
+| `GET /api/v1/clients/{client_id}/receivables` | Aba Financeiro do Cliente 360° | Expõe `list_receivables_for_client`, já existente e usada pelo agente |
+
+Cada um será coberto por teste de backend antes de qualquer uso no frontend, e testado manualmente
+via `curl`/pytest antes do deploy. Nenhum toca em tabelas, nenhum precisa de Alembic.
+
+### Redesenho — mapeamento explícito de continuidade (nada desaparece)
+
+| Recurso hoje | Aba/local nova |
+|---|---|
+| Aba "Resumo" (próximo passo, convite pendente, ciclo/plano em uma linha) | Aba **Resumo** — expandida com identidade, status, serviço, ciclo, progresso, próxima sessão, última avaliação, anamnese, onboarding, financeiro compacto, renovação, portal, próxima ação, alertas |
+| Aba "Acompanhamento" (cards Ciclo/Plano/Avaliações/Rotinas) | Dividida entre **Plano e ciclo** (ciclo+plano) e **Prontuário** (avaliações) e **Resumo** (rotinas pendentes viram alerta) |
+| Aba "Dados" (telefone/e-mail/notas somente leitura + submissão de intake + portal) | **Editar** (ação, formulário real) + **Prontuário → Anamnese** (link de submissão preservado) + **Resumo** (portal como indicador + ação "Visualizar como cliente") |
+| Menu "⋯" (Editar dados / Copiar acesso / Arquivar) | Vira "Mais ações" com as mesmas 3 ações + as novas contextuais |
+| Filtros Ativos/Arquivados da lista | Preservados, somam-se às novas views (Atenção/Onboarding/Renovação/Financeiro/Sem acompanhamento) |
+
+## Situação desta fatia
+
+Linhas 195/196 da Matriz por funcionalidade abaixo passam de `pendente` para `em andamento` nesta
+fatia. Ver commits e evidência de deploy nesta seção conforme avançam.
+
 As demais 12 áreas da matriz abaixo (Clientes, Cliente 360°, Agenda Board, Rotinas,
 Acompanhamentos, Onboarding, Serviços/ciclos/avaliações, Financeiro, Portal, Assistente/command
 bar) seguem `pendente` — a promoção completa do conceito do Lab é uma iniciativa maior, ainda em
@@ -192,8 +277,8 @@ utilizada. Esta branch nasce exclusivamente de `origin/main` @ `35ca1e6`, como i
 | Login Google | `/entrar` | OAuth Google | `backend/app/api/auth.py` (google) | Inalterado | Inalterado | Inalterado | Fluxo OAuth completo sem alteração de contrato | pendente de verificação |
 | Organização ativa / isolamento | global (sessão) | Seleção/contexto de organização | sessão/middleware | Inalterado | Inalterado | Inalterado | Dados de uma org nunca aparecem para outra | pendente de verificação |
 | Home | `/app` | Resumo do dia | `GET /home/summary` | `Início` — saudação + resumo curto + agenda/disponibilidade + prioridades + financeiro compacto + ações rápidas | Composição decisória (bento enxuto) | Mesma hierarquia, empilhada | Todos os dados do resumo atual continuam presentes, só reorganizados | pendente |
-| Clientes (lista) | `/app/clients` | Listar, buscar, cadastrar, editar, convidar | `backend/app/api/clients.py` | Tabela densa: Cliente · Atendimento · Agenda · Evolução · Financeiro · Renovação · Atenção; linha inteira abre o cliente; views (Todos/Atenção/Onboarding/Renovação/Financeiro/Sem acompanhamento) | Tabela | Lista priorizada | Toda ação de cadastro/edição/convite continua acessível | pendente |
-| Cliente 360° | `/app/clients/[clientId]` | Ver, editar, arquivar, gerar/copiar/revogar link de portal | `clients.py`, `evaluations.py`, `agenda.py`, `receivables.py` | `Resumo` como visão inicial + abas Agenda / Plano e ciclo / Prontuário (anamnese, avaliações, acompanhamentos) / Financeiro / Histórico | Resumo fixo + abas | Resumo, atenção, próxima sessão, ações — abas colapsáveis | Nenhuma rota/ação atual removida; reutilizadas internamente | pendente — maior prioridade |
+| Clientes (lista) | `/app/clients` | Listar, buscar, cadastrar, editar, convidar | `backend/app/api/clients.py` | Tabela densa: Cliente · Atendimento · Agenda · Evolução · Financeiro · Renovação · Atenção; linha inteira abre o cliente; views (Todos/Atenção/Onboarding/Renovação/Financeiro/Sem acompanhamento) | Tabela | Lista priorizada | Toda ação de cadastro/edição/convite continua acessível | **em andamento** (fatia 4) |
+| Cliente 360° | `/app/clients/[clientId]` | Ver, editar, arquivar, gerar/copiar/revogar link de portal | `clients.py`, `evaluations.py`, `agenda.py`, `receivables.py` | `Resumo` como visão inicial + abas Agenda / Plano e ciclo / Prontuário (anamnese, avaliações, acompanhamentos) / Financeiro / Histórico | Resumo fixo + abas | Resumo, atenção, próxima sessão, ações — abas colapsáveis | Nenhuma rota/ação atual removida; reutilizadas internamente | **em andamento** (fatia 4) |
 | Onboarding manual | `/app/clients/new` | Cadastro direto | `clients.py` | Onboarding — ação "Cadastrar manualmente" | Botão + formulário | Mesmo formulário | Cliente criado aparece idêntico ao fluxo atual | pendente |
 | Onboarding por convite | intake links | Enviar convite, acompanhar preenchimento | `intake.py`, `public_intake.py` | Onboarding — estados (convite pendente/em preenchimento/concluído/exige atenção) | Quadro por status | Lista por status | Progresso, reenvio e link continuam funcionando | pendente |
 | Anamnese | dentro do fluxo de cliente/intake | Preencher, revisar respostas por template versionado | `client_anamnesis_responses`, `anamnesis_templates` (a mapear rota exata) | Prontuário → Anamnese, dentro do Cliente 360° | Aba | Aba | Fluxo completo preservado, não simplificar para campo único | pendente — requer leitura adicional do fluxo real |
