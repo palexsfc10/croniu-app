@@ -208,7 +208,7 @@ export default function RoutinesPageInner() {
 
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
-      <BackLink href={returnTo || "/app"} label={returnTo ? "Voltar" : "Hoje"} />
+      <BackLink href={returnTo || "/app"} label={returnTo ? "Voltar" : "Início"} />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
         <p className="text-sm text-[var(--color-ink-muted)]">

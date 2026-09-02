@@ -43,7 +43,7 @@ export default function ReferralsPage() {
   if (!referral?.enabled) {
     return (
       <div className="mx-auto max-w-lg space-y-4 animate-fade-up">
-        <BackLink href="/app" label="Hoje" />
+        <BackLink href="/app" label="Início" />
         <p className="text-sm text-[var(--color-ink-muted)]">
           Esta página está disponível apenas para divulgadores habilitados.
         </p>
@@ -57,7 +57,7 @@ export default function ReferralsPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-4 animate-fade-up">
-      <BackLink href="/app" label="Hoje" />
+      <BackLink href="/app" label="Início" />
       <div>
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Indique o Croniu</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">

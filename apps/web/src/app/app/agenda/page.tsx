@@ -272,7 +272,7 @@ export default function AgendaPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <BackLink href="/app" label="Hoje" />
+      <BackLink href="/app" label="Início" />
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="h-display text-3xl text-[var(--color-ink)]">Agenda</h1>

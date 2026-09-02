@@ -115,7 +115,7 @@ export default function CyclesPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <BackLink href="/app" label="Hoje" />
+      <BackLink href="/app" label="Início" />
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-ink)]">

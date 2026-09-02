@@ -7,6 +7,7 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentType,
   type SVGProps,
 } from "react";
@@ -41,7 +42,7 @@ const navItems: {
   label: string;
   Icon: ComponentType<SVGProps<SVGSVGElement> & { title?: string }>;
 }[] = [
-  { href: "/app", label: "Hoje", Icon: IconHome },
+  { href: "/app", label: "Início", Icon: IconHome },
   { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
   { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
   { href: "/app/routines", label: "Rotinas", Icon: IconClipboardList },
@@ -275,10 +276,24 @@ function AccountSidebarLinks({
   );
 }
 
+/** True only on the HML hostname — never on PRD. useSyncExternalStore (not a
+ * state-in-effect) is the React-sanctioned way to read a value that only
+ * exists client-side without a hydration mismatch: the server snapshot is
+ * always false, so the badge simply isn't there for the initial paint. */
+const noopSubscribe = () => () => {};
+function useIsHmlEnvironment() {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => window.location.hostname.startsWith("croniu-hml"),
+    () => false,
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { me, loading, logout } = useAuth();
   const [referral, setReferral] = useState<MyReferral | null>(null);
+  const isHml = useIsHmlEnvironment();
 
   useEffect(() => {
     if (!me) return;
@@ -355,8 +370,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="app-sidebar hidden border-[var(--color-border)] md:flex md:w-56 md:shrink-0 md:flex-col md:border-r xl:w-64">
         <div className="sticky top-0 flex min-h-dvh flex-col">
           <div className="px-4 py-4">
-            <BrandWordmark size="sm" surface="light" compact />
-            <p className="mt-1 truncate text-xs text-[var(--color-ink-muted)]">
+            <div className="flex items-baseline gap-1.5">
+              <BrandWordmark size="sm" surface="light" compact />
+              <span className="text-sm font-normal text-[var(--color-ink-subtle)]">Workspace</span>
+            </div>
+            {isHml ? (
+              <span className="mt-1.5 inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-2 py-0.5 text-[0.65rem] font-semibold text-[var(--color-ink-muted)]">
+                Ambiente de homologação
+              </span>
+            ) : null}
+            <p className="mt-1.5 truncate text-xs text-[var(--color-ink-muted)]">
               {me.organization.name}
             </p>
           </div>
@@ -396,13 +419,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             showReferralLink={referral?.enabled ?? false}
             onLogout={doLogout}
           />
+          <p className="px-4 py-2 text-[0.65rem] font-medium text-[var(--color-ink-subtle)] opacity-70">
+            by NTWS Labs
+          </p>
         </div>
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 shrink-0 border-b border-[var(--color-border)]/80 bg-[var(--color-bg)]/90 px-4 py-2.5 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-2">
-            <BrandWordmark size="sm" surface="light" compact />
+            <div className="flex items-center gap-1.5">
+              <BrandWordmark size="sm" surface="light" compact />
+              {isHml ? (
+                <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-1.5 py-0.5 text-[0.6rem] font-semibold text-[var(--color-ink-muted)]">
+                  HML
+                </span>
+              ) : null}
+            </div>
             <div className="flex items-center gap-1.5">
               <Link
                 href="/app/assistant"

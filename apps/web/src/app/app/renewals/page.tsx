@@ -76,7 +76,7 @@ export default function RenewalsPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <BackLink href="/app" label="Hoje" />
+      <BackLink href="/app" label="Início" />
       <h1 className="h-display text-3xl text-[var(--color-ink)]">Renovações solicitadas</h1>
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">

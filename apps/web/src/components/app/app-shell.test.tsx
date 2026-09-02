@@ -125,7 +125,7 @@ describe("AppShell account navigation", () => {
       </AppShell>,
     );
     expect(container.querySelectorAll('[data-testid="pwa-install-banner"]')).toHaveLength(0);
-    expect(screen.getAllByRole("link", { name: "Hoje" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Início" }).length).toBeGreaterThan(0);
   });
 
   it("never shows the install banner outside the home screen, even with a captured native prompt", async () => {
