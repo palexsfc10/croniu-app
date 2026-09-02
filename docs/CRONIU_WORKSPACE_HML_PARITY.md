@@ -14,6 +14,7 @@
 | — | docs: conclui Gate 1 (usuário) | `33ce895` | nenhum (só doc) | **feito** |
 | — | feat(deploy): `up-web`/`build-web` (Gate 2) | `144ad14` | recreated `croniu-hml-web` via `up-web` (api/admin preservados, provado) | **feito** |
 | 3 | Home/Início mais limpa e orientada a decisões: mantida a hierarquia já existente (saudação, resumo curto, agenda do dia, lista única de prioridades via `attention_items`), adicionado Financeiro compacto (contagem + total real de `pending_payments`, nunca mockado) e Ações rápidas (novo cliente / novo ciclo / agenda completa, apontando para rotas reais) | `f55da4c` | recreated `croniu-hml-web` via `up-web` (api/admin preservados, provado) | **feito** — 14/14 testes automatizados + verificado ao vivo em HML com conta throwaway (removida por ID exato ao final) |
+| 4 | Clientes + Cliente 360° como jornada única: lista reconstruída (tabela densa desktop, cards priorizados mobile, 6 views reais Todos/Atenção/Onboarding/Renovação/Financeiro/Sem acompanhamento); Cliente 360° reorganizado em 6 abas (Resumo/Agenda/Plano e ciclo/Prontuário/Financeiro/Histórico), Resumo rico como visão inicial, ações contextuais reais (Agendar/Registrar acompanhamento/Adicionar anotação/Criar rotina/Perguntar à IA/Editar/Mais ações) | `51e27bd` + `2461cb0` (fix: data duplicada) + `9725dfb` (fix: abas sobrepondo no mobile) | `up-api` (3 endpoints aditivos) + `up-web` ×3 (2 correções pós-verificação ao vivo) — api/admin preservados em todos | **feito** — 101/101 testes focados de backend + 383/383 frontend, 0 falhas; verificado ao vivo em HML desktop+mobile, lista+360°+6 abas; 2 bugs reais achados e corrigidos na própria verificação ao vivo; contas throwaway (2 orgs) removidas por ID exato ao final, contagens idênticas ao baseline |
 
 ## Gate 1 — reconciliação da conta sintética de smoke
 
@@ -179,13 +180,51 @@ via `curl`/pytest antes do deploy. Nenhum toca em tabelas, nenhum precisa de Ale
 
 ## Situação desta fatia
 
-Linhas 195/196 da Matriz por funcionalidade abaixo passam de `pendente` para `em andamento` nesta
-fatia. Ver commits e evidência de deploy nesta seção conforme avançam.
+Linhas 195/196 da Matriz por funcionalidade abaixo passam de `pendente` para `feito` nesta fatia.
 
-As demais 12 áreas da matriz abaixo (Clientes, Cliente 360°, Agenda Board, Rotinas,
-Acompanhamentos, Onboarding, Serviços/ciclos/avaliações, Financeiro, Portal, Assistente/command
-bar) seguem `pendente` — a promoção completa do conceito do Lab é uma iniciativa maior, ainda em
-andamento fatia a fatia.
+### Testes
+
+- Backend: gate de "suíte completa" (634 testes) ficou anormalmente lento (2h43 sem terminar,
+  CPU quase ociosa — sinal de I/O/sleep, não trava de lógica) e foi interrompido de forma
+  controlada (só o processo pytest + o Postgres descartável; nenhum container HML tocado). Em vez
+  de bloquear a fatia, rodou-se uma seleção focada com timeout global de 25 min: os 8 testes novos
+  dos 3 endpoints + Clientes + Agenda + domain/financeiro + auth (tradicional e Google) +
+  isolamento de tenant + integridade agenda/ciclo — **101/101 passaram, 0 falhas**. A suíte
+  completa fica registrada como pendente, obrigatória antes de merge em `main`/PRD, com
+  investigação de lentidão a fazer depois (fora do caminho crítico desta validação reversível).
+- Frontend: 383/383 (vitest) + lint + typecheck + build limpos.
+
+### Deploy
+
+`up-api` (endpoints novos) seguido de `up-web` (frontend), cada um com a mesma disciplina do
+Gate 2 — imagem confirmada no `GIT_SHA` exato via label OCI, `--no-deps`, prova de `Id`/`StartedAt`
+dos outros dois serviços antes/depois. `croniu-hml-admin` nunca foi tocado em nenhum dos 4 deploys
+desta fatia (uptime idêntico do início ao fim). Endpoints novos validados ao vivo com 2 contas
+throwaway (isolamento cross-tenant: `404` em ambos os endpoints por cliente + lote sem vazamento).
+
+### Bugs reais encontrados e corrigidos durante a verificação ao vivo
+
+1. **Data da próxima sessão duplicada** ("04/09, 14:00 · 14:00") na lista e no Resumo/Agenda do
+   360° — `formatOrgDateTime` sempre inclui `hour`/`minute` como default; passar só `{day,month}`
+   não os removia. Corrigido com um novo helper `formatOrgDate` isolado; achado um gap real nos
+   mocks de teste (`vi.mock` substituía `@/lib/api` inteiro, mascarando o bug) e corrigido junto.
+   Commit `2461cb0`, redeploy `up-web` confirmado ao vivo.
+2. **Abas do Cliente 360° sobrepondo no mobile** ("Plano e cicloProntuário") — grid de 6 colunas
+   iguais não cabia rótulos longos. Corrigido para `flex` + `overflow-x-auto` no mobile (mesmo
+   padrão já usado na linha de ações), grid de 6 colunas mantido a partir de `lg`. Commit `9725dfb`,
+   redeploy `up-web` confirmado ao vivo.
+
+### Limpeza final
+
+2 organizações throwaway (`Fatia4 Smoke Workspace A`/`B`) + 2 usuários removidos por ID exato
+(mesmo caminho revisado do Gate 1). Contagens finais: **273 organizações / 278 usuários / 273
+memberships / 155 clientes** — idênticas ao baseline anterior a esta fatia.
+
+As demais áreas da matriz abaixo (Agenda Board, Rotinas, Acompanhamentos, Onboarding,
+Serviços/ciclos/avaliações, Financeiro completo, Portal, Assistente/command bar, Billing,
+Perfil/Preferências, Feedback) seguem `pendente` — a promoção completa do conceito do Lab é uma
+iniciativa maior, ainda em andamento fatia a fatia. Clientes e Cliente 360° (fatia 4) são as
+primeiras da lista original a fechar.
 
 ## Como ler esta matriz
 
@@ -277,8 +316,8 @@ utilizada. Esta branch nasce exclusivamente de `origin/main` @ `35ca1e6`, como i
 | Login Google | `/entrar` | OAuth Google | `backend/app/api/auth.py` (google) | Inalterado | Inalterado | Inalterado | Fluxo OAuth completo sem alteração de contrato | pendente de verificação |
 | Organização ativa / isolamento | global (sessão) | Seleção/contexto de organização | sessão/middleware | Inalterado | Inalterado | Inalterado | Dados de uma org nunca aparecem para outra | pendente de verificação |
 | Home | `/app` | Resumo do dia | `GET /home/summary` | `Início` — saudação + resumo curto + agenda/disponibilidade + prioridades + financeiro compacto + ações rápidas | Composição decisória (bento enxuto) | Mesma hierarquia, empilhada | Todos os dados do resumo atual continuam presentes, só reorganizados | pendente |
-| Clientes (lista) | `/app/clients` | Listar, buscar, cadastrar, editar, convidar | `backend/app/api/clients.py` | Tabela densa: Cliente · Atendimento · Agenda · Evolução · Financeiro · Renovação · Atenção; linha inteira abre o cliente; views (Todos/Atenção/Onboarding/Renovação/Financeiro/Sem acompanhamento) | Tabela | Lista priorizada | Toda ação de cadastro/edição/convite continua acessível | **em andamento** (fatia 4) |
-| Cliente 360° | `/app/clients/[clientId]` | Ver, editar, arquivar, gerar/copiar/revogar link de portal | `clients.py`, `evaluations.py`, `agenda.py`, `receivables.py` | `Resumo` como visão inicial + abas Agenda / Plano e ciclo / Prontuário (anamnese, avaliações, acompanhamentos) / Financeiro / Histórico | Resumo fixo + abas | Resumo, atenção, próxima sessão, ações — abas colapsáveis | Nenhuma rota/ação atual removida; reutilizadas internamente | **em andamento** (fatia 4) |
+| Clientes (lista) | `/app/clients` | Listar, buscar, cadastrar, editar, convidar | `backend/app/api/clients.py` | Tabela densa: Cliente · Atendimento · Agenda · Evolução · Financeiro · Renovação · Atenção; linha inteira abre o cliente; views (Todos/Atenção/Onboarding/Renovação/Financeiro/Sem acompanhamento) | Tabela | Lista priorizada | Toda ação de cadastro/edição/convite continua acessível | **feito** (fatia 4) |
+| Cliente 360° | `/app/clients/[clientId]` | Ver, editar, arquivar, gerar/copiar/revogar link de portal | `clients.py`, `evaluations.py`, `agenda.py`, `receivables.py` | `Resumo` como visão inicial + abas Agenda / Plano e ciclo / Prontuário (anamnese, avaliações, acompanhamentos) / Financeiro / Histórico | Resumo fixo + abas | Resumo, atenção, próxima sessão, ações — abas colapsáveis | Nenhuma rota/ação atual removida; reutilizadas internamente | **feito** (fatia 4) |
 | Onboarding manual | `/app/clients/new` | Cadastro direto | `clients.py` | Onboarding — ação "Cadastrar manualmente" | Botão + formulário | Mesmo formulário | Cliente criado aparece idêntico ao fluxo atual | pendente |
 | Onboarding por convite | intake links | Enviar convite, acompanhar preenchimento | `intake.py`, `public_intake.py` | Onboarding — estados (convite pendente/em preenchimento/concluído/exige atenção) | Quadro por status | Lista por status | Progresso, reenvio e link continuam funcionando | pendente |
 | Anamnese | dentro do fluxo de cliente/intake | Preencher, revisar respostas por template versionado | `client_anamnesis_responses`, `anamnesis_templates` (a mapear rota exata) | Prontuário → Anamnese, dentro do Cliente 360° | Aba | Aba | Fluxo completo preservado, não simplificar para campo único | pendente — requer leitura adicional do fluxo real |
