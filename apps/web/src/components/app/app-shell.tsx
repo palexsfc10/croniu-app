@@ -17,6 +17,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch, type MyReferral } from "@/lib/api";
 import {
+  IconActivity,
   IconCalendarDays,
   IconCreditCard,
   IconHome,
@@ -47,6 +48,7 @@ const navItems: {
   { href: "/app", label: "Início", Icon: IconHome },
   { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
   { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
+  { href: "/app/accompaniment", label: "Acompanhamentos", Icon: IconActivity },
   { href: "/app/routines", label: "Rotinas", Icon: IconClipboardList },
   { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
 ];

@@ -3,6 +3,7 @@
 import { SettingsGroup, SettingsRow } from "@/components/app/settings-list";
 import { InstallCroniuRow } from "@/components/pwa/install-croniu-row";
 import {
+  IconActivity,
   IconBriefcase,
   IconClipboardList,
   IconClock,
@@ -48,6 +49,12 @@ export default function MorePage() {
             title="Rotinas"
             description="Atrasadas, hoje, próximas e concluídas."
             Icon={IconClipboardList}
+          />
+          <SettingsRow
+            href="/app/accompaniment"
+            title="Acompanhamentos"
+            description="Clientes pendentes de evolução e histórico registrado."
+            Icon={IconActivity}
           />
           <SettingsRow
             href="/app/cycle-templates"

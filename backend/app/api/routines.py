@@ -173,6 +173,8 @@ def routines_board(
     bucket: str | None = Query(default=None),
     client_id: UUID | None = Query(default=None),
     on: date | None = Query(default=None),
+    include_completed: bool = Query(default=False),
+    include_cancelled: bool = Query(default=False),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -183,6 +185,8 @@ def routines_board(
             bucket=bucket,
             client_id=client_id,
             on=on,
+            include_completed=include_completed,
+            include_cancelled=include_cancelled,
         )
     except AuthError as exc:
         raise _http(exc) from exc

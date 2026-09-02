@@ -93,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(agenda_routes.router, prefix="/api/v1")
     app.include_router(availability_routes.router, prefix="/api/v1")
     from app.api import agent as agent_routes
+    from app.api import client_evolution as client_evolution_routes
     from app.api import evaluations as evaluations_routes
     from app.api import feedback as feedback_routes
     from app.api import intake as intake_routes
@@ -109,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(protocols_routes.router, prefix="/api/v1")
     app.include_router(routines_routes.router, prefix="/api/v1")
     app.include_router(evaluations_routes.router, prefix="/api/v1")
+    app.include_router(client_evolution_routes.router, prefix="/api/v1")
     app.include_router(agent_routes.router, prefix="/api/v1")
     app.include_router(feedback_routes.router, prefix="/api/v1")
     from app.api import billing as billing_routes

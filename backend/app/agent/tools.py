@@ -183,6 +183,11 @@ class ListRecentEvaluationsArgs(BaseModel):
     limit: int = Field(default=5, ge=1, le=20)
 
 
+class ListClientsNeedingAccompanimentArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    days_threshold: int = Field(default=15, ge=0, le=365)
+
+
 class ListUpcomingAppointmentsArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     within_days: int = Field(default=3, ge=1, le=14)
@@ -1075,17 +1080,8 @@ def _get_client_overview(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
 
 def _list_recent_evaluations(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ListRecentEvaluationsArgs.model_validate(args)
-    rows = list(
-        ctx.db.scalars(
-            select(ClientEvaluation)
-            .where(
-                ClientEvaluation.organization_id == ctx.organization_id,
-                ClientEvaluation.status == "published",
-            )
-            .options(selectinload(ClientEvaluation.criteria))
-            .order_by(ClientEvaluation.published_at.desc())
-            .limit(parsed.limit)
-        ).all()
+    rows = eval_svc.list_recent_published(
+        ctx.db, organization_id=ctx.organization_id, limit=parsed.limit
     )
     client_ids = {r.client_id for r in rows}
     names: dict[uuid.UUID, str] = {}
@@ -1131,6 +1127,18 @@ def _list_client_evaluations(ctx: ToolContext, args: dict[str, Any]) -> dict[str
     }
 
 
+def _list_clients_needing_accompaniment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from app.services import client_evolution as evolution_svc
+
+    parsed = ListClientsNeedingAccompanimentArgs.model_validate(args)
+    rows = evolution_svc.list_pending(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        days_threshold=parsed.days_threshold,
+    )
+    return {"days_threshold": parsed.days_threshold, "count": len(rows), "clients": rows}
+
+
 def _list_renewal_requests(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ListRenewalRequestsArgs.model_validate(args)
     rows = my_cycle_svc.list_renewal_requests(
@@ -1162,6 +1170,29 @@ class ProposeCreateClientArgs(BaseModel):
     phone: str | None = Field(default=None, max_length=32)
     email: str | None = Field(default=None, max_length=320)
     notes: str | None = Field(default=None, max_length=2000)
+
+
+class ProposeCreateRoutineArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=2, max_length=200)
+    task_type: Literal[
+        "review_protocol",
+        "swap_training",
+        "request_feedback",
+        "send_feedback",
+        "review_evaluation",
+        "review_cycle",
+        "prepare_renewal",
+        "contact_client",
+        "check_payment",
+        "free",
+    ]
+    due_on: date
+    client_id: uuid.UUID | None = None
+    recurrence: Literal[
+        "once", "weekly", "biweekly", "monthly", "bimonthly", "quarterly", "every_n_months"
+    ] = "once"
+    weekday: int | None = Field(default=None, ge=0, le=6)
 
 
 class ProposeCreateAppointmentArgs(BaseModel):
@@ -1327,6 +1358,54 @@ def execute_create_client(ctx: ToolContext, arguments: dict[str, Any]) -> dict[s
         notes=parsed.notes,
     )
     return {"id": str(row.id), "kind": "client", "full_name": row.full_name, "status": row.status}
+
+
+def _propose_create_routine(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCreateRoutineArgs.model_validate(args)
+    client_name: str | None = None
+    if parsed.client_id is not None:
+        client = domain_svc.get_client(
+            ctx.db, organization_id=ctx.organization_id, client_id=parsed.client_id
+        )
+        client_name = client.full_name
+    when = parsed.due_on.isoformat()
+    summary = f'Criar rotina "{parsed.name}"' + (f" para {client_name}" if client_name else "")
+    summary += f", prevista para {when}."
+    fields: dict[str, Any] = {"Rotina": parsed.name, "Quando": when}
+    if client_name:
+        fields["Cliente"] = client_name
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_create_routine",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": summary,
+        "summary_fields": fields,
+        "risk_class": "write_common",
+    }
+
+
+def execute_create_routine(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    from app.services import routines as routine_svc
+
+    parsed = ProposeCreateRoutineArgs.model_validate(arguments)
+    filter_json = None
+    if parsed.client_id is not None:
+        filter_json = {
+            "trigger_type": "calendar",
+            "audience": "this_client",
+            "client_id": str(parsed.client_id),
+        }
+    row = routine_svc.create_routine(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        name=parsed.name,
+        task_type=parsed.task_type,
+        recurrence=parsed.recurrence,
+        weekday=parsed.weekday,
+        filter_json=filter_json,
+        next_run_on=parsed.due_on,
+    )
+    return {"id": str(row.id), "kind": "routine", "status": row.status}
 
 
 def _propose_create_appointment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -2199,6 +2278,23 @@ TOOLS: dict[str, ToolDefinition] = {
         requires_confirmation=False,
         handler=_list_client_evaluations,
     ),
+    "list_clients_needing_accompaniment": ToolDefinition(
+        name="list_clients_needing_accompaniment",
+        description=(
+            "Lista clientes com ciclo ativo cujo último acompanhamento (avaliação) é "
+            "mais antigo que N dias, ou que nunca tiveram um. Ordenado do mais urgente."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "days_threshold": {"type": "integer", "minimum": 0, "maximum": 365},
+            },
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_list_clients_needing_accompaniment,
+    ),
     # --- Write: clientes -----------------------------------------------------
     "propose_create_client": ToolDefinition(
         name="propose_create_client",
@@ -2217,6 +2313,56 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="write",
         requires_confirmation=True,
         handler=_propose_create_client,
+        risk_class="write_common",
+    ),
+    # --- Write: rotinas --------------------------------------------------------
+    "propose_create_routine": ToolDefinition(
+        name="propose_create_routine",
+        description=(
+            "Propõe criar uma rotina (tarefa a realizar) — pontual (once) ou "
+            "recorrente, opcionalmente vinculada a um cliente. Exige confirmação."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 2, "maxLength": 200},
+                "task_type": {
+                    "type": "string",
+                    "enum": [
+                        "review_protocol",
+                        "swap_training",
+                        "request_feedback",
+                        "send_feedback",
+                        "review_evaluation",
+                        "review_cycle",
+                        "prepare_renewal",
+                        "contact_client",
+                        "check_payment",
+                        "free",
+                    ],
+                },
+                "due_on": {"type": "string", "format": "date"},
+                "client_id": {"type": "string", "format": "uuid"},
+                "recurrence": {
+                    "type": "string",
+                    "enum": [
+                        "once",
+                        "weekly",
+                        "biweekly",
+                        "monthly",
+                        "bimonthly",
+                        "quarterly",
+                        "every_n_months",
+                    ],
+                },
+                "weekday": {"type": "integer", "minimum": 0, "maximum": 6},
+            },
+            "required": ["name", "task_type", "due_on"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_create_routine,
         risk_class="write_common",
     ),
     # --- Write: agenda -------------------------------------------------------
@@ -2504,6 +2650,7 @@ TOOLS: dict[str, ToolDefinition] = {
 
 WRITE_EXECUTORS: dict[str, Callable[[ToolContext, dict[str, Any]], dict[str, Any]]] = {
     "create_client": execute_create_client,
+    "create_routine": execute_create_routine,
     "create_appointment": execute_create_appointment,
     "reschedule_appointment": execute_reschedule_appointment,
     "cancel_appointment": execute_cancel_appointment,

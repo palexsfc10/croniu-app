@@ -50,11 +50,121 @@ const FREQUENCIES = [
   { value: "once", label: "Uma única vez" },
 ];
 
+type BoardItem = {
+  id: string;
+  client_id: string | null;
+  client_name: string | null;
+  plan_title: string | null;
+  occurrence_type: string;
+  type_label: string;
+  status: string;
+  status_label: string;
+  due_on: string;
+  operational_date: string;
+  overdue: boolean;
+  source: string;
+  name: string | null;
+  routine_id: string | null;
+};
+
 type BoardGroup = {
   occurrence_type: string;
+  label: string;
   count: number;
   occurrence_count?: number;
+  client_count?: number;
+  overdue_count: number;
+  items: BoardItem[];
 };
+
+type DeskView = "all" | "overdue" | "today" | "upcoming" | "recurring" | "completed";
+
+const DESK_VIEWS: { value: DeskView; label: string }[] = [
+  { value: "all", label: "Todas" },
+  { value: "overdue", label: "Atrasadas" },
+  { value: "today", label: "Hoje" },
+  { value: "upcoming", label: "Próximas" },
+  { value: "recurring", label: "Recorrentes" },
+  { value: "completed", label: "Concluídas" },
+];
+
+function sourceLabel(source: string): string {
+  if (source === "routine") return "Rotina";
+  if (source === "computed") return "Automática (plano)";
+  return source;
+}
+
+function matchesView(
+  item: BoardItem,
+  view: DeskView,
+  today: string,
+  recurrenceByRoutineId: Map<string, string>,
+): boolean {
+  if (view === "completed") return item.status === "completed";
+  if (item.status === "completed") return false;
+  if (view === "overdue") return item.overdue;
+  if (view === "today") return !item.overdue && item.operational_date === today;
+  if (view === "upcoming") return !item.overdue && item.operational_date > today;
+  if (view === "recurring") {
+    const rec = item.routine_id ? recurrenceByRoutineId.get(item.routine_id) : undefined;
+    return Boolean(rec && rec !== "once");
+  }
+  return true;
+}
+
+function RoutineActions({
+  item,
+  busy,
+  onComplete,
+  onDefer,
+  onCancel,
+}: {
+  item: BoardItem;
+  busy: boolean;
+  onComplete: (id: string) => void;
+  onDefer: (id: string) => void;
+  onCancel: (id: string) => void;
+}) {
+  if (item.status === "completed") {
+    return <span className="text-xs text-[var(--color-ink-subtle)]">Concluída</span>;
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {item.client_id ? (
+        <Link
+          href={`/app/clients/${item.client_id}`}
+          className="text-sm font-medium text-[var(--color-link)]"
+        >
+          Abrir cliente
+        </Link>
+      ) : null}
+      <button
+        type="button"
+        className="text-sm font-medium text-[var(--color-primary)] disabled:opacity-50"
+        disabled={busy}
+        onClick={() => onComplete(item.id)}
+      >
+        Concluir
+      </button>
+      <button
+        type="button"
+        className="text-sm font-medium text-[var(--color-ink-muted)] disabled:opacity-50"
+        disabled={busy}
+        onClick={() => onDefer(item.id)}
+      >
+        Adiar
+      </button>
+      <button
+        type="button"
+        className="text-sm font-medium text-[var(--color-danger)] disabled:opacity-50"
+        disabled={busy}
+        onClick={() => onCancel(item.id)}
+      >
+        Cancelar
+      </button>
+    </div>
+  );
+}
 
 export default function RoutinesPageInner() {
   const { me } = useAuth();
@@ -63,6 +173,8 @@ export default function RoutinesPageInner() {
   const clientId = search.get("clientId");
   const [items, setItems] = useState<Routine[]>([]);
   const [board, setBoard] = useState<BoardGroup[]>([]);
+  const [fullBoard, setFullBoard] = useState<BoardGroup[]>([]);
+  const [boardToday, setBoardToday] = useState<string>("");
   const [name, setName] = useState("");
   const [taskType, setTaskType] = useState("review_protocol");
   const [weekday, setWeekday] = useState(1);
@@ -85,6 +197,12 @@ export default function RoutinesPageInner() {
   const [customOpen, setCustomOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
 
+  // Desktop dense-list controls — independent from the mobile tree below.
+  const [deskView, setDeskView] = useState<DeskView>("all");
+  const [deskQuery, setDeskQuery] = useState("");
+  const [deskClientId, setDeskClientId] = useState("");
+  const [deskSource, setDeskSource] = useState<"" | "routine" | "computed">("");
+
   const boardQuery = useMemo(() => {
     const boardQs = new URLSearchParams();
     if (clientId) boardQs.set("client_id", clientId);
@@ -92,12 +210,17 @@ export default function RoutinesPageInner() {
   }, [clientId]);
 
   async function load() {
-    const [routines, paused, groups] = await Promise.all([
+    const fullQs = new URLSearchParams(boardQuery);
+    fullQs.set("include_completed", "true");
+    fullQs.set("include_cancelled", "true");
+    const [routines, paused, groups, full, allClients] = await Promise.all([
       apiFetch<Routine[]>("/api/v1/routines"),
       apiFetch<Routine[]>("/api/v1/routines?status=paused"),
       apiFetch<{ groups: BoardGroup[] }>(
         `/api/v1/routines/board${boardQuery ? `?${boardQuery}` : ""}`,
       ),
+      apiFetch<{ today: string; groups: BoardGroup[] }>(`/api/v1/routines/board?${fullQs}`),
+      apiFetch<Array<{ id: string; full_name: string }>>("/api/v1/clients"),
     ]);
     const active = routines.error ? [] : (routines.data ?? []);
     const pausedRows = paused.error ? [] : (paused.data ?? []);
@@ -105,6 +228,11 @@ export default function RoutinesPageInner() {
     else setItems([...active, ...pausedRows]);
     if (groups.error) setError(groups.error.message);
     else if (groups.data) setBoard(groups.data.groups ?? []);
+    if (full.data) {
+      setFullBoard(full.data.groups ?? []);
+      setBoardToday(full.data.today ?? "");
+    }
+    if (allClients.data) setClients(allClients.data);
   }
 
   useEffect(() => {
@@ -194,6 +322,34 @@ export default function RoutinesPageInner() {
     await load();
   }
 
+  async function decide(id: string, status: "completed" | "deferred" | "cancelled") {
+    setBusy(true);
+    setError(null);
+    const body: { status: string; deferred_until?: string } = { status };
+    if (status === "deferred") {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      body.deferred_until = d.toISOString().slice(0, 10);
+    }
+    const result = await apiFetch(`/api/v1/routines/occurrences/${id}/decide`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    setBusy(false);
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+    setInfo(
+      status === "completed"
+        ? "Ocorrência concluída."
+        : status === "cancelled"
+          ? "Ocorrência cancelada."
+          : "Ocorrência adiada para amanhã.",
+    );
+    await load();
+  }
+
   const yours = items.filter((r) => r.status === "active" || r.status === "paused");
   const pendingCount = board.reduce((sum, g) => sum + (g.occurrence_count ?? g.count), 0);
   const freqText = (item: Routine) =>
@@ -206,170 +362,54 @@ export default function RoutinesPageInner() {
     return null;
   };
 
-  return (
-    <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
-      <BackLink href={returnTo || "/app"} label={returnTo ? "Voltar" : "Início"} />
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
-        <p className="text-sm text-[var(--color-ink-muted)]">
-          {clientId
-            ? "Pendências deste cliente. Cada marco permanece visível até ser concluído."
-            : "Organize os dias em que você revisa planos, acompanha clientes e prepara renovações."}
-        </p>
-      </header>
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
-      {info ? (
-        <p role="status" className="text-sm text-[var(--color-success)]">
-          {info}
-        </p>
-      ) : null}
+  const recurrenceByRoutineId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of items) map.set(r.id, r.recurrence);
+    return map;
+  }, [items]);
 
-      <section className="space-y-3" aria-label="Suas rotinas">
-        {!yours.length ? (
-          <>
-            <h2 className="text-lg font-semibold">Suas rotinas</h2>
-            <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4">
-              <p className="font-medium">Você ainda não ativou nenhuma rotina.</p>
-              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                Ative uma sugestão abaixo para o Croniu lembrar você.
-              </p>
-            </div>
-          </>
-        ) : (
-          <details open className="group">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between [&::-webkit-details-marker]:hidden">
-              <span className="flex items-center gap-2 text-lg font-semibold">
-                Suas rotinas
-                <span className="rounded-full bg-[var(--color-surface-subtle)] px-2 py-0.5 text-xs font-medium text-[var(--color-ink-muted)]">
-                  {yours.length}
-                </span>
-              </span>
-              <IconChevronRight className="h-4 w-4 shrink-0 text-[var(--color-ink-muted)] transition-transform group-open:rotate-90" />
-            </summary>
-          <ul className="mt-3 space-y-2">
-            {yours.map((item) => (
-              <li
-                key={item.id}
-                className="relative space-y-2 rounded-[var(--radius-md)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3 py-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold">{item.name}</p>
-                      <Badge tone={item.status === "active" ? "success" : "neutral"}>
-                        {item.status === "active" ? "Ativa" : "Pausada"}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      {freqText(item)}
-                      {item.next_run_on ? ` · próxima: ${formatDateBR(item.next_run_on)}` : ""}
-                    </p>
-                    {scopeText(item) ? (
-                      <p className="text-xs text-[var(--color-ink-muted)]">{scopeText(item)}</p>
-                    ) : null}
-                  </div>
-                  <div className="relative">
-                    <Button
-                      variant="ghost"
-                      className="min-h-11 min-w-11 px-2"
-                      aria-label={`Opções de ${item.name}`}
-                      onClick={() => setMenuFor((cur) => (cur === item.id ? null : item.id))}
-                    >
-                      <IconMoreHorizontal className="h-5 w-5" />
-                    </Button>
-                    {menuFor === item.id ? (
-                      <div className="absolute right-0 z-10 mt-1 min-w-40 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-sm">
-                        {item.status === "active" ? (
-                          <button
-                            type="button"
-                            className="block w-full px-3 py-2 text-left text-sm"
-                            onClick={() => void setRoutineStatus(item.id, "paused")}
-                          >
-                            Pausar
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="block w-full px-3 py-2 text-left text-sm"
-                            onClick={() => void setRoutineStatus(item.id, "active")}
-                          >
-                            Reativar
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="block w-full px-3 py-2 text-left text-sm text-[var(--color-danger)]"
-                          onClick={() => {
-                            if (
-                              !window.confirm(
-                                "Arquivar toda a rotina? As próximas ocorrências deixam de ser geradas.",
-                              )
-                            )
-                              return;
-                            void setRoutineStatus(item.id, "archived");
-                          }}
-                        >
-                          Desativar
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-          </details>
-        )}
-      </section>
+  const allDeskItems = useMemo(
+    () => fullBoard.flatMap((g) => g.items),
+    [fullBoard],
+  );
 
-      <RoutineTemplatesPanel
-        enabled={items.filter((r) => r.status === "active")}
-        onChanged={load}
-      />
+  const overdueTodayCount = useMemo(
+    () => allDeskItems.filter((i) => i.overdue).length,
+    [allDeskItems],
+  );
 
-      <Link
-        href={`/app/routines/pending${clientId ? `?clientId=${clientId}` : ""}`}
-        className="flex min-h-11 items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 text-sm font-medium"
-      >
-        <span>Ver pendências</span>
-        {pendingCount > 0 ? (
-          <span className="rounded-full bg-[var(--color-primary-subtle)] px-2 py-0.5 text-xs font-semibold text-[var(--color-primary)]">
-            {pendingCount}
-          </span>
-        ) : (
-          <span className="text-xs text-[var(--color-ink-muted)]">Tudo em dia</span>
-        )}
-      </Link>
+  const filteredDeskItems = useMemo(() => {
+    const q = deskQuery.trim().toLowerCase();
+    return allDeskItems
+      .filter((i) => matchesView(i, deskView, boardToday, recurrenceByRoutineId))
+      .filter((i) => (deskClientId ? i.client_id === deskClientId : true))
+      .filter((i) => (deskSource ? i.source === deskSource : true))
+      .filter((i) => {
+        if (!q) return true;
+        const hay = `${i.name || ""} ${i.client_name || ""} ${i.type_label}`.toLowerCase();
+        return hay.includes(q);
+      })
+      .sort((a, b) => (a.overdue === b.overdue ? a.due_on.localeCompare(b.due_on) : a.overdue ? -1 : 1));
+  }, [allDeskItems, deskView, deskClientId, deskSource, deskQuery, boardToday, recurrenceByRoutineId]);
 
-      <button
-        type="button"
-        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-3 text-sm text-[var(--color-ink-muted)]"
-        onClick={() => {
-          setCustomOpen(true);
-          if (!clients.length) {
-            void apiFetch<Array<{ id: string; full_name: string }>>("/api/v1/clients").then(
-              (result) => setClients(result.data ?? []),
-            );
-          }
-        }}
-      >
-        <IconPlus className="h-5 w-5" />
-        Criar rotina personalizada
-      </button>
+  const todayCount = allDeskItems.filter(
+    (i) => !i.overdue && i.status !== "completed" && i.operational_date === boardToday,
+  ).length;
+  const nextItem = [...allDeskItems]
+    .filter((i) => i.status === "open" && !i.overdue)
+    .sort((a, b) => a.due_on.localeCompare(b.due_on))[0];
 
-      {customOpen ? (
-        <div
-          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="custom-routine-title"
-        >
-          <div className="max-h-[min(36rem,calc(100dvh-7rem))] w-full max-w-md space-y-3 overflow-y-auto rounded-[var(--radius-lg)] bg-[var(--color-surface)] p-4 shadow-lg">
-        <h2 id="custom-routine-title" className="text-base font-semibold">Nova rotina</h2>
+  const createDialog = customOpen ? (
+    <div
+      className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="custom-routine-title"
+    >
+      <div className="max-h-[min(36rem,calc(100dvh-7rem))] w-full max-w-md space-y-3 overflow-y-auto rounded-[var(--radius-lg)] bg-[var(--color-surface)] p-4 shadow-lg">
+        <h2 id="custom-routine-title" className="text-base font-semibold">
+          Nova rotina
+        </h2>
         <TextField label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
         <SuggestionChips chips={ROUTINE_NAME_SUGGESTIONS} onSelect={setName} />
         <label className="block space-y-1.5 text-sm">
@@ -380,13 +420,15 @@ export default function RoutinesPageInner() {
             value={taskType}
             onChange={(e) => setTaskType(e.target.value)}
           >
-            {routineTypes(resolveCapabilities(me?.organization.profession_code, me?.organization.use_cases).includes("workouts")).map(
-              (opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
+            {routineTypes(
+              resolveCapabilities(me?.organization.profession_code, me?.organization.use_cases).includes(
+                "workouts",
               ),
-            )}
+            ).map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="block space-y-1.5 text-sm">
@@ -547,17 +589,417 @@ export default function RoutinesPageInner() {
         <Button fullWidth variant="ghost" onClick={() => setCustomOpen(false)}>
           Cancelar
         </Button>
-          </div>
-        </div>
-      ) : null}
+      </div>
+    </div>
+  ) : null;
 
-      {returnTo ? (
-        <Link href={returnTo}>
-          <Button fullWidth variant="secondary">
-            Voltar ao checklist
+  function openCreateDialog() {
+    setCustomOpen(true);
+    if (!clients.length) {
+      void apiFetch<Array<{ id: string; full_name: string }>>("/api/v1/clients").then((result) =>
+        setClients(result.data ?? []),
+      );
+    }
+  }
+
+  return (
+    <div className="animate-fade-up">
+      <BackLink href={returnTo || "/app"} label={returnTo ? "Voltar" : "Início"} />
+
+      {/* Desktop: dense work-management central. */}
+      <div className="hidden space-y-4 lg:block">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="h-display text-3xl text-[var(--color-ink)]">Rotinas</h1>
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              Trabalho a realizar — distinto da Agenda (compromissos com data e horário).
+            </p>
+          </div>
+          <Button onClick={openCreateDialog}>
+            <IconPlus className="mr-1.5 h-4 w-4" aria-hidden />
+            Nova rotina
           </Button>
+        </div>
+
+        {error ? (
+          <p role="alert" className="text-sm text-[var(--color-danger)]">
+            {error}
+          </p>
+        ) : null}
+        {info ? (
+          <p role="status" className="text-sm text-[var(--color-success)]">
+            {info}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Agrupamento">
+          {DESK_VIEWS.map((v) => (
+            <button
+              key={v.value}
+              type="button"
+              role="tab"
+              aria-selected={deskView === v.value}
+              className={`min-h-9 rounded-full px-3 text-sm font-semibold ${
+                deskView === v.value
+                  ? "bg-[var(--color-primary)] text-[var(--color-on-primary)]"
+                  : "border border-[var(--color-border)] text-[var(--color-ink-muted)]"
+              }`}
+              onClick={() => setDeskView(v.value)}
+            >
+              {v.label}
+              {v.value === "overdue" && overdueTodayCount > 0 ? ` · ${overdueTodayCount}` : ""}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            aria-label="Buscar rotina"
+            placeholder="Buscar por título, cliente ou tipo…"
+            value={deskQuery}
+            onChange={(e) => setDeskQuery(e.target.value)}
+            className="min-h-10 min-w-[16rem] flex-1 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+          />
+          <select
+            aria-label="Filtrar por cliente"
+            value={deskClientId}
+            onChange={(e) => setDeskClientId(e.target.value)}
+            className="min-h-10 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+          >
+            <option value="">Todos os clientes</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.full_name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Filtrar por origem"
+            value={deskSource}
+            onChange={(e) => setDeskSource(e.target.value as typeof deskSource)}
+            className="min-h-10 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+          >
+            <option value="">Toda origem</option>
+            <option value="routine">Rotina</option>
+            <option value="computed">Automática (plano)</option>
+          </select>
+        </div>
+
+        {filteredDeskItems.length === 0 ? (
+          <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-4 py-8 text-center">
+            <p className="font-medium">Nada aqui.</p>
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              {deskView === "completed"
+                ? "Nenhuma rotina concluída neste período."
+                : "Sem pendências para os filtros atuais."}
+            </p>
+            <div className="mt-3">
+              <Button variant="secondary" onClick={openCreateDialog}>
+                Nova rotina
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                <th className="py-2 pr-3">Rotina</th>
+                <th className="py-2 pr-3">Cliente</th>
+                <th className="py-2 pr-3">Tipo</th>
+                <th className="py-2 pr-3">Origem</th>
+                <th className="py-2 pr-3">Vencimento</th>
+                <th className="py-2 pr-3">Status</th>
+                <th className="py-2 pr-3">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDeskItems.map((item) => (
+                <tr
+                  key={item.id}
+                  className="border-b border-[var(--color-border)]/60 align-top hover:bg-[var(--color-surface-subtle)]"
+                >
+                  <td className="py-2.5 pr-3 font-medium text-[var(--color-ink)]">
+                    {item.name || item.type_label}
+                  </td>
+                  <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
+                    {item.client_name || "—"}
+                  </td>
+                  <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">{item.type_label}</td>
+                  <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
+                    {sourceLabel(item.source)}
+                  </td>
+                  <td className="py-2.5 pr-3 tabular-nums">
+                    <span className={item.overdue ? "font-semibold text-[var(--color-danger)]" : ""}>
+                      {formatDateBR(item.due_on)}
+                      {item.overdue ? " · Atrasada" : ""}
+                    </span>
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <Badge
+                      tone={
+                        item.status === "completed"
+                          ? "success"
+                          : item.status === "cancelled"
+                            ? "neutral"
+                            : item.overdue
+                              ? "danger"
+                              : "info"
+                      }
+                    >
+                      {item.status_label}
+                    </Badge>
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <RoutineActions
+                      item={item}
+                      busy={busy}
+                      onComplete={(id) => void decide(id, "completed")}
+                      onDefer={(id) => void decide(id, "deferred")}
+                      onCancel={(id) => void decide(id, "cancelled")}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section aria-label="Suas rotinas" className="space-y-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+              Suas rotinas (definições)
+            </h2>
+            {!yours.length ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                Nenhuma rotina ativa. Crie uma acima ou ative uma sugestão.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {yours.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{item.name}</p>
+                      <p className="text-xs text-[var(--color-ink-muted)]">
+                        {freqText(item)}
+                        {scopeText(item) ? ` · ${scopeText(item)}` : ""}
+                      </p>
+                    </div>
+                    <Badge tone={item.status === "active" ? "success" : "neutral"}>
+                      {item.status === "active" ? "Ativa" : "Pausada"}
+                    </Badge>
+                    {item.status === "active" ? (
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs font-medium text-[var(--color-ink-muted)]"
+                        onClick={() => void setRoutineStatus(item.id, "paused")}
+                      >
+                        Pausar
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs font-medium text-[var(--color-primary)]"
+                        onClick={() => void setRoutineStatus(item.id, "active")}
+                      >
+                        Reativar
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <RoutineTemplatesPanel enabled={items.filter((r) => r.status === "active")} onChanged={load} />
+        </div>
+      </div>
+
+      {/* Mobile: operational summary — never the dense desktop table/filters. */}
+      <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:hidden">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            {clientId
+              ? "Pendências deste cliente. Cada marco permanece visível até ser concluído."
+              : "Organize os dias em que você revisa planos, acompanha clientes e prepara renovações."}
+          </p>
+        </header>
+        {error ? (
+          <p role="alert" className="text-sm text-[var(--color-danger)]">
+            {error}
+          </p>
+        ) : null}
+        {info ? (
+          <p role="status" className="text-sm text-[var(--color-success)]">
+            {info}
+          </p>
+        ) : null}
+
+        {overdueTodayCount > 0 || todayCount > 0 || nextItem ? (
+          <section aria-label="Resumo" className="grid grid-cols-2 gap-2">
+            <div className="rounded-[var(--radius-lg)] border border-[var(--color-danger)]/30 bg-[var(--color-danger-subtle)] px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-danger)]">
+                Atrasadas
+              </p>
+              <p className="text-lg font-semibold text-[var(--color-ink)]">{overdueTodayCount}</p>
+            </div>
+            <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Hoje
+              </p>
+              <p className="text-lg font-semibold text-[var(--color-ink)]">{todayCount}</p>
+            </div>
+          </section>
+        ) : null}
+        {nextItem ? (
+          <div className="rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)] px-3.5 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+              Próxima rotina
+            </p>
+            <p className="font-semibold text-[var(--color-ink)]">
+              {nextItem.name || nextItem.type_label}
+              {nextItem.client_name ? ` · ${nextItem.client_name}` : ""}
+            </p>
+            <p className="text-sm text-[var(--color-ink-muted)]">até {formatDateBR(nextItem.due_on)}</p>
+          </div>
+        ) : null}
+
+        <section className="space-y-3" aria-label="Suas rotinas">
+          {!yours.length ? (
+            <>
+              <h2 className="text-lg font-semibold">Suas rotinas</h2>
+              <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4">
+                <p className="font-medium">Você ainda não ativou nenhuma rotina.</p>
+                <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                  Ative uma sugestão abaixo para o Croniu lembrar você.
+                </p>
+              </div>
+            </>
+          ) : (
+            <details open className="group">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+                <span className="flex items-center gap-2 text-lg font-semibold">
+                  Suas rotinas
+                  <span className="rounded-full bg-[var(--color-surface-subtle)] px-2 py-0.5 text-xs font-medium text-[var(--color-ink-muted)]">
+                    {yours.length}
+                  </span>
+                </span>
+                <IconChevronRight className="h-4 w-4 shrink-0 text-[var(--color-ink-muted)] transition-transform group-open:rotate-90" />
+              </summary>
+              <ul className="mt-3 space-y-2">
+                {yours.map((item) => (
+                  <li
+                    key={item.id}
+                    className="relative space-y-2 rounded-[var(--radius-md)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">{item.name}</p>
+                          <Badge tone={item.status === "active" ? "success" : "neutral"}>
+                            {item.status === "active" ? "Ativa" : "Pausada"}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-[var(--color-ink-muted)]">
+                          {freqText(item)}
+                          {item.next_run_on ? ` · próxima: ${formatDateBR(item.next_run_on)}` : ""}
+                        </p>
+                        {scopeText(item) ? (
+                          <p className="text-xs text-[var(--color-ink-muted)]">{scopeText(item)}</p>
+                        ) : null}
+                      </div>
+                      <div className="relative">
+                        <Button
+                          variant="ghost"
+                          className="min-h-11 min-w-11 px-2"
+                          aria-label={`Opções de ${item.name}`}
+                          onClick={() => setMenuFor((cur) => (cur === item.id ? null : item.id))}
+                        >
+                          <IconMoreHorizontal className="h-5 w-5" />
+                        </Button>
+                        {menuFor === item.id ? (
+                          <div className="absolute right-0 z-10 mt-1 min-w-40 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-sm">
+                            {item.status === "active" ? (
+                              <button
+                                type="button"
+                                className="block w-full px-3 py-2 text-left text-sm"
+                                onClick={() => void setRoutineStatus(item.id, "paused")}
+                              >
+                                Pausar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="block w-full px-3 py-2 text-left text-sm"
+                                onClick={() => void setRoutineStatus(item.id, "active")}
+                              >
+                                Reativar
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="block w-full px-3 py-2 text-left text-sm text-[var(--color-danger)]"
+                              onClick={() => {
+                                if (
+                                  !window.confirm(
+                                    "Arquivar toda a rotina? As próximas ocorrências deixam de ser geradas.",
+                                  )
+                                )
+                                  return;
+                                void setRoutineStatus(item.id, "archived");
+                              }}
+                            >
+                              Desativar
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+
+        <RoutineTemplatesPanel enabled={items.filter((r) => r.status === "active")} onChanged={load} />
+
+        <Link
+          href={`/app/routines/pending${clientId ? `?clientId=${clientId}` : ""}`}
+          className="flex min-h-11 items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 text-sm font-medium"
+        >
+          <span>Ver pendências</span>
+          {pendingCount > 0 ? (
+            <span className="rounded-full bg-[var(--color-primary-subtle)] px-2 py-0.5 text-xs font-semibold text-[var(--color-primary)]">
+              {pendingCount}
+            </span>
+          ) : (
+            <span className="text-xs text-[var(--color-ink-muted)]">Tudo em dia</span>
+          )}
         </Link>
-      ) : null}
+
+        <button
+          type="button"
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-3 text-sm text-[var(--color-ink-muted)]"
+          onClick={openCreateDialog}
+        >
+          <IconPlus className="h-5 w-5" />
+          Criar rotina personalizada
+        </button>
+
+        {returnTo ? (
+          <Link href={returnTo}>
+            <Button fullWidth variant="secondary">
+              Voltar ao checklist
+            </Button>
+          </Link>
+        ) : null}
+      </div>
+
+      {createDialog}
     </div>
   );
 }

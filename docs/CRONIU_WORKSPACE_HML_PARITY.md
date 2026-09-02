@@ -484,6 +484,109 @@ fatia inteira consome API já existente e testada em fatias anteriores. Por isso
 backend nova a rodar para esta fatia especificamente (a suíte completa de 634 testes segue
 pendente, como já registrado, mandatória antes de `main`/PRD).
 
+## Fatia 7 — Rotinas + Acompanhamentos: inspeção pré-implementação
+
+Princípio desta fatia: **Agenda** = acontecimentos com data/horário; **Rotinas** = trabalho a
+realizar; **Acompanhamentos** = registros de evolução do cliente. Uma rotina pode *pedir* um
+acompanhamento, mas concluir a rotina **nunca** cria um registro de evolução automaticamente —
+confirmado na inspeção: não existe nenhuma regra real que faça isso hoje (o único acoplamento
+existente é o inverso — publicar uma avaliação *pode*, a pedido do usuário, fechar uma pendência
+de rotina — nunca o caminho automático contrário).
+
+### O que já existia (achado na inspeção, antes de qualquer linha de código)
+
+- **"Rotinas" hoje não tinha nenhum board real** — só "Suas rotinas" (definições) + templates +
+  um link para `/app/routines/pending`, que por sua vez só agrupa por `occurrence_type` (Revisar
+  plano/Registrar feedback/etc.), sem os buckets Atrasadas/Hoje/Próximas/Recorrentes/Concluídas
+  pedidos, sem busca, sem filtro, sem ação de cancelar, sem "Abrir cliente".
+- **`GET /routines/board` já existia e é usado por 3 consumidores diferentes** com query params
+  distintos (`?on=` na Agenda, `?bucket=today` na Home, sem parâmetro na página de pendências) —
+  **sempre exclui `completed`/`cancelled`/`dismissed`**, então "Concluídas" nunca foi visível em
+  lugar nenhum antes desta fatia.
+- **Sem campo de prioridade real** — nem em `RecurringClientTask` (definição da rotina) nem em
+  `OperationalOccurrence` (a ocorrência em si) existe qualquer coluna de prioridade. Ordenação
+  real disponível: `due_on` + nome do cliente. **Decisão: não inventar prioridade** — a UI usa
+  atraso (`overdue`) como o único sinal real de urgência, exatamente como o restante do produto já
+  faz (mesmo princípio da fatia 5 sobre "prioridade" na Agenda).
+- **"Recorrente" não é um atributo da ocorrência** — só existe em `RecurringClientTask.recurrence`
+  (`!= "once"`). O board original nunca expunha isso; a view "Recorrentes" desta fatia é derivada
+  no frontend cruzando `routine_id` do item com `GET /routines` (já buscado para "Suas rotinas").
+- **`status="cancelled"` já era aceito por `/routines/occurrences/{id}/decide`** — só nunca tinha
+  UI. A ação "Cancelar" desta fatia não precisou de nenhuma mudança de backend.
+- **Achado crítico sobre "Acompanhamentos"**: o rótulo é usado para **dois conceitos totalmente
+  diferentes** no código existente. (1) `apps/web/.../clients/[clientId]/accompaniment/page.tsx` +
+  `backend/app/services/accompaniment.py` — o checklist de **preparação de onboarding**
+  (`ClientJourney.accompaniment_checklist`), nada a ver com esta fatia. (2) O botão real "Registrar
+  acompanhamento" no Cliente 360° — que na verdade navega para o fluxo de **avaliações**
+  (`ClientEvaluation`, rascunho/publicada). A fatia usa o conceito (2); o serviço novo foi
+  deliberadamente nomeado `client_evolution.py` (não `accompaniment.py`) para não colidir com o
+  módulo (1) já existente — ver nota de nomenclatura no próprio arquivo.
+- **Nenhum sinal de "cliente precisa de acompanhamento" existia** — nem `last_contacted_at` útil
+  (o único campo desse nome pertence a WhatsApp de renovação, não a avaliações), nem "dias desde a
+  última avaliação". O sinal foi construído nesta fatia a partir de dados 100% reais: ciclo ativo
+  (`Cycle.status == "active"`) + avaliação não-arquivada mais recente (`ClientEvaluation`).
+- **Achado de segurança durante os testes**: `execute_create_routine` (nova tool de IA) inicialmente
+  permitia criar uma rotina referenciando um `client_id` de **outra organização** sem rejeitar —
+  `routines_svc.create_routine` nunca validava a posse do cliente em `filter_json` (diferente de
+  `agenda_svc.create_appointment`, que já fazia essa checagem). Corrigido na própria camada de
+  serviço (`_validate_client_scope`, aplicado a `create_routine` **e** `update_routine`) — proteção
+  que agora vale para qualquer chamador (UI manual ou IA), não só a nova tool.
+
+### O que foi construído
+
+**Backend (tudo aditivo, zero migration, zero alteração de schema):**
+1. `GET /routines/board` ganhou `include_completed`/`include_cancelled` (opcionais, `false` por
+   padrão — comportamento antigo 100% preservado para Agenda/Home/pendências); quando ativados,
+   só dentro de uma janela de 45 dias (`COMPLETED_WINDOW_DAYS`), e nunca no caminho `?on=` usado
+   pela Agenda (isolado explicitamente, testado).
+2. `backend/app/services/client_evolution.py` (novo) — `list_pending()`: sinal real de "precisa de
+   acompanhamento", reaproveita `agenda_svc.next_appointment_by_client` e uma nova
+   `eval_svc.latest_by_client` (mesmo padrão portátil de "reduzir em Python" já usado na Agenda).
+3. `GET /accompaniment/pending?days_threshold=&limit=` (novo router) e `GET /evaluations/recent`
+   (novo, no router de evaluations já existente) — ambos read-only.
+4. Correção de segurança em `routines.py`: `_validate_client_scope` (defesa em profundidade, mesmo
+   padrão de `agenda_svc._validate_relations`).
+5. IA: `propose_create_routine`/`execute_create_routine` (única lacuna real — criar/concluir/adiar
+   consultas já existiam) e `list_clients_needing_accompaniment` (novo read tool, mesma função de
+   `client_evolution.list_pending`).
+
+**Frontend:**
+6. `/app/routines` reescrita com duas árvores — desktop (`hidden lg:block`): central densa em
+   tabela com 6 abas-filtro (Todas/Atrasadas/Hoje/Próximas/Recorrentes/Concluídas), busca, filtro
+   por cliente/origem, ações reais por linha (Concluir/Adiar/Cancelar/Abrir cliente), mais as
+   seções já existentes (Suas rotinas, templates) reorganizadas abaixo; mobile (`lg:hidden`):
+   resumo (atrasadas/hoje/próxima rotina) inserido acima do conteúdo já existente, que permanece
+   intocado.
+7. `/app/accompaniment` (nova página) — desktop: abas Pendentes (tabela: cliente, serviço/ciclo,
+   último acompanhamento, período sem acompanhamento, próximo compromisso, ação) / Histórico
+   (avaliações publicadas, link para o registro real); mobile: resumo dos até 8 mais urgentes +
+   ação "Registrar acompanhamento" (mesmo fluxo de avaliação já usado no Cliente 360°, com
+   `returnTo=/app/accompaniment`).
+8. Navegação: "Acompanhamentos" adicionado à sidebar desktop (`navItems`) e à página "Mais"
+   (mobile); "Rotinas" também ganhou uma linha em "Mais" (a bottom-tab mobile não tem espaço para
+   6 itens — mesma decisão já tomada na fatia 6 para o slot do Assistente). Painel "Atalhos" do
+   Assistente ganhou "Acompanhamentos pendentes".
+
+### Correção de diretriz aplicada a esta fatia
+
+| Funcionalidade | Gestão completa (desktop) | Resumo (mobile) | Ação via IA | Alternativa manual essencial | Prioridade desktop |
+|---|---|---|---|---|---|
+| Rotinas — visão | Tabela densa, 6 filtros, busca, ordenação por atraso | Atrasadas/Hoje/Próxima rotina (contadores + 1 card) | "O que preciso fazer hoje?"/"Quais rotinas estão atrasadas?" — já existiam (`get_today_summary`, `list_plan_pendencies`) | Ver pendências (link já existente) sempre acessível | Sim |
+| Criar rotina | Botão "Nova rotina" (mesmo diálogo) | Botão "Criar rotina personalizada" (mesmo diálogo) | "Crie uma rotina para cobrar a Ana amanhã." — **novo** (`propose_create_routine`) | Diálogo manual sempre disponível nas duas árvores | Sim |
+| Concluir/Adiar/Cancelar | Botões por linha na tabela | Ver pendências (ações já existentes lá) | "Conclua a rotina de revisar a avaliação." — já existia | Botões manuais em toda tela que lista ocorrências | Sim |
+| Acompanhamentos — visão | Pendentes/Histórico em tabela | Lista resumida (até 8) + "Ver histórico recente" | "Quem está há mais de 15 dias sem acompanhamento?" — **novo** (`list_clients_needing_accompaniment`) | Página sempre acessível sem IA | Sim |
+| Registrar acompanhamento | Ação por linha → editor de avaliação | Ação por card → mesmo editor | "Registre que o Gabriel evoluiu sem dor." — já existia (`propose_create_evaluation_draft`) | Mesmo editor de avaliação, alcançável do Cliente 360° também | Neutro — mesmo fluxo, dois pontos de entrada |
+
+**Proteção operacional confirmada**: nenhuma ação essencial depende da IA — consultar, criar
+rotina, concluir, adiar, cancelar, registrar acompanhamento e abrir cliente continuam 100%
+acionáveis manualmente nas duas árvores (desktop e mobile).
+
+**Regressão de backend**: `include_completed`/`include_cancelled` são parâmetros novos com
+default `false` (comportamento antigo idêntico quando omitidos, testado explicitamente para o
+caminho `?on=` da Agenda); a correção de segurança em `create_routine`/`update_routine` só rejeita
+casos que já eram inválidos (cliente de outra organização) — 28 testes pré-existentes de
+rotinas/ocorrências/avaliações/agente reexecutados após a mudança, todos verdes.
+
 ## Como ler esta matriz
 
 Para cada funcionalidade: **rota atual**, **ações existentes**, **API(s) usada(s)**, **destino no
@@ -600,8 +703,8 @@ utilizada. Esta branch nasce exclusivamente de `origin/main` @ `35ca1e6`, como i
 | Ciclos | `/app/cycles` | Criar, editar, encerrar, renovar | `cycles.py`, `cycle_intelligence.py` | Serviços e ciclos → Ciclos ativos / Histórico; renovação ganha peso visual quando próxima | Tabela | Lista | Valor, periodicidade, sessões, status preservados | pendente |
 | Disponibilidade | `/app/availability` | Configurar horários de trabalho | `availability.py` (`/availability/settings`, `/day`, `/range`) | Agenda → aba Disponibilidade + fundo contínuo na grade | Grade + config | Horários livres na timeline | Configuração existente não é sobrescrita | pendente |
 | Agenda | `/app/agenda` | Criar, editar, reagendar, cancelar compromisso | `agenda.py` (`/agenda/day`, `/agenda/range` novo, `/agenda/next`, `/appointments`) | Calendário Dia/Semana com grade temporal real, disponibilidade como fundo contínuo | Grade temporal (Dia/Semana) | Timeline diária + Assistente | Todas as ações de compromisso preservadas; conflito pela regra já existente, nunca exige "concluir" | **feito** (fatia 5) |
-| Rotinas | `/app/routines` | Criar, completar, pular, board, templates, defaults | `routines.py` (rico: preview, board, occurrences/decide) | Rotinas: Atrasadas / Hoje / Próximas / Concluídas | Lista com filtro | Lista | Recorrência, prioridade, origem, sugestão IA preservados | pendente |
-| Acompanhamentos | a confirmar (`operational_occurrences`?) | a confirmar | a confirmar | Acompanhamentos: Pendentes / Histórico | Feed + aba por cliente | Feed | — | pendente — requer leitura do router real |
+| Rotinas | `/app/routines` | Criar, completar, adiar, cancelar, pausar/reativar/arquivar, board, templates, defaults | `routines.py` (board + `include_completed`/`include_cancelled` aditivos) | Central densa: Todas/Atrasadas/Hoje/Próximas/Recorrentes/Concluídas, busca, filtro cliente/origem | Tabela densa | Resumo (atrasadas/hoje/próxima) + gestão de definições | Recorrência (derivada da rotina), origem (`source`), sem prioridade real (documentado — não inventada); nenhuma ação antiga removida | **feito** (fatia 7) |
+| Acompanhamentos | `/app/accompaniment` (novo) | Ver pendentes, ver histórico, registrar (via avaliação) | `client_evolution.py` + `evaluations.py` (`/accompaniment/pending`, `/evaluations/recent`, ambos aditivos) | Pendentes (sinal real: ciclo ativo + sem avaliação recente) / Histórico (avaliações publicadas) | Tabela densa | Resumo (até 8 clientes pendentes) | Continua aparecendo no Prontuário/Histórico do Cliente 360° (mesma fonte, `ClientEvaluation`) | **feito** (fatia 7) |
 | Avaliações | dentro do cliente | Criar, editar, publicar, despublicar, arquivar | `evaluations.py` | Avaliações (lista global) + Prontuário do Cliente 360° | Lista/tabela | Lista | Rascunho/publicada preservados, visibilidade no portal preservada | pendente |
 | Recebíveis / Financeiro | `/app/receivables`, `/app/payment-reports` | Ver, registrar/confirmar recebimento | `receivables.py` | Financeiro — já é a melhor tela do Lab, vira referência de qualidade + seletor de período + navegação para registros | Cards + gráfico + tabela acionável | Cards compactos | Nenhum valor tratado como lucro/contábil | pendente |
 | Renovações | `renewal_requests` | Solicitar/gerenciar renovação | a confirmar router | Financeiro (receita em risco) + Serviços e ciclos | Destaque quando próxima | Destaque quando próxima | Fluxo de renovação preservado | pendente |

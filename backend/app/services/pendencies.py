@@ -252,6 +252,9 @@ def _item_out(
     }
 
 
+COMPLETED_WINDOW_DAYS = 45
+
+
 def board(
     db: Session,
     *,
@@ -260,6 +263,8 @@ def board(
     bucket: str | None = None,
     client_id: uuid.UUID | None = None,
     on: date | None = None,
+    include_completed: bool = False,
+    include_cancelled: bool = False,
 ) -> dict[str, Any]:
     today = materialize_org(db, organization_id=organization_id, today=today)
     if on is not None:
@@ -291,10 +296,22 @@ def board(
         ).all()
     }
 
+    completed_cutoff = today - timedelta(days=COMPLETED_WINDOW_DAYS)
+
     def include(row: OperationalOccurrence) -> bool:
-        if row.status in {"cancelled"}:
+        # `on=` (Agenda's day view) keeps its exact original behavior —
+        # completed/cancelled/dismissed never surface there regardless of
+        # the new flags, which only affect the general board (bucket/no
+        # bucket) used by the Rotinas desktop "Concluídas" grouping.
+        if row.status == "cancelled":
+            if on is None and include_cancelled:
+                completed_at = row.completed_at
+                return completed_at is None or completed_at.date() >= completed_cutoff
             return False
         if row.status == "completed":
+            if on is None and include_completed:
+                completed_at = row.completed_at
+                return completed_at is None or completed_at.date() >= completed_cutoff
             return False
         if row.status == "dismissed":
             return False

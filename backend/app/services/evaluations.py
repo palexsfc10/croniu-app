@@ -142,6 +142,53 @@ def list_client_evaluations(
     )
 
 
+def list_recent_published(
+    db: Session, *, organization_id: uuid.UUID, limit: int = 50
+) -> list[ClientEvaluation]:
+    """Org-wide feed of published evaluations, newest first — powers the
+    Acompanhamentos "Histórico" timeline and the AI's equivalent read tool
+    (both now share this single query instead of each having their own)."""
+    limit = max(1, min(limit, 200))
+    return list(
+        db.scalars(
+            select(ClientEvaluation)
+            .where(
+                ClientEvaluation.organization_id == organization_id,
+                ClientEvaluation.status == "published",
+            )
+            .options(selectinload(ClientEvaluation.criteria))
+            .order_by(ClientEvaluation.published_at.desc())
+            .limit(limit)
+        ).all()
+    )
+
+
+def latest_by_client(
+    db: Session, *, organization_id: uuid.UUID
+) -> dict[uuid.UUID, ClientEvaluation]:
+    """Most recent non-archived evaluation per client, reduced in Python —
+    same portable pattern as `agenda_svc.next_appointment_by_client` — used
+    to compute "clientes que precisam de acompanhamento" without N+1."""
+    rows = list(
+        db.scalars(
+            select(ClientEvaluation)
+            .where(
+                ClientEvaluation.organization_id == organization_id,
+                ClientEvaluation.status != "archived",
+            )
+            .order_by(
+                ClientEvaluation.published_at.desc().nulls_last(),
+                ClientEvaluation.created_at.desc(),
+            )
+        ).all()
+    )
+    latest: dict[uuid.UUID, ClientEvaluation] = {}
+    for row in rows:
+        if row.client_id not in latest:
+            latest[row.client_id] = row
+    return latest
+
+
 def list_published_for_client(
     db: Session, *, organization_id: uuid.UUID, client_id: uuid.UUID
 ) -> list[ClientEvaluation]:
