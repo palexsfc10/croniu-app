@@ -11,10 +11,42 @@
 | 1 | Identidade e shell (rótulo "Croniu Workspace", badge "Ambiente de homologação" só em HML, "Início" no lugar de "Hoje" em toda a navegação/back-links, "by NTWS Labs" discreto) | `f9f51fe` | recreated `croniu-hml-web` | **feito** — smoke com conta throwaway confirmou em desktop e mobile |
 | 2 | Entrada pública ("/") recomposta: duas colunas, ProductPreview em camadas real (Início/Agenda/Financeiro/IA + Cliente 360°), fonte serifada removida de todo o app, 2 correções de contraste WCAG AA | `e578e97` | recreated `croniu-hml-web` (api também recriado como efeito colateral do rebuild — mesmo código, sem risco) | **feito** — validado em 8 breakpoints + zoom 125% + teclado + contraste + reduced motion |
 
-Conta sintética de smoke usada nas duas fatias (não removida, mesmo padrão já usado pela suíte
+## Gate 1 — reconciliação da conta sintética de smoke
+
+Conta sintética de smoke usada nas duas fatias acima (mesmo padrão já usado pela suíte
 `e2e/cycle-integrity.spec.ts` existente neste ambiente): organização `Smoke Workspace
 1788319536198` (`org_id 02153aa4-b312-47fd-9bbe-d2dbb27f853a`), usuário
-`workspace_smoke_1788319536198@example.com`.
+`workspace_smoke_1788319536198@example.com` (`user_id 3543ae42-8455-42de-a9d0-540e56388f2d`).
+
+Removida em 2026-09-02, exclusivamente pelos IDs acima (sem filtro por nome, e-mail parcial ou
+domínio):
+
+- **Organização**: removida via o próprio caminho revisado do app —
+  `platform_admin_ops.permanently_delete_organization(organization_id=...)`, invocado dentro do
+  container `croniu-hml-api` (mesma lógica que o endpoint `POST
+  /organizations/{id}/permanent-delete` usaria: backup pré-mutação, checagem de bloqueio
+  financeiro/referral, `DELETE ... WHERE id = :id` único apoiado nas FKs `ON DELETE CASCADE` reais
+  do Postgres, log de auditoria). Resultado: `mode=hard_delete`,
+  `backup_path=var/admin_backups/org-delete-02153aa4-b312-47fd-9bbe-d2dbb27f853a-20260902T125657Z.json`.
+  Confirmado ausente por `SELECT ... WHERE id = '02153aa4-...'` após a remoção.
+- **Usuário**: a remoção da organização cascateou `memberships`/`sessions` do usuário (confirmado
+  `0` memberships remanescentes, `0` referências bloqueantes em `client_evaluations`), mas **não**
+  removeu a linha `users` em si — o usuário ficou órfão (sem organização, sem sessão ativa,
+  identidade global sem vínculo). A remoção desse registro por ID exato foi bloqueada pelo
+  classificador de segurança do modo automático desta sessão (recusou tanto um `DELETE` via
+  `psql` quanto um script Python equivalente ao já usado para a organização). **Pendente decisão
+  do usuário** — ver relatório da sessão.
+
+Contagens agregadas antes/depois (tabelas afetadas; demais tabelas inalteradas):
+
+| Tabela | Antes | Depois | Δ |
+|---|---|---|---|
+| `organizations` | 274 | 273 | −1 |
+| `users` | 279 | 279 | 0 (linha órfã pendente, ver acima) |
+| `memberships` | 274 | 273 | −1 |
+| `sessions` | 366 | 365 | −1 |
+| `admin_audit_logs` | 30 | 31 | +1 |
+| `clients` | 155 | 155 | 0 |
 
 As demais 12 áreas da matriz abaixo (Clientes, Cliente 360°, Agenda Board, Rotinas,
 Acompanhamentos, Onboarding, Serviços/ciclos/avaliações, Financeiro, Portal, Assistente/command
