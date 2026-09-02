@@ -516,6 +516,22 @@ Conclusão prática: esta rodada é majoritariamente uma **reorganização de fr
 visual sobre APIs já existentes**, não a construção de features novas. Isso é bom para o gate de
 "zero migration" — a maior parte do necessário já está no banco e na API.
 
+## Pendências transversais (não bloqueiam fatias em HML, mandatórias antes de PRD)
+
+- **Suíte completa de backend (634 testes)** — registrada desde a fatia 4, segue pendente de
+  diagnóstico de lentidão + execução completa com timeout controlado. Mandatória antes de qualquer
+  merge para `main`/PRD. Não bloqueia validação reversível em HML.
+- **Service worker / PWA — estratégia de atualização (registrada na fatia 6, 2026-09-02)**: o app
+  tem um `sw.js` ativo (confirmado durante a verificação ao vivo da fatia 6 — uma aba de navegador
+  de longa duração continuou servindo o bundle JS de antes do deploy até uma aba nova ser aberta).
+  Antes de promover para PRD é preciso:
+  - investigar a estratégia real de atualização do service worker hoje (`skipWaiting`? `stale-while-revalidate`? nenhuma?);
+  - implementar um aviso explícito de "nova versão disponível" para quem estiver com uma aba aberta há muito tempo, em vez de deixar a atualização silenciosa/invisível;
+  - **nunca** atualizar automaticamente enquanto houver formulário ou alteração não salva em andamento;
+  - garantir que respostas de API, autenticação e qualquer dado dinâmico **nunca** sejam servidos por cache do service worker antigo (só assets estáticos/shell devem ser cacheáveis).
+  Não bloqueia esta fatia (Rotinas + Acompanhamentos) nem fatias futuras em HML — é mandatório
+  resolver antes de promover esta iniciativa para PRD.
+
 ## Baseline pré-implantação (registrado antes de qualquer alteração em HML)
 
 **Imagens em produção HML no início desta iniciativa** (retagueadas como
