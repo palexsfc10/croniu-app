@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiFetch,
   formatBRL,
+  formatOrgDate,
   formatOrgDateTime,
   type Client,
   type Cycle,
@@ -257,10 +258,7 @@ function AgendaCell({ row, timeZone }: { row: ClientRow; timeZone: string }) {
   if (!row.nextAppointment) {
     return <span className="text-sm text-[var(--color-ink-muted)]">Sem agendamento</span>;
   }
-  const date = formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
-    day: "2-digit",
-    month: "2-digit",
-  });
+  const date = formatOrgDate(row.nextAppointment.starts_at, timeZone);
   const time = formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
     hour: "2-digit",
     minute: "2-digit",
@@ -389,10 +387,7 @@ function ClientCard({
         </span>
         <span className="block truncate text-sm text-[var(--color-ink-muted)]">
           {row.nextAppointment
-            ? `Próxima sessão · ${formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
-                day: "2-digit",
-                month: "2-digit",
-              })} ${formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
+            ? `Próxima sessão · ${formatOrgDate(row.nextAppointment.starts_at, timeZone)} ${formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
                 hour: "2-digit",
                 minute: "2-digit",
                 hourCycle: "h23",

@@ -7,6 +7,7 @@ import {
   apiFetch,
   formatBRL,
   formatDateBR,
+  formatOrgDate,
   formatOrgDateTime,
   type Appointment,
   type ClientEvaluation,
@@ -658,7 +659,7 @@ export function ClientProfile({ clientId }: Props) {
                   </dt>
                   <dd className="mt-1 text-sm text-[var(--color-ink)]">
                     {nextAppointment
-                      ? `${formatOrgDateTime(nextAppointment.starts_at, timeZone, { day: "2-digit", month: "2-digit" })} · ${formatOrgDateTime(nextAppointment.starts_at, timeZone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`
+                      ? `${formatOrgDate(nextAppointment.starts_at, timeZone)} · ${formatOrgDateTime(nextAppointment.starts_at, timeZone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`
                       : "Sem agendamento"}
                   </dd>
                 </div>
@@ -798,10 +799,7 @@ export function ClientProfile({ clientId }: Props) {
                   >
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-[var(--color-ink)]">
-                        {formatOrgDateTime(appt.starts_at, timeZone, {
-                          day: "2-digit",
-                          month: "2-digit",
-                        })}{" "}
+                        {formatOrgDate(appt.starts_at, timeZone)}{" "}
                         ·{" "}
                         {formatOrgDateTime(appt.starts_at, timeZone, {
                           hour: "2-digit",

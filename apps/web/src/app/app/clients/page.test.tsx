@@ -5,9 +5,13 @@ import type { Client, IntakeLink, IntakeSubmissionListItem } from "@/lib/api";
 const copyTextToClipboard = vi.fn();
 const authState = vi.hoisted(() => ({ professionCode: "personal_trainer" as string | null }));
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: vi.fn(),
-}));
+vi.mock("@/lib/api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/clipboard", () => ({
   copyTextToClipboard: (...args: unknown[]) => copyTextToClipboard(...args),
@@ -405,5 +409,53 @@ describe("ClientsPage — nomenclature has no flash", () => {
     render(<ClientsPage />);
     await screen.findAllByText("Ativo");
     expect(screen.queryByText("Aguardando início")).not.toBeInTheDocument();
+  });
+
+  it("shows the next appointment's date and time exactly once, never doubled (regression)", async () => {
+    const appt = {
+      id: "a1",
+      client_id: "c1",
+      cycle_id: null,
+      service_id: null,
+      location_id: null,
+      title: null,
+      starts_at: "2026-09-04T17:00:00Z",
+      ends_at: "2026-09-04T18:00:00Z",
+      status: "scheduled",
+      notes: null,
+      created_at: "",
+      updated_at: "",
+      client_name: "Ana Aluna",
+      service_name: null,
+      location_name: null,
+      cycle_service_name: null,
+    };
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/clients?"))
+        return {
+          data: [
+            { id: "c1", full_name: "Ana Aluna", phone: null, email: null, notes: null, status: "active", created_at: "" } as Client,
+          ],
+          error: undefined,
+          status: 200,
+        };
+      if (path === "/api/v1/cycles") return { data: [], error: undefined, status: 200 };
+      if (path === "/api/v1/receivables") return { data: [], error: undefined, status: 200 };
+      if (path === "/api/v1/agenda/next-appointments")
+        return { data: { c1: appt }, error: undefined, status: 200 };
+      if (path === "/api/v1/home/summary")
+        return { data: { local_today: "2026-09-02" }, error: undefined, status: 200 };
+      if (path === "/api/v1/intake-submissions?status=pending_review")
+        return { data: [], error: undefined, status: 200 };
+      return { data: null, error: { code: "not_found", message: "unexpected" }, status: 404 };
+    });
+
+    render(<ClientsPage />);
+    const times = await screen.findAllByText(/14:00/);
+    // Once in the desktop table cell, once in the mobile card — never twice
+    // inside the same cell/card (the historical bug: "04/09, 14:00 · 14:00").
+    for (const el of times) {
+      expect(el.textContent?.match(/14:00/g)?.length).toBe(1);
+    }
   });
 });

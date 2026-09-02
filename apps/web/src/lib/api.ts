@@ -873,6 +873,19 @@ export function formatOrgDateTime(iso: string, timeZone: string, opts?: Intl.Dat
   }
 }
 
+/** Day/month only, in the org timezone — unlike `formatOrgDateTime`, this
+ * never carries the hour/minute default through, so it's safe to combine
+ * with a separately formatted time (e.g. "04/09 · 14:00") without the time
+ * appearing twice. */
+export function formatOrgDate(iso: string, timeZone: string) {
+  return formatOrgDateTime(iso, timeZone, {
+    day: "2-digit",
+    month: "2-digit",
+    hour: undefined,
+    minute: undefined,
+  });
+}
+
 /** Human conflict line in the professional's org timezone (never raw ISO UTC). */
 export function formatConflictLine(
   conflict: { client_name?: string | null; starts_at: string; ends_at?: string | null },
