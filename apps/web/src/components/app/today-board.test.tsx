@@ -230,3 +230,79 @@ describe("TodayBoard — evaluation card opens the form directly", () => {
     expect(sessionStorage.getItem("croniu.evaluation-saved-celebrate")).toBeNull();
   });
 });
+
+describe("TodayBoard — compact Financeiro summary", () => {
+  it("shows no-pendency state when there are no pending payments", () => {
+    board.items = [];
+    render(<TodayBoard summary={{ ...BASE_SUMMARY, pending_payments: [] }} />);
+
+    expect(screen.getByText("Nenhuma cobrança pendente")).toBeInTheDocument();
+  });
+
+  it("shows the real total and count derived from pending_payments — never a mocked number", () => {
+    board.items = [];
+    render(
+      <TodayBoard
+        summary={{
+          ...BASE_SUMMARY,
+          pending_payments: [
+            {
+              id: "r1",
+              cycle_id: "cy1",
+              client_id: "c1",
+              amount_cents: 15000,
+              due_on: "2026-08-20",
+              status: "overdue",
+              paid_at: null,
+              payment_method: null,
+              notes: null,
+              created_at: "2026-08-01T00:00:00Z",
+              updated_at: "2026-08-01T00:00:00Z",
+              client_name: "Aluna A",
+              cycle_service_name: null,
+            },
+            {
+              id: "r2",
+              cycle_id: "cy2",
+              client_id: "c2",
+              amount_cents: 9000,
+              due_on: "2026-08-21",
+              status: "overdue",
+              paid_at: null,
+              payment_method: null,
+              notes: null,
+              created_at: "2026-08-01T00:00:00Z",
+              updated_at: "2026-08-01T00:00:00Z",
+              client_name: "Aluno B",
+              cycle_service_name: null,
+            },
+          ],
+        }}
+      />,
+    );
+
+    // 15000 + 9000 cents = R$ 240,00
+    expect(screen.getByText(/R\$\s*240,00/)).toBeInTheDocument();
+    expect(screen.getByText(/2\s*cobranças em aberto/)).toBeInTheDocument();
+  });
+});
+
+describe("TodayBoard — quick actions always point to real, existing routes", () => {
+  it("links to novo cliente, novo ciclo and agenda completa", () => {
+    board.items = [];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    expect(screen.getByRole("link", { name: /Novo cliente/i })).toHaveAttribute(
+      "href",
+      "/app/clients/new",
+    );
+    expect(screen.getByRole("link", { name: /Novo ciclo/i })).toHaveAttribute(
+      "href",
+      "/app/cycles/new",
+    );
+    expect(screen.getByRole("link", { name: /Agenda completa/i })).toHaveAttribute(
+      "href",
+      "/app/agenda",
+    );
+  });
+});

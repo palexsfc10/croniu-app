@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { Appointment, AttentionItem, HomeSummary, PriorityAction } from "@/lib/api";
-import { apiFetch, formatDateBR, formatOrgDateTime } from "@/lib/api";
+import type { Appointment, AttentionItem, HomeSummary, PriorityAction, Receivable } from "@/lib/api";
+import { apiFetch, formatBRL, formatDateBR, formatOrgDateTime } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,9 @@ import {
   IconCalendarDays,
   IconChevronRight,
   IconClipboardList,
+  IconLayers,
   IconRefreshCw,
+  IconUsersRound,
 } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ProfessionNudge } from "@/components/app/profession-nudge";
@@ -431,6 +433,71 @@ function TodayActions() {
   );
 }
 
+function FinanceSummary({ pendingPayments }: { pendingPayments: Receivable[] }) {
+  const count = pendingPayments.length;
+  const totalCents = pendingPayments.reduce((sum, r) => sum + r.amount_cents, 0);
+
+  return (
+    <section
+      aria-label="Financeiro"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm"
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-primary-subtle)] text-[var(--color-primary)]">
+          <IconBanknote className="h-4 w-4" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+            Financeiro
+          </p>
+          {count > 0 ? (
+            <p className="text-sm text-[var(--color-ink)]">
+              <span className="font-semibold">{formatBRL(totalCents)}</span> em {count}{" "}
+              cobrança{count === 1 ? "" : "s"} em aberto
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--color-ink-muted)]">Nenhuma cobrança pendente</p>
+          )}
+        </div>
+      </div>
+      <Link
+        href="/app/billing"
+        className="shrink-0 text-sm font-medium text-[var(--color-link)] hover:underline"
+      >
+        Ver financeiro
+      </Link>
+    </section>
+  );
+}
+
+const QUICK_ACTIONS = [
+  { label: "Novo cliente", href: "/app/clients/new", Icon: IconUsersRound },
+  { label: "Novo ciclo", href: "/app/cycles/new", Icon: IconLayers },
+  { label: "Agenda completa", href: "/app/agenda", Icon: IconCalendarDays },
+] as const;
+
+function QuickActions() {
+  return (
+    <section aria-label="Ações rápidas" className="space-y-2">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        Ações rápidas
+      </h2>
+      <div className="flex flex-wrap gap-2">
+        {QUICK_ACTIONS.map(({ label, href, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-sm font-medium text-[var(--color-ink)] shadow-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+          >
+            <Icon className="h-4 w-4 text-[var(--color-primary)]" aria-hidden />
+            {label}
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function TodayBoard({ summary }: Props) {
   const { me } = useAuth();
   const [now, setNow] = useState(() => new Date());
@@ -615,6 +682,9 @@ export function TodayBoard({ summary }: Props) {
           <AttentionSection items={attention} />
         </div>
       )}
+
+      <FinanceSummary pendingPayments={summary.pending_payments} />
+      <QuickActions />
     </div>
   );
 }
