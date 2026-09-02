@@ -37,13 +37,14 @@ export function AuthScreen({
               <span aria-hidden="true" className="block min-h-11 w-px" />
             )}
           </div>
-          <div className="justify-self-end">
+          <div className="flex items-baseline gap-1 justify-self-end">
             <BrandWordmark size="md" surface="light" />
+            <span className="text-xs font-normal text-[var(--color-ink-subtle)]">Workspace</span>
           </div>
         </header>
 
         <div className="space-y-1">
-          <h1 className="h-display-public text-2xl text-[var(--color-ink)]">{title}</h1>
+          <h1 className="h-display text-2xl text-[var(--color-ink)]">{title}</h1>
           {subtitle ? (
             <p className="text-sm text-[var(--color-ink-muted)]">{subtitle}</p>
           ) : null}
@@ -51,7 +52,7 @@ export function AuthScreen({
 
         {children}
 
-        <p className="pt-2 text-center text-xs text-[var(--color-ink-subtle)]">
+        <p className="pt-2 text-center text-xs text-[var(--color-ink-muted)]">
           Ao continuar, você concorda com os{" "}
           <Link href="/termos" className="underline-offset-2 hover:underline">
             Termos de Uso
