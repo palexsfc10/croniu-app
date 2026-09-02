@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nav = vi.hoisted(() => ({ tab: "resumo", extraQuery: "", replace: vi.fn() }));
@@ -11,18 +12,47 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/auth/auth-provider", () => ({
   useAuth: () => ({
     me: {
-      organization: { profession_code: "personal_trainer" },
+      organization: { timezone: "America/Sao_Paulo", profession_code: "personal_trainer" },
     },
   }),
 }));
+
+const CLIENTS: Record<string, Record<string, unknown>> = {
+  c1: {
+    id: "c1",
+    full_name: "Pedro Silva",
+    status: "active",
+    phone: "11987654321",
+    email: "hidden@example.com",
+    notes: "",
+  },
+  c2: {
+    id: "c2",
+    full_name: "Ana Souza",
+    status: "active",
+    phone: "11900001111",
+    email: "",
+    notes: "",
+  },
+  c3: {
+    id: "c3",
+    full_name: "Carla Nunes",
+    status: "archived",
+    phone: "11911112222",
+    email: "",
+    notes: "",
+  },
+};
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {
     ...actual,
-    apiFetch: vi.fn(async (path: string) => {
-      if (path.includes("/profession")) {
-        return { data: { profession_code: "personal_trainer", nomenclature: {} } };
+    apiFetch: vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method === "PATCH" && /\/clients\/(c1|c2|c3)$/.test(path)) {
+        const id = path.split("/").pop()!;
+        const body = JSON.parse((init.body as string) || "{}");
+        return { data: { ...CLIENTS[id], ...body } };
       }
       if (path.includes("/preferences")) {
         return { data: { local_today: "2026-08-13" } };
@@ -61,6 +91,57 @@ vi.mock("@/lib/api", async () => {
           ],
         };
       }
+      if (path.includes("/appointments")) {
+        if (path.includes("c1")) {
+          return {
+            data: [
+              {
+                id: "appt1",
+                client_id: "c1",
+                cycle_id: null,
+                service_id: null,
+                location_id: null,
+                title: null,
+                starts_at: "2026-08-20T14:00:00Z",
+                ends_at: "2026-08-20T15:00:00Z",
+                status: "scheduled",
+                notes: null,
+                created_at: "",
+                updated_at: "",
+                client_name: "Pedro Silva",
+                service_name: "Treino",
+                location_name: null,
+                cycle_service_name: null,
+              },
+            ],
+          };
+        }
+        return { data: [] };
+      }
+      if (path.includes("/receivables")) {
+        if (path.includes("c1")) {
+          return {
+            data: [
+              {
+                id: "r1",
+                cycle_id: "cy1",
+                client_id: "c1",
+                amount_cents: 15000,
+                due_on: "2026-08-01",
+                status: "pending",
+                paid_at: null,
+                payment_method: null,
+                notes: null,
+                created_at: "",
+                updated_at: "",
+                client_name: "Pedro Silva",
+                cycle_service_name: "Aula padrão",
+              },
+            ],
+          };
+        }
+        return { data: [] };
+      }
       if (path.includes("/cycles")) {
         if (path.includes("c2")) return { data: [] };
         return {
@@ -97,41 +178,10 @@ vi.mock("@/lib/api", async () => {
         return { data: [{ id: "sub-c2", submitted_at: "2026-08-13T10:00:00Z" }] };
       }
       if (path.includes("/intake-submissions?client_id=")) return { data: [] };
-      if (path.includes("/clients/c2")) {
-        return {
-          data: {
-            id: "c2",
-            full_name: "Ana Souza",
-            status: "active",
-            phone: "11900001111",
-            email: "",
-            notes: "",
-          },
-        };
-      }
-      if (path.includes("/clients/c1")) {
-        return {
-          data: {
-            id: "c1",
-            full_name: "Pedro Silva",
-            status: "active",
-            phone: "11987654321",
-            email: "hidden@example.com",
-            notes: "",
-          },
-        };
-      }
-      if (path.includes("/clients/c3")) {
-        return {
-          data: {
-            id: "c3",
-            full_name: "Carla Nunes",
-            status: "archived",
-            phone: "11911112222",
-            email: "",
-            notes: "",
-          },
-        };
+      if (path.includes("/routines/board")) return { data: { groups: [] } };
+      if (/\/clients\/(c1|c2|c3)$/.test(path)) {
+        const id = path.split("/").pop()!;
+        return { data: CLIENTS[id] };
       }
       return { data: null };
     }),
@@ -146,33 +196,83 @@ describe("ClientProfile", () => {
     nav.replace.mockClear();
   });
 
-  it("renders three tabs, readable status, and a single next action without technical enums", async () => {
+  it("renders six tabs and a readable status, without technical enums leaking through", async () => {
     nav.tab = "resumo";
     render(<ClientProfile clientId="c1" />);
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Pedro Silva");
-    expect(screen.getByRole("tab", { name: "Resumo" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Acompanhamento" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Dados" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Jornada" })).not.toBeInTheDocument();
+    for (const label of ["Resumo", "Agenda", "Plano e ciclo", "Prontuário", "Financeiro", "Histórico"]) {
+      expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("tab", { name: "Dados" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Acompanhamento" })).not.toBeInTheDocument();
     expect(screen.queryByText("continue_onboarding")).not.toBeInTheDocument();
-    expect(screen.queryByText("draft")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Link secreto para o Meu Ciclo/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Gere um novo acesso/i)).not.toBeInTheDocument();
   });
 
-  it("renders the portal card on the dados tab without asking to generate a copyable link", async () => {
-    nav.tab = "dados";
+  it("shows the quick-actions row with real, working links", async () => {
+    nav.tab = "resumo";
     render(<ClientProfile clientId="c1" />);
-    const portal = await screen.findByRole("region", { name: "Portal do cliente" });
-    expect(portal).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Portal do cliente" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Criar acesso" }).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/o token completo não será mostrado/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Copiar link/i })).not.toBeInTheDocument();
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("link", { name: /Agendar/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/app/appointments/new?clientId=c1"),
+    );
+    expect(screen.getByRole("link", { name: /Registrar acompanhamento/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/app/clients/c1/evaluations/new"),
+    );
+    expect(screen.getByRole("button", { name: /Adicionar anotação/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Criar rotina/i })).toHaveAttribute(
+      "href",
+      "/app/routines?clientId=c1",
+    );
+    expect(screen.getByRole("link", { name: /Perguntar à IA/i })).toHaveAttribute(
+      "href",
+      "/app/assistant",
+    );
+    expect(screen.getByRole("link", { name: "Editar" })).toHaveAttribute(
+      "href",
+      "/app/clients/c1/edit",
+    );
   });
 
-  it("humanizes cycle dates and keeps a single plan action", async () => {
-    nav.tab = "acompanhamento";
+  it("Resumo shows contact, service, progress, next session, and financeiro from real data", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByText("(11) 98765-4321")).toBeInTheDocument();
+    expect(screen.getByText("Aula padrão")).toBeInTheDocument();
+    expect(screen.getByText("8 de 12 sessões")).toBeInTheDocument();
+    expect(screen.getByText(/R\$\s*150,00/)).toBeInTheDocument();
+  });
+
+  it("Resumo always links to Rotinas, even with zero pending — the action never disappears", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    const rotinasLink = screen.getByRole("link", { name: /Rotinas/ });
+    expect(rotinasLink).toHaveAttribute(
+      "href",
+      expect.stringContaining("/app/routines/pending?clientId=c1"),
+    );
+    expect(rotinasLink).toHaveTextContent("Em dia");
+  });
+
+  it("Agenda tab lists the client's upcoming appointments from the new per-client endpoint", async () => {
+    nav.tab = "agenda";
+    render(<ClientProfile clientId="c1" />);
+    expect(await screen.findByText("Próximas sessões")).toBeInTheDocument();
+    expect(screen.getByText(/Treino/)).toBeInTheDocument();
+  });
+
+  it("Agenda tab offers a real empty-state action when there is nothing scheduled", async () => {
+    nav.tab = "agenda";
+    render(<ClientProfile clientId="c2" />);
+    expect(await screen.findByText("Nenhuma sessão agendada")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Agendar sessão" })).toBeInTheDocument();
+  });
+
+  it("Plano e ciclo humanizes cycle dates and keeps a single plan action", async () => {
+    nav.tab = "plano";
     render(<ClientProfile clientId="c1" />);
     expect(await screen.findByText("Ciclo atual")).toBeInTheDocument();
     expect(screen.getByText(/17 ago\. a 16 set\./)).toBeInTheDocument();
@@ -180,56 +280,53 @@ describe("ClientProfile", () => {
     expect(screen.queryByText(/2026-08-17/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver ciclo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver plano" })).toBeInTheDocument();
-    expect(screen.getByText("Nenhuma avaliação registrada")).toBeInTheDocument();
-    expect(screen.getByText(/Registre o ponto de partida/i)).toBeInTheDocument();
   });
 
-  it("never leaves the accompaniment tab blank for a new client", async () => {
-    nav.tab = "acompanhamento";
+  it("Plano e ciclo never leaves a new client's tab blank", async () => {
+    nav.tab = "plano";
     render(<ClientProfile clientId="c2" />);
-    expect(await screen.findByRole("tabpanel", { name: "Acompanhamento" })).toBeInTheDocument();
+    expect(await screen.findByRole("tabpanel", { name: "Plano e ciclo" })).toBeInTheDocument();
     expect(screen.getByText("Ciclo atual")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Criar ciclo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Criar plano" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Nova avaliação" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ver rotinas" })).toBeInTheDocument();
-    expect(screen.queryByText("Criar treino")).not.toBeInTheDocument();
   });
 
-  it("shows next header action inside the accompaniment tab", async () => {
-    nav.tab = "acompanhamento";
-    render(<ClientProfile clientId="c1" />);
-    expect(await screen.findByText("Próxima ação")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ver ciclo" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ver plano" })).toBeInTheDocument();
-  });
-
-  it("offers a contextual invite to complete registration when there is no submission yet", async () => {
-    nav.tab = "resumo";
-    render(<ClientProfile clientId="c1" />);
-    await screen.findByRole("heading", { level: 1 });
-    expect(
-      screen.getByText("Envie o formulário para Pedro completar o cadastro."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Enviar cadastro" })).toBeInTheDocument();
-  });
-
-  it("hides the contextual invite once the student already has a submission", async () => {
-    nav.tab = "resumo";
+  it("Prontuário groups anamnese and avaliações without losing the intake-review link", async () => {
+    nav.tab = "prontuario";
     render(<ClientProfile clientId="c2" />);
-    await screen.findByRole("heading", { level: 1 });
-    expect(
-      screen.queryByText(/completar o cadastro/i),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Enviar cadastro" })).not.toBeInTheDocument();
+    const panel = await screen.findByRole("tabpanel", { name: "Prontuário" });
+    expect(within(panel).getByText("Nenhuma avaliação registrada")).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: /Anamnese/ })).toHaveAttribute(
+      "href",
+      "/app/clients/intake/sub-c2",
+    );
   });
 
-  it("shows an archived client's status badge in a neutral tone, not the same info tone as an active client", async () => {
+  it("Financeiro tab lists real receivables with an overdue badge, never a mocked total", async () => {
+    nav.tab = "financeiro";
+    render(<ClientProfile clientId="c1" />);
+    const panel = await screen.findByRole("tabpanel", { name: "Financeiro" });
+    expect(within(panel).getAllByText(/R\$\s*150,00/).length).toBeGreaterThan(0);
+    expect(within(panel).getByText(/Vencimento/)).toHaveTextContent("Vencimento 01/08/2026 · Aula padrão");
+  });
+
+  it("Histórico shows an honest empty state when there is nothing to show yet", async () => {
+    nav.tab = "historico";
+    render(<ClientProfile clientId="c2" />);
+    expect(await screen.findByText("Sem histórico ainda")).toBeInTheDocument();
+  });
+
+  it("shows an archived client's status badge in neutral tone and offers Reativar instead of Arquivar", async () => {
     nav.tab = "resumo";
     render(<ClientProfile clientId="c3" />);
     const badge = await screen.findByText("Arquivado");
     expect(badge).toHaveClass("badge-neutral");
     expect(badge).not.toHaveClass("badge-info");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("Mais ações"));
+    expect(screen.getByRole("button", { name: "Reativar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Arquivar" })).not.toBeInTheDocument();
   });
 
   it("clears previous client name when switching fichas", async () => {
@@ -241,27 +338,38 @@ describe("ClientProfile", () => {
     expect(screen.queryByText("Pedro Silva")).not.toBeInTheDocument();
   });
 
-  it("shows a short success message after creating a cycle, lands on Acompanhamento with the cycle visible, and strips the one-time marker from the URL", async () => {
-    nav.tab = "acompanhamento";
+  it("shows a short success message after creating a cycle and strips the one-time marker from the URL", async () => {
+    nav.tab = "plano";
     nav.extraQuery = "&done=cycle";
     render(<ClientProfile clientId="c1" />);
 
     expect(await screen.findByText("Ciclo criado com sucesso.")).toBeInTheDocument();
-    expect(await screen.findByRole("tabpanel", { name: "Acompanhamento" })).toBeInTheDocument();
+    expect(await screen.findByRole("tabpanel", { name: "Plano e ciclo" })).toBeInTheDocument();
     expect(screen.getByText("Ciclo atual")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ver ciclo" })).toBeInTheDocument();
 
-    expect(nav.replace).toHaveBeenCalledWith("/app/clients/c1?tab=acompanhamento");
+    expect(nav.replace).toHaveBeenCalledWith("/app/clients/c1?tab=plano");
   });
 
   it("never leaves the ficha blank when the tab query value is unrecognized (defense against a malformed redirect URL)", async () => {
-    // Reproduces the exact corrupted value a naive `${returnTo}?done=cycle`
-    // used to produce when returnTo already had its own "?tab=...".
     nav.tab = "acompanhamento?done=cycle";
     render(<ClientProfile clientId="c1" />);
 
     await screen.findByRole("heading", { level: 1 });
     expect(screen.getByRole("tabpanel", { name: "Resumo" })).toBeInTheDocument();
     expect(screen.getByText("Próximo passo")).toBeInTheDocument();
+  });
+
+  it("Adicionar anotação saves through the existing PATCH /clients/{id} endpoint", async () => {
+    nav.tab = "resumo";
+    const user = userEvent.setup();
+    render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+
+    await user.click(screen.getByRole("button", { name: /Adicionar anotação/i }));
+    const textbox = await screen.findByLabelText("Anotação");
+    await user.type(textbox, "Prefere treinar de manhã");
+    await user.click(screen.getByRole("button", { name: "Salvar anotação" }));
+
+    expect(await screen.findByText("Anotação salva")).toBeInTheDocument();
   });
 });

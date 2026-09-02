@@ -659,6 +659,86 @@ def next_visible_appointment_after(
     )
 
 
+def list_client_appointments(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    client_id: uuid.UUID,
+    after: datetime | None = None,
+    limit: int = 10,
+) -> list[Appointment]:
+    """A single client's upcoming visible appointments, soonest first.
+
+    Powers the Cliente 360° Agenda tab — unlike `list_upcoming_appointments`,
+    this has no `within_days` horizon: a client's next session may be weeks
+    out, and it is still real, already-scheduled data worth showing.
+    """
+    from app.services import domain as domain_svc
+
+    domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
+    cutoff = after or datetime.now(UTC)
+    return list(
+        db.scalars(
+            select(Appointment)
+            .where(
+                Appointment.organization_id == organization_id,
+                Appointment.client_id == client_id,
+                Appointment.status.in_(AGENDA_VISIBLE_STATUSES),
+                Appointment.starts_at >= cutoff,
+            )
+            .options(
+                selectinload(Appointment.client),
+                selectinload(Appointment.service),
+                selectinload(Appointment.location),
+                selectinload(Appointment.cycle).selectinload(Cycle.service),
+            )
+            .order_by(Appointment.starts_at.asc())
+            .limit(limit)
+        ).all()
+    )
+
+
+def next_appointment_by_client(
+    db: Session,
+    *,
+    organization_id: uuid.UUID,
+    client_ids: list[uuid.UUID] | None = None,
+    after: datetime | None = None,
+) -> dict[uuid.UUID, Appointment]:
+    """The single next visible appointment for every client that has one.
+
+    One query, reduced to first-per-client in Python (kept portable rather
+    than a Postgres-only `DISTINCT ON`). Powers the Clientes list "próxima
+    sessão" column without an N+1 fetch per row. Bounded to a 180-day
+    look-ahead and a defensive row cap so a large organization can never
+    turn this into an unbounded scan.
+    """
+    cutoff = after or datetime.now(UTC)
+    horizon = cutoff + timedelta(days=180)
+    query = select(Appointment).where(
+        Appointment.organization_id == organization_id,
+        Appointment.status.in_(AGENDA_VISIBLE_STATUSES),
+        Appointment.starts_at >= cutoff,
+        Appointment.starts_at < horizon,
+    )
+    if client_ids is not None:
+        query = query.where(Appointment.client_id.in_(client_ids))
+    rows = db.scalars(
+        query.options(
+            selectinload(Appointment.client),
+            selectinload(Appointment.service),
+            selectinload(Appointment.location),
+            selectinload(Appointment.cycle).selectinload(Cycle.service),
+        ).order_by(Appointment.starts_at.asc())
+        .limit(2000)
+    ).all()
+    result: dict[uuid.UUID, Appointment] = {}
+    for row in rows:
+        if row.client_id not in result:
+            result[row.client_id] = row
+    return result
+
+
 def next_upcoming_appointment(
     db: Session, *, organization_id: uuid.UUID, now: datetime | None = None
 ) -> Appointment | None:

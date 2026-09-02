@@ -125,13 +125,13 @@ export default function AccompanimentPreparePage() {
           : null;
       }
       if (step === "cycle") {
-        return { href: `/app/clients/${params.clientId}?tab=acompanhamento`, label: "Ver ciclo" };
+        return { href: `/app/clients/${params.clientId}?tab=plano`, label: "Ver ciclo" };
       }
       if (step === "agenda") {
         return { href: `/app/agenda?clientId=${params.clientId}`, label: "Ver agenda" };
       }
       if (step === "plan") {
-        return { href: `/app/clients/${params.clientId}?tab=acompanhamento`, label: "Ver plano" };
+        return { href: `/app/clients/${params.clientId}?tab=plano`, label: "Ver plano" };
       }
       return null;
     }

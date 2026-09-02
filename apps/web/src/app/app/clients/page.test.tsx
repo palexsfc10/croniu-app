@@ -67,6 +67,8 @@ function mockApi({
   vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
     if (path.startsWith("/api/v1/clients?")) return { data: clients, error: undefined, status: 200 };
     if (path === "/api/v1/cycles") return { data: [], error: undefined, status: 200 };
+    if (path === "/api/v1/receivables") return { data: [], error: undefined, status: 200 };
+    if (path === "/api/v1/agenda/next-appointments") return { data: {}, error: undefined, status: 200 };
     if (path === "/api/v1/home/summary")
       return {
         data: { local_today: "2026-08-21", new_submissions_count: pending.length },
@@ -125,7 +127,7 @@ describe("ClientsPage — invite flow", () => {
       ],
     });
     render(<ClientsPage />);
-    await screen.findByText("Ana Aluna");
+    await screen.findAllByText("Ana Aluna");
     expect(screen.getByRole("button", { name: "Convidar aluno" })).toBeInTheDocument();
   });
 
@@ -342,7 +344,7 @@ describe("ClientsPage — nomenclature has no flash", () => {
     expect(screen.getByRole("heading", { name: "Clientes" })).toBeInTheDocument();
   });
 
-  it("lays the list out as a responsive grid from lg upward, single column below that", async () => {
+  it("renders a dense table for desktop (hidden below lg) and a card list for mobile (hidden from lg up)", async () => {
     mockApi({
       clients: [
         { id: "c1", full_name: "Ana Aluna", phone: null, email: null, notes: null, status: "active", created_at: "" } as Client,
@@ -350,12 +352,58 @@ describe("ClientsPage — nomenclature has no flash", () => {
       ],
     });
     const { container } = render(<ClientsPage />);
-    await screen.findByText("Ana Aluna");
-    const list = container.querySelector("ul");
-    expect(list).not.toBeNull();
-    expect(list!.className).toContain("space-y-2.5");
-    expect(list!.className).toContain("lg:grid");
-    expect(list!.className).toContain("lg:grid-cols-2");
-    expect(list!.className).toContain("xl:grid-cols-3");
+    await screen.findAllByText("Ana Aluna");
+
+    const desktopTable = container.querySelector(".hidden.lg\\:block");
+    expect(desktopTable).not.toBeNull();
+    const mobileList = container.querySelector("ul.lg\\:hidden");
+    expect(mobileList).not.toBeNull();
+    expect(mobileList!.className).toContain("space-y-2.5");
+  });
+
+  it("shows a currently-active cycle as 'Ativo', never 'Aguardando início' (regression: today must reach the status computation)", async () => {
+    const activeCycle = {
+      id: "cy1",
+      client_id: "c1",
+      service_id: "s1",
+      cycle_type: "intelligent",
+      status: "active",
+      starts_on: "2026-08-01",
+      ends_on: "2026-09-01",
+      value_cents: 1000,
+      notes: null,
+      last_contacted_at: null,
+      contact_confirmed_at: null,
+      created_at: "",
+      updated_at: "",
+      client_name: "Ana Aluna",
+      service_name: "Aula",
+      days_remaining: 11,
+      is_nearing_end: false,
+      weekdays: [1],
+      default_starts_time: "08:00",
+    };
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/clients?"))
+        return {
+          data: [
+            { id: "c1", full_name: "Ana Aluna", phone: null, email: null, notes: null, status: "active", created_at: "" } as Client,
+          ],
+          error: undefined,
+          status: 200,
+        };
+      if (path === "/api/v1/cycles") return { data: [activeCycle], error: undefined, status: 200 };
+      if (path === "/api/v1/receivables") return { data: [], error: undefined, status: 200 };
+      if (path === "/api/v1/agenda/next-appointments") return { data: {}, error: undefined, status: 200 };
+      if (path === "/api/v1/home/summary")
+        return { data: { local_today: "2026-08-21" }, error: undefined, status: 200 };
+      if (path === "/api/v1/intake-submissions?status=pending_review")
+        return { data: [], error: undefined, status: 200 };
+      return { data: null, error: { code: "not_found", message: "unexpected" }, status: 404 };
+    });
+
+    render(<ClientsPage />);
+    await screen.findAllByText("Ativo");
+    expect(screen.queryByText("Aguardando início")).not.toBeInTheDocument();
   });
 });

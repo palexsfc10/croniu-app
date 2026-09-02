@@ -23,7 +23,7 @@ test.describe("Client portal stable access", () => {
     expect(created.ok()).toBeTruthy();
     const clientId = (await created.json()).id as string;
 
-    await page.goto(`/app/clients/${clientId}?tab=dados`);
+    await page.goto(`/app/clients/${clientId}?tab=resumo`);
     const card = page.getByRole("region", { name: "Portal do cliente" });
     await expect(card.getByRole("heading", { name: "Portal do cliente" })).toBeVisible();
     await card.getByRole("button", { name: "Criar acesso" }).click();
@@ -49,7 +49,7 @@ test.describe("Client portal stable access", () => {
 
     await logoutUi(page);
     await loginUi(page, email);
-    await page.goto(`/app/clients/${clientId}?tab=dados`);
+    await page.goto(`/app/clients/${clientId}?tab=resumo`);
     await expect(page.getByText("Acesso ativo")).toBeVisible();
     const afterLogin = (await page.getByTestId("portal-url").textContent())?.trim() ?? "";
     expect(afterLogin).toBe(firstUrl);

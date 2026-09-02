@@ -206,6 +206,10 @@ export type Appointment = {
   cycle_service_name: string | null;
 };
 
+/** GET /agenda/next-appointments — keyed by client_id; a client with no
+ * upcoming visible appointment simply has no entry. */
+export type NextAppointmentsByClient = Record<string, Appointment>;
+
 export type DayAgenda = {
   date: string;
   timezone: string;

@@ -36,7 +36,7 @@ import { safeReturnTo } from "@/lib/nomenclature";
 
 /**
  * Appends `done=cycle` to a path, joining with `&` when the path already
- * carries a query string (e.g. `?tab=acompanhamento`). A naive
+ * carries a query string (e.g. `?tab=plano`). A naive
  * `${path}?done=cycle` produced a second `?`, which corrupts the value of
  * whatever query param came before it once the browser/router re-parses it.
  */
@@ -264,7 +264,7 @@ function NewIntelligentCycleForm() {
     const target = isSafeReturnTo
       ? (returnTo as string)
       : clientId
-        ? `/app/clients/${clientId}?tab=acompanhamento`
+        ? `/app/clients/${clientId}?tab=plano`
         : `/app/cycles/${result.data!.id}`;
     router.replace(withCycleCreatedMarker(target));
   }

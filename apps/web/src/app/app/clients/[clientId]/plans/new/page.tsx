@@ -25,7 +25,7 @@ export default function PlanEditorPage() {
   const router = useRouter();
   const protocolId = params.protocolId;
   const returnTo =
-    safeReturnTo(search.get("returnTo")) || `/app/clients/${params.clientId}?tab=acompanhamento`;
+    safeReturnTo(search.get("returnTo")) || `/app/clients/${params.clientId}?tab=plano`;
   const { me } = useAuth();
   const [client, setClient] = useState<Client | null>(null);
   const [title, setTitle] = useState("");

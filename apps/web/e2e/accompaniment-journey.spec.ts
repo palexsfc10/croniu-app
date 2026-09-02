@@ -17,15 +17,23 @@ test.describe("accompaniment tab and plan copy", () => {
     });
     const emptyId = (await empty.json()).id as string;
     await page.setViewportSize({ width: 360, height: 800 });
-    await page.goto(`/app/clients/${emptyId}?tab=acompanhamento`);
-    const panel = page.getByRole("tabpanel", { name: "Acompanhamento" });
-    await expect(panel).toBeVisible();
-    await expect(panel.getByRole("heading", { name: "Ciclo atual" })).toBeVisible();
+    // Ciclo + Plano now live on "Plano e ciclo"; Avaliações moved to
+    // "Prontuário"; Rotinas moved into a compact, always-visible tile on
+    // Resumo — same routes/actions, reorganized into the redesigned 360°.
+    await page.goto(`/app/clients/${emptyId}?tab=plano`);
+    const planoPanel = page.getByRole("tabpanel", { name: "Plano e ciclo" });
+    await expect(planoPanel).toBeVisible();
+    await expect(planoPanel.getByRole("heading", { name: "Ciclo atual" })).toBeVisible();
     await expect(page.getByTestId("accompaniment-plan-card")).toBeVisible();
-    await expect(panel.getByRole("heading", { name: /plano de acompanhamento/i })).toBeVisible();
-    await expect(panel.getByRole("heading", { name: "Avaliações" })).toBeVisible();
-    await expect(panel.getByRole("heading", { name: "Rotinas" })).toBeVisible();
-    await expect(panel.getByText("Nenhuma pendência de rotina")).toBeVisible();
+    await expect(planoPanel.getByRole("heading", { name: /plano de acompanhamento/i })).toBeVisible();
+
+    await page.goto(`/app/clients/${emptyId}?tab=prontuario`);
+    const prontuarioPanel = page.getByRole("tabpanel", { name: "Prontuário" });
+    await expect(prontuarioPanel.getByRole("heading", { name: "Avaliações" })).toBeVisible();
+
+    await page.goto(`/app/clients/${emptyId}?tab=resumo`);
+    await expect(page.getByRole("link", { name: /Rotinas/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Rotinas/ })).toContainText("Em dia");
     await expect(page.getByText("Criar treino")).toHaveCount(0);
 
     await page.route("**/api/v1/clients/**/evaluations**", (route) => {
@@ -38,15 +46,15 @@ test.describe("accompaniment tab and plan copy", () => {
       }
       return route.continue();
     });
-    await page.reload();
+    await page.goto(`/app/clients/${emptyId}?tab=plano`);
     await expect(page.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
     await page.unroute("**/api/v1/clients/**/evaluations**");
     await page.getByRole("button", { name: "Tentar novamente" }).click();
-    await expect(panel.getByRole("heading", { name: "Ciclo atual" })).toBeVisible();
+    await expect(planoPanel.getByRole("heading", { name: "Ciclo atual" })).toBeVisible();
 
     const partial = await seedIntelligentCycleApi(page, { clientName: "Cliente Parcial" });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`/app/clients/${partial.clientId}?tab=acompanhamento`);
+    await page.goto(`/app/clients/${partial.clientId}?tab=plano`);
     await expect(page.getByRole("button", { name: "Ver ciclo" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Criar plano" })).toBeVisible();
 
@@ -69,8 +77,9 @@ test.describe("accompaniment tab and plan copy", () => {
     });
     expect(ev.ok(), await ev.text()).toBeTruthy();
     await page.setViewportSize({ width: 412, height: 915 });
-    await page.goto(`/app/clients/${partial.clientId}?tab=acompanhamento`);
+    await page.goto(`/app/clients/${partial.clientId}?tab=plano`);
     await expect(page.getByText("Estratégia do período").first()).toBeVisible();
+    await page.goto(`/app/clients/${partial.clientId}?tab=prontuario`);
     await expect(page.getByText(/Avaliação inicial/).first()).toBeVisible();
 
     await page.goto(`/app/clients/${partial.clientId}/plans/new`);
@@ -84,7 +93,7 @@ test.describe("accompaniment tab and plan copy", () => {
     await page.goto("/app");
     await logoutUi(page);
     await loginUi(page, `acc_${suffix}@example.com`);
-    await page.goto(`/app/clients/${partial.clientId}?tab=acompanhamento`);
+    await page.goto(`/app/clients/${partial.clientId}?tab=plano`);
     await expect(page.getByRole("heading", { name: "Ciclo atual" })).toBeVisible();
   });
 });

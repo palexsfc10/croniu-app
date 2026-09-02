@@ -4,20 +4,36 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiFetch,
+  formatBRL,
+  formatOrgDateTime,
   type Client,
   type Cycle,
   type HomeSummary,
   type IntakeLink,
   type IntakeSubmissionListItem,
+  type NextAppointmentsByClient,
+  type Receivable,
 } from "@/lib/api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor } from "@/lib/nomenclature";
-import { clientInitials, clientListPresentation } from "@/lib/client-list";
+import {
+  ATTENTION_REASON_LABEL,
+  buildClientRow,
+  clientInitials,
+  matchesView,
+  type ClientListView,
+  type ClientRow,
+} from "@/lib/client-list";
+import { cycleListStatus } from "@/lib/cycle-period";
+import { formatPhoneBR } from "@/lib/status-labels";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
+  IconAlertCircle,
   IconChevronRight,
   IconClipboardList,
   IconLink,
@@ -176,16 +192,245 @@ function InviteButton({ variant = "secondary" }: { variant?: "primary" | "second
   );
 }
 
+const VIEW_OPTIONS: { value: ClientListView; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "attention", label: "Atenção" },
+  { value: "onboarding", label: "Onboarding" },
+  { value: "renewal", label: "Renovação" },
+  { value: "financial", label: "Financeiro" },
+  { value: "no_accompaniment", label: "Sem acompanhamento" },
+];
+
+type SortKey = "name" | "attention" | "next_session";
+
+function sortRows(rows: ClientRow[], sort: SortKey): ClientRow[] {
+  const copy = [...rows];
+  if (sort === "name") {
+    copy.sort((a, b) => a.client.full_name.localeCompare(b.client.full_name, "pt-BR"));
+  } else if (sort === "attention") {
+    copy.sort((a, b) => {
+      if (b.reasons.length !== a.reasons.length) return b.reasons.length - a.reasons.length;
+      return a.client.full_name.localeCompare(b.client.full_name, "pt-BR");
+    });
+  } else if (sort === "next_session") {
+    copy.sort((a, b) => {
+      const aTime = a.nextAppointment ? new Date(a.nextAppointment.starts_at).getTime() : Infinity;
+      const bTime = b.nextAppointment ? new Date(b.nextAppointment.starts_at).getTime() : Infinity;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.client.full_name.localeCompare(b.client.full_name, "pt-BR");
+    });
+  }
+  return copy;
+}
+
+function AttentionBadges({ row }: { row: ClientRow }) {
+  if (!row.reasons.length) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">Em dia</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {row.reasons.map((reason) => (
+        <Badge key={reason} tone={reason === "financial" ? "danger" : "warning"}>
+          {ATTENTION_REASON_LABEL[reason]}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function AtendimentoCell({ row, today }: { row: ClientRow; today: string }) {
+  const cycle = row.activeCycle ?? row.upcomingCycle;
+  if (!cycle) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">Sem ciclo</span>;
+  }
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-sm font-medium text-[var(--color-ink)]">
+        {cycle.service_name || "Serviço"}
+      </p>
+      <p className="text-xs text-[var(--color-ink-muted)]">{cycleListStatus(cycle, today)}</p>
+    </div>
+  );
+}
+
+function AgendaCell({ row, timeZone }: { row: ClientRow; timeZone: string }) {
+  if (!row.nextAppointment) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">Sem agendamento</span>;
+  }
+  const date = formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
+    day: "2-digit",
+    month: "2-digit",
+  });
+  const time = formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  return (
+    <span className="text-sm text-[var(--color-ink)]">
+      {date} · {time}
+    </span>
+  );
+}
+
+function EvolucaoCell({ row }: { row: ClientRow }) {
+  const cycle = row.activeCycle;
+  if (!cycle || cycle.lesson_count == null) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">—</span>;
+  }
+  return (
+    <span className="text-sm tabular-nums text-[var(--color-ink)]">
+      {cycle.lessons_completed ?? 0}/{cycle.lesson_count}
+    </span>
+  );
+}
+
+function FinanceiroCell({ row }: { row: ClientRow }) {
+  if (row.pendingReceivablesCount === 0) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">Em dia</span>;
+  }
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        className={`text-sm font-medium tabular-nums ${
+          row.overdueReceivablesCount > 0 ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"
+        }`}
+      >
+        {formatBRL(row.pendingReceivablesTotalCents)}
+      </span>
+      {row.overdueReceivablesCount > 0 ? <Badge tone="danger">Atrasado</Badge> : null}
+    </span>
+  );
+}
+
+function RenovacaoCell({ row }: { row: ClientRow }) {
+  const cycle = row.activeCycle;
+  if (!cycle) return <span className="text-sm text-[var(--color-ink-muted)]">—</span>;
+  if (cycle.is_nearing_end && cycle.days_remaining != null) {
+    return (
+      <Badge tone="warning">
+        {cycle.days_remaining} {cycle.days_remaining === 1 ? "dia" : "dias"}
+      </Badge>
+    );
+  }
+  return <span className="text-sm text-[var(--color-ink-muted)]">—</span>;
+}
+
+const GRID_COLUMNS =
+  "grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,1.3fr)]";
+
+function ClientTableRow({
+  row,
+  timeZone,
+  today,
+}: {
+  row: ClientRow;
+  timeZone: string;
+  today: string;
+}) {
+  const { client } = row;
+  return (
+    <Link
+      href={`/app/clients/${client.id}`}
+      className={`grid ${GRID_COLUMNS} items-center gap-3 rounded-[var(--radius-md)] px-3 py-3 transition-colors hover:bg-[var(--color-surface-subtle)]`}
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        <span
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-xs font-semibold text-[var(--color-primary)]"
+          aria-hidden
+        >
+          {clientInitials(client.full_name) || <IconUser className="h-4 w-4" />}
+        </span>
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate font-semibold text-[var(--color-ink)]">{client.full_name}</span>
+            {client.status === "archived" ? <Badge tone="neutral">Arquivado</Badge> : null}
+          </span>
+          <span className="block truncate text-xs text-[var(--color-ink-muted)]">
+            {formatPhoneBR(client.phone)}
+          </span>
+        </span>
+      </span>
+      <AtendimentoCell row={row} today={today} />
+      <AgendaCell row={row} timeZone={timeZone} />
+      <EvolucaoCell row={row} />
+      <FinanceiroCell row={row} />
+      <RenovacaoCell row={row} />
+      <AttentionBadges row={row} />
+    </Link>
+  );
+}
+
+function ClientCard({
+  row,
+  timeZone,
+  today,
+}: {
+  row: ClientRow;
+  timeZone: string;
+  today: string;
+}) {
+  const { client } = row;
+  return (
+    <Link
+      href={`/app/clients/${client.id}`}
+      className="flex min-h-16 items-center gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm transition-all hover:-translate-y-px hover:shadow-md"
+    >
+      <span
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-sm font-semibold text-[var(--color-primary)]"
+        aria-hidden
+      >
+        {clientInitials(client.full_name) || <IconUser className="h-4 w-4" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="truncate font-semibold text-[var(--color-ink)]">{client.full_name}</span>
+          {client.status === "archived" ? <Badge tone="neutral">Arquivado</Badge> : null}
+        </span>
+        <span className="block truncate text-sm text-[var(--color-ink-muted)]">
+          {row.nextAppointment
+            ? `Próxima sessão · ${formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
+                day: "2-digit",
+                month: "2-digit",
+              })} ${formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
+                hour: "2-digit",
+                minute: "2-digit",
+                hourCycle: "h23",
+              })}`
+            : row.activeCycle
+              ? cycleListStatus(row.activeCycle, today)
+              : "Sem agendamento"}
+        </span>
+        {row.reasons.length ? (
+          <span className="mt-1.5 flex flex-wrap gap-1">
+            {row.reasons.map((reason) => (
+              <Badge key={reason} tone={reason === "financial" ? "danger" : "warning"}>
+                {ATTENTION_REASON_LABEL[reason]}
+              </Badge>
+            ))}
+          </span>
+        ) : null}
+      </span>
+      <IconChevronRight className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)]" />
+    </Link>
+  );
+}
+
 export default function ClientsPage() {
   const { me } = useAuth();
+  const timeZone = me?.organization.timezone || "America/Sao_Paulo";
   const [items, setItems] = useState<Client[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [nextAppointments, setNextAppointments] = useState<NextAppointmentsByClient>({});
   const [today, setToday] = useState("");
   const [pendingIntakes, setPendingIntakes] = useState<IntakeSubmissionListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"active" | "archived">("active");
+  const [view, setView] = useState<ClientListView>("all");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("name");
   const terms = nomenclatureFor(me?.organization.profession_code);
   const title = terms.clients.charAt(0).toUpperCase() + terms.clients.slice(1);
   const addLabel = `Adicionar ${terms.client}`;
@@ -195,11 +440,13 @@ export default function ClientsPage() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      const [result, cycleRes, home, pendingRes] = await Promise.all([
+      const [result, cycleRes, home, pendingRes, receivablesRes, nextApptRes] = await Promise.all([
         apiFetch<Client[]>(`/api/v1/clients?status=${statusFilter}`),
         apiFetch<Cycle[]>("/api/v1/cycles"),
         apiFetch<HomeSummary>("/api/v1/home/summary"),
         apiFetch<IntakeSubmissionListItem[]>("/api/v1/intake-submissions?status=pending_review"),
+        apiFetch<Receivable[]>("/api/v1/receivables"),
+        apiFetch<NextAppointmentsByClient>("/api/v1/agenda/next-appointments"),
       ]);
       if (cancelled) return;
       if (result.error) setError(result.error.message);
@@ -210,6 +457,8 @@ export default function ClientsPage() {
       setCycles(cycleRes.data ?? []);
       setToday(home.data?.local_today ?? "");
       setPendingIntakes(pendingRes.data ?? []);
+      setReceivables(receivablesRes.data ?? []);
+      setNextAppointments(nextApptRes.data ?? {});
       setLoading(false);
     })();
     return () => {
@@ -217,11 +466,29 @@ export default function ClientsPage() {
     };
   }, [statusFilter]);
 
-  const visible = useMemo(() => {
+  const pendingIntakeClientIds = useMemo(
+    () => new Set(pendingIntakes.map((s) => s.client_id).filter((id): id is string => Boolean(id))),
+    [pendingIntakes],
+  );
+
+  const rows = useMemo(() => {
+    return items.map((client) =>
+      buildClientRow(client, {
+        cycles,
+        receivables,
+        nextAppointmentByClientId: nextAppointments,
+        pendingIntakeClientIds,
+        today,
+      }),
+    );
+  }, [items, cycles, receivables, nextAppointments, pendingIntakeClientIds, today]);
+
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => item.full_name.toLowerCase().includes(q));
-  }, [items, query]);
+    const byView = rows.filter((row) => matchesView(row, view));
+    const byQuery = q ? byView.filter((row) => row.client.full_name.toLowerCase().includes(q)) : byView;
+    return sortRows(byQuery, sort);
+  }, [rows, view, query, sort]);
 
   const showSearch = items.length >= 8 || query.length > 0;
 
@@ -278,40 +545,62 @@ export default function ClientsPage() {
         ) : null}
       </header>
 
-      <div className="flex gap-2">
-        {(
-          [
-            ["active", "Ativos"],
-            ["archived", "Arquivados"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={statusFilter === value}
-            className={`min-h-11 rounded-[var(--radius-md)] border px-3 text-sm font-semibold transition-colors ${
-              statusFilter === value
-                ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle)] text-[var(--color-primary)]"
-                : "border-[var(--color-border)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)]"
-            }`}
-            onClick={() => setStatusFilter(value)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          {(
+            [
+              ["active", "Ativos"],
+              ["archived", "Arquivados"],
+            ] as const
+          ).map(([value, label]) => (
+            <SegmentedToggle
+              key={value}
+              active={statusFilter === value}
+              onClick={() => setStatusFilter(value)}
+            >
+              {label}
+            </SegmentedToggle>
+          ))}
+        </div>
 
-      {showSearch ? (
-        <label className="block">
-          <span className="sr-only">Buscar {terms.client}</span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Buscar ${terms.client}`}
-            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
-          />
-        </label>
-      ) : null}
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por situação">
+          {VIEW_OPTIONS.map(({ value, label }) => {
+            const count = value === "all" ? rows.length : rows.filter((r) => matchesView(r, value)).length;
+            return (
+              <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
+                {label}
+                {value !== "all" && count > 0 ? ` · ${count}` : ""}
+              </SegmentedToggle>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {showSearch ? (
+            <label className="block flex-1 min-w-[12rem]">
+              <span className="sr-only">Buscar {terms.client}</span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Buscar ${terms.client}`}
+                className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+              />
+            </label>
+          ) : null}
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-[var(--color-ink-muted)]">Ordenar por</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+            >
+              <option value="name">Nome</option>
+              <option value="attention">Atenção</option>
+              <option value="next_session">Próxima sessão</option>
+            </select>
+          </label>
+        </div>
+      </div>
 
       {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
       {error ? (
@@ -327,47 +616,58 @@ export default function ClientsPage() {
         />
       ) : null}
 
-      <ul className="space-y-2.5 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 xl:grid-cols-3">
-        {visible.map((item) => {
-          const row = clientListPresentation(item, cycles, today, terms);
-          return (
-            <li key={item.id} className="lg:h-full">
-              <Link
-                href={`/app/clients/${item.id}`}
-                className="flex min-h-16 items-center gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm transition-all hover:-translate-y-px hover:shadow-md lg:h-full"
-              >
-                <span
-                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-sm font-semibold text-[var(--color-primary)]"
-                  aria-hidden
-                >
-                  {clientInitials(item.full_name) || <IconUser className="h-4 w-4" />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-[var(--color-ink)]">
-                    {item.full_name}
-                  </span>
-                  <span className="block truncate text-sm text-[var(--color-ink-muted)]">
-                    {row.subtitle}
-                  </span>
-                </span>
-                <span
-                  className={[
-                    "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                    row.badge.tone === "warning"
-                      ? "bg-[var(--color-warning-subtle)] text-[var(--color-warning)]"
-                      : row.badge.tone === "muted"
-                        ? "bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]"
-                        : "bg-[var(--color-success-subtle)] text-[var(--color-success)]",
-                  ].join(" ")}
-                >
-                  {row.badge.label}
-                </span>
-                <IconChevronRight className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)]" />
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      {!loading && items.length > 0 && !filtered.length ? (
+        <EmptyState
+          title="Nenhum resultado para este filtro"
+          description="Tente outra situação ou limpe a busca."
+          action={
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setView("all");
+                setQuery("");
+              }}
+            >
+              <IconAlertCircle className="mr-1.5 h-4 w-4" />
+              Ver todos
+            </Button>
+          }
+        />
+      ) : null}
+
+      {filtered.length > 0 ? (
+        <>
+          {/* Desktop / notebook: dense table */}
+          <div className="hidden lg:block">
+            <div
+              className={`grid ${GRID_COLUMNS} gap-3 border-b border-[var(--color-border)] px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]`}
+            >
+              <span>{terms.client.charAt(0).toUpperCase() + terms.client.slice(1)}</span>
+              <span>Atendimento</span>
+              <span>Agenda</span>
+              <span>Evolução</span>
+              <span>Financeiro</span>
+              <span>Renovação</span>
+              <span>Atenção</span>
+            </div>
+            <div className="divide-y divide-[var(--color-border)]/60">
+              {filtered.map((row) => (
+                <ClientTableRow key={row.client.id} row={row} timeZone={timeZone} today={today} />
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile / tablet: prioritized cards */}
+          <ul className="space-y-2.5 lg:hidden">
+            {filtered.map((row) => (
+              <li key={row.client.id}>
+                <ClientCard row={row} timeZone={timeZone} today={today} />
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </div>
   );
 }

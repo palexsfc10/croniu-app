@@ -178,6 +178,22 @@ def agenda_next(
     }
 
 
+@router.get("/agenda/next-appointments")
+def agenda_next_appointments(
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, dict]:
+    """Next visible appointment per client, batched — powers the Clientes
+    list "próxima sessão" column without an N+1 fetch per row. Keyed by
+    client_id (string) so JSON round-trips cleanly; a client with no
+    upcoming appointment simply has no key."""
+    by_client = agenda_svc.next_appointment_by_client(db, organization_id=auth.organization.id)
+    return {
+        str(client_id): agenda_svc.appointment_to_out(row).model_dump(mode="json")
+        for client_id, row in by_client.items()
+    }
+
+
 @router.post("/appointments", response_model=AppointmentOut, status_code=status.HTTP_201_CREATED)
 def create_appointment(
     payload: AppointmentCreate,

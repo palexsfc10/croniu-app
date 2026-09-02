@@ -20,7 +20,7 @@ Hostname admin sugerido (a confirmar, sem DNS silencioso): `admin-hml.croniu.com
 |---------|--------|
 | `compose.hml.yaml` | Stack HML |
 | `.env.hml.example` | Modelo de variáveis |
-| `deploy.sh` | Build + up (`up`/`build`); deploy só de `web` (`up-web`/`build-web`, ver abaixo) |
+| `deploy.sh` | Build + up (`up`/`build`); deploy só de `web` ou só de `api` (`up-web`/`build-web`, `up-api`/`build-api`, ver abaixo) |
 | `healthcheck.sh` | Smokes técnicos |
 | `rollback.sh` | Stop preservando volume / imagens anteriores |
 
@@ -62,6 +62,28 @@ GIT_SHA=<sha-do-commit-implantado> ./deploy.sh up-web
 Testado em 2026-09-02 nesta stack (rebuild do `croniu-hml-web` no commit `33ce895` da branch
 `feature/croniu-workspace-hml`): imagem confirmada no SHA esperado, `croniu-hml-web` recriado,
 `croniu-hml-api`/`croniu-hml-admin` preservados (mesmo `Id` de container e mesmo `StartedAt`).
+
+## Deploy só de backend (`backend/`)
+
+Mesmo princípio, espelhado para a API — necessário quando uma fatia adiciona endpoint(s) aditivo(s)
+sem migration (ex.: fatia Clientes + Cliente 360°, que expôs `GET /clients/{id}/appointments`,
+`GET /clients/{id}/receivables` e `GET /agenda/next-appointments`, todos read-only, sem alterar
+schema). `croniu-hml-api` não é dependência de ninguém no compose, então não há o mesmo risco de
+recriação em cascata do lado web — ainda assim `up-api` usa `--no-deps` e prova `web`/`admin`
+intocados, pela mesma disciplina:
+
+```
+GIT_SHA=<sha-do-commit-implantado> ./deploy.sh up-api
+```
+
+`up-api`:
+- builda **só** a imagem `croniu-hml-api` (`build-api` builda sem recriar o container).
+- confirma pela mesma label OCI que o build bate com o `GIT_SHA` pedido.
+- recria o container com `docker compose up -d --no-deps croniu-hml-api`.
+- prova `Id`/`StartedAt` de `croniu-hml-web` e `croniu-hml-admin` inalterados antes/depois.
+
+`up-web` e `up-api` são independentes — uma fatia que muda `apps/web` e `backend/` ao mesmo tempo
+roda os dois, nunca `up`/`build` (que sempre recriam as 3 imagens).
 
 ## Domínios
 
