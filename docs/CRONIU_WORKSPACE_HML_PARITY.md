@@ -10,6 +10,9 @@
 |---|---|---|---|---|
 | 1 | Identidade e shell (rótulo "Croniu Workspace", badge "Ambiente de homologação" só em HML, "Início" no lugar de "Hoje" em toda a navegação/back-links, "by NTWS Labs" discreto) | `f9f51fe` | recreated `croniu-hml-web` | **feito** — smoke com conta throwaway confirmou em desktop e mobile |
 | 2 | Entrada pública ("/") recomposta: duas colunas, ProductPreview em camadas real (Início/Agenda/Financeiro/IA + Cliente 360°), fonte serifada removida de todo o app, 2 correções de contraste WCAG AA | `e578e97` | recreated `croniu-hml-web` (api também recriado como efeito colateral do rebuild — mesmo código, sem risco) | **feito** — validado em 8 breakpoints + zoom 125% + teclado + contraste + reduced motion |
+| — | docs: registra Gate 1 (organização) | `d068f2f` | nenhum (só doc) | **feito** |
+| — | docs: conclui Gate 1 (usuário) | `33ce895` | nenhum (só doc) | **feito** |
+| — | feat(deploy): `up-web`/`build-web` (Gate 2) | `144ad14` | recreated `croniu-hml-web` via `up-web` (api/admin preservados, provado) | **feito** |
 
 ## Gate 1 — reconciliação da conta sintética de smoke
 
@@ -49,6 +52,49 @@ Contagens agregadas antes/depois (tabelas afetadas; demais tabelas inalteradas):
 | `sessions` | 366 | 365 | −1 |
 | `admin_audit_logs` | 30 | 31 | +1 |
 | `clients` | 155 | 155 | 0 |
+
+## Gate 2 — deploy seguro para mudanças somente-frontend
+
+**Causa raiz confirmada** (não é o Cloudflare): `deploy.sh build`/`up` reconstrói as 3 imagens a
+cada execução com `BUILD_TIME`/`GIT_SHA` novos via `--build-arg`, mudando o digest da imagem da
+API mesmo sem alteração de código no backend. Como `croniu-hml-web` tem `depends_on:
+croniu-hml-api: condition: service_healthy` no compose, um `compose up -d croniu-hml-web` comum
+recria a API também, só por causa do digest — foi isso, e não o túnel Cloudflare, que causou os
+~20 `502` transitórios observados durante o deploy da fatia 2 (a API reiniciando no meio de
+requisições em voo). Corrigido em `144ad14`:
+
+- `deploy.sh build-web` — builda só a imagem `croniu-hml-web`, com todos os build-args existentes
+  preservados (`NEXT_PUBLIC_GOOGLE_CLIENT_ID` incluso — nunca impresso, só repassado; presença e
+  tamanho continuam validados por `validate_google_oauth_contract` antes do build).
+- `deploy.sh up-web` — builda, confirma via a label OCI `org.opencontainers.image.revision` que a
+  imagem construída bate exatamente com o `GIT_SHA` pedido (aborta se não bater), recria **só** o
+  container `croniu-hml-web` com `docker compose up -d --no-deps`, e prova com `Id`/`StartedAt` de
+  `croniu-hml-api`/`croniu-hml-admin` capturados antes e depois que nenhum dos dois foi tocado
+  (aborta com erro se algum mudar).
+
+**Testado em produção HML em 2026-09-02** (não é só leitura de código — execução real):
+
+1. Snapshot de segurança de `deploy/hml` + `apps/web` tirado antes de qualquer alteração
+   (`croniu-hml-backups/source-snapshots/pre-gate2-20260902T131630Z.tar.gz` em Jarvis).
+2. Árvore de origem em Jarvis sincronizada para o commit exato `144ad14` via `git archive`
+   (garante que o contexto de build é literalmente o commit da branch, não um checkout
+   divergente) — só `apps/web/` e `deploy/hml/` tocados, nada em `backend/`.
+3. `GIT_SHA=144ad14e60246aa29b2ad01c08ca0c9cd3f5b871 ./deploy.sh up-web` executado.
+4. Resultado: `Imagem croniu-hml-web:local confirmada no commit 144ad14e60246aa29b2ad01c08ca0c9cd3f5b871`
+   → container `croniu-hml-web` recriado e saudável em segundos → script confirmou
+   `api e admin preservados`.
+5. Verificação independente (fora do script): `docker ps` mostrou `croniu-hml-api` com 10h de
+   uptime (era 9h antes, sem reinício) e `croniu-hml-admin` com 17h (era 16h antes, sem
+   reinício) — mesma imagem/tag em ambos.
+6. 5 requisições diretas a `https://croniu-hml.ntws.cloud/` logo após o deploy: `200` em todas.
+   `docker logs croniu-hml-cloudflared` na janela do deploy: nenhuma ocorrência de erro/502. Com a
+   API não tocada desta vez, não houve nenhum blip — reforça que a causa dos 502 da fatia 2 foi a
+   recriação não intencional da API, não o Cloudflare.
+
+`SOURCE_SHA.txt` em Jarvis atualizado para `144ad14e60246aa29b2ad01c08ca0c9cd3f5b871` para refletir
+o que está realmente implantado. Procedimento documentado em
+[`deploy/hml/README.md`](../deploy/hml/README.md#deploy-só-de-frontend-appsweb). **Gate 2
+concluído.**
 
 As demais 12 áreas da matriz abaixo (Clientes, Cliente 360°, Agenda Board, Rotinas,
 Acompanhamentos, Onboarding, Serviços/ciclos/avaliações, Financeiro, Portal, Assistente/command
