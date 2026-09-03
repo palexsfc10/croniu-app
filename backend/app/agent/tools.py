@@ -702,7 +702,9 @@ def _get_payment_status(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
     rows = domain_svc.list_receivables_for_client(
         ctx.db, organization_id=ctx.organization_id, client_id=parsed.client_id
     )
-    pending = [r for r in rows if r.status in {"pending", "expected"}]
+    # A R$0,00 receivable (free cycle) is never a real pendency — never
+    # counted as pending here, same rule as Home/Financeiro/attention items.
+    pending = [r for r in rows if r.status == "pending" and r.amount_cents > 0]
     return {
         "count": len(rows),
         "pending_count": len(pending),

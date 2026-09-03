@@ -461,7 +461,7 @@ function FinanceSummary({ pendingPayments }: { pendingPayments: Receivable[] }) 
         </div>
       </div>
       <Link
-        href="/app/billing"
+        href="/app/receivables"
         className="shrink-0 text-sm font-medium text-[var(--color-link)] hover:underline"
       >
         Ver financeiro

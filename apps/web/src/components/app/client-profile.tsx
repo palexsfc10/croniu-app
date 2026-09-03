@@ -34,6 +34,8 @@ import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 import { formatCycleVigencyCard, formatHumanDate } from "@/lib/date-format";
 import { cycleListStatus, cycleListStatusTone, selectDisplayCycle } from "@/lib/cycle-period";
 import { buildCycleRow, renewalTarget } from "@/lib/cycle-central";
+import { isReceivableOverdue, isReceivablePending } from "@/lib/client-list";
+import { receivableActionLabel } from "@/lib/financial-central";
 import { protocolStatusTone } from "@/lib/status-tone";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
@@ -72,12 +74,56 @@ function firstName(full: string) {
   return full.trim().split(/\s+/)[0] || full;
 }
 
-function isReceivablePending(r: Receivable) {
-  return r.status === "pending" || r.status === "expected";
-}
-
-function isReceivableOverdue(r: Receivable, today: string) {
-  return isReceivablePending(r) && r.due_on < today;
+function ReceivableGroup({
+  title,
+  items,
+  today,
+}: {
+  title: string;
+  items: Receivable[];
+  today: string;
+}) {
+  return (
+    <div>
+      <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        {title} <span className="text-[var(--color-ink-muted)]">{items.length}</span>
+      </h3>
+      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
+        {items.map((r) => {
+          const overdue = isReceivableOverdue(r, today);
+          return (
+            <li key={r.id} className="flex items-center justify-between gap-3 px-3.5 py-3">
+              <Link
+                href={`/app/receivables/${r.id}?returnTo=${encodeURIComponent(`/app/clients/${r.client_id}?tab=financeiro`)}`}
+                className="min-w-0 flex-1 hover:underline"
+              >
+                <span className="block text-sm font-semibold text-[var(--color-ink)]">
+                  {formatBRL(r.amount_cents)}
+                </span>
+                <span className="block text-sm text-[var(--color-ink-muted)]">
+                  {r.status === "received"
+                    ? `Recebido ${r.paid_at ? formatDateBR(r.paid_at.slice(0, 10)) : ""}`
+                    : `Vencimento ${formatDateBR(r.due_on)}`}
+                  {r.cycle_service_name ? ` · ${r.cycle_service_name}` : ""}
+                </span>
+              </Link>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge tone={receivableStatusTone(r.status, overdue)}>
+                  {overdue ? "Vencido" : receivableStatusLabel(r.status)}
+                </Badge>
+                <Link
+                  href={`/app/receivables/${r.id}?returnTo=${encodeURIComponent(`/app/clients/${r.client_id}?tab=financeiro`)}`}
+                  className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                >
+                  {receivableActionLabel(r)}
+                </Link>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 const TABS: { id: Tab; label: string }[] = [
@@ -204,6 +250,10 @@ export function ClientProfile({ clientId }: Props) {
   const pendingReceivables = receivables.filter(isReceivablePending);
   const overdueReceivables = receivables.filter((r) => isReceivableOverdue(r, todayIso));
   const pendingTotalCents = pendingReceivables.reduce((sum, r) => sum + r.amount_cents, 0);
+  const overdueIds = new Set(overdueReceivables.map((r) => r.id));
+  const futurePendingReceivables = pendingReceivables.filter((r) => !overdueIds.has(r.id));
+  const receivedReceivables = receivables.filter((r) => r.status === "received");
+  const receivedTotalCents = receivedReceivables.reduce((sum, r) => sum + r.amount_cents, 0);
   const latestEvaluation = evaluations[0] ?? null;
   const draftEvaluations = evaluations.filter((ev) => ev.status === "draft");
   const publishedEvaluations = evaluations.filter((ev) => ev.status === "published");
@@ -1158,34 +1208,37 @@ export function ClientProfile({ clientId }: Props) {
                 {overdueReceivables.length}
               </p>
             </div>
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Recebido (histórico)
+              </p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-[var(--color-success)]">
+                {formatBRL(receivedTotalCents)}
+              </p>
+            </div>
           </div>
+
           {receivables.length === 0 ? (
             <EmptyStateGuide
               title="Nenhuma cobrança registrada"
               body="As cobranças deste cliente aparecerão aqui conforme os ciclos forem criados."
             />
           ) : (
-            <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
-              {receivables.map((r) => {
-                const overdue = isReceivableOverdue(r, todayIso);
-                return (
-                  <li key={r.id} className="flex items-center justify-between gap-3 px-3.5 py-3">
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-[var(--color-ink)]">
-                        {formatBRL(r.amount_cents)}
-                      </span>
-                      <span className="block text-sm text-[var(--color-ink-muted)]">
-                        Vencimento {formatDateBR(r.due_on)}
-                        {r.cycle_service_name ? ` · ${r.cycle_service_name}` : ""}
-                      </span>
-                    </span>
-                    <Badge tone={receivableStatusTone(r.status, overdue)}>
-                      {receivableStatusLabel(r.status, overdue)}
-                    </Badge>
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              {overdueReceivables.length ? (
+                <ReceivableGroup title="Vencidas" items={overdueReceivables} today={todayIso} />
+              ) : null}
+              {futurePendingReceivables.length ? (
+                <ReceivableGroup
+                  title="Próximos recebimentos"
+                  items={futurePendingReceivables}
+                  today={todayIso}
+                />
+              ) : null}
+              {receivedReceivables.length ? (
+                <ReceivableGroup title="Recebidas" items={receivedReceivables} today={todayIso} />
+              ) : null}
+            </>
           )}
         </section>
       ) : null}

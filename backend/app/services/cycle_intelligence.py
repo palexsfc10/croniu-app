@@ -495,7 +495,9 @@ def create_intelligent_cycle(
     db.add(cycle)
     db.flush()
 
-    if payload.create_receivable and preview.final_cents is not None:
+    # A cycle worth R$0,00 (free) never creates a receivable — there is
+    # nothing to charge, so no pendency should ever exist for it.
+    if payload.create_receivable and preview.final_cents:
         due = payload.receivable_due_on or payload.starts_on
         db.add(
             Receivable(
@@ -883,14 +885,21 @@ def _apply_financial_composition(
 
 
 def _sync_pending_receivable(db: Session, *, cycle: Cycle, amount_cents: int) -> None:
-    pending = [
-        r
-        for r in (cycle.receivables or [])
-        if r.status in {"pending", "expected"}
-    ]
+    pending = [r for r in (cycle.receivables or []) if r.status == "pending"]
     if len(pending) == 1:
-        pending[0].amount_cents = amount_cents
-        db.add(pending[0])
+        if amount_cents > 0:
+            pending[0].amount_cents = amount_cents
+            db.add(pending[0])
+        else:
+            # Edited down to R$0,00 (turned free) — a pending charge for
+            # nothing is never a real pendency; cancel it instead of
+            # leaving a R$0,00 row sitting as "pending". The original
+            # amount_cents is kept as the historical record of what it
+            # would have been — cancellation, not erasure. Being
+            # "cancelled" alone already excludes it from every
+            # pending/overdue/forecast metric.
+            pending[0].status = "cancelled"
+            db.add(pending[0])
     elif len(pending) > 1:
         raise AuthError(
             "receivable_ambiguous",

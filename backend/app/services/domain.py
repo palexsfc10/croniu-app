@@ -693,7 +693,9 @@ def create_cycle(
     db.add(cycle)
     db.flush()
 
-    if create_receivable and amount is not None and amount >= 0:
+    # A cycle worth R$0,00 (free) never creates a receivable — there is
+    # nothing to charge, so no pendency should ever exist for it.
+    if create_receivable and amount is not None and amount > 0:
         due = receivable_due_on or starts_on
         receivable = Receivable(
             organization_id=organization_id,
@@ -885,6 +887,12 @@ def create_receivable(
     due_on: date,
     notes: str | None,
 ) -> ReceivableOut:
+    if amount_cents <= 0:
+        raise AuthError(
+            "amount_required",
+            "Informe um valor maior que zero para gerar uma cobrança.",
+            422,
+        )
     cycle = get_cycle(db, organization_id=organization_id, cycle_id=cycle_id)
     row = Receivable(
         organization_id=organization_id,
@@ -1182,7 +1190,11 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         select(Receivable)
         .where(
             Receivable.organization_id == organization_id,
-            Receivable.status.in_(["pending", "expected"]),
+            Receivable.status == "pending",
+            # A zero-value receivable (free cycle) is never an actionable
+            # pendency — never surfaced as pending/overdue/risco in the Home,
+            # never a metric, never an attention item.
+            Receivable.amount_cents > 0,
         )
         .options(
             selectinload(Receivable.client),

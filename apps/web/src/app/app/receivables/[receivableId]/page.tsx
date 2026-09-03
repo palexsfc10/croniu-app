@@ -2,7 +2,7 @@
 
 import { BackLink } from "@/components/app/back-link";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, formatBRL, formatDateBR, type Receivable } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -10,14 +10,23 @@ import { Badge } from "@/components/ui/badge";
 import { ContextualBar } from "@/components/app/contextual-bar";
 import { TextField } from "@/components/ui/text-field";
 import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
+import { safeReturnTo } from "@/lib/nomenclature";
 
 export default function ReceivableDetailPage() {
   const params = useParams<{ receivableId: string }>();
   const router = useRouter();
+  const search = useSearchParams();
+  const returnTo = safeReturnTo(search.get("returnTo")) || "/app";
   const [item, setItem] = useState<Receivable | null>(null);
   const [method, setMethod] = useState("pix");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  async function load() {
+    const result = await apiFetch<Receivable>(`/api/v1/receivables/${params.receivableId}`);
+    if (result.error) setError(result.error.message);
+    else setItem(result.data ?? null);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +52,9 @@ export default function ReceivableDetailPage() {
     setBusy(false);
     if (result.error) {
       setError(result.error.message);
+      // Already paid (e.g. a stale double-click) — resync instead of
+      // leaving the form stuck showing an action that no longer applies.
+      if (result.error.code === "already_paid") await load();
       return;
     }
     setItem(result.data ?? null);
@@ -52,7 +64,7 @@ export default function ReceivableDetailPage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <ContextualBar label={item ? `Recebimento · ${item.client_name}` : null} />
-      <BackLink href="/app" label="Início" />
+      <BackLink href={returnTo} label={returnTo === "/app/receivables" ? "Financeiro" : "Início"} />
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}

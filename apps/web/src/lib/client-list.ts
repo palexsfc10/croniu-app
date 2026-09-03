@@ -77,12 +77,15 @@ export type ClientRow = {
   reasons: AttentionReason[];
 };
 
-function isReceivableOverdue(r: Receivable, today: string): boolean {
-  return (r.status === "pending" || r.status === "expected") && r.due_on < today;
+// A R$0,00 receivable (free cycle) is never a real pendency — the backend
+// itself never creates one anymore, but existing zero-value rows from
+// before that fix must still never count as pending/overdue anywhere.
+export function isReceivablePending(r: Receivable): boolean {
+  return r.status === "pending" && r.amount_cents > 0;
 }
 
-function isReceivablePending(r: Receivable): boolean {
-  return r.status === "pending" || r.status === "expected";
+export function isReceivableOverdue(r: Receivable, today: string): boolean {
+  return isReceivablePending(r) && r.due_on < today;
 }
 
 /**

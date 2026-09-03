@@ -153,6 +153,27 @@ export type Cycle = {
   is_nearing_end: boolean;
 };
 
+/** GET /receivables/overview — real aggregates over the professional's own
+ * client receivables. Never Croniu's own subscription (that stays in
+ * Conta/Assinatura, unrelated to this endpoint). */
+export type FinancialSummary = {
+  received_month_cents: number;
+  forecast_month_cents: number;
+  overdue_cents: number;
+  overdue_count: number;
+  pending_count: number;
+};
+
+export type MonthlyReceived = {
+  month: string; // "YYYY-MM"
+  received_cents: number;
+};
+
+export type FinancialOverview = {
+  summary: FinancialSummary;
+  monthly_trend: MonthlyReceived[];
+};
+
 export type Receivable = {
   id: string;
   cycle_id: string;
