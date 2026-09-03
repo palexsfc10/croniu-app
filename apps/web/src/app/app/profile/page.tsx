@@ -6,12 +6,11 @@ import {
   IconActivity,
   IconBriefcase,
   IconClipboardList,
-  IconClock,
   IconLayers,
   IconLifeBuoy,
   IconMapPin,
   IconRefreshCw,
-  IconSliders,
+  IconUser,
 } from "@/components/ui/icons";
 
 export default function MorePage() {
@@ -24,14 +23,17 @@ export default function MorePage() {
         </p>
       </header>
 
+      <SettingsGroup title="Conta e configurações">
+        <SettingsRow
+          href="/app/settings"
+          title="Conta e configurações"
+          description="Minha conta, Workspace, plano e assinatura, ajuda e privacidade."
+          Icon={IconUser}
+        />
+      </SettingsGroup>
+
       <div className="grid gap-6 md:grid-cols-2 md:gap-5">
-        <SettingsGroup title="Configurações do trabalho">
-          <SettingsRow
-            href="/app/profile/professional"
-            title="Perfil profissional"
-            description="Área de atuação, especialidade e forma de acompanhamento."
-            Icon={IconBriefcase}
-          />
+        <SettingsGroup title="Operação">
           <SettingsRow
             href="/app/services"
             title="Serviços"
@@ -83,29 +85,8 @@ export default function MorePage() {
             description="Onde você atende seus clientes."
             Icon={IconMapPin}
           />
-          <SettingsRow
-            href="/app/availability"
-            title="Horários de atendimento"
-            description="Sua jornada semanal, para ver vagas livres na agenda."
-            Icon={IconClock}
-          />
-          <SettingsRow
-            href="/app/preferences"
-            title="Preferências gerais"
-            description="Fuso horário e pagamentos no portal."
-            Icon={IconSliders}
-          />
         </SettingsGroup>
       </div>
-
-      <SettingsGroup title="Suporte">
-        <SettingsRow
-          href="/app/help"
-          title="Ajuda e feedback"
-          description="Manual rápido e envio de sugestões."
-          Icon={IconLifeBuoy}
-        />
-      </SettingsGroup>
 
       <SettingsGroup title="Aplicativo">
         <InstallCroniuRow />

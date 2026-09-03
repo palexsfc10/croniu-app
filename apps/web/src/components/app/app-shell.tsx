@@ -183,7 +183,7 @@ function ProfileMenu({
           </div>
           <Link
             role="menuitem"
-            href="/app/account"
+            href="/app/settings/account"
             className={menuItemClass()}
             onClick={close}
           >
@@ -192,16 +192,16 @@ function ProfileMenu({
           </Link>
           <Link
             role="menuitem"
-            href="/app/billing"
+            href="/app/settings/billing"
             className={menuItemClass()}
             onClick={close}
           >
             <IconCreditCard className="h-4 w-4 opacity-80" aria-hidden />
-            Assinatura
+            Plano e assinatura
           </Link>
           <Link
             role="menuitem"
-            href="/app/help"
+            href="/app/settings/help"
             className={menuItemClass()}
             onClick={close}
           >
@@ -256,21 +256,21 @@ function AccountSidebarLinks({
         <p className="truncate text-xs text-[var(--color-ink-muted)]">{orgName}</p>
       </div>
       <Link
-        href="/app/account"
+        href="/app/settings/account"
         className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
       >
         <IconUser className="h-4 w-4 opacity-80" aria-hidden />
         Minha conta
       </Link>
       <Link
-        href="/app/billing"
+        href="/app/settings/billing"
         className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
       >
         <IconCreditCard className="h-4 w-4 opacity-80" aria-hidden />
-        Assinatura
+        Plano e assinatura
       </Link>
       <Link
-        href="/app/help"
+        href="/app/settings/help"
         className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
       >
         <IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />

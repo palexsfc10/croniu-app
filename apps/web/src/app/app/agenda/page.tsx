@@ -431,7 +431,7 @@ export default function AgendaPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/app/availability" aria-label="Configurar disponibilidade">
+            <Link href="/app/settings/workspace" aria-label="Configurar disponibilidade">
               <Button variant="secondary">
                 <IconSliders className="mr-1.5 h-4 w-4" aria-hidden />
                 Disponibilidade
@@ -490,7 +490,7 @@ export default function AgendaPage() {
         {availabilitySettings && !availabilitySettings.configured ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3.5 py-2.5 text-sm text-[var(--color-ink-muted)]">
             Configure seus horários de atendimento para ver disponibilidade na agenda.
-            <Link href="/app/availability">
+            <Link href="/app/settings/workspace">
               <Button variant="secondary">Configurar horários</Button>
             </Link>
           </div>
@@ -639,7 +639,7 @@ export default function AgendaPage() {
                 <p className="text-sm text-[var(--color-ink-muted)]">
                   Configure seus horários de atendimento para ver disponibilidade.
                 </p>
-                <Link href="/app/availability">
+                <Link href="/app/settings/workspace">
                   <Button variant="secondary">Configurar horários</Button>
                 </Link>
               </div>

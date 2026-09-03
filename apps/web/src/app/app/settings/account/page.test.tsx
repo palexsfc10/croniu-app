@@ -41,7 +41,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import AccountPage from "@/app/app/account/page";
+import AccountPage from "@/app/app/settings/account/page";
 
 describe("Minha conta — editar WhatsApp e revogar consentimento", () => {
   beforeEach(() => {
@@ -64,7 +64,9 @@ describe("Minha conta — editar WhatsApp e revogar consentimento", () => {
   it("shows the WhatsApp section with an unchecked consent checkbox by default", () => {
     render(<AccountPage />);
     expect(screen.getByText("Seu WhatsApp")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    // Two checkboxes on the page now (WhatsApp consent + local assistant
+    // preference) — the consent one renders first.
+    expect(screen.getAllByRole("checkbox")[0]).not.toBeChecked();
     expect(screen.getByText(/Sem consentimento ativo hoje/)).toBeInTheDocument();
   });
 
@@ -82,7 +84,7 @@ describe("Minha conta — editar WhatsApp e revogar consentimento", () => {
   it("grants consent only when the checkbox is explicitly checked before saving", async () => {
     render(<AccountPage />);
     fireEvent.change(screen.getByLabelText("Número"), { target: { value: "11999990000" } });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(patchCalls).toHaveLength(1));
     expect(patchCalls[0]).toMatchObject({
@@ -121,7 +123,7 @@ describe("Minha conta — editar WhatsApp e revogar consentimento", () => {
     me.user.contact_whatsapp_e164 = "5511999990000";
     me.user.whatsapp_marketing_consent_at = null;
     render(<AccountPage />);
-    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    expect(screen.getAllByRole("checkbox")[0]).not.toBeChecked();
     expect(screen.getByText(/Sem consentimento ativo hoje/)).toBeInTheDocument();
   });
 });

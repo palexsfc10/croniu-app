@@ -121,7 +121,7 @@ export default function ReceivablesPage() {
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Financeiro</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Cobranças reais dos seus clientes, geradas pelos ciclos. A assinatura do Croniu fica em{" "}
-          <Link href="/app/billing" className="font-medium text-[var(--color-link)] hover:underline">
+          <Link href="/app/settings/billing" className="font-medium text-[var(--color-link)] hover:underline">
             Assinatura
           </Link>
           .

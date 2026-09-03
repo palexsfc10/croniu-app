@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import BillingPage from "@/app/app/billing/page";
+import BillingPage from "@/app/app/settings/billing/page";
 import type { BillingEntitlement } from "@/lib/billing";
 
 const apiFetch = vi.fn();
@@ -12,7 +12,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/components/app/back-link", () => ({
-  BackLink: () => <a href="/app/profile">Mais</a>,
+  BackLink: () => <a href="/app/settings">Conta e configurações</a>,
 }));
 
 vi.mock("@/lib/api", async () => {
@@ -48,7 +48,7 @@ async function renderWithEnt(ent: BillingEntitlement) {
   await waitFor(() => expect(screen.queryByText("Carregando assinatura…")).not.toBeInTheDocument());
 }
 
-describe("/app/billing — máquina de estados", () => {
+describe("/app/settings/billing — máquina de estados", () => {
   afterEach(() => {
     cleanup();
     apiFetch.mockReset();

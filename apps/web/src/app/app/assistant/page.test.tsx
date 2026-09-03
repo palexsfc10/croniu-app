@@ -586,7 +586,7 @@ describe("AssistantPage premium shell", () => {
     expect(screen.getByRole("menuitemcheckbox", { name: /Enviar voz automaticamente/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /Preferências/i })).toHaveAttribute(
       "href",
-      "/app/preferences",
+      "/app/settings/workspace",
     );
   });
 });

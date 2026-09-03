@@ -6,11 +6,9 @@ import { apiFetch } from "@/lib/api";
 import type { BillingEntitlement } from "@/lib/billing";
 
 const ALLOW_WITHOUT_ACCESS = [
-  "/app/billing",
   "/app/trial-expired",
   "/app/profile",
-  "/app/account",
-  "/app/help",
+  "/app/settings",
   "/app/manual",
 ];
 

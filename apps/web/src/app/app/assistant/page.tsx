@@ -1312,7 +1312,7 @@ export default function AssistantPage() {
                           </span>
                         </button>
                         <Link
-                          href="/app/preferences"
+                          href="/app/settings/workspace"
                           role="menuitem"
                           className="flex min-h-11 items-center rounded-[var(--radius-md)] px-2.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)]"
                           onClick={() => setMicMenuOpen(false)}

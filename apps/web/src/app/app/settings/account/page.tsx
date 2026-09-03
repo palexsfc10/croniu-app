@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BackLink } from "@/components/app/back-link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { formatMembershipRole } from "@/lib/role-label";
 import { apiFetch, type WhatsAppConsent } from "@/lib/api";
+import { readVoiceAutoSend, writeVoiceAutoSend } from "@/lib/assistant-prefs";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { IconWhatsApp } from "@/components/ui/icons";
@@ -160,6 +161,41 @@ function WhatsAppSection() {
   );
 }
 
+function AssistantPreferencesSection() {
+  const [voiceAutoSend, setVoiceAutoSend] = useState(true);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate from localStorage on mount
+    setVoiceAutoSend(readVoiceAutoSend());
+  }, []);
+
+  return (
+    <section className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] p-4">
+      <h2 className="text-sm font-semibold text-[var(--color-ink)]">Assistente</h2>
+      <p className="text-sm text-[var(--color-ink-muted)]">
+        Preferência local deste dispositivo — não é salva no servidor.
+      </p>
+      <label className="flex min-h-11 items-center gap-3 text-sm text-[var(--color-ink)]">
+        <input
+          type="checkbox"
+          checked={voiceAutoSend}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setVoiceAutoSend(next);
+            writeVoiceAutoSend(next);
+          }}
+          aria-describedby="voice-auto-send-help"
+        />
+        Enviar voz automaticamente após a transcrição
+      </label>
+      <p id="voice-auto-send-help" className="text-xs text-[var(--color-ink-subtle)]">
+        Quando ligado, o áudio transcrito é enviado ao assistente sem passo extra. Também
+        disponível no menu do microfone (toque prolongado / botão direito).
+      </p>
+    </section>
+  );
+}
+
 export default function AccountPage() {
   const { me } = useAuth();
   if (!me) return null;
@@ -173,7 +209,7 @@ export default function AccountPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-5 animate-fade-up">
-      <BackLink href="/app/profile" label="Mais" />
+      <BackLink href="/app/settings" label="Conta e configurações" />
       <div>
         <h1 className="h-display text-3xl text-[var(--color-ink)]">Minha conta</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
@@ -194,6 +230,7 @@ export default function AccountPage() {
         ))}
       </dl>
       <WhatsAppSection />
+      <AssistantPreferencesSection />
     </div>
   );
 }

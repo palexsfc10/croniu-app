@@ -82,15 +82,15 @@ describe("AppShell account navigation", () => {
     const menu = screen.getByRole("menu", { name: "Conta" });
     expect(within(menu).getByRole("menuitem", { name: /Minha conta/i })).toHaveAttribute(
       "href",
-      "/app/account",
+      "/app/settings/account",
     );
     expect(within(menu).getByRole("menuitem", { name: /Assinatura/i })).toHaveAttribute(
       "href",
-      "/app/billing",
+      "/app/settings/billing",
     );
     expect(within(menu).getByRole("menuitem", { name: /Ajuda e feedback/i })).toHaveAttribute(
       "href",
-      "/app/help",
+      "/app/settings/help",
     );
     expect(
       within(menu).queryByRole("menuitem", { name: /Meu link de indicação/i }),

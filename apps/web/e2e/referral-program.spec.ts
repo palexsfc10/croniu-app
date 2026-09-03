@@ -87,7 +87,7 @@ test.describe("Referral program — web", () => {
       await page.getByRole("button", { name: "Concluir depois" }).click();
     }
 
-    await page.goto("/app/billing");
+    await page.goto("/app/settings/billing");
     // Subtitle reflects the discounted entitlement price regardless of
     // whether card checkout is enabled in this environment.
     await expect(page.getByText(/plano mensal R\$\s?26,91/)).toBeVisible({ timeout: 15_000 });
@@ -112,7 +112,7 @@ test.describe("Referral program — web", () => {
       await page.getByRole("button", { name: "Concluir depois" }).click();
     }
 
-    await page.goto("/app/billing");
+    await page.goto("/app/settings/billing");
     await expect(page.getByText(/plano mensal R\$\s?29,90/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Desconto vitalício de indicação")).toHaveCount(0);
   });

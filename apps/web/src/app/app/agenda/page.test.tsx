@@ -138,7 +138,7 @@ describe("Agenda page — desktop: professional calendar, never a stretched list
     await within(desktop).findByText("Aluna Teste");
     expect(within(desktop).getByRole("link", { name: /Disponibilidade/i })).toHaveAttribute(
       "href",
-      "/app/availability",
+      "/app/settings/workspace",
     );
     expect(within(desktop).getByRole("link", { name: /Novo compromisso/i })).toBeInTheDocument();
   });

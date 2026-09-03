@@ -105,9 +105,9 @@ export default function BillingPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-4 animate-fade-up">
-      <BackLink href="/app/profile" label="Mais" />
+      <BackLink href="/app/settings" label="Conta e configurações" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Assinatura</h1>
+        <h1 className="h-display text-3xl text-[var(--color-ink)]">Plano e assinatura</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Croniu · plano mensal {formatBRL(amount)}
           {hasResolvedSubscription ? "." : " · trial de 7 dias."}

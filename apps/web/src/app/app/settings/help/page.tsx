@@ -78,23 +78,47 @@ export default function HelpFeedbackPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-5 animate-fade-up">
-      <BackLink href="/app/profile" label="Mais" />
+      <BackLink href="/app/settings" label="Conta e configurações" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Ajuda e feedback</h1>
+        <h1 className="h-display text-3xl text-[var(--color-ink)]">Ajuda e privacidade</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Consulte o manual ou envie uma mensagem para a equipe do Croniu.
+          Consulte o manual, nossas políticas ou envie uma mensagem para a equipe do Croniu.
         </p>
       </div>
 
-      <Link
-        href="/app/manual"
-        className="flex min-h-12 items-center justify-between rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] px-3.5 py-2.5 text-sm font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-surface-subtle)]"
-      >
-        Abrir manual rápido
-        <span className="text-[var(--color-ink-muted)]" aria-hidden>
-          →
-        </span>
-      </Link>
+      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)]">
+        <Link
+          href="/app/manual"
+          className="flex min-h-12 items-center justify-between border-b border-[var(--color-border)]/60 px-3.5 py-2.5 text-sm font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-surface-subtle)]"
+        >
+          Abrir manual rápido
+          <span className="text-[var(--color-ink-muted)]" aria-hidden>
+            →
+          </span>
+        </Link>
+        <Link
+          href="/termos"
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-h-12 items-center justify-between border-b border-[var(--color-border)]/60 px-3.5 py-2.5 text-sm font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-surface-subtle)]"
+        >
+          Termos de uso
+          <span className="text-[var(--color-ink-muted)]" aria-hidden>
+            ↗
+          </span>
+        </Link>
+        <Link
+          href="/privacidade"
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-h-12 items-center justify-between px-3.5 py-2.5 text-sm font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-surface-subtle)]"
+        >
+          Política de privacidade
+          <span className="text-[var(--color-ink-muted)]" aria-hidden>
+            ↗
+          </span>
+        </Link>
+      </div>
 
       {sent ? (
         <p

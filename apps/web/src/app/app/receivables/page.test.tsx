@@ -92,7 +92,7 @@ describe("ReceivablesPage — Financeiro, separado da assinatura do Croniu", () 
     mockApi();
     render(<ReceivablesPage />);
     const link = await screen.findByRole("link", { name: "Assinatura" });
-    expect(link).toHaveAttribute("href", "/app/billing");
+    expect(link).toHaveAttribute("href", "/app/settings/billing");
   });
 
   it("shows the three real indicators from the overview endpoint", async () => {

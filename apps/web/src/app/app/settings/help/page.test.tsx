@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import HelpFeedbackPage from "@/app/app/help/page";
+import HelpFeedbackPage from "@/app/app/settings/help/page";
 
 const apiFetch = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/app/help",
+  usePathname: () => "/app/settings/help",
 }));
 
 vi.mock("next/link", () => ({
@@ -15,7 +15,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/components/app/back-link", () => ({
-  BackLink: () => <a href="/app/profile">Mais</a>,
+  BackLink: () => <a href="/app/settings">Conta e configurações</a>,
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -33,6 +33,15 @@ describe("Help feedback form", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enviar feedback" }));
     expect(await screen.findByText(/Escolha um tipo/i)).toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("links to Termos and Privacidade", () => {
+    render(<HelpFeedbackPage />);
+    expect(screen.getByRole("link", { name: /Termos de uso/i })).toHaveAttribute("href", "/termos");
+    expect(screen.getByRole("link", { name: /Política de privacidade/i })).toHaveAttribute(
+      "href",
+      "/privacidade",
+    );
   });
 
   it("submits feedback without mailto or support email", async () => {

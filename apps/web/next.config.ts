@@ -14,6 +14,20 @@ const nextConfig: NextConfig = {
     return [
       { source: "/cycles", destination: "/app/cycles", permanent: false },
       { source: "/cycles/:path*", destination: "/app/cycles/:path*", permanent: false },
+      // Conta + Configurações fatia (2026-09-03): these 6 screens moved
+      // under the unified /app/settings area. Old links/bookmarks (nudge
+      // banners, the manual, external references) keep working.
+      // /app/billing/return/[mode] is NOT touched — exact-match source only.
+      { source: "/app/account", destination: "/app/settings/account", permanent: false },
+      { source: "/app/billing", destination: "/app/settings/billing", permanent: false },
+      { source: "/app/help", destination: "/app/settings/help", permanent: false },
+      {
+        source: "/app/profile/professional",
+        destination: "/app/settings/workspace",
+        permanent: false,
+      },
+      { source: "/app/preferences", destination: "/app/settings/workspace", permanent: false },
+      { source: "/app/availability", destination: "/app/settings/workspace", permanent: false },
     ];
   },
   async rewrites() {
