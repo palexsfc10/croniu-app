@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { Appointment, AttentionItem, HomeSummary, PriorityAction, Receivable } from "@/lib/api";
+import type { Appointment, AttentionItem, HomeSummary, Receivable } from "@/lib/api";
 import { apiFetch, formatBRL, formatDateBR, formatOrgDateTime } from "@/lib/api";
+import type { BillingEntitlement } from "@/lib/billing";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import {
   IconAlertCircle,
   IconBanknote,
@@ -15,16 +18,14 @@ import {
   IconClipboardList,
   IconLayers,
   IconRefreshCw,
+  IconSparkles,
+  IconTarget,
   IconUsersRound,
 } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ProfessionNudge } from "@/components/app/profession-nudge";
 import { InitialSetupCard } from "@/components/app/initial-setup-card";
-import {
-  firstName,
-  greetingForHour,
-  hourInTimeZone,
-} from "@/lib/greeting";
+import { firstName, greetingForHour, hourInTimeZone } from "@/lib/greeting";
 import {
   getInitialSetupCollapsed,
   setInitialSetupCollapsed,
@@ -32,59 +33,243 @@ import {
   subscribeInitialSetupCollapse,
 } from "@/lib/setup-copy";
 import { EVALUATION_SAVED_KEY } from "@/lib/evaluation-flow";
+import { buildBriefing, isNewProfessional } from "@/lib/home-briefing";
 
 type Props = {
   summary: HomeSummary;
 };
 
 const UPCOMING_LIMIT = 5;
+const ASSISTANT_HOME_CONTEXT = {
+  context: "Início",
+  returnTo: "/app",
+};
 
-function priorityCta(action: PriorityAction) {
-  return action.cta_label || "Abrir";
+function assistantHref(prompt: string) {
+  return `/app/assistant?prompt=${encodeURIComponent(prompt)}&context=${encodeURIComponent(ASSISTANT_HOME_CONTEXT.context)}&returnTo=${encodeURIComponent(ASSISTANT_HOME_CONTEXT.returnTo)}`;
 }
 
-function PriorityCard({ action }: { action: PriorityAction }) {
-  return (
-    <section
-      aria-label="Ação prioritária"
-      className="card-rail card-rail-primary relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-primary)]/15 bg-[var(--color-primary-subtle)]/40 px-5 py-4 shadow-sm"
-    >
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-        Prioridade de hoje
-      </p>
-      <h2 className="mt-1 text-xl font-semibold tracking-tight text-[var(--color-ink)]">
-        {action.title}
-      </h2>
-      <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink-muted)]">
-        {action.subtitle}
-      </p>
-      <Link href={action.href} className="mt-3.5 inline-block">
-        <Button>{priorityCta(action)}</Button>
-      </Link>
-    </section>
-  );
-}
-
-function CalmPriorityLine({ message }: { message: string }) {
-  return (
-    <p
-      aria-label="Sem prioridade operacional"
-      className="text-sm text-[var(--color-ink-muted)]"
-    >
-      <span className="font-medium text-[var(--color-success)]">Tudo em dia</span>
-      {" · "}
-      {message}
-    </p>
-  );
-}
-
-function appointmentTime(item: Appointment, timeZone: string) {
-  return formatOrgDateTime(item.starts_at, timeZone, {
+function formatTimeOnly(isoInstant: string, timeZone: string) {
+  return formatOrgDateTime(isoInstant, timeZone, {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
   });
 }
+
+function appointmentTime(item: Appointment, timeZone: string) {
+  return formatTimeOnly(item.starts_at, timeZone);
+}
+
+// ---------------------------------------------------------------------------
+// Accompaniment (published-evaluation pendency) — self-contained fetch, same
+// isolation pattern as TodayActions below: its own failure never blocks the
+// rest of the Home.
+// ---------------------------------------------------------------------------
+
+type AccompanimentRow = {
+  client_id: string;
+  client_name: string;
+  days_since_last_evaluation: number | null;
+};
+
+function useAccompanimentPending() {
+  const [rows, setRows] = useState<AccompanimentRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<{ items: AccompanimentRow[] }>(
+        "/api/v1/accompaniment/pending?days_threshold=15",
+      );
+      if (cancelled) return;
+      if (result.error) {
+        setFailed(true);
+        return;
+      }
+      setRows(result.data?.items ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return { rows, failed };
+}
+
+// ---------------------------------------------------------------------------
+// Financeiro compacto — self-contained, reuses GET /receivables/overview.
+// Never the full financial dashboard: 3 numbers + a link, nothing else.
+// ---------------------------------------------------------------------------
+
+type FinanceOverviewSummary = {
+  received_month_cents: number;
+  overdue_cents: number;
+  overdue_count: number;
+};
+
+function useFinanceOverview() {
+  const [data, setData] = useState<FinanceOverviewSummary | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<{ summary: FinanceOverviewSummary }>(
+        "/api/v1/receivables/overview",
+      );
+      if (cancelled) return;
+      if (result.error) {
+        setFailed(true);
+        return;
+      }
+      setData(result.data?.summary ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return { data, failed };
+}
+
+function FinanceCompact({
+  pendingPayments,
+  className = "",
+}: {
+  pendingPayments: Receivable[];
+  className?: string;
+}) {
+  const { data, failed } = useFinanceOverview();
+  const nextDue = [...pendingPayments].sort((a, b) => a.due_on.localeCompare(b.due_on))[0];
+
+  return (
+    <section
+      aria-label="Financeiro"
+      className={`space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm ${className}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+          Financeiro
+        </h2>
+        <Link href="/app/receivables" className="text-sm font-medium text-[var(--color-link)] hover:underline">
+          Ver central
+        </Link>
+      </div>
+      {failed ? (
+        <BlockError message="Não foi possível carregar os números do mês." />
+      ) : !data ? (
+        <div className="flex gap-4">
+          <Skeleton className="h-10 w-20" />
+          <Skeleton className="h-10 w-20" />
+          <Skeleton className="h-10 w-24" />
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <div>
+            <p className="text-xs text-[var(--color-ink-muted)]">Recebido no mês</p>
+            <p className="text-base font-semibold tabular-nums text-[var(--color-ink)]">
+              {formatBRL(data.received_month_cents)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--color-ink-muted)]">Vencido</p>
+            <p
+              className={`text-base font-semibold tabular-nums ${data.overdue_cents > 0 ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"}`}
+            >
+              {formatBRL(data.overdue_cents)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--color-ink-muted)]">
+              {nextDue ? "Próximo a vencer" : "Sem cobrança prevista"}
+            </p>
+            {nextDue ? (
+              <p className="text-base font-semibold tabular-nums text-[var(--color-ink)]">
+                {formatBRL(nextDue.amount_cents)}
+                <span className="ml-1 text-xs font-medium text-[var(--color-ink-muted)]">
+                  {formatDateBR(nextDue.due_on)}
+                </span>
+              </p>
+            ) : (
+              <p className="text-base font-semibold text-[var(--color-ink-subtle)]">—</p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Briefing do dia — deterministic, zero LLM calls. See lib/home-briefing.ts
+// for the derivation rules and why they never re-rank the backend's own
+// priority signal.
+// ---------------------------------------------------------------------------
+
+function DailyBriefing({
+  summary,
+  accompanimentCount,
+  timeZone,
+}: {
+  summary: HomeSummary;
+  accompanimentCount: number | null;
+  timeZone: string;
+}) {
+  const briefing = buildBriefing(summary, {
+    accompanimentPendingCount: accompanimentCount ?? 0,
+  });
+
+  return (
+    <section
+      aria-label="Briefing do dia"
+      className="surface-briefing space-y-3 rounded-[var(--radius-lg)] px-5 py-4 shadow-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          {briefing.nextAppointment ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Próximo compromisso ·{" "}
+              <span className="font-semibold text-[var(--color-ink)]">
+                {formatTimeOnly(briefing.nextAppointment.startsAt, timeZone)}
+              </span>{" "}
+              com {briefing.nextAppointment.clientName || "cliente"}
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--color-ink-muted)]">Nenhum compromisso agendado hoje.</p>
+          )}
+          {briefing.urgentCount > 0 ? (
+            <p className="text-sm text-[var(--color-ink)]">
+              <span className="font-semibold text-[var(--color-warning)]">
+                {briefing.urgentCount} {briefing.urgentCount === 1 ? "item urgente" : "itens urgentes"}
+              </span>{" "}
+              hoje
+            </p>
+          ) : null}
+          {briefing.mainRisk ? (
+            <p className="text-sm text-[var(--color-ink)]">
+              <span className="font-medium">Principal risco:</span> {briefing.mainRisk.title}
+            </p>
+          ) : briefing.opportunity ? (
+            <p className="text-sm text-[var(--color-ink)]">
+              <span className="font-medium">Vale olhar:</span> {briefing.opportunity.title}
+            </p>
+          ) : briefing.isClearDay ? (
+            <p className="text-sm font-medium text-[var(--color-success)]">Dia livre de pendências.</p>
+          ) : null}
+        </div>
+        <Link href={assistantHref("Analise meu dia: ")} className="shrink-0">
+          <Button variant="secondary" className="min-h-9 px-3 text-sm">
+            <IconSparkles className="mr-1.5 h-4 w-4" aria-hidden />
+            Analisar meu dia
+          </Button>
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Agenda do dia (timeline) — unchanged visual language, already the least
+// "generic card" element on the old Home per the visual audit.
+// ---------------------------------------------------------------------------
 
 function TimelineRow({
   item,
@@ -110,9 +295,7 @@ function TimelineRow({
         <span
           className={[
             "mt-3.5 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-[var(--color-surface)]",
-            phase === "in_progress"
-              ? "bg-[var(--color-progress)]"
-              : "bg-[var(--color-border-strong)]",
+            phase === "in_progress" ? "bg-[var(--color-progress)]" : "bg-[var(--color-border-strong)]",
           ].join(" ")}
           aria-hidden
         />
@@ -153,10 +336,7 @@ function DayTimeline({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
           Agenda de hoje
         </h2>
-        <Link
-          href="/app/agenda"
-          className="text-sm font-medium text-[var(--color-link)] hover:underline"
-        >
+        <Link href="/app/agenda" className="text-sm font-medium text-[var(--color-link)] hover:underline">
           Completa
         </Link>
       </div>
@@ -185,6 +365,14 @@ function DayTimeline({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Fila única de atenção — merges financeiro/renovação/agenda (attention_items,
+// real backend tones) with avaliação pendente (accompaniment/pending, its own
+// isolated fetch) and rotinas de hoje (routines/board, its own isolated
+// fetch). Every row keeps a visible origin label — never a bare unlabeled
+// item — per "cada item deve indicar claramente sua origem".
+// ---------------------------------------------------------------------------
+
 function attentionIcon(kind: string) {
   if (kind === "pending_payment" || kind === "payment_report_pending") {
     return <IconBanknote className="h-4 w-4" aria-hidden />;
@@ -203,7 +391,14 @@ function attentionIcon(kind: string) {
   return <IconAlertCircle className="h-4 w-4" aria-hidden />;
 }
 
-/** Visual slot for future AI confirmation — never fed with mocks in this release. */
+function attentionOriginLabel(kind: string) {
+  if (kind === "pending_payment" || kind === "payment_report_pending") return "Financeiro";
+  if (kind === "cycle_nearing_end" || kind === "cycle_ended_unrenewed") return "Ciclo";
+  if (kind === "renewal_requested" || kind === "renewal_awaiting") return "Renovação";
+  if (kind === "appointment_needs_outcome" || kind === "appointment_awaiting_confirmation") return "Agenda";
+  return "Pendência";
+}
+
 function AwaitingConfirmationSlot({ item }: { item: AttentionItem }) {
   return (
     <li>
@@ -212,65 +407,89 @@ function AwaitingConfirmationSlot({ item }: { item: AttentionItem }) {
           {attentionIcon(item.kind)}
         </span>
         <span className="min-w-0 flex-1">
+          <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
+            {attentionOriginLabel(item.kind)}
+          </span>
           <span className="block font-semibold text-[var(--color-ink)]">{item.title}</span>
           <span className="block text-sm text-[var(--color-ink-muted)]">{item.subtitle}</span>
-          <span className="mt-2 flex flex-wrap gap-2 opacity-40" aria-hidden>
-            <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs">
-              Realizada
-            </span>
-            <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs">
-              Cancelada
-            </span>
-            <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs">
-              Remarcar
-            </span>
-          </span>
         </span>
       </div>
     </li>
   );
 }
 
-function AttentionSection({ items }: { items: AttentionItem[] }) {
-  if (!items.length) {
-    return null;
-  }
+function AttentionQueue({
+  items,
+  accompaniment,
+  accompanimentFailed,
+  limit,
+}: {
+  items: AttentionItem[];
+  accompaniment: AccompanimentRow[] | null;
+  accompanimentFailed: boolean;
+  limit?: number;
+}) {
+  const accompanimentItems: AttentionItem[] = (accompaniment ?? []).map((row) => ({
+    kind: "evaluation_pending",
+    title: `Avaliação pendente · ${row.client_name}`,
+    subtitle:
+      row.days_since_last_evaluation != null
+        ? `${row.days_since_last_evaluation} dias sem registro`
+        : "Sem registro ainda",
+    href: `/app/clients/${row.client_id}?tab=prontuario`,
+    entity_id: row.client_id,
+    tone: "warning",
+  }));
+  const combined = [...items, ...accompanimentItems];
+  const visible = limit ? combined.slice(0, limit) : combined;
+
+  if (!visible.length && !accompanimentFailed) return null;
 
   return (
     <section aria-label="Precisa de atenção" className="space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-        Precisa de atenção · {items.length}
+        Precisa de atenção{combined.length ? ` · ${combined.length}` : ""}
       </h2>
-      <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
-        {items.map((item) => {
-          if (item.kind === "appointment_awaiting_confirmation") {
-            return <AwaitingConfirmationSlot key={`${item.kind}-${item.entity_id}`} item={item} />;
-          }
-          return (
-            <li key={`${item.kind}-${item.entity_id}`}>
-              <Link
-                href={item.href}
-                className="flex min-h-11 items-start gap-3 px-3.5 py-3 transition-colors hover:bg-[var(--color-surface-subtle)]"
-              >
-                <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-warning-subtle)] text-[var(--color-warning)]">
-                  {attentionIcon(item.kind)}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-[var(--color-ink)]">{item.title}</span>
-                  <span className="block text-sm text-[var(--color-ink-muted)]">{item.subtitle}</span>
-                </span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      {visible.length ? (
+        <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
+          {visible.map((item) => {
+            if (item.kind === "appointment_awaiting_confirmation") {
+              return <AwaitingConfirmationSlot key={`${item.kind}-${item.entity_id}`} item={item} />;
+            }
+            return (
+              <li key={`${item.kind}-${item.entity_id}`}>
+                <Link
+                  href={item.href}
+                  className="flex min-h-11 items-start gap-3 px-3.5 py-3 transition-colors hover:bg-[var(--color-surface-subtle)]"
+                >
+                  <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-warning-subtle)] text-[var(--color-warning)]">
+                    {attentionIcon(item.kind)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
+                      {attentionOriginLabel(item.kind)}
+                    </span>
+                    <span className="block font-semibold text-[var(--color-ink)]">{item.title}</span>
+                    <span className="block text-sm text-[var(--color-ink-muted)]">{item.subtitle}</span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {accompanimentFailed ? (
+        <BlockError message="Não foi possível carregar avaliações pendentes." />
+      ) : null}
     </section>
   );
 }
 
-function subscribeSetupStorage(onStoreChange: () => void) {
-  return subscribeInitialSetupCollapse(onStoreChange);
-}
+// ---------------------------------------------------------------------------
+// Rotinas de hoje — same data source as before (routines/board?bucket=today),
+// own isolated fetch, restyled to sit inside the operational area instead of
+// a same-weight generic card.
+// ---------------------------------------------------------------------------
 
 type TodayActionItem = {
   id: string;
@@ -314,23 +533,13 @@ function RestSummaryRow({ items }: { items: TodayActionItem[] }) {
         {anyOverdue ? <Badge tone="danger">Atrasadas</Badge> : null}
       </p>
       <p className="text-sm text-[var(--color-ink-muted)]">{who}</p>
-      <Link
-        href="/app/routines"
-        className="mt-1 inline-block text-sm font-medium text-[var(--color-link)]"
-      >
+      <Link href="/app/routines" className="mt-1 inline-block text-sm font-medium text-[var(--color-link)]">
         Ver pendências
       </Link>
     </li>
   );
 }
 
-/**
- * "Realizar avaliação" opens the evaluation form directly — the occurrence
- * already tells us exactly which client and which pendency, so there is no
- * reason to route through the client profile or "Preparar acompanhamento"
- * first. Whole card is one link (not a link nested inside another) so a
- * single tap can never double-fire navigation.
- */
 function EvaluationActionCard({ item }: { item: TodayActionItem }) {
   const dueLabel = item.overdue
     ? `venceu em ${formatDateBR(item.due_on)}`
@@ -369,18 +578,32 @@ function EvaluationActionCard({ item }: { item: TodayActionItem }) {
   );
 }
 
-function TodayActions() {
-  const [items, setItems] = useState<TodayActionItem[]>([]);
+function useRoutinesToday() {
+  const [items, setItems] = useState<TodayActionItem[] | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      const result = await apiFetch<{
-        groups: Array<{ items: TodayActionItem[] }>;
-      }>("/api/v1/routines/board?bucket=today");
-      const flat = (result.data?.groups ?? []).flatMap((g) => g.items ?? []);
-      setItems(flat);
+      const result = await apiFetch<{ groups: Array<{ items: TodayActionItem[] }> }>(
+        "/api/v1/routines/board?bucket=today",
+      );
+      if (cancelled) return;
+      if (result.error) {
+        setFailed(true);
+        return;
+      }
+      setItems((result.data?.groups ?? []).flatMap((g) => g.items ?? []));
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
-  if (!items.length) return null;
+  return { items, failed };
+}
+
+function TodayActions({ items, failed }: { items: TodayActionItem[] | null; failed: boolean }) {
+  if (failed) return <BlockError message="Não foi possível carregar as rotinas de hoje." />;
+  if (!items || !items.length) return null;
 
   const sorted = [...items].sort((a, b) => {
     if (Boolean(b.overdue) !== Boolean(a.overdue)) return b.overdue ? 1 : -1;
@@ -391,9 +614,9 @@ function TodayActions() {
   const restGroups = groupByOccurrenceType(rest);
 
   return (
-    <section aria-label="Suas ações de hoje" className="space-y-2">
+    <section aria-label="Suas rotinas de hoje" className="space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-        Suas ações de hoje
+        Rotinas de hoje
       </h2>
       <ul className="space-y-2">
         {individual.map((item) => {
@@ -407,7 +630,7 @@ function TodayActions() {
           return (
             <li
               key={item.id}
-              className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm transition-shadow hover:shadow-md"
+              className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm"
             >
               <Badge tone={item.overdue ? "danger" : "neutral"} className="mb-1 uppercase tracking-wide">
                 {item.overdue ? "Atrasada" : "Hoje"}
@@ -433,81 +656,139 @@ function TodayActions() {
   );
 }
 
-function FinanceSummary({ pendingPayments }: { pendingPayments: Receivable[] }) {
-  const count = pendingPayments.length;
-  const totalCents = pendingPayments.reduce((sum, r) => sum + r.amount_cents, 0);
-
-  return (
-    <section
-      aria-label="Financeiro"
-      className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm"
-    >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-primary-subtle)] text-[var(--color-primary)]">
-          <IconBanknote className="h-4 w-4" aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-            Financeiro
-          </p>
-          {count > 0 ? (
-            <p className="text-sm text-[var(--color-ink)]">
-              <span className="font-semibold">{formatBRL(totalCents)}</span> em {count}{" "}
-              cobrança{count === 1 ? "" : "s"} em aberto
-            </p>
-          ) : (
-            <p className="text-sm text-[var(--color-ink-muted)]">Nenhuma cobrança pendente</p>
-          )}
-        </div>
-      </div>
-      <Link
-        href="/app/receivables"
-        className="shrink-0 text-sm font-medium text-[var(--color-link)] hover:underline"
-      >
-        Ver financeiro
-      </Link>
-    </section>
-  );
-}
+// ---------------------------------------------------------------------------
+// Ações rápidas — deliberately quiet: a slim chip row, never a grid of big
+// cards competing with the operational area above it.
+// ---------------------------------------------------------------------------
 
 const QUICK_ACTIONS = [
   { label: "Novo cliente", href: "/app/clients/new", Icon: IconUsersRound },
-  { label: "Novo ciclo", href: "/app/cycles/new", Icon: IconLayers },
-  { label: "Agenda completa", href: "/app/agenda", Icon: IconCalendarDays },
+  { label: "Novo compromisso", href: "/app/appointments/new", Icon: IconCalendarDays },
+  { label: "Nova rotina", href: "/app/routines", Icon: IconLayers },
 ] as const;
 
 function QuickActions() {
   return (
-    <section aria-label="Ações rápidas" className="space-y-2">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-        Ações rápidas
-      </h2>
-      <div className="flex flex-wrap gap-2">
-        {QUICK_ACTIONS.map(({ label, href, Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-sm font-medium text-[var(--color-ink)] shadow-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
-          >
-            <Icon className="h-4 w-4 text-[var(--color-primary)]" aria-hidden />
-            {label}
+    <nav aria-label="Ações rápidas" className="flex flex-wrap gap-2">
+      {QUICK_ACTIONS.map(({ label, href, Icon }) => (
+        <Link
+          key={href}
+          href={href}
+          className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-subtle)]"
+        >
+          <Icon className="h-4 w-4 text-[var(--color-primary)]" aria-hidden />
+          {label}
+        </Link>
+      ))}
+      <Link
+        href={assistantHref("")}
+        className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[var(--color-ai-border)] bg-[var(--color-ai-subtle)] px-3 py-1.5 text-sm font-medium text-[var(--color-ai-hover)] transition-colors hover:bg-[var(--color-ai-subtle)]/70"
+      >
+        <IconSparkles className="h-4 w-4" aria-hidden />
+        Perguntar à IA
+      </Link>
+    </nav>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// New-professional journey — a short, elegant nudge, never the full
+// onboarding wizard rebuilt here.
+// ---------------------------------------------------------------------------
+
+function NewProfessionalJourney({ name }: { name: string | null }) {
+  return (
+    <section
+      aria-label="Comece por aqui"
+      className="surface-briefing space-y-3 rounded-[var(--radius-lg)] px-5 py-5 shadow-sm"
+    >
+      <p className="text-sm font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+        Bem-vindo(a){name ? `, ${name}` : ""}
+      </p>
+      <h2 className="h-display text-xl text-[var(--color-ink)]">Vamos deixar tudo pronto</h2>
+      <p className="text-sm text-[var(--color-ink-muted)]">
+        Três passos rápidos para começar a organizar seu trabalho no Croniu.
+      </p>
+      <ol className="space-y-2 text-sm text-[var(--color-ink)]">
+        <li className="flex items-center gap-2">
+          <IconTarget className="h-4 w-4 shrink-0 text-[var(--color-primary)]" aria-hidden />
+          <Link href="/app/services/new" className="font-medium text-[var(--color-link)] hover:underline">
+            Cadastre seu primeiro serviço
           </Link>
-        ))}
-      </div>
+        </li>
+        <li className="flex items-center gap-2">
+          <IconTarget className="h-4 w-4 shrink-0 text-[var(--color-primary)]" aria-hidden />
+          <Link href="/app/clients/new" className="font-medium text-[var(--color-link)] hover:underline">
+            Cadastre seu primeiro cliente
+          </Link>
+        </li>
+        <li className="flex items-center gap-2">
+          <IconTarget className="h-4 w-4 shrink-0 text-[var(--color-primary)]" aria-hidden />
+          <Link href="/app/cycles/new" className="font-medium text-[var(--color-link)] hover:underline">
+            Crie o primeiro ciclo
+          </Link>
+        </li>
+      </ol>
     </section>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Trial notice — only rendered when there is real data showing the trial is
+// genuinely close to ending; never a generic upsell banner.
+// ---------------------------------------------------------------------------
+
+function useEntitlement() {
+  const [data, setData] = useState<BillingEntitlement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<BillingEntitlement>("/api/v1/billing/entitlement").then((result) => {
+      if (!cancelled && result.data) setData(result.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return data;
+}
+
+function TrialNotice() {
+  const entitlement = useEntitlement();
+  if (
+    !entitlement ||
+    entitlement.subscription_status !== "trial" ||
+    entitlement.trial_days_remaining == null ||
+    entitlement.trial_days_remaining > 3
+  ) {
+    return null;
+  }
+  const days = entitlement.trial_days_remaining;
+  return (
+    <p className="text-sm text-[var(--color-warning)]">
+      {days <= 0 ? "Seu teste grátis termina hoje." : `Seu teste grátis termina em ${days} dia${days === 1 ? "" : "s"}.`}{" "}
+      <Link href="/app/settings/billing" className="font-medium underline">
+        Ver plano
+      </Link>
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Root
+// ---------------------------------------------------------------------------
+
+function subscribeSetupStorage(onStoreChange: () => void) {
+  return subscribeInitialSetupCollapse(onStoreChange);
 }
 
 export function TodayBoard({ summary }: Props) {
   const { me } = useAuth();
   const [now, setNow] = useState(() => new Date());
-  const setupCollapsed = useSyncExternalStore(
-    subscribeSetupStorage,
-    getInitialSetupCollapsed,
-    () => false,
-  );
+  const setupCollapsed = useSyncExternalStore(subscribeSetupStorage, getInitialSetupCollapsed, () => false);
   const [setupCelebrate, setSetupCelebrate] = useState(false);
   const [evaluationCelebrate, setEvaluationCelebrate] = useState(false);
+  const { rows: accompaniment, failed: accompanimentFailed } = useAccompanimentPending();
+  const { items: routinesToday, failed: routinesFailed } = useRoutinesToday();
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000);
@@ -560,6 +841,12 @@ export function TodayBoard({ summary }: Props) {
   const greeting = greetingForHour(hour);
   const name = firstName(me?.user.full_name);
   const headline = name ? `${greeting}, ${name}` : greeting;
+  const today = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: summary.timezone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(now);
 
   const upcoming =
     summary.upcoming_appointments ??
@@ -573,45 +860,24 @@ export function TodayBoard({ summary }: Props) {
       return start <= t && t < end;
     });
 
-  // Routine pendencies (plan reviews, feedback) already render as their own
-  // cards in "Suas ações de hoje" via TodayActions — with per-client detail
-  // this section can't show. Synthesizing count-only duplicates of the same
-  // items here just repeats the same information twice on one screen.
   const attention = summary.attention_items ?? [];
-  const hasIntakeCounts =
-    (summary.new_submissions_count ?? 0) > 0 ||
-    (summary.evaluation_pending_count ?? 0) > 0 ||
-    (summary.protocol_pending_count ?? 0) > 0 ||
-    (summary.routines_due_today_count ?? 0) > 0 ||
-    (summary.protocol_reviews_due_count ?? 0) > 0 ||
-    (summary.feedbacks_due_count ?? 0) > 0 ||
-    (summary.plans_ending_count ?? 0) > 0;
-  const hasAttention = attention.length > 0 || hasIntakeCounts;
-  const priority = summary.priority_action;
-  const hasAgenda = upcoming.length > 0 || inProgress.length > 0;
   const setupIncomplete =
     summary.has_active_service === false || summary.has_active_cycle_template === false;
   const showSetupCard = setupIncomplete && !setupCollapsed;
-  const fullyClear = !priority && !hasAttention && !hasAgenda && !setupIncomplete;
-  const showCalmLine = !priority && hasAgenda && !hasAttention && !setupIncomplete;
+  const isNew = isNewProfessional(summary);
 
   return (
-    <div className="space-y-5 animate-fade-up md:space-y-7">
-      <header className="space-y-1.5 md:space-y-2">
-        <h1 className="h-display text-[1.75rem] text-[var(--color-ink)] md:text-[2.25rem]">
-          {headline}
-        </h1>
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <p className="text-sm text-[var(--color-ink-muted)] md:text-base">
-            {summary.message || "Veja o que precisa da sua atenção hoje."}
+    <div className="space-y-5 animate-fade-up md:space-y-6">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div>
+          <h1 className="h-display text-[1.5rem] text-[var(--color-ink)] md:text-[1.875rem]">
+            {headline}
+          </h1>
+          <p className="text-sm capitalize text-[var(--color-ink-muted)]">
+            {today} · {me?.organization.name}
           </p>
-          <Link
-            href={`/app/assistant?prompt=${encodeURIComponent("Sobre hoje: ")}&context=${encodeURIComponent("Início")}&returnTo=${encodeURIComponent("/app")}`}
-            className="text-sm font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
-          >
-            Assistente
-          </Link>
         </div>
+        <TrialNotice />
       </header>
 
       <ProfessionNudge />
@@ -632,58 +898,139 @@ export function TodayBoard({ summary }: Props) {
           Configuração inicial concluída
         </p>
       ) : null}
-
       {evaluationCelebrate ? (
         <p role="status" className="text-sm font-medium text-[var(--color-success)]">
           Avaliação registrada com sucesso
         </p>
       ) : null}
 
-      {fullyClear ? (
-        <EmptyState
-          tone="success"
-          title="Tudo organizado"
-          description="Você não possui nenhuma pendência para revisar agora."
-          action={
-            <Link href="/app/agenda">
-              <Button variant="secondary" className="min-h-10 px-3 text-sm">
-                Abrir Agenda
-              </Button>
-            </Link>
-          }
-        />
+      {isNew ? (
+        <NewProfessionalJourney name={name} />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-10">
-          <div className="space-y-5 md:space-y-6">
-            {priority ? (
-              <PriorityCard action={priority} />
-            ) : hasAttention ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                Revise o que precisa da sua atenção.
-              </p>
-            ) : showCalmLine ? (
-              <CalmPriorityLine
-                message={
-                  summary.message || "Nenhuma pendência operacional no momento."
-                }
-              />
-            ) : setupIncomplete && !hasAgenda ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                Sua rotina ainda está sendo configurada.
-              </p>
-            ) : null}
-            <TodayActions />
-            <DayTimeline
-              inProgress={inProgress}
-              upcoming={upcoming}
-              timeZone={summary.timezone}
-            />
-          </div>
-          <AttentionSection items={attention} />
-        </div>
+        <DailyBriefing
+          summary={summary}
+          accompanimentCount={accompaniment ? accompaniment.length : null}
+          timeZone={summary.timezone}
+        />
       )}
 
-      <FinanceSummary pendingPayments={summary.pending_payments} />
+      {!isNew ? (
+        (() => {
+          const combinedAttentionCount = attention.length + (accompaniment?.length ?? 0);
+          const clear =
+            combinedAttentionCount === 0 &&
+            upcoming.length === 0 &&
+            inProgress.length === 0 &&
+            (!routinesToday || routinesToday.length === 0) &&
+            !setupIncomplete;
+          if (clear) {
+            return (
+              <>
+                <EmptyState
+                  tone="success"
+                  title="Tudo organizado"
+                  description="Você não possui nenhuma pendência para revisar agora."
+                  action={
+                    <Link href="/app/agenda">
+                      <Button variant="secondary" className="min-h-10 px-3 text-sm">
+                        Abrir Agenda
+                      </Button>
+                    </Link>
+                  }
+                />
+                <FinanceCompact pendingPayments={summary.pending_payments} />
+              </>
+            );
+          }
+          const topAttention: AttentionItem | null =
+            attention[0] ??
+            (accompaniment?.[0]
+              ? {
+                  kind: "evaluation_pending",
+                  title: `Avaliação pendente · ${accompaniment[0].client_name}`,
+                  subtitle:
+                    accompaniment[0].days_since_last_evaluation != null
+                      ? `${accompaniment[0].days_since_last_evaluation} dias sem registro`
+                      : "Sem registro ainda",
+                  href: `/app/clients/${accompaniment[0].client_id}?tab=prontuario`,
+                  entity_id: accompaniment[0].client_id,
+                  tone: "warning",
+                }
+              : null);
+          return (
+            <>
+              {/* Desktop: full operational grid + compact finance. Never
+                  shown on mobile — this is exactly the "coluna única" the
+                  fatia forbids for small screens. */}
+              <div className="hidden space-y-5 lg:block">
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-8">
+                  <div className="space-y-5 md:space-y-6">
+                    <DayTimeline inProgress={inProgress} upcoming={upcoming} timeZone={summary.timezone} />
+                    <TodayActions items={routinesToday} failed={routinesFailed} />
+                  </div>
+                  <AttentionQueue
+                    items={attention}
+                    accompaniment={accompaniment}
+                    accompanimentFailed={accompanimentFailed}
+                  />
+                </div>
+                <FinanceCompact pendingPayments={summary.pending_payments} />
+              </div>
+
+              {/* Mobile: operational companion, not a compressed desktop —
+                  next compromisso already lives in the briefing above; here
+                  we add only the single most important pending item and
+                  quick links into the full screens, per the fatia's mobile
+                  list (items 2–4 and 6). */}
+              <div className="space-y-3 lg:hidden">
+                {topAttention ? (
+                  <Link
+                    href={topAttention.href}
+                    className="card-rail card-rail-warning flex min-h-11 items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
+                  >
+                    <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-warning-subtle)] text-[var(--color-warning)]">
+                      {attentionIcon(topAttention.kind)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
+                        {attentionOriginLabel(topAttention.kind)}
+                        {combinedAttentionCount > 1 ? ` · +${combinedAttentionCount - 1}` : ""}
+                      </span>
+                      <span className="block font-semibold text-[var(--color-ink)]">
+                        {topAttention.title}
+                      </span>
+                      <span className="block text-sm text-[var(--color-ink-muted)]">
+                        {topAttention.subtitle}
+                      </span>
+                    </span>
+                  </Link>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href="/app/agenda"
+                    className="inline-flex min-h-9 items-center rounded-full border border-[var(--color-border)] px-3 text-sm font-medium text-[var(--color-ink-muted)]"
+                  >
+                    Ver agenda
+                  </Link>
+                  <Link
+                    href="/app/receivables"
+                    className="inline-flex min-h-9 items-center rounded-full border border-[var(--color-border)] px-3 text-sm font-medium text-[var(--color-ink-muted)]"
+                  >
+                    Ver financeiro
+                  </Link>
+                  <Link
+                    href="/app/routines"
+                    className="inline-flex min-h-9 items-center rounded-full border border-[var(--color-border)] px-3 text-sm font-medium text-[var(--color-ink-muted)]"
+                  >
+                    Ver rotinas
+                  </Link>
+                </div>
+              </div>
+            </>
+          );
+        })()
+      ) : null}
+
       <QuickActions />
     </div>
   );

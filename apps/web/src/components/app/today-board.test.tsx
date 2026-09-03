@@ -12,6 +12,7 @@ vi.mock("@/components/auth/auth-provider", () => ({
 }));
 
 const board = vi.hoisted(() => ({ items: [] as unknown[] }));
+const accompaniment = vi.hoisted(() => ({ items: [] as unknown[] }));
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
@@ -19,6 +20,15 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     apiFetch: vi.fn(async (path: string) => {
       if (path.includes("/routines/board")) return { data: { groups: [{ items: board.items }] } };
+      if (path.includes("/accompaniment/pending")) return { data: { items: accompaniment.items } };
+      if (path.includes("/receivables/overview")) {
+        return {
+          data: {
+            summary: { received_month_cents: 0, overdue_cents: 0, overdue_count: 0, forecast_month_cents: 0, pending_count: 0 },
+          },
+        };
+      }
+      if (path.includes("/billing/entitlement")) return { data: null };
       return { data: null };
     }),
   };
@@ -231,15 +241,19 @@ describe("TodayBoard — evaluation card opens the form directly", () => {
   });
 });
 
-describe("TodayBoard — compact Financeiro summary", () => {
-  it("shows no-pendency state when there are no pending payments", () => {
+describe("TodayBoard — compact Financeiro (recebido/vencido/próximo, never the full dashboard)", () => {
+  it("shows a dash for 'próximo a vencer' when there are no pending payments", async () => {
     board.items = [];
     render(<TodayBoard summary={{ ...BASE_SUMMARY, pending_payments: [] }} />);
 
-    expect(screen.getByText("Nenhuma cobrança pendente")).toBeInTheDocument();
+    expect(await screen.findByText("Sem cobrança prevista")).toBeInTheDocument();
+    expect(screen.getByText("Recebido no mês")).toBeInTheDocument();
+    // Never the old full total-of-all-pendencies phrasing — that duplicated
+    // the real Financeiro central instead of pointing to it.
+    expect(screen.queryByText(/cobranças em aberto/)).not.toBeInTheDocument();
   });
 
-  it("shows the real total and count derived from pending_payments — never a mocked number", () => {
+  it("shows the next-due amount and date derived from real pending_payments, never a mocked number", async () => {
     board.items = [];
     render(
       <TodayBoard
@@ -251,8 +265,8 @@ describe("TodayBoard — compact Financeiro summary", () => {
               cycle_id: "cy1",
               client_id: "c1",
               amount_cents: 15000,
-              due_on: "2026-08-20",
-              status: "overdue",
+              due_on: "2026-08-25",
+              status: "pending",
               paid_at: null,
               payment_method: null,
               notes: null,
@@ -266,8 +280,8 @@ describe("TodayBoard — compact Financeiro summary", () => {
               cycle_id: "cy2",
               client_id: "c2",
               amount_cents: 9000,
-              due_on: "2026-08-21",
-              status: "overdue",
+              due_on: "2026-08-20",
+              status: "pending",
               paid_at: null,
               payment_method: null,
               notes: null,
@@ -281,28 +295,32 @@ describe("TodayBoard — compact Financeiro summary", () => {
       />,
     );
 
-    // 15000 + 9000 cents = R$ 240,00
-    expect(screen.getByText(/R\$\s*240,00/)).toBeInTheDocument();
-    expect(screen.getByText(/2\s*cobranças em aberto/)).toBeInTheDocument();
+    // r2 due_on 08-20 is earlier than r1's 08-25 — the earliest one wins.
+    expect(await screen.findByText(/R\$\s*90,00/)).toBeInTheDocument();
   });
 });
 
 describe("TodayBoard — quick actions always point to real, existing routes", () => {
-  it("links to novo cliente, novo ciclo and agenda completa", () => {
+  it("links to novo cliente, novo compromisso, nova rotina and o Assistente", async () => {
     board.items = [];
     render(<TodayBoard summary={BASE_SUMMARY} />);
+    await screen.findByText("Financeiro");
 
     expect(screen.getByRole("link", { name: /Novo cliente/i })).toHaveAttribute(
       "href",
       "/app/clients/new",
     );
-    expect(screen.getByRole("link", { name: /Novo ciclo/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Novo compromisso/i })).toHaveAttribute(
       "href",
-      "/app/cycles/new",
+      "/app/appointments/new",
     );
-    expect(screen.getByRole("link", { name: /Agenda completa/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Nova rotina/i })).toHaveAttribute(
       "href",
-      "/app/agenda",
+      "/app/routines",
+    );
+    expect(screen.getByRole("link", { name: /Perguntar à IA/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/app/assistant?"),
     );
   });
 });

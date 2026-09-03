@@ -26,6 +26,7 @@ import {
   IconLogOut,
   IconClipboardList,
   IconLink,
+  IconSearch,
   IconSparkles,
   IconUser,
   IconUsersRound,
@@ -80,11 +81,14 @@ function isAssistantActive(pathname: string) {
 }
 
 function navLinkClass(active: boolean) {
+  // Active state reads as "quietly current" rather than a loud filled pill:
+  // a raised-but-faint surface + a thin brand rail on the left, same
+  // vocabulary as .card-rail elsewhere, not a new pattern.
   return [
-    "min-h-11 rounded-[var(--radius-md)] px-3 py-2 text-sm font-semibold transition-colors duration-[var(--duration-fast)]",
+    "min-h-11 rounded-[var(--radius-md)] border-l-2 py-2 pr-3 text-sm font-semibold transition-colors duration-[var(--duration-fast)]",
     active
-      ? "bg-[var(--color-primary-subtle)] text-[var(--color-primary)]"
-      : "text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]",
+      ? "border-l-[var(--color-primary)] bg-[var(--color-surface-elevated)] pl-[calc(0.75rem-2px)] text-[var(--color-primary)] shadow-sm"
+      : "border-l-transparent pl-3 text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]",
   ].join(" ");
 }
 
@@ -404,6 +408,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {me.organization.name}
             </p>
           </div>
+          <div className="px-2 pb-2">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("croniu:open-command-palette"))}
+              className="flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-ink-muted)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-ink)]"
+            >
+              <IconSearch className="h-4 w-4 opacity-70" aria-hidden />
+              <span className="flex-1 text-left">Buscar ou perguntar</span>
+              <kbd className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-1.5 py-0.5 text-[0.65rem] font-semibold text-[var(--color-ink-subtle)]">
+                ⌘K
+              </kbd>
+            </button>
+          </div>
           <nav
             aria-label="Navegação principal"
             className="flex flex-1 flex-col gap-1 px-2 pb-3"
@@ -480,6 +497,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {pathname === "/app" ? <PwaInstallBanner /> : null}
 
         <main
+          // Bottom padding clears the fixed mobile bottom-nav height + its
+          // safe-area inset (7rem normally, 4.25rem on the assistant screen
+          // which has its own composer instead of a page scroll) — not a
+          // token because it's shell-chrome-specific, not a design value.
           className={
             assistantActive
               ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"

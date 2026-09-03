@@ -63,6 +63,16 @@ export function CommandPalette() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
+  // Lets a visible sidebar/topbar button open the same palette as Ctrl+K,
+  // without lifting `open` state out of this component.
+  useEffect(() => {
+    function onOpenRequest() {
+      setOpen(true);
+    }
+    window.addEventListener("croniu:open-command-palette", onOpenRequest);
+    return () => window.removeEventListener("croniu:open-command-palette", onOpenRequest);
+  }, []);
+
   useEffect(() => {
     if (open) {
       const t = window.setTimeout(() => inputRef.current?.focus(), 10);
