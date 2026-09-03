@@ -6,14 +6,26 @@ import logging
 import re
 
 _PATH_C = re.compile(r"(/c/)([A-Za-z0-9._~-]+)")
-_PATH_API = re.compile(r"(/public/my-cycle/)([A-Za-z0-9._~-]+)")
-_SIGNED = re.compile(r"v1\.[0-9a-f]{32}\.[A-Za-z0-9_-]{20,}")
+_PATH_ENTRAR = re.compile(r"(/entrar/)([A-Za-z0-9._~-]+)")
+_PATH_MY_CYCLE = re.compile(r"(/public/my-cycle/)([A-Za-z0-9._~-]+)")
+# Covers both /public/intake/{token} and /public/intake/portal/{portal_token}.
+_PATH_INTAKE = re.compile(r"(/public/intake/(?:portal/)?)([A-Za-z0-9._~-]+)")
+_SIGNED_V1 = re.compile(r"v1\.[0-9a-f]{32}\.[A-Za-z0-9_-]{20,}")
+_SIGNED_L1 = re.compile(r"l1\.[0-9a-f]{32}\.[A-Za-z0-9_-]{20,}")
+_SIGNED_CI1 = re.compile(r"ci1\.[0-9a-f]{32}\.[0-9a-f]{32}\.[A-Za-z0-9_-]{20,}")
 
 
 def redact_portal_secrets(message: str) -> str:
     text = _PATH_C.sub(r"\1[redacted]", message)
-    text = _PATH_API.sub(r"\1[redacted]", text)
-    return _SIGNED.sub("v1.[redacted]", text)
+    text = _PATH_ENTRAR.sub(r"\1[redacted]", text)
+    text = _PATH_MY_CYCLE.sub(r"\1[redacted]", text)
+    text = _PATH_INTAKE.sub(r"\1[redacted]", text)
+    # Defense in depth: also strip the signed token itself wherever it
+    # appears outside a known path prefix (e.g. embedded in a full URL
+    # inside an error message or a wa_message_template echoed back).
+    text = _SIGNED_CI1.sub("ci1.[redacted]", text)
+    text = _SIGNED_L1.sub("l1.[redacted]", text)
+    return _SIGNED_V1.sub("v1.[redacted]", text)
 
 
 class PortalTokenLogFilter(logging.Filter):
