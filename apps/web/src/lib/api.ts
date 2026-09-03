@@ -10,6 +10,11 @@ export type MeResponse = {
     email: string;
     full_name: string;
     created_at: string;
+    // Contact WhatsApp of this login's owner + explicit marketing/support
+    // consent, collected in the post-login onboarding wizard — never at
+    // registration, never required, never used for auth.
+    contact_whatsapp_e164?: string | null;
+    whatsapp_marketing_consent_at?: string | null;
   };
   organization: {
     id: string;
@@ -448,6 +453,11 @@ export type ProfessionProfile = {
   queue_analyze?: string;
   intake_template_code?: string | null;
   collects_health?: boolean;
+};
+
+export type WhatsAppConsent = {
+  contact_whatsapp_e164: string | null;
+  whatsapp_marketing_consent_at: string | null;
 };
 
 export type IntakeConsent = {

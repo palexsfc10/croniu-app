@@ -73,6 +73,7 @@ class EmailVerificationConfirm(BaseModel):
 
 class RegisterResponse(MeResponse):
     requires_email_verification: bool = False
+    onboarding_required: bool = False
     message: str | None = None
 
 
@@ -153,6 +154,7 @@ def register(
             organization=_organization_out(organization),
             role=membership.role,
             requires_email_verification=False,
+            onboarding_required=_onboarding_required(organization),
         )
 
     return RegisterResponse(
@@ -160,6 +162,7 @@ def register(
         organization=_organization_out(organization),
         role=membership.role,
         requires_email_verification=True,
+        onboarding_required=_onboarding_required(organization),
         message="Conta criada. Verifique seu e-mail para acessar o Croniu.",
     )
 

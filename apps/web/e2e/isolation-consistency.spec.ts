@@ -50,7 +50,7 @@ test.describe("isolation, agenda, register and ficha", () => {
     const step1 = page.getByRole("link", { name: "Entrar" });
     await expect(step1).toBeVisible();
     const box1 = await step1.boundingBox();
-    const continueBox = await page.getByRole("button", { name: "Continuar" }).boundingBox();
+    const continueBox = await page.getByRole("button", { name: "Criar minha conta" }).boundingBox();
     expect(box1 && continueBox).toBeTruthy();
     const overlap =
       box1!.x < continueBox!.x + continueBox!.width &&
@@ -66,8 +66,6 @@ test.describe("isolation, agenda, register and ficha", () => {
     await page.getByLabel(/Nome do negócio/).fill("Studio Outro");
     await page.getByLabel("E-mail").fill(`other_${Date.now()}@example.com`);
     await page.getByLabel("Senha").fill("SenhaForte1!");
-    await page.getByRole("button", { name: "Continuar" }).click();
-    await expect(page.getByText(/Etapa 2 de 2/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: "Criar minha conta" })).toBeVisible();
     const registerPosts: string[] = [];
     page.on("request", (req) => {

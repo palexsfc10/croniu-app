@@ -35,29 +35,20 @@ describe("Auth forms", () => {
     searchParams = new URLSearchParams();
   });
 
-  it("walks two steps before creating the account", async () => {
+  it("creates the account from a single step — no profession/use_cases screen", async () => {
     const user = userEvent.setup();
     render(<RegisterForm />);
+    expect(screen.getByRole("button", { name: "Criar minha conta" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Personal trainer")).not.toBeInTheDocument();
+    expect(screen.queryByText(/área de atuação/i)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Seu nome"), "Ana Consultora");
     await user.type(screen.getByLabelText(/Nome do negócio/i), "Studio Ana");
     await user.type(screen.getByLabelText("E-mail"), "ana@example.com");
     await user.type(screen.getByLabelText("Senha"), "senha12345");
-    await user.click(screen.getByRole("button", { name: "Continuar" }));
-    expect(screen.getByText(/Etapa 2 de 2/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/login");
-    const fetchSpy = vi.spyOn(global, "fetch");
-    await user.click(screen.getByRole("link", { name: "Entrar" }));
-    expect(fetchSpy).not.toHaveBeenCalled();
-    await user.click(screen.getByLabelText("Personal trainer"));
-    expect(screen.getByText("Sua experiência")).toBeInTheDocument();
-    await user.click(screen.getByLabelText("Nutricionista"));
-    expect(screen.getByText("Sua experiência")).toBeInTheDocument();
-    expect(screen.queryByText(/Seu Croniu será preparado para/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/anamnese de atividade física/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Criar minha conta" })).toBeInTheDocument();
   }, 15_000);
 
-  it("opens login from registration step 1 without submitting the form", async () => {
+  it("opens login from registration without submitting the form", async () => {
     const user = userEvent.setup();
     render(<RegisterForm />);
     const link = screen.getByTestId("register-login-link");
@@ -66,13 +57,12 @@ describe("Auth forms", () => {
     const fetchSpy = vi.spyOn(global, "fetch");
     await user.click(link);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(screen.getByText(/Etapa 1 de 2/)).toBeInTheDocument();
   });
 
   it("shows validation errors on empty register submit", async () => {
     const user = userEvent.setup();
     render(<RegisterForm />);
-    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.click(screen.getByRole("button", { name: "Criar minha conta" }));
     expect(await screen.findAllByRole("alert")).not.toHaveLength(0);
   });
 
@@ -292,7 +282,7 @@ describe("Register referral coupon", () => {
     await waitFor(() => {
       expect(screen.getByText("Este cupom não está disponível.")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: "Continuar" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Criar minha conta" })).toBeEnabled();
   });
 
   it("does not call the coupon endpoint without ?ref=", () => {
