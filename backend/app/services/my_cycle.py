@@ -28,6 +28,7 @@ from app.schemas.my_cycle import (
     PaymentSettingsOut,
     PublicCycleBlock,
     PublicMyCycleOut,
+    PublicNextAppointment,
     PublicPaymentInstructions,
     PublicPaymentReportOut,
     PublicRenewalOut,
@@ -183,6 +184,11 @@ def _access_out(
     *,
     include_token: bool,
 ) -> ClientAccessOut:
+    # include_token only toggles the deprecated `token` echo field — the
+    # signed token is always embedded in public_url/public_path below
+    # regardless, since it's deterministic (HMAC of row.id) and this
+    # endpoint already requires an authenticated, organization-scoped
+    # session. Do not treat include_token as a real secrecy boundary.
     signed = mint_portal_token(row.id)
     path, url = _public_url(signed)
     return ClientAccessOut(
@@ -462,19 +468,28 @@ def _cycle_is_near_end_for_portal(db: Session, *, cycle: Cycle, today: date) -> 
 
 
 def _payment_status_label(cycle: Cycle) -> str:
-    recs = list(cycle.receivables or [])
+    # Zero-value rows are never a real charge to the client (see the R$0
+    # cycle fix in the Financeiro fatia) — excluded before any status check
+    # so they can never surface as pending/overdue/at-risk here either.
+    recs = [r for r in (cycle.receivables or []) if r.amount_cents > 0]
     if not recs:
         return "sem_cobranca"
     if any(r.status in {"received", "paid"} for r in recs):
         return "confirmado"
     if any(r.status in {"pending", "expected"} for r in recs):
         return "pendente"
-    return "outro"
+    if all(r.status == "cancelled" for r in recs):
+        return "cancelado"
+    return "sem_cobranca"
 
 
 def _pending_receivable(cycle: Cycle) -> Receivable | None:
-    pending = [r for r in (cycle.receivables or []) if r.status in {"pending", "expected"}]
-    return pending[0] if len(pending) == 1 else (pending[0] if pending else None)
+    pending = [
+        r
+        for r in (cycle.receivables or [])
+        if r.status in {"pending", "expected"} and r.amount_cents > 0
+    ]
+    return pending[0] if pending else None
 
 
 def _active_renewal(
@@ -498,6 +513,24 @@ def _active_payment_report(
             PaymentReport.status == "pending_review",
         )
     )
+
+
+def _next_appointment_block(
+    db: Session, *, organization_id: uuid.UUID, client_id: uuid.UUID
+) -> PublicNextAppointment | None:
+    """Client's next scheduled visit only — never notes, never other clients."""
+    upcoming = agenda_svc.list_client_appointments(
+        db, organization_id=organization_id, client_id=client_id, limit=1
+    )
+    appt = next((a for a in upcoming if a.status == "scheduled"), None)
+    if appt is None:
+        return None
+    service_name = None
+    if appt.service is not None:
+        service_name = appt.service.name
+    elif appt.cycle is not None and appt.cycle.service is not None:
+        service_name = appt.cycle.service.name
+    return PublicNextAppointment(starts_at=appt.starts_at, service_name=service_name)
 
 
 def _resolve_access(db: Session, raw_token: str) -> ClientPublicAccess:
@@ -533,18 +566,35 @@ def _resolve_access(db: Session, raw_token: str) -> ClientPublicAccess:
 
 def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
     access = _resolve_access(db, raw_token)
-    org = agenda_svc.get_organization(db, access.organization_id)
-    client = domain_svc.get_client(
+    return _build_view(
         db, organization_id=access.organization_id, client_id=access.client_id
+    )
+
+
+def build_preview_view(
+    db: Session, *, organization_id: uuid.UUID, client_id: uuid.UUID
+) -> PublicMyCycleOut:
+    """Authenticated professional preview — same builder, same output as the
+    real Portal. domain_svc.get_client below 404s on cross-tenant access."""
+    domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
+    return _build_view(db, organization_id=organization_id, client_id=client_id)
+
+
+def _build_view(
+    db: Session, *, organization_id: uuid.UUID, client_id: uuid.UUID
+) -> PublicMyCycleOut:
+    org = agenda_svc.get_organization(db, organization_id)
+    client = domain_svc.get_client(
+        db, organization_id=organization_id, client_id=client_id
     )
     today = agenda_svc.org_local_today(org)
     cycle = select_relevant_cycle(
         db,
-        organization_id=access.organization_id,
-        client_id=access.client_id,
+        organization_id=organization_id,
+        client_id=client_id,
         today=today,
     )
-    settings = get_payment_settings(db, organization_id=access.organization_id)
+    settings = get_payment_settings(db, organization_id=organization_id)
     # Pix is not shown on the general portal surface — only during renewal step.
     instructions = PublicPaymentInstructions(configured=False)
     renewal_instructions = PublicPaymentInstructions(configured=False)
@@ -566,22 +616,28 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         eval_svc.evaluation_to_public(row)
         for row in eval_svc.list_published_for_client(
             db,
-            organization_id=access.organization_id,
-            client_id=access.client_id,
+            organization_id=organization_id,
+            client_id=client_id,
         )
     ]
     published_plan = proto_svc.select_published_plan(
         db,
-        organization_id=access.organization_id,
-        client_id=access.client_id,
+        organization_id=organization_id,
+        client_id=client_id,
         today=today,
         profession_code=org.profession_code,
     )
+    next_appointment = _next_appointment_block(
+        db, organization_id=organization_id, client_id=client_id
+    )
+    org_tz = agenda_svc.get_org_timezone(org)
 
     if cycle is None:
         return PublicMyCycleOut(
             professional_display_name=org.name,
             client_first_name=_first_name(client.full_name),
+            org_timezone=org_tz,
+            next_appointment=next_appointment,
             cycle=None,
             empty_message="Seu profissional ainda não disponibilizou um ciclo para acompanhamento.",
             payment_instructions=instructions,
@@ -609,13 +665,13 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
         )
 
     lessons_completed = lessons_completed_for_cycle(
-        db, cycle, organization_id=access.organization_id
+        db, cycle, organization_id=organization_id
     )
     lessons_no_show = lessons_no_show_for_cycle(
-        db, cycle, organization_id=access.organization_id
+        db, cycle, organization_id=organization_id
     )
     remaining = remaining_planned_lessons(
-        db, cycle, organization_id=access.organization_id
+        db, cycle, organization_id=organization_id
     )
     if remaining is None and cycle.lesson_count is not None:
         remaining = max(0, int(cycle.lesson_count) - int(lessons_completed))
@@ -690,6 +746,8 @@ def build_public_view(db: Session, *, raw_token: str) -> PublicMyCycleOut:
     return PublicMyCycleOut(
         professional_display_name=org.name,
         client_first_name=_first_name(client.full_name),
+        org_timezone=org_tz,
+        next_appointment=next_appointment,
         cycle=block,
         empty_message=None,
         payment_instructions=instructions,

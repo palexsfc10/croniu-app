@@ -14,7 +14,11 @@ class ClientAccessOut(BaseModel):
     has_active_link: bool
     created_at: datetime | None = None
     last_used_at: datetime | None = None
-    # Raw signed token only on create/rotate. GET reconstructs public_url without token.
+    # Deprecated: does NOT gate secrecy. public_url/public_path always embed
+    # the full signed token (it's a deterministic HMAC of the access row id,
+    # reconstructable from the id alone) — this field is a redundant echo of
+    # the same secret, kept only so existing consumers don't break. Treat
+    # public_url as equally sensitive as this field on every response.
     token: str | None = None
     public_path: str | None = None
     public_url: str | None = None
@@ -132,6 +136,14 @@ class PublicCycleBlock(BaseModel):
     payment_report_status: str | None = None
 
 
+class PublicNextAppointment(BaseModel):
+    """Minimal, non-internal view of the client's next scheduled visit."""
+
+    starts_at: datetime
+    service_name: str | None = None
+    status: str = "agendado"
+
+
 class PublicPlanOut(BaseModel):
     section_title: str
     title: str
@@ -147,6 +159,8 @@ class PublicPlanOut(BaseModel):
 class PublicMyCycleOut(BaseModel):
     professional_display_name: str
     client_first_name: str
+    org_timezone: str
+    next_appointment: PublicNextAppointment | None = None
     cycle: PublicCycleBlock | None = None
     empty_message: str | None = None
     payment_instructions: PublicPaymentInstructions

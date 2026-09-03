@@ -684,9 +684,17 @@ export type PaymentSettings = {
   whatsapp_enabled?: boolean;
 };
 
+export type PublicNextAppointment = {
+  starts_at: string;
+  service_name?: string | null;
+  status: string;
+};
+
 export type PublicMyCycle = {
   professional_display_name: string;
   client_first_name: string;
+  org_timezone: string;
+  next_appointment?: PublicNextAppointment | null;
   cycle: {
     service_name: string;
     status_summary: string;

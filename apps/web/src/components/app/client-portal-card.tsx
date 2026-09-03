@@ -13,6 +13,7 @@ import {
   IconChevronRight,
   IconCopy,
   IconExternalLink,
+  IconEye,
   IconWhatsApp,
 } from "@/components/ui/icons";
 
@@ -132,6 +133,14 @@ export function ClientPortalCard({
           <Badge tone="success">Acesso ativo</Badge>
         ) : null}
       </div>
+
+      <a
+        href={`/app/clients/${clientId}/portal-preview`}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-link)]"
+      >
+        <IconEye className="h-4 w-4 shrink-0" aria-hidden />
+        Ver prévia do Portal
+      </a>
 
       {!access?.has_active_link ? (
         <>
