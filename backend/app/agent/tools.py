@@ -1485,10 +1485,14 @@ def execute_cancel_routine(ctx: ToolContext, arguments: dict[str, Any]) -> dict[
     from app.services import routines as routine_svc
 
     parsed = ProposeCancelRoutineArgs.model_validate(arguments)
+    # Same service the manual PATCH /routines/{id} endpoint uses, with the
+    # same org-local "today" boundary — keeps IA and manual cancellation
+    # behaviorally identical (see api/routines.py's own update_routine call).
     row = routine_svc.update_routine(
         ctx.db,
         organization_id=ctx.organization_id,
         task_id=parsed.routine_id,
+        today=_tool_today(ctx),
         status="archived",
     )
     return {"id": str(row.id), "kind": "routine", "status": row.status}
