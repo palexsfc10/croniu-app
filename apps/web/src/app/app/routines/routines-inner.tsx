@@ -820,7 +820,15 @@ export default function RoutinesPageInner() {
       {/* Mobile: operational summary — never the dense desktop table/filters. */}
       <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:hidden">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
+            <Link
+              href={`/app/assistant?prompt=${encodeURIComponent("Sobre minhas rotinas: ")}&context=${encodeURIComponent("Rotinas")}&returnTo=${encodeURIComponent("/app/routines")}`}
+              className="rounded-[var(--radius-md)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)] px-3 py-1.5 text-sm font-semibold text-[var(--color-ink)]"
+            >
+              Perguntar à IA
+            </Link>
+          </div>
           <p className="text-sm text-[var(--color-ink-muted)]">
             {clientId
               ? "Pendências deste cliente. Cada marco permanece visível até ser concluído."

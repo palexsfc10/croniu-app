@@ -186,6 +186,6 @@ describe("CyclesPage — central de contratos, hierarquia e dados reais", () => 
     expect(within(mobile).queryByRole("table")).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /Perguntar ao Assistente sobre estes ciclos/i }),
-    ).toHaveAttribute("href", "/app/assistant");
+    ).toHaveAttribute("href", expect.stringContaining("/app/assistant?"));
   });
 });

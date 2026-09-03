@@ -606,7 +606,7 @@ export function TodayBoard({ summary }: Props) {
             {summary.message || "Veja o que precisa da sua atenção hoje."}
           </p>
           <Link
-            href="/app/assistant"
+            href={`/app/assistant?prompt=${encodeURIComponent("Sobre hoje: ")}&context=${encodeURIComponent("Início")}&returnTo=${encodeURIComponent("/app")}`}
             className="text-sm font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
           >
             Assistente

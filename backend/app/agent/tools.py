@@ -18,12 +18,13 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agent import cycle_prepare as cycle_prep
 from app.agent.providers.base import ToolSpec
 from app.agent.temporal import format_human_datetime_range, resolve_org_timezone
+from app.models.appointment import Appointment
 from app.models.client import Client
 from app.models.client_evaluation import ClientEvaluation
 from app.models.cycle import Cycle
@@ -1197,6 +1198,11 @@ class ProposeCreateRoutineArgs(BaseModel):
     weekday: int | None = Field(default=None, ge=0, le=6)
 
 
+class ProposeCancelRoutineArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    routine_id: uuid.UUID
+
+
 class ProposeCreateAppointmentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     client_id: uuid.UUID
@@ -1280,6 +1286,11 @@ class ProposeCreateCycleArgs(BaseModel):
         return self
 
 
+class ProposeCancelCycleArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cycle_id: uuid.UUID
+
+
 class ProposeRecordPaymentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     receivable_id: uuid.UUID
@@ -1299,6 +1310,11 @@ class ProposeCreateEvaluationDraftArgs(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     summary: str | None = Field(default=None, max_length=5000)
     client_message: str | None = Field(default=None, max_length=5000)
+
+
+class ProposePublishEvaluationArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evaluation_id: uuid.UUID
 
 
 class ProposeAddMilestoneArgs(BaseModel):
@@ -1406,6 +1422,74 @@ def execute_create_routine(ctx: ToolContext, arguments: dict[str, Any]) -> dict[
         weekday=parsed.weekday,
         filter_json=filter_json,
         next_run_on=parsed.due_on,
+    )
+    return {"id": str(row.id), "kind": "routine", "status": row.status}
+
+
+def _list_routines(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from app.services import routines as routine_svc
+
+    rows = routine_svc.list_routines(ctx.db, organization_id=ctx.organization_id, status="active")
+    items = []
+    for row in rows:
+        client_name = None
+        client_id = (row.filter_json or {}).get("client_id") if row.filter_json else None
+        if client_id:
+            try:
+                client = domain_svc.get_client(
+                    ctx.db, organization_id=ctx.organization_id, client_id=uuid.UUID(client_id)
+                )
+                client_name = client.full_name
+            except (AuthError, ValueError):
+                client_name = None
+        items.append(
+            {
+                "routine_id": str(row.id),
+                "name": row.name,
+                "task_type": row.task_type,
+                "recurrence": row.recurrence,
+                "next_run_on": row.next_run_on.isoformat() if row.next_run_on else None,
+                "client_name": client_name,
+            }
+        )
+    return {"routines": items}
+
+
+def _propose_cancel_routine(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from app.services import routines as routine_svc
+
+    parsed = ProposeCancelRoutineArgs.model_validate(args)
+    routine = routine_svc.get_routine(
+        ctx.db, organization_id=ctx.organization_id, task_id=parsed.routine_id
+    )
+    if routine.status == "archived":
+        return {
+            "error": "Esta rotina já está cancelada.",
+            "code": "already_archived",
+        }
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_cancel_routine",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f'Cancelar a rotina "{routine.name}". Nenhuma nova ocorrência será gerada — '
+            "uma pendência já aberta para hoje, se existir, continua até ser concluída ou "
+            "adiada manualmente em Rotinas."
+        ),
+        "summary_fields": {"Rotina": routine.name},
+        "risk_class": "write_common",
+    }
+
+
+def execute_cancel_routine(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    from app.services import routines as routine_svc
+
+    parsed = ProposeCancelRoutineArgs.model_validate(arguments)
+    row = routine_svc.update_routine(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        task_id=parsed.routine_id,
+        status="archived",
     )
     return {"id": str(row.id), "kind": "routine", "status": row.status}
 
@@ -1745,6 +1829,70 @@ def execute_create_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[st
     }
 
 
+def _propose_cancel_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCancelCycleArgs.model_validate(args)
+    cycle = domain_svc.get_cycle(
+        ctx.db, organization_id=ctx.organization_id, cycle_id=parsed.cycle_id
+    )
+    if cycle.status == "cancelled":
+        return {
+            "error": "Este ciclo já está cancelado.",
+            "code": "already_cancelled",
+        }
+    if cycle.status not in {"active", "ended"}:
+        return {
+            "error": "Só é possível cancelar ciclos ativos ou encerrados.",
+            "code": "invalid_status",
+        }
+    client_name = cycle.client.full_name if cycle.client else "cliente"
+    service_name = cycle.service.name if cycle.service else "serviço"
+    scheduled_count = ctx.db.scalar(
+        select(func.count())
+        .select_from(Appointment)
+        .where(
+            Appointment.organization_id == ctx.organization_id,
+            Appointment.cycle_id == cycle.id,
+            Appointment.status == "scheduled",
+        )
+    ) or 0
+    pending_receivables = [r for r in cycle.receivables if r.status in {"pending", "expected"}]
+    pending_total_cents = sum(r.amount_cents or 0 for r in pending_receivables)
+    consequences = []
+    if scheduled_count:
+        consequences.append(
+            f"{scheduled_count} compromisso(s) agendado(s) serão cancelados"
+        )
+    if pending_receivables:
+        consequences.append(
+            f"{len(pending_receivables)} recebimento(s) pendente(s) "
+            f"(R$ {pending_total_cents / 100:.2f}) serão cancelados"
+        )
+    consequence_text = "; ".join(consequences) if consequences else "nenhum compromisso ou recebimento pendente vinculado"
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_cancel_cycle",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f"Cancelar o ciclo de {service_name} de {client_name}. {consequence_text}."
+        ),
+        "summary_fields": {
+            "Cliente": client_name,
+            "Serviço": service_name,
+            "Compromissos agendados a cancelar": scheduled_count,
+            "Recebimentos pendentes a cancelar": len(pending_receivables),
+        },
+        "risk_class": "write_sensitive",
+    }
+
+
+def execute_cancel_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCancelCycleArgs.model_validate(arguments)
+    cycle = domain_svc.cancel_cycle(
+        ctx.db, organization_id=ctx.organization_id, cycle_id=parsed.cycle_id
+    )
+    return {"id": str(cycle.id), "kind": "cycle", "status": cycle.status}
+
+
 def _propose_record_payment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ProposeRecordPaymentArgs.model_validate(args)
     receivable = domain_svc.get_receivable(
@@ -1839,6 +1987,47 @@ def execute_create_evaluation_draft(ctx: ToolContext, arguments: dict[str, Any])
             summary=parsed.summary,
             client_message=parsed.client_message,
         ),
+    )
+    return {
+        "id": str(row.id),
+        "evaluation_id": str(row.id),
+        "kind": "evaluation",
+        "status": row.status,
+        "title": row.title,
+        "client_id": str(row.client_id),
+    }
+
+
+def _propose_publish_evaluation(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposePublishEvaluationArgs.model_validate(args)
+    evaluation = eval_svc.get_evaluation(
+        ctx.db, organization_id=ctx.organization_id, evaluation_id=parsed.evaluation_id
+    )
+    if evaluation.status == "published":
+        return {
+            "error": "Esta avaliação já está publicada.",
+            "code": "already_published",
+        }
+    client = domain_svc.get_client(
+        ctx.db, organization_id=ctx.organization_id, client_id=evaluation.client_id
+    )
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_publish_evaluation",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f"Publicar a avaliação “{evaluation.title}” de {client.full_name}. "
+            "O cliente passará a ver este registro no Portal."
+        ),
+        "summary_fields": {"client_name": client.full_name, "title": evaluation.title},
+        "risk_class": "write_common",
+    }
+
+
+def execute_publish_evaluation(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposePublishEvaluationArgs.model_validate(arguments)
+    row = eval_svc.publish_evaluation(
+        ctx.db, organization_id=ctx.organization_id, evaluation_id=parsed.evaluation_id
     )
     return {
         "id": str(row.id),
@@ -1961,6 +2150,19 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="read",
         requires_confirmation=False,
         handler=_list_plan_pendencies,
+    ),
+    "list_routines": ToolDefinition(
+        name="list_routines",
+        description=(
+            "Lista as rotinas (definições recorrentes ou pontuais) ativas, com id, nome, "
+            "recorrência, próxima data e cliente vinculado (se houver). Use antes de "
+            "propose_cancel_routine para resolver o nome dito pelo usuário em um routine_id "
+            "real — nunca invente ou reaproveite um id de outra entidade."
+        ),
+        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+        kind="read",
+        requires_confirmation=False,
+        handler=_list_routines,
     ),
     "get_cycle_details": ToolDefinition(
         name="get_cycle_details",
@@ -2371,6 +2573,25 @@ TOOLS: dict[str, ToolDefinition] = {
         handler=_propose_create_routine,
         risk_class="write_common",
     ),
+    "propose_cancel_routine": ToolDefinition(
+        name="propose_cancel_routine",
+        description=(
+            "Propõe cancelar (arquivar) uma rotina — nenhuma ocorrência futura será "
+            "gerada. Não apaga o histórico já realizado. Exige confirmação."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "routine_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["routine_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_cancel_routine,
+        risk_class="write_common",
+    ),
     # --- Write: agenda -------------------------------------------------------
     "propose_create_appointment": ToolDefinition(
         name="propose_create_appointment",
@@ -2527,6 +2748,28 @@ TOOLS: dict[str, ToolDefinition] = {
         handler=_propose_create_cycle,
         risk_class="write_common",
     ),
+    "propose_cancel_cycle": ToolDefinition(
+        name="propose_cancel_cycle",
+        description=(
+            "Propõe cancelar um ciclo ativo ou encerrado. Cancela também os "
+            "compromissos agendados e os recebimentos pendentes vinculados — nunca "
+            "os apaga, apenas marca como cancelados. Não existe 'pausar' ciclo "
+            "(não é um estado suportado) — só cancelamento definitivo. Exige "
+            "confirmação do usuário."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "cycle_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["cycle_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_cancel_cycle,
+        risk_class="write_sensitive",
+    ),
     "propose_record_payment": ToolDefinition(
         name="propose_record_payment",
         description="Propõe marcar um recebimento como pago. Exige confirmação do usuário.",
@@ -2566,6 +2809,25 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="write",
         requires_confirmation=True,
         handler=_propose_create_evaluation_draft,
+        risk_class="write_common",
+    ),
+    "propose_publish_evaluation": ToolDefinition(
+        name="propose_publish_evaluation",
+        description=(
+            "Propõe publicar uma avaliação em rascunho — o cliente passa a "
+            "ver este registro no Portal. Exige confirmação do usuário."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "evaluation_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["evaluation_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_publish_evaluation,
         risk_class="write_common",
     ),
     "propose_add_milestone": ToolDefinition(
@@ -2657,13 +2919,16 @@ TOOLS: dict[str, ToolDefinition] = {
 WRITE_EXECUTORS: dict[str, Callable[[ToolContext, dict[str, Any]], dict[str, Any]]] = {
     "create_client": execute_create_client,
     "create_routine": execute_create_routine,
+    "cancel_routine": execute_cancel_routine,
     "create_appointment": execute_create_appointment,
     "reschedule_appointment": execute_reschedule_appointment,
     "cancel_appointment": execute_cancel_appointment,
     "mark_appointment_outcome": execute_mark_appointment_outcome,
     "create_cycle": execute_create_cycle,
+    "cancel_cycle": execute_cancel_cycle,
     "record_payment": execute_record_payment,
     "create_evaluation_draft": execute_create_evaluation_draft,
+    "publish_evaluation": execute_publish_evaluation,
     "add_milestone": execute_add_milestone,
     "complete_occurrence": execute_complete_occurrence,
     "complete_occurrences": execute_complete_occurrences,

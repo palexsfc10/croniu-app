@@ -510,7 +510,7 @@ export default function ClientsIntakePage() {
         </section>
 
         <Link
-          href="/app/assistant"
+          href={`/app/assistant?prompt=${encodeURIComponent("Sobre o cadastro de clientes: ")}&context=${encodeURIComponent("Onboarding de clientes")}&returnTo=${encodeURIComponent("/app/clients/intake")}`}
           className="block rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3.5 py-3 text-sm font-semibold text-[var(--color-ink)]"
         >
           Perguntar ao Assistente sobre estes clientes

@@ -524,7 +524,7 @@ export default function CyclesPage() {
       ) : null}
 
       <Link
-        href="/app/assistant"
+        href={`/app/assistant?prompt=${encodeURIComponent("Sobre meus ciclos: ")}&context=${encodeURIComponent("Ciclos e renovações")}&returnTo=${encodeURIComponent("/app/cycles")}`}
         className="block rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3.5 py-3 text-sm font-semibold text-[var(--color-ink)] lg:hidden"
       >
         Perguntar ao Assistente sobre estes ciclos

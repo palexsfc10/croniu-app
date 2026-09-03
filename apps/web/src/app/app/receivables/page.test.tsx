@@ -149,7 +149,7 @@ describe("ReceivablesPage — Financeiro, separado da assinatura do Croniu", () 
     expect(within(mobile).queryByRole("table")).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /Perguntar ao Assistente sobre o financeiro/i }),
-    ).toHaveAttribute("href", "/app/assistant");
+    ).toHaveAttribute("href", expect.stringContaining("/app/assistant?"));
   });
 
   it("shows the monthly trend with real values per month", async () => {
