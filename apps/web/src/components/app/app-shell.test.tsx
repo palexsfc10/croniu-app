@@ -205,10 +205,10 @@ describe("AppShell desktop workspace structure", () => {
     );
     const bottomNav = container.querySelector("nav.app-bottom-nav");
     expect(bottomNav).not.toBeNull();
-    expect(bottomNav!.className).toContain("md:hidden");
+    expect(bottomNav!.className).toContain("lg:hidden");
   });
 
-  it("keeps the sidebar hidden on mobile and persistent from md upward", () => {
+  it("keeps the sidebar hidden on mobile/tablet and persistent from lg upward — same breakpoint every page's own content already switches at, so tablet widths never mix desktop chrome with mobile content", () => {
     const { container } = render(
       <AppShell>
         <p>content</p>
@@ -217,7 +217,7 @@ describe("AppShell desktop workspace structure", () => {
     const aside = container.querySelector("aside.app-sidebar");
     expect(aside).not.toBeNull();
     expect(aside!.className).toContain("hidden");
-    expect(aside!.className).toContain("md:flex");
+    expect(aside!.className).toContain("lg:flex");
   });
 
   it("does not cap sidebar+content in one shared max-width (regression: that centered the whole shell and wasted the sides on wide screens instead of giving the sidebar+main a real workspace)", () => {

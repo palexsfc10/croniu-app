@@ -160,8 +160,11 @@ describe("UI fundamentals", () => {
     // priority_action feeds the deterministic briefing's "Principal risco"
     // line, not a duplicate heading/CTA of its own.
     expect(screen.getByText("Ciclo chegando ao fim")).toBeInTheDocument();
-    expect(screen.getByText(/Precisa de atenção/)).toBeInTheDocument();
-    expect(screen.getByText("Agenda de hoje")).toBeInTheDocument();
+    expect(screen.getByText(/Precisa de decisão/)).toBeInTheDocument();
+    // The Home is a business-decision center now — it never reproduces the
+    // Agenda's own timeline (that section was removed entirely).
+    expect(screen.queryByText("Agenda de hoje")).not.toBeInTheDocument();
+    expect(screen.getByText("Clientes ativos")).toBeInTheDocument();
   });
 
   it("does not duplicate intake attention as Operação de hoje", () => {
@@ -192,9 +195,13 @@ describe("UI fundamentals", () => {
     expect(screen.getAllByText("1 cadastro aguardando análise").length).toBeGreaterThan(0);
   });
 
-  it("shows calm empty day when nothing needs attention", () => {
+  it("shows a calm state when nothing needs a decision, without hiding the always-on business blocks", () => {
     render(<TodayBoard summary={emptySummary} />);
-    expect(screen.getByText("Tudo organizado")).toBeInTheDocument();
+    expect(screen.getByText("Nenhuma pendência crítica agora.")).toBeInTheDocument();
+    expect(screen.getAllByText("Nenhuma decisão pendente agora.").length).toBeGreaterThan(0);
+    // Indicators/Financeiro stay visible even on a calm day — they are not
+    // gated behind "something urgent exists".
+    expect(screen.getByText("Clientes ativos")).toBeInTheDocument();
     expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
   });
 
@@ -233,12 +240,13 @@ describe("UI fundamentals", () => {
     // real next appointment and never fabricates a risk or opportunity line.
     expect(screen.queryByText(/Principal risco/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Vale olhar/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Precisa de atenção/)).not.toBeInTheDocument();
-    expect(screen.getAllByText("Lia").length).toBeGreaterThan(0);
+    // The next appointment lives only in its own compact context card now —
+    // never restated inside the briefing text.
+    expect(screen.getAllByText(/Lia/).length).toBeGreaterThan(0);
     expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
   });
 
-  it("shows in-progress badge and does not treat past as upcoming", () => {
+  it("never reproduces the Agenda's in-progress timeline on the Home, but still surfaces the real pending outcome as a decision", () => {
     render(
       <TodayBoard
         summary={{
@@ -297,11 +305,15 @@ describe("UI fundamentals", () => {
         }}
       />,
     );
-    expect(screen.getByText("Em andamento")).toBeInTheDocument();
-    expect(screen.getByText("Bruno")).toBeInTheDocument();
-    // Same real item legitimately echoed across the responsive dual-tree
-    // and the briefing's risk/opportunity line — never a duplicated section.
-    expect(screen.getAllByText("PastClient").length).toBeGreaterThan(0);
+    // The in-progress appointment (Bruno) belongs to the Agenda screen only —
+    // the Home never restates a live timeline or an "Em andamento" badge.
+    expect(screen.queryByText("Em andamento")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bruno")).not.toBeInTheDocument();
+    // The real pending decision (PastClient's appointment awaiting outcome)
+    // still surfaces, labeled by its real origin — echoed across the
+    // responsive dual-tree, never a duplicated section.
+    expect(screen.getAllByText(/PastClient/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Agenda").length).toBeGreaterThan(0);
     expect(screen.queryByText("OrganizadoCard")).not.toBeInTheDocument();
   });
 
@@ -334,7 +346,7 @@ describe("UI fundamentals", () => {
     expect(screen.getByText("Cliente quer continuar")).toBeInTheDocument();
     expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
     expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
-    expect(screen.getByText(/Precisa de atenção · 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Precisa de decisão · 1/)).toBeInTheDocument();
   });
 
   it("shows initial setup card instead of Tudo organizado when config is missing", () => {

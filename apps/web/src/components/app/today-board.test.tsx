@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { HomeSummary } from "@/lib/api";
 
@@ -47,14 +47,13 @@ const BASE_SUMMARY: HomeSummary = {
   priority_action: null,
   contextual_hint: null,
   message: "Tudo em dia por aqui.",
-  // Non-zero so `fullyClear` is false and the "Suas ações de hoje" section
-  // (backed by the /routines/board fetch under test) actually renders
-  // instead of the unrelated "Tudo organizado" success empty-state.
+  // Non-zero so the professional never reads as brand-new — routine
+  // pendencies alone must not trigger the New-Professional journey.
   routines_due_today_count: 5,
 };
 
-describe("TodayBoard — overdue vs. today never share the same visual treatment", () => {
-  it("renders an overdue action with a danger badge and a today action with a neutral badge", async () => {
+describe("TodayBoard — only overdue routine occurrences ever enter the priority queue", () => {
+  it("shows the overdue item labeled 'Rotina' and never shows the due-today (not overdue) one anywhere on the Home", async () => {
     board.items = [
       {
         id: "overdue-1",
@@ -79,66 +78,35 @@ describe("TodayBoard — overdue vs. today never share the same visual treatment
     ];
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
-    const overdueBadge = await screen.findByText("Atrasada");
-    expect(overdueBadge).toHaveClass("badge-danger");
-    expect(overdueBadge).not.toHaveClass("badge-neutral");
-
-    const todayBadge = screen.getByText("Hoje");
-    expect(todayBadge).toHaveClass("badge-neutral");
-    expect(todayBadge).not.toHaveClass("badge-danger");
+    const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
+    expect(within(queue).getByText("Aluna Atrasada · venceu em 20/08/2026")).toBeInTheDocument();
+    // "Rotina" appears as the origin label exactly for the overdue item —
+    // never a second, unrelated "Rotinas de hoje" list.
+    expect(within(queue).getByText("Rotina")).toBeInTheDocument();
+    expect(screen.queryByText(/Aluno Hoje/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Registrar feedback")).not.toBeInTheDocument();
   });
 
-  it("marks a grouped rest-summary row as overdue with a danger badge, not plain text", async () => {
-    // TODAY_ACTIONS_LIMIT is 3 and overdue items always sort before non-
-    // overdue ones, so a 4th overdue item (own occurrence_type) is pushed
-    // into the "rest" summary group — which must still read as overdue.
+  it("lists every overdue item individually — never grouped into a summary row", async () => {
     board.items = [
-      {
-        id: "a",
-        type_label: "Rotina",
-        client_name: "Cliente A",
-        client_id: "c-a",
-        overdue: true,
-        due_on: "2026-08-15",
-        occurrence_type: "occ-a",
-      },
-      {
-        id: "b",
-        type_label: "Rotina",
-        client_name: "Cliente B",
-        client_id: "c-b",
-        overdue: true,
-        due_on: "2026-08-16",
-        occurrence_type: "occ-b",
-      },
-      {
-        id: "c",
-        type_label: "Rotina",
-        client_name: "Cliente C",
-        client_id: "c-c",
-        overdue: true,
-        due_on: "2026-08-17",
-        occurrence_type: "occ-c",
-      },
-      {
-        id: "d",
-        type_label: "Rotina",
-        client_name: "Cliente D",
-        client_id: "c-d",
-        overdue: true,
-        due_on: "2026-08-18",
-        occurrence_type: "occ-d",
-      },
+      { id: "a", type_label: "Rotina", client_name: "Cliente A", client_id: "c-a", overdue: true, due_on: "2026-08-15", occurrence_type: "occ-a" },
+      { id: "b", type_label: "Rotina", client_name: "Cliente B", client_id: "c-b", overdue: true, due_on: "2026-08-16", occurrence_type: "occ-b" },
+      { id: "c", type_label: "Rotina", client_name: "Cliente C", client_id: "c-c", overdue: true, due_on: "2026-08-17", occurrence_type: "occ-c" },
+      { id: "d", type_label: "Rotina", client_name: "Cliente D", client_id: "c-d", overdue: true, due_on: "2026-08-18", occurrence_type: "occ-d" },
     ];
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
-    const restBadge = await screen.findByText("Atrasadas");
-    expect(restBadge).toHaveClass("badge-danger");
+    const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
+    expect(within(queue).getByText("Cliente A · venceu em 15/08/2026")).toBeInTheDocument();
+    expect(within(queue).getByText("Cliente B · venceu em 16/08/2026")).toBeInTheDocument();
+    expect(within(queue).getByText("Cliente C · venceu em 17/08/2026")).toBeInTheDocument();
+    expect(within(queue).getByText("Cliente D · venceu em 18/08/2026")).toBeInTheDocument();
+    expect(screen.queryByText("Atrasadas")).not.toBeInTheDocument();
   });
 });
 
-describe("TodayBoard — evaluation card opens the form directly", () => {
-  it("shows the correct student and a single link straight to that client's evaluation form", async () => {
+describe("TodayBoard — an overdue evaluation review routes straight to the evaluation form", () => {
+  it("shows a single link straight to that client's evaluation form", async () => {
     board.items = [
       {
         id: "occ-eval-1",
@@ -153,44 +121,21 @@ describe("TodayBoard — evaluation card opens the form directly", () => {
     ];
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
-    const link = await screen.findByRole("link", { name: /Realizar avaliação/i });
+    const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
+    const link = within(queue).getByRole("link", { name: /Realizar avaliação/i });
     expect(link).toHaveTextContent("Fernando");
     expect(link).toHaveAttribute(
       "href",
       "/app/clients/client-fernando/evaluations/new?returnTo=%2Fapp&occurrenceId=occ-eval-1",
     );
 
-    // Whole card is exactly one <a> — no nested/duplicate link that could
+    // Whole row is exactly one <a> — no nested/duplicate link that could
     // double-fire navigation on a single tap.
     const container = link.closest("li");
     expect(container?.querySelectorAll("a")).toHaveLength(1);
-
-    // Never routed through the client profile or "Preparar acompanhamento".
-    expect(screen.queryByText("Abrir cliente")).not.toBeInTheDocument();
   });
 
-  it("uses a danger badge for an overdue evaluation and never green", async () => {
-    board.items = [
-      {
-        id: "occ-eval-overdue",
-        name: "Realizar avaliação",
-        type_label: "Revisar avaliação",
-        client_name: "Marcos",
-        client_id: "client-marcos",
-        overdue: true,
-        due_on: "2026-08-20",
-        occurrence_type: "evaluation_review",
-      },
-    ];
-    render(<TodayBoard summary={BASE_SUMMARY} />);
-
-    const badge = await screen.findByText("Atrasada");
-    expect(badge).toHaveClass("badge-danger");
-    expect(badge).not.toHaveClass("badge-success");
-    expect(screen.getByText(/venceu em/i)).toBeInTheDocument();
-  });
-
-  it("uses a warning badge (not danger) for an evaluation due today", async () => {
+  it("never shows a due-today (not overdue) evaluation review — that belongs to the Rotinas screen, not the Home", async () => {
     board.items = [
       {
         id: "occ-eval-today",
@@ -205,13 +150,12 @@ describe("TodayBoard — evaluation card opens the form directly", () => {
     ];
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
-    const badge = await screen.findByText("Hoje");
-    expect(badge).toHaveClass("badge-warning");
-    expect(badge).not.toHaveClass("badge-danger");
-    expect(screen.getByText(/vence hoje/i)).toBeInTheDocument();
+    await screen.findByText("Financeiro");
+    expect(screen.queryByText(/Realizar avaliação/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Ana")).not.toBeInTheDocument();
   });
 
-  it("leaves other occurrence types on their existing destination (Abrir cliente)", async () => {
+  it("routes an overdue non-evaluation occurrence (plan_review) to the client profile instead of a form", async () => {
     board.items = [
       {
         id: "occ-plan",
@@ -219,14 +163,15 @@ describe("TodayBoard — evaluation card opens the form directly", () => {
         type_label: "Revisão",
         client_name: "Cliente Plano",
         client_id: "client-plano",
-        overdue: false,
-        due_on: "2026-08-22",
+        overdue: true,
+        due_on: "2026-08-20",
         occurrence_type: "plan_review",
       },
     ];
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
-    const link = await screen.findByRole("link", { name: "Abrir cliente" });
+    const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
+    const link = within(queue).getByRole("link", { name: /Revisar plano/i });
     expect(link).toHaveAttribute("href", "/app/clients/client-plano");
   });
 

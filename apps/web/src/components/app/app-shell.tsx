@@ -388,11 +388,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={[
-        "flex w-full flex-col md:flex-row",
+        "flex w-full flex-col lg:flex-row",
         assistantActive ? "h-dvh overflow-hidden" : "min-h-dvh",
       ].join(" ")}
     >
-      <aside className="app-sidebar hidden border-[var(--color-border)] md:flex md:w-56 md:shrink-0 md:flex-col md:border-r xl:w-64">
+      <aside className="app-sidebar hidden border-[var(--color-border)] lg:flex lg:w-56 lg:shrink-0 lg:flex-col lg:border-r xl:w-64">
         <div className="sticky top-0 flex min-h-dvh flex-col">
           <div className="px-4 py-4">
             <div className="flex items-baseline gap-1.5">
@@ -464,7 +464,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 shrink-0 border-b border-[var(--color-border)]/80 bg-[var(--color-bg)]/90 px-4 py-2.5 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-10 shrink-0 border-b border-[var(--color-border)]/80 bg-[var(--color-bg)]/90 px-4 py-2.5 backdrop-blur lg:hidden">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <BrandWordmark size="sm" surface="light" compact />
@@ -503,8 +503,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           // token because it's shell-chrome-specific, not a design value.
           className={
             assistantActive
-              ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
-              : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:px-6 md:py-6 md:pb-5 xl:px-8"
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
+              : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-6 lg:pb-5 xl:px-8"
           }
         >
           {/* Sidebar+content no longer share one global max-width (that centered
@@ -526,7 +526,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav
           aria-label="Navegação principal"
-          className="app-bottom-nav fixed inset-x-0 bottom-0 border-t border-[var(--color-border)]/70 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden"
+          className="app-bottom-nav fixed inset-x-0 bottom-0 border-t border-[var(--color-border)]/70 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden"
         >
           <div className="mx-auto flex max-w-lg items-stretch justify-between gap-0.5 px-1.5 py-1.5">
             {mobileNavItems.map((item) => {
