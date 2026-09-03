@@ -19,6 +19,8 @@ import { formatHumanDate, formatHumanDateRange, formatNextLessonLine } from "@/l
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import { appointmentStatusTone } from "@/lib/status-tone";
 import {
   addDaysToIsoDate,
@@ -185,7 +187,7 @@ function AgendaRoutines({ day }: { day: string | null }) {
             (item) => (
               <li
                 key={item.id}
-                className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-3"
+                className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
               >
                 <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
                   Rotina
@@ -451,7 +453,7 @@ export default function AgendaPage() {
             <div className="inline-flex overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
               <button
                 type="button"
-                className={`px-3 py-1.5 text-sm font-semibold ${view === "day" ? "bg-[var(--color-primary)] text-[var(--color-on-primary)]" : "bg-[var(--color-surface)] text-[var(--color-ink-muted)]"}`}
+                className={`px-3 py-1.5 text-sm font-semibold ${view === "day" ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "bg-[var(--color-surface)] text-[var(--color-ink-muted)]"}`}
                 onClick={() => setView("day")}
                 aria-pressed={view === "day"}
               >
@@ -459,7 +461,7 @@ export default function AgendaPage() {
               </button>
               <button
                 type="button"
-                className={`px-3 py-1.5 text-sm font-semibold ${view === "week" ? "bg-[var(--color-primary)] text-[var(--color-on-primary)]" : "bg-[var(--color-surface)] text-[var(--color-ink-muted)]"}`}
+                className={`px-3 py-1.5 text-sm font-semibold ${view === "week" ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "bg-[var(--color-surface)] text-[var(--color-ink-muted)]"}`}
                 onClick={() => setView("week")}
                 aria-pressed={view === "week"}
               >
@@ -507,17 +509,13 @@ export default function AgendaPage() {
           </p>
         ) : null}
 
-        {error ? (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {error}
-          </p>
-        ) : null}
+        {error ? <BlockError message={error} /> : null}
 
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start lg:gap-6">
           <div className="space-y-3">
             <CalendarLegend />
             {(view === "week" ? rangeLoading : dayLoading) ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
+              <Skeleton className="h-48 w-full" />
             ) : null}
             {!(view === "week" ? rangeLoading : dayLoading) && isEmpty ? (
               <EmptyAgenda day={day} timezone={timezone} />
@@ -595,12 +593,8 @@ export default function AgendaPage() {
           </p>
         ) : null}
 
-        {error ? (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {error}
-          </p>
-        ) : null}
-        {dayLoading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
+        {error ? <BlockError message={error} /> : null}
+        {dayLoading ? <Skeleton className="h-32 w-full" /> : null}
 
         {!dayLoading && nextAppointment ? (
           <div className="rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)] px-3.5 py-3">

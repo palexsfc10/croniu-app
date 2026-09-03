@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ContextualBar } from "@/components/app/contextual-bar";
 import { TextField } from "@/components/ui/text-field";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 import { safeReturnTo } from "@/lib/nomenclature";
 
@@ -65,48 +67,56 @@ export default function ReceivableDetailPage() {
     <div className="space-y-4 animate-fade-up">
       <ContextualBar label={item ? `Recebimento · ${item.client_name}` : null} />
       <BackLink href={returnTo} label={returnTo === "/app/receivables" ? "Financeiro" : "Início"} />
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
+      {error ? <BlockError message={error} /> : null}
       {item ? (
         <>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">{item.client_name}</h1>
-          <p className="text-sm text-[var(--color-ink-muted)]">{item.cycle_service_name}</p>
-          <p className="text-lg font-semibold">{formatBRL(item.amount_cents)}</p>
-          <p className="flex flex-wrap items-center gap-2 text-sm">
-            Status:
-            <Badge tone={receivableStatusTone(item.status)}>
-              {receivableStatusLabel(item.status)}
-            </Badge>
-          </p>
-          <p className="text-sm text-[var(--color-ink-muted)]">
-            Vencimento: {formatDateBR(item.due_on)}
-          </p>
+          <header className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="h-display text-2xl text-[var(--color-ink)] md:text-3xl">
+                {item.client_name}
+              </h1>
+              <Badge tone={receivableStatusTone(item.status)}>
+                {receivableStatusLabel(item.status)}
+              </Badge>
+            </div>
+            <p className="text-sm text-[var(--color-ink-muted)]">{item.cycle_service_name}</p>
+          </header>
+
+          <section className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm">
+            <p className="text-2xl font-semibold tabular-nums text-[var(--color-ink)]">
+              {formatBRL(item.amount_cents)}
+            </p>
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Vencimento: {formatDateBR(item.due_on)}
+            </p>
+          </section>
+
           {item.status !== "received" ? (
-            <div className="space-y-3">
+            <section className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm">
               <TextField
                 label="Forma de pagamento"
                 value={method}
                 onChange={(event) => setMethod(event.target.value)}
               />
-              <Button variant="success" fullWidth disabled={busy} onClick={() => void markPaid()}>
+              <Button variant="success" disabled={busy} onClick={() => void markPaid()}>
                 {busy ? "Confirmando…" : "Marcar como pago"}
               </Button>
-            </div>
+            </section>
           ) : (
-            <p className="rounded-[var(--radius-md)] border border-[var(--color-success)]/20 bg-[var(--color-success-subtle)] px-3 py-2 text-sm text-[var(--color-success)]">
+            <p className="rounded-[var(--radius-lg)] border border-[var(--color-success)]/20 bg-[var(--color-success-subtle)] px-3.5 py-2.5 text-sm text-[var(--color-success)] shadow-sm">
               Recebido em {item.paid_at ? new Date(item.paid_at).toLocaleString("pt-BR") : "—"}
               {item.payment_method ? ` · ${item.payment_method}` : ""}
             </p>
           )}
-          <Link href={`/app/cycles/${item.cycle_id}`} className="text-sm font-semibold text-[var(--color-link)]">
+          <Link href={`/app/cycles/${item.cycle_id}`} className="text-sm font-semibold text-[var(--color-link)] hover:underline">
             Ver ciclo
           </Link>
         </>
       ) : (
-        <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
+        <div className="space-y-3">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-20 w-full" />
+        </div>
       )}
     </div>
   );

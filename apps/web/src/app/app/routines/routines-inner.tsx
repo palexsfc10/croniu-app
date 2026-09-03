@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { IconChevronRight, IconMoreHorizontal, IconPlus } from "@/components/ui/icons";
+import { EmptyState } from "@/components/ui/empty-state";
+import { BlockError } from "@/components/ui/block-error";
 import { RoutineTemplatesPanel } from "@/app/app/routines/routine-templates-panel";
 
 type Routine = {
@@ -621,11 +623,7 @@ export default function RoutinesPageInner() {
           </Button>
         </div>
 
-        {error ? (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {error}
-          </p>
-        ) : null}
+        {error ? <BlockError message={error} /> : null}
         {info ? (
           <p role="status" className="text-sm text-[var(--color-success)]">
             {info}
@@ -641,7 +639,7 @@ export default function RoutinesPageInner() {
               aria-selected={deskView === v.value}
               className={`min-h-9 rounded-full px-3 text-sm font-semibold ${
                 deskView === v.value
-                  ? "bg-[var(--color-primary)] text-[var(--color-on-primary)]"
+                  ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
                   : "border border-[var(--color-border)] text-[var(--color-ink-muted)]"
               }`}
               onClick={() => setDeskView(v.value)}
@@ -687,24 +685,25 @@ export default function RoutinesPageInner() {
         </div>
 
         {filteredDeskItems.length === 0 ? (
-          <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-4 py-8 text-center">
-            <p className="font-medium">Nada aqui.</p>
-            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-              {deskView === "completed"
+          <EmptyState
+            title="Nada aqui"
+            description={
+              deskView === "completed"
                 ? "Nenhuma rotina concluída neste período."
-                : "Sem pendências para os filtros atuais."}
-            </p>
-            <div className="mt-3">
+                : "Sem pendências para os filtros atuais."
+            }
+            action={
               <Button variant="secondary" onClick={openCreateDialog}>
                 Nova rotina
               </Button>
-            </div>
-          </div>
+            }
+          />
         ) : (
+          <div className="overflow-hidden overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                <th className="py-2 pr-3">Rotina</th>
+                <th className="py-2.5 pl-3.5 pr-3">Rotina</th>
                 <th className="py-2 pr-3">Cliente</th>
                 <th className="py-2 pr-3">Tipo</th>
                 <th className="py-2 pr-3">Origem</th>
@@ -719,7 +718,7 @@ export default function RoutinesPageInner() {
                   key={item.id}
                   className="border-b border-[var(--color-border)]/60 align-top hover:bg-[var(--color-surface-subtle)]"
                 >
-                  <td className="py-2.5 pr-3 font-medium text-[var(--color-ink)]">
+                  <td className="py-2.5 pl-3.5 pr-3 font-medium text-[var(--color-ink)]">
                     {item.name || item.type_label}
                   </td>
                   <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
@@ -763,6 +762,7 @@ export default function RoutinesPageInner() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -835,11 +835,7 @@ export default function RoutinesPageInner() {
               : "Organize os dias em que você revisa planos, acompanha clientes e prepara renovações."}
           </p>
         </header>
-        {error ? (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {error}
-          </p>
-        ) : null}
+        {error ? <BlockError message={error} /> : null}
         {info ? (
           <p role="status" className="text-sm text-[var(--color-success)]">
             {info}
@@ -848,22 +844,22 @@ export default function RoutinesPageInner() {
 
         {overdueTodayCount > 0 || todayCount > 0 || nextItem ? (
           <section aria-label="Resumo" className="grid grid-cols-2 gap-2">
-            <div className="rounded-[var(--radius-lg)] border border-[var(--color-danger)]/30 bg-[var(--color-danger-subtle)] px-3 py-2.5">
+            <div className="rounded-[var(--radius-lg)] border border-[var(--color-danger)]/30 bg-[var(--color-danger-subtle)] px-3 py-2.5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-danger)]">
                 Atrasadas
               </p>
-              <p className="text-lg font-semibold text-[var(--color-ink)]">{overdueTodayCount}</p>
+              <p className="text-lg font-semibold tabular-nums text-[var(--color-ink)]">{overdueTodayCount}</p>
             </div>
-            <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5">
+            <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Hoje
               </p>
-              <p className="text-lg font-semibold text-[var(--color-ink)]">{todayCount}</p>
+              <p className="text-lg font-semibold tabular-nums text-[var(--color-ink)]">{todayCount}</p>
             </div>
           </section>
         ) : null}
         {nextItem ? (
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)] px-3.5 py-3">
+          <div className="rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)] px-3.5 py-3 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
               Próxima rotina
             </p>

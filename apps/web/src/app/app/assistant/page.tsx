@@ -828,8 +828,8 @@ export default function AssistantPage() {
   const empty = messages.length === 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,#f8f9fc_0%,#f4f6fb_55%,#f8f9fc_100%)] md:flex-row">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-[var(--color-border)]/70 bg-[var(--color-surface)]/80 md:flex">
+    <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,var(--color-bg)_0%,var(--color-surface-subtle)_55%,var(--color-bg)_100%)] lg:flex-row">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-[var(--color-border)]/70 bg-[var(--color-surface)]/80 lg:flex">
         <div className="flex items-center justify-between gap-2 px-3 py-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
             Conversas
@@ -888,7 +888,7 @@ export default function AssistantPage() {
           <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight text-[var(--color-ink)]">
             Assistente
           </h1>
-          <div className="relative md:hidden">
+          <div className="relative lg:hidden">
             <button
               ref={threadsTriggerRef}
               type="button"
@@ -923,7 +923,7 @@ export default function AssistantPage() {
               ref={threadsPanelRef}
               role="dialog"
               aria-label="Conversas recentes"
-              className="absolute left-2 right-2 top-full z-30 mt-1 max-h-[min(20rem,55vh)] overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-md md:hidden"
+              className="absolute left-2 right-2 top-full z-30 mt-1 max-h-[min(20rem,55vh)] overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-md lg:hidden"
             >
               <button
                 type="button"
@@ -1002,7 +1002,7 @@ export default function AssistantPage() {
                   {homeSummary ? (
                     <Link
                       href="/app/agenda"
-                      className="flex items-center justify-between gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 md:hidden"
+                      className="flex items-center justify-between gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 lg:hidden"
                     >
                       <span className="text-sm text-[var(--color-ink)]">
                         <strong className="font-semibold">
@@ -1022,7 +1022,7 @@ export default function AssistantPage() {
                   <div
                     role="group"
                     aria-label="Acesso rápido"
-                    className="flex flex-wrap justify-center gap-2 md:hidden"
+                    className="flex flex-wrap justify-center gap-2 lg:hidden"
                   >
                     {[
                       { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
@@ -1041,7 +1041,7 @@ export default function AssistantPage() {
                   </div>
 
                   {threads.length > 0 ? (
-                    <div className="md:hidden">
+                    <div className="lg:hidden">
                       <p className="mb-1.5 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)] sm:text-left">
                         Consultas recentes
                       </p>

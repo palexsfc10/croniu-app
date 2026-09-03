@@ -14,6 +14,8 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import { IconChevronLeft, IconChevronRight } from "@/components/ui/icons";
 import {
   buildCycleRow,
@@ -214,11 +216,7 @@ export default function CyclesPage() {
         </Link>
       </div>
 
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
+      {error ? <BlockError message={error} /> : null}
 
       <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
         {(
@@ -229,8 +227,11 @@ export default function CyclesPage() {
             ["Encerrados", counts.ended],
           ] as const
         ).map(([label, value]) => (
-          <div key={label} className="rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)] px-2 py-2">
-            <p className="font-semibold text-[var(--color-ink)]">{value}</p>
+          <div
+            key={label}
+            className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2 shadow-sm"
+          >
+            <p className="font-semibold tabular-nums text-[var(--color-ink)]">{value}</p>
             <p className="text-[var(--color-ink-muted)]">{label}</p>
           </div>
         ))}
@@ -348,7 +349,12 @@ export default function CyclesPage() {
         </div>
       ) : null}
 
-      {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
+        </div>
+      ) : null}
 
       {!loading && !visible.length ? (
         <EmptyState
@@ -474,7 +480,7 @@ export default function CyclesPage() {
             return (
               <li
                 key={c.id}
-                className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3"
+                className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">

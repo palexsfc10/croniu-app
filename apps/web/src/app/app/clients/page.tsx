@@ -35,6 +35,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import {
   IconAlertCircle,
   IconChevronRight,
@@ -597,12 +599,14 @@ export default function ClientsPage() {
         </div>
       </div>
 
-      {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
       ) : null}
+      {error ? <BlockError message={error} /> : null}
 
       {!loading && !items.length ? (
         <EmptyState

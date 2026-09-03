@@ -28,6 +28,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconClipboardList, IconHistory, IconUser } from "@/components/ui/icons";
 import { BackLink } from "@/components/app/back-link";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 
 type PendingRow = {
   client_id: string;
@@ -147,11 +150,7 @@ export default function AccompanimentPage() {
           </p>
         </div>
 
-        {error ? (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {error}
-          </p>
-        ) : null}
+        {error ? <BlockError message={error} /> : null}
 
         <div className="flex flex-wrap items-center gap-2" role="tablist">
           <button
@@ -161,7 +160,7 @@ export default function AccompanimentPage() {
             onClick={() => setTab("pending")}
             className={`min-h-9 rounded-full px-3 text-sm font-semibold ${
               tab === "pending"
-                ? "bg-[var(--color-primary)] text-[var(--color-on-primary)]"
+                ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
                 : "border border-[var(--color-border)] text-[var(--color-ink-muted)]"
             }`}
           >
@@ -175,7 +174,7 @@ export default function AccompanimentPage() {
             onClick={() => setTab("history")}
             className={`min-h-9 rounded-full px-3 text-sm font-semibold ${
               tab === "history"
-                ? "bg-[var(--color-primary)] text-[var(--color-on-primary)]"
+                ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
                 : "border border-[var(--color-border)] text-[var(--color-ink-muted)]"
             }`}
           >
@@ -201,21 +200,25 @@ export default function AccompanimentPage() {
           ) : null}
         </div>
 
-        {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        ) : null}
 
         {!loading && tab === "pending" ? (
           pending.length === 0 ? (
-            <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-4 py-8 text-center">
-              <p className="font-medium">Nenhuma avaliação pendente.</p>
-              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                Todos os clientes com ciclo ativo têm uma avaliação recente.
-              </p>
-            </div>
+            <EmptyState
+              title="Nenhuma avaliação pendente."
+              description="Todos os clientes com ciclo ativo têm uma avaliação recente."
+            />
           ) : (
+            <div className="overflow-hidden overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                  <th className="py-2 pr-3">Cliente</th>
+                  <th className="py-2.5 pl-3.5 pr-3">Cliente</th>
                   <th className="py-2 pr-3">Serviço/ciclo</th>
                   <th className="py-2 pr-3">Última avaliação</th>
                   <th className="py-2 pr-3">Dias sem avaliação</th>
@@ -234,19 +237,19 @@ export default function AccompanimentPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )
         ) : null}
 
         {!loading && tab === "history" ? (
           recent.length === 0 ? (
-            <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-4 py-8 text-center">
-              <p className="font-medium">Nenhuma avaliação publicada ainda.</p>
-            </div>
+            <EmptyState title="Nenhuma avaliação publicada ainda" description="Publique uma avaliação para vê-la aqui." />
           ) : (
+            <div className="overflow-hidden overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                  <th className="py-2 pr-3">Título</th>
+                  <th className="py-2.5 pl-3.5 pr-3">Título</th>
                   <th className="py-2 pr-3">Publicado em</th>
                   <th className="py-2 pr-3">Ação</th>
                 </tr>
@@ -257,7 +260,7 @@ export default function AccompanimentPage() {
                     key={ev.id}
                     className="border-b border-[var(--color-border)]/60 hover:bg-[var(--color-surface-subtle)]"
                   >
-                    <td className="py-2.5 pr-3 font-medium text-[var(--color-ink)]">{ev.title}</td>
+                    <td className="py-2.5 pl-3.5 pr-3 font-medium text-[var(--color-ink)]">{ev.title}</td>
                     <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
                       {ev.published_at ? formatDatePt(ev.published_at, timeZone) : "—"}
                     </td>
@@ -273,6 +276,7 @@ export default function AccompanimentPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )
         ) : null}
       </div>
@@ -285,27 +289,26 @@ export default function AccompanimentPage() {
             Clientes com avaliação pendente ou nunca avaliados.
           </p>
         </header>
-        {error ? (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {error}
-          </p>
+        {error ? <BlockError message={error} /> : null}
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
         ) : null}
-        {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
 
         {!loading && pending.length === 0 ? (
-          <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4">
-            <p className="font-medium">Nenhuma avaliação pendente.</p>
-            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-              Todos os clientes com ciclo ativo têm uma avaliação recente.
-            </p>
-          </div>
+          <EmptyState
+            title="Nenhuma avaliação pendente."
+            description="Todos os clientes com ciclo ativo têm uma avaliação recente."
+          />
         ) : null}
 
         <ul className="space-y-2.5">
           {pending.slice(0, 8).map((row) => (
             <li
               key={row.client_id}
-              className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3"
+              className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">

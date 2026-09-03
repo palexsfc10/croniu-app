@@ -45,6 +45,8 @@ import { ClientIntakeInviteButton } from "@/components/app/client-intake-invite-
 import { ClientPortalCard } from "@/components/app/client-portal-card";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { TextArea } from "@/components/ui/text-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   IconCalendarDays,
@@ -561,14 +563,13 @@ export function ClientProfile({ clientId }: Props) {
           </div>
         </header>
       ) : (
-        <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-40" />
+        </div>
       )}
 
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
+      {error ? <BlockError message={error} /> : null}
 
       {justCreatedCycle ? (
         <p
@@ -667,10 +668,13 @@ export function ClientProfile({ clientId }: Props) {
           aria-label="Resumo"
         >
           {loading && !item ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">Carregando resumo…</p>
+            <div className="space-y-3">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
           ) : item ? (
             <>
-              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
                   {next.title}
                 </p>
@@ -693,7 +697,7 @@ export function ClientProfile({ clientId }: Props) {
               ) : null}
 
               {!submissionId ? (
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <p className="text-sm font-semibold text-[var(--color-ink)]">
                     Envie o formulário para {item.full_name.split(/\s+/)[0]} completar o cadastro.
                   </p>
@@ -707,14 +711,14 @@ export function ClientProfile({ clientId }: Props) {
               ) : null}
 
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Contato
                   </dt>
                   <dd className="mt-1 text-sm text-[var(--color-ink)]">{formatPhoneBR(item.phone)}</dd>
                   <dd className="text-sm text-[var(--color-ink-muted)]">{item.email || "—"}</dd>
                 </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Serviço e ciclo
                   </dt>
@@ -727,7 +731,7 @@ export function ClientProfile({ clientId }: Props) {
                     </dd>
                   ) : null}
                 </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Progresso
                   </dt>
@@ -737,7 +741,7 @@ export function ClientProfile({ clientId }: Props) {
                       : "—"}
                   </dd>
                 </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Próxima sessão
                   </dt>
@@ -747,7 +751,7 @@ export function ClientProfile({ clientId }: Props) {
                       : "Sem agendamento"}
                   </dd>
                 </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Última avaliação
                   </dt>
@@ -757,7 +761,7 @@ export function ClientProfile({ clientId }: Props) {
                       : "Nenhuma registrada"}
                   </dd>
                 </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Anamnese
                   </dt>
@@ -765,7 +769,7 @@ export function ClientProfile({ clientId }: Props) {
                     {anamnesisDone ? "Revisada" : submissionId ? "Aguardando revisão" : "Não enviada"}
                   </dd>
                 </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Financeiro
                   </dt>
@@ -781,7 +785,7 @@ export function ClientProfile({ clientId }: Props) {
                     </dd>
                   ) : null}
                 </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Renovação
                   </dt>
@@ -791,7 +795,7 @@ export function ClientProfile({ clientId }: Props) {
                       : "—"}
                   </dd>
                 </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Portal
                   </dt>
@@ -915,8 +919,8 @@ export function ClientProfile({ clientId }: Props) {
         >
           {loading && !item ? (
             <div className="space-y-3" aria-busy="true" data-testid="accompaniment-skeleton">
-              <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
-              <div className="h-24 animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
             </div>
           ) : (
             <>
@@ -1192,7 +1196,7 @@ export function ClientProfile({ clientId }: Props) {
           aria-label="Financeiro"
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Em aberto
               </p>
@@ -1200,7 +1204,7 @@ export function ClientProfile({ clientId }: Props) {
                 {formatBRL(pendingTotalCents)}
               </p>
             </div>
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Atrasadas
               </p>
@@ -1208,7 +1212,7 @@ export function ClientProfile({ clientId }: Props) {
                 {overdueReceivables.length}
               </p>
             </div>
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Recebido (histórico)
               </p>
@@ -1324,7 +1328,7 @@ export function ClientProfile({ clientId }: Props) {
           deeper detail behind explicit disclosure, never all at once. */}
       {item ? (
         <div className="space-y-3 lg:hidden" aria-label="Resumo do cliente">
-          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
               {next.title}
             </p>
@@ -1355,7 +1359,7 @@ export function ClientProfile({ clientId }: Props) {
           ) : null}
 
           {!submissionId ? (
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
               <p className="text-sm font-semibold text-[var(--color-ink)]">
                 Envie o formulário para {firstName(item.full_name)} completar o cadastro.
               </p>
@@ -1366,7 +1370,7 @@ export function ClientProfile({ clientId }: Props) {
           ) : null}
 
           <div className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Próxima sessão
               </p>
@@ -1376,7 +1380,7 @@ export function ClientProfile({ clientId }: Props) {
                   : "Sem agendamento"}
               </p>
             </div>
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Plano e ciclo
               </p>
@@ -1391,7 +1395,7 @@ export function ClientProfile({ clientId }: Props) {
                   : "—"}
               </p>
             </div>
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Última evolução
               </p>
@@ -1401,7 +1405,7 @@ export function ClientProfile({ clientId }: Props) {
                   : "Nenhuma registrada"}
               </p>
             </div>
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Financeiro
               </p>

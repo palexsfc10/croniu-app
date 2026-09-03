@@ -6,6 +6,8 @@ import { apiFetch, formatBRL, formatDateBR, type FinancialOverview, type Receiva
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 import { isReceivableOverdue, isReceivablePending } from "@/lib/client-list";
 import {
@@ -128,17 +130,19 @@ export default function ReceivablesPage() {
         </p>
       </div>
 
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
+      {error ? <BlockError message={error} /> : null}
 
-      {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      ) : null}
 
       {summary ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-success)]/25 bg-[var(--color-success-subtle)]/70 p-4">
+          <div className="rounded-[var(--radius-lg)] border border-[var(--color-success)]/25 bg-[var(--color-success-subtle)]/70 p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
               Recebido no mês
             </p>
@@ -146,7 +150,7 @@ export default function ReceivablesPage() {
               {formatBRL(summary.received_month_cents)}
             </p>
           </div>
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
               Previsto no mês
             </p>
@@ -154,7 +158,7 @@ export default function ReceivablesPage() {
               {formatBRL(summary.forecast_month_cents)}
             </p>
           </div>
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)]/60 p-4">
+          <div className="rounded-[var(--radius-lg)] border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)]/60 p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
               Vencido
             </p>
@@ -344,7 +348,7 @@ export default function ReceivablesPage() {
             return (
               <li
                 key={r.id}
-                className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3"
+                className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">

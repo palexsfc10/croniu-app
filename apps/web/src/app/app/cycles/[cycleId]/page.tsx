@@ -13,9 +13,12 @@ import {
 } from "@/lib/api";
 import { formatCycleDetailLines } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import { ContextualBar } from "@/components/app/contextual-bar";
 import { BackLink } from "@/components/app/back-link";
-import { receivableStatusLabel } from "@/lib/status-tone";
+import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 
 export default function CycleDetailPage() {
   const params = useParams<{ cycleId: string }>();
@@ -101,121 +104,145 @@ export default function CycleDetailPage() {
   }
 
   return (
-    <div className="space-y-4 animate-fade-up">
+    <div className="space-y-5 animate-fade-up">
       <ContextualBar
         label={cycle ? `Ciclo · ${cycle.client_name} · ${cycle.service_name}` : null}
       />
       <BackLink href="/app/cycles" label="Ciclos" />
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
+      {error ? <BlockError message={error} /> : null}
       {cycle ? (
         <>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">{cycle.client_name}</h1>
-          <p className="text-sm text-[var(--color-ink-muted)]">
-            {cycle.service_name} · {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).vigency}
-            {cycle.is_legacy ? " · ciclo legado" : ""}
-          </p>
-          <p className="text-sm text-[var(--color-ink-muted)]">
-            {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).lessonsUntil} ·{" "}
-            {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).renewal}
-          </p>
-          {cycle.lesson_count != null ? (
-            <p className="text-sm">
-              {cycle.lessons_completed ?? 0} realizadas · {cycle.lessons_remaining ?? cycle.lesson_count}{" "}
-              restantes · {cycle.lesson_count} no ciclo
-              {cycle.unit_price_cents != null ? ` · ${formatBRL(cycle.unit_price_cents)} / aula` : ""}
-            </p>
-          ) : null}
-          {cycle.subtotal_cents != null ? (
+          <header className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="h-display text-2xl text-[var(--color-ink)] md:text-3xl">
+                {cycle.client_name}
+              </h1>
+              <Badge tone="neutral">{cycle.status}</Badge>
+            </div>
             <p className="text-sm text-[var(--color-ink-muted)]">
-              {cycle.pricing_mode === "fixed_period" ? "Valor do plano" : "Subtotal"}{" "}
-              {formatBRL(cycle.subtotal_cents)}
-              {cycle.adjustment_cents
-                ? ` · ajuste ${formatBRL(cycle.adjustment_cents)}`
-                : ""}
+              {cycle.service_name} · {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).vigency}
+              {cycle.is_legacy ? " · ciclo legado" : ""}
+            </p>
+          </header>
+
+          <section className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm">
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).lessonsUntil} ·{" "}
+              {formatCycleDetailLines(cycle.starts_on, cycle.ends_on).renewal}
+            </p>
+            {cycle.lesson_count != null ? (
+              <p className="text-sm text-[var(--color-ink)]">
+                {cycle.lessons_completed ?? 0} realizadas · {cycle.lessons_remaining ?? cycle.lesson_count}{" "}
+                restantes · {cycle.lesson_count} no ciclo
+                {cycle.unit_price_cents != null ? ` · ${formatBRL(cycle.unit_price_cents)} / aula` : ""}
+              </p>
+            ) : null}
+            {cycle.subtotal_cents != null ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                {cycle.pricing_mode === "fixed_period" ? "Valor do plano" : "Subtotal"}{" "}
+                {formatBRL(cycle.subtotal_cents)}
+                {cycle.adjustment_cents ? ` · ajuste ${formatBRL(cycle.adjustment_cents)}` : ""}
+              </p>
+            ) : null}
+            <p className="text-base font-semibold tabular-nums text-[var(--color-ink)]">
+              Total: {formatBRL(cycle.value_cents)}
+            </p>
+          </section>
+
+          {cycle.is_nearing_end ? (
+            <p className="card-rail card-rail-warning rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 text-sm shadow-sm">
+              Ciclo encerrando{cycle.days_remaining != null ? ` em ${cycle.days_remaining} dia(s)` : ""}.
             </p>
           ) : null}
-          <p className="text-sm font-semibold">Total: {formatBRL(cycle.value_cents)}</p>
-          <p className="text-sm text-[var(--color-ink-muted)]">Status: {cycle.status}</p>
+
           {cycle.status !== "cancelled" ? (
-            <div className="space-y-2">
-              <Link href={`/app/cycles/${cycle.id}/edit`} className="block">
-                <Button fullWidth>Editar ciclo</Button>
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/app/cycles/${cycle.id}/edit`}>
+                <Button>Editar ciclo</Button>
               </Link>
               {!cycle.is_legacy ? (
-                <Link href={`/app/cycles/${cycle.id}/financial`} className="block">
-                  <Button fullWidth>Editar valores</Button>
+                <Link href={`/app/cycles/${cycle.id}/financial`}>
+                  <Button variant="secondary">Editar valores</Button>
                 </Link>
               ) : null}
-              <Button fullWidth disabled={busy} onClick={() => void cancelCycle()}>
+              <Button variant="secondary" disabled={busy} onClick={() => void cancelCycle()}>
                 Excluir ciclo
               </Button>
             </div>
           ) : (
-            <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
+            <p className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3.5 py-2.5 text-sm shadow-sm">
               Este ciclo foi excluído (cancelado).
             </p>
           )}
-          {cycle.is_nearing_end ? (
-            <p className="rounded-[var(--radius-md)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
-              Ciclo encerrando{cycle.days_remaining != null ? ` em ${cycle.days_remaining} dia(s)` : ""}.
-            </p>
-          ) : null}
-          <div className="space-y-2">
-            <Button fullWidth disabled={busy} onClick={() => void prepareWhatsApp()}>
-              Preparar mensagem WhatsApp
-            </Button>
-            <Button fullWidth variant="secondary" disabled={busy} onClick={() => void confirmContact()}>
-              Confirmar contato manualmente
-            </Button>
-          </div>
-          {prep ? (
-            <section className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
-              <h2 className="text-sm font-semibold">Mensagem pronta</h2>
-              <p className="whitespace-pre-wrap text-sm text-[var(--color-ink-muted)]">{prep.message}</p>
-              {prep.can_open_whatsapp && prep.wa_url ? (
-                <a href={prep.wa_url} target="_blank" rel="noreferrer">
-                  <Button fullWidth variant="secondary">
-                    Abrir WhatsApp (sem envio automático)
-                  </Button>
-                </a>
-              ) : (
-                <p className="text-sm text-[var(--color-warning)]">
-                  Cliente sem telefone — copie a mensagem e envie manualmente.
-                </p>
-              )}
-            </section>
-          ) : null}
-          {cycle.contact_confirmed_at ? (
-            <p className="text-sm text-[var(--color-success)]">
-              Contato confirmado em {new Date(cycle.contact_confirmed_at).toLocaleString("pt-BR")}
-            </p>
-          ) : null}
+
+          <section className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+              Contato de renovação
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={busy} onClick={() => void prepareWhatsApp()}>
+                Preparar mensagem WhatsApp
+              </Button>
+              <Button variant="secondary" disabled={busy} onClick={() => void confirmContact()}>
+                Confirmar contato manualmente
+              </Button>
+            </div>
+            {prep ? (
+              <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-3">
+                <h3 className="text-sm font-semibold text-[var(--color-ink)]">Mensagem pronta</h3>
+                <p className="whitespace-pre-wrap text-sm text-[var(--color-ink-muted)]">{prep.message}</p>
+                {prep.can_open_whatsapp && prep.wa_url ? (
+                  <a href={prep.wa_url} target="_blank" rel="noreferrer">
+                    <Button variant="secondary">Abrir WhatsApp (sem envio automático)</Button>
+                  </a>
+                ) : (
+                  <p className="text-sm text-[var(--color-warning)]">
+                    Cliente sem telefone — copie a mensagem e envie manualmente.
+                  </p>
+                )}
+              </div>
+            ) : null}
+            {cycle.contact_confirmed_at ? (
+              <p className="text-sm text-[var(--color-success)]">
+                Contato confirmado em {new Date(cycle.contact_confirmed_at).toLocaleString("pt-BR")}
+              </p>
+            ) : null}
+          </section>
+
           <section className="space-y-2">
-            <h2 className="text-base font-semibold">Recebimentos</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+              Recebimentos
+            </h2>
             {!receivables.length ? (
               <p className="text-sm text-[var(--color-ink-muted)]">Nenhum recebimento neste ciclo.</p>
-            ) : null}
-            <ul className="space-y-2">
-              {receivables.map((item) => (
-                <li key={item.id}>
-                  <Link
-                    href={`/app/receivables/${item.id}`}
-                    className="block rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                  >
-                    {formatBRL(item.amount_cents)} · {receivableStatusLabel(item.status)} · vence{" "}
-                    {formatDateBR(item.due_on)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            ) : (
+              <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
+                {receivables.map((item) => (
+                  <li key={item.id}>
+                    <Link
+                      href={`/app/receivables/${item.id}`}
+                      className="flex items-center justify-between gap-3 px-3.5 py-3 text-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+                    >
+                      <span className="font-medium tabular-nums text-[var(--color-ink)]">
+                        {formatBRL(item.amount_cents)}
+                      </span>
+                      <Badge tone={receivableStatusTone(item.status)}>
+                        {receivableStatusLabel(item.status)}
+                      </Badge>
+                      <span className="text-[var(--color-ink-muted)]">vence {formatDateBR(item.due_on)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         </>
       ) : (
-        <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
+        <div className="space-y-3">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
       )}
     </div>
   );
