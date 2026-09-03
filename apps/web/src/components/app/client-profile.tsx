@@ -204,7 +204,10 @@ export function ClientProfile({ clientId }: Props) {
   const overdueReceivables = receivables.filter((r) => isReceivableOverdue(r, todayIso));
   const pendingTotalCents = pendingReceivables.reduce((sum, r) => sum + r.amount_cents, 0);
   const latestEvaluation = evaluations[0] ?? null;
+  const draftEvaluations = evaluations.filter((ev) => ev.status === "draft");
+  const publishedEvaluations = evaluations.filter((ev) => ev.status === "published");
   const anamnesisDone = Boolean(journey?.anamnesis_reviewed_at);
+  const prepareHref = `/app/clients/${clientId}/accompaniment`;
 
   const next = (() => {
     const name = item ? firstName(item.full_name) : terms.client;
@@ -520,7 +523,7 @@ export function ClientProfile({ clientId }: Props) {
           >
             <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
               <IconClipboardList className="mr-1.5 h-4 w-4" aria-hidden />
-              Registrar acompanhamento
+              Registrar avaliação
             </Button>
           </Link>
           <Button
@@ -984,51 +987,69 @@ export function ClientProfile({ clientId }: Props) {
           </div>
 
           <div>
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-              Avaliações
-            </h2>
-            <AccompanimentCard
-              icon={<IconClipboardList className="h-5 w-5" />}
-              title="Avaliações"
-              state={latestEvaluation ? `${protocolStatusLabel(latestEvaluation.status)} · ${evaluations.length}` : "Vazio"}
-              stateTone={latestEvaluation ? protocolStatusTone(latestEvaluation.status) : "neutral"}
-              summary={latestEvaluation?.title || "Nenhuma avaliação registrada"}
-              detail={
-                evaluations.length
-                  ? "A última avaliação aparece aqui. O cliente só vê o que você publicar."
-                  : "Registre o ponto de partida quando fizer sentido."
-              }
-              primary={
-                latestEvaluation
-                  ? {
-                      href: `/app/clients/${clientId}/evaluations/${latestEvaluation.id}?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`,
-                      label: "Ver avaliação",
-                      variant: "secondary",
-                    }
-                  : {
-                      href: `/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`,
-                      label: "Nova avaliação",
-                      variant: "secondary",
-                    }
-              }
-            />
-            {evaluations.length > 1 ? (
-              <ul className="mt-2 space-y-1.5">
-                {evaluations.slice(1).map((ev) => (
-                  <li key={ev.id}>
-                    <Link
-                      href={`/app/clients/${clientId}/evaluations/${ev.id}?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`}
-                      className="flex min-h-11 items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
-                    >
-                      <span className="truncate text-[var(--color-ink)]">{ev.title}</span>
-                      <span className="shrink-0 text-[var(--color-ink-muted)]">
-                        {formatDateBR((ev.published_at || ev.created_at).slice(0, 10))}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Avaliações
+              </h2>
+              <Link
+                href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`}
+                className="text-sm font-medium text-[var(--color-primary)]"
+              >
+                Registrar avaliação
+              </Link>
+            </div>
+
+            {!evaluations.length ? (
+              <p className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-3 text-sm text-[var(--color-ink-muted)]">
+                Nenhuma avaliação registrada. Registre o ponto de partida quando fizer sentido.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {draftEvaluations.length ? (
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold text-[var(--color-ink-muted)]">
+                      Rascunhos — visíveis só para você
+                    </p>
+                    <ul className="space-y-1.5">
+                      {draftEvaluations.map((ev) => (
+                        <li key={ev.id}>
+                          <Link
+                            href={`/app/clients/${clientId}/evaluations/${ev.id}?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`}
+                            className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+                          >
+                            <span className="truncate text-[var(--color-ink)]">{ev.title}</span>
+                            <Badge tone="neutral">Rascunho</Badge>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {publishedEvaluations.length ? (
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold text-[var(--color-ink-muted)]">
+                      Publicadas — visíveis no portal do cliente
+                    </p>
+                    <ul className="space-y-1.5">
+                      {publishedEvaluations.map((ev) => (
+                        <li key={ev.id}>
+                          <Link
+                            href={`/app/clients/${clientId}/evaluations/${ev.id}?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`}
+                            className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+                          >
+                            <span className="truncate text-[var(--color-ink)]">{ev.title}</span>
+                            <span className="shrink-0 text-[var(--color-ink-muted)]">
+                              {formatDateBR((ev.published_at || ev.created_at).slice(0, 10))}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
 
           <div>
@@ -1039,6 +1060,12 @@ export function ClientProfile({ clientId }: Props) {
               Etapa atual: {stageLabel}
               {actionLabel ? ` · ${actionLabel}` : ""}
             </p>
+            <Link
+              href={prepareHref}
+              className="mt-1 inline-block text-sm font-medium text-[var(--color-primary)]"
+            >
+              Ver preparação completa
+            </Link>
           </div>
         </section>
       ) : null}

@@ -415,6 +415,37 @@ export type IntakeSubmissionListItem = {
   primary_goal: string;
 };
 
+export type OnboardingBoardItem = {
+  client_id: string;
+  client_name: string;
+  entry_type: "manual" | "convite";
+  stage: string;
+  stage_label: string;
+  requires_professional_attention: boolean;
+  attention_note: string | null;
+  days_since_update: number | null;
+  next_action: string | null;
+  next_action_label: string | null;
+  submission_id: string | null;
+  submission_status: string | null;
+};
+
+export type DraftEvaluation = {
+  evaluation_id: string;
+  client_id: string;
+  client_name: string;
+  title: string;
+  updated_at: string;
+};
+
+export type OnboardingBoard = {
+  attention: OnboardingBoardItem[];
+  invite_pending: OnboardingBoardItem[];
+  in_progress: OnboardingBoardItem[];
+  completed: OnboardingBoardItem[];
+  draft_evaluations: DraftEvaluation[];
+};
+
 export type ClientJourney = {
   id: string;
   client_id: string;

@@ -88,13 +88,13 @@ describe("AccompanimentPage desktop — Pendentes vs Histórico, listas densas",
     expect(within(desktop).getByText("Pilates")).toBeInTheDocument();
   });
 
-  it("offers a real 'Registrar acompanhamento' link into the evaluations flow with returnTo", async () => {
+  it("offers a real 'Registrar avaliação' link into the evaluations flow with returnTo", async () => {
     mockApi();
     const { container } = render(<AccompanimentPage />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
     await within(desktop).findByText("Ana Nunca Avaliada");
     const row = within(desktop).getByText("Ana Nunca Avaliada").closest("tr") as HTMLElement;
-    const link = within(row).getByRole("link", { name: "Registrar acompanhamento" });
+    const link = within(row).getByRole("link", { name: "Registrar avaliação" });
     expect(link).toHaveAttribute(
       "href",
       "/app/clients/c1/evaluations/new?returnTo=%2Fapp%2Faccompaniment",
@@ -139,7 +139,7 @@ describe("AccompanimentPage mobile — resumo, nunca a tabela densa", () => {
     const mobile = container.querySelector(".lg\\:hidden") as HTMLElement;
     await within(mobile).findByText("Ana Nunca Avaliada");
     const card = within(mobile).getByText("Ana Nunca Avaliada").closest("li") as HTMLElement;
-    expect(within(card).getByRole("link", { name: /Registrar acompanhamento/i })).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: /Registrar avaliação/i })).toBeInTheDocument();
     expect(within(card).getByRole("link", { name: /Abrir cliente/i })).toHaveAttribute(
       "href",
       "/app/clients/c1",

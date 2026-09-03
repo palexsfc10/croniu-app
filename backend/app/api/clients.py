@@ -7,12 +7,30 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.agenda import AppointmentOut
+from app.schemas.client_onboarding import DraftEvaluationOut, OnboardingBoardItem, OnboardingBoardOut
 from app.schemas.domain import ClientCreate, ClientOut, ClientUpdate, ReceivableOut
 from app.services import agenda as agenda_svc
+from app.services import client_onboarding as onboarding_svc
 from app.services import domain as domain_svc
 from app.services.auth import AuthContext, AuthError, get_current_auth
 
 router = APIRouter(prefix="/clients", tags=["clients"])
+
+
+@router.get("/onboarding-board", response_model=OnboardingBoardOut)
+def onboarding_board(
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> OnboardingBoardOut:
+    groups = onboarding_svc.onboarding_board(db, organization_id=auth.organization.id)
+    drafts = onboarding_svc.list_draft_evaluations(db, organization_id=auth.organization.id)
+    return OnboardingBoardOut(
+        **{
+            key: [OnboardingBoardItem(**item.__dict__) for item in items]
+            for key, items in groups.items()
+        },
+        draft_evaluations=[DraftEvaluationOut(**item.__dict__) for item in drafts],
+    )
 
 
 def _http(exc: AuthError) -> HTTPException:

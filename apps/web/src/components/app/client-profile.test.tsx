@@ -217,7 +217,7 @@ describe("ClientProfile", () => {
       "href",
       expect.stringContaining("/app/appointments/new?clientId=c1"),
     );
-    expect(actions.getByRole("link", { name: /Registrar acompanhamento/i })).toHaveAttribute(
+    expect(actions.getByRole("link", { name: /Registrar avaliação/i })).toHaveAttribute(
       "href",
       expect.stringContaining("/app/clients/c1/evaluations/new"),
     );
@@ -324,7 +324,7 @@ describe("ClientProfile", () => {
     nav.tab = "prontuario";
     render(<ClientProfile clientId="c2" />);
     const panel = await screen.findByRole("tabpanel", { name: "Prontuário" });
-    expect(within(panel).getByText("Nenhuma avaliação registrada")).toBeInTheDocument();
+    expect(within(panel).getByText(/Nenhuma avaliação registrada/)).toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: /Anamnese/ })).toHaveAttribute(
       "href",
       "/app/clients/intake/sub-c2",

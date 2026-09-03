@@ -89,7 +89,7 @@ function PendingRowView({ row, timeZone }: { row: PendingRow; timeZone: string }
             href={`/app/clients/${row.client_id}/evaluations/new?returnTo=${encodeURIComponent(returnTo)}`}
             className="text-sm font-medium text-[var(--color-primary)]"
           >
-            Registrar acompanhamento
+            Registrar avaliação
           </Link>
           <Link href={`/app/clients/${row.client_id}`} className="text-sm font-medium text-[var(--color-link)]">
             Abrir cliente
@@ -325,7 +325,7 @@ export default function AccompanimentPage() {
                   href={`/app/clients/${row.client_id}/evaluations/new?returnTo=${encodeURIComponent("/app/accompaniment")}`}
                   className="text-sm font-medium text-[var(--color-primary)]"
                 >
-                  Registrar acompanhamento
+                  Registrar avaliação
                 </Link>
                 <Link href={`/app/clients/${row.client_id}`} className="text-sm font-medium text-[var(--color-link)]">
                   <IconUser className="mr-1 inline h-3.5 w-3.5" aria-hidden />

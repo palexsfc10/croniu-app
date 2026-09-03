@@ -177,7 +177,7 @@ export default function IntakeSubmissionDetailPage() {
 
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
-      <BackLink href="/app/clients/intake" label="Novos alunos" />
+      <BackLink href="/app/clients/intake" label="Onboarding de clientes" />
       {error && !item ? (
         <section className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <p role="alert" className="text-sm text-[var(--color-ink)]">
