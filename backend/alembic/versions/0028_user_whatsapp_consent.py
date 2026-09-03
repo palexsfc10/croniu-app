@@ -15,7 +15,7 @@ client intake — not to users; `AdminAuditLog` is for admin actions on
 resources, not a user's own consent), so a version column is the smallest
 correct primitive.
 
-Revision ID: 0028_user_whatsapp_marketing_consent
+Revision ID: 0028_user_whatsapp_consent
 Revises: 0027_fixed_period_plan_pricing
 Create Date: 2026-09-03
 """
@@ -27,7 +27,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0028_user_whatsapp_marketing_consent"
+revision: str = "0028_user_whatsapp_consent"
 down_revision: str | None = "0027_fixed_period_plan_pricing"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
