@@ -1394,7 +1394,7 @@ export default function AssistantPage() {
               { href: "/app/appointments/new", label: "Novo compromisso", Icon: IconCalendarPlus },
               { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
               { href: "/app/routines/pending", label: "Rotinas pendentes", Icon: IconClipboardList },
-              { href: "/app/accompaniment", label: "Acompanhamentos pendentes", Icon: IconActivity },
+              { href: "/app/accompaniment", label: "Avaliações pendentes", Icon: IconActivity },
             ].map(({ href, label, Icon }) => (
               <li key={href}>
                 <Link

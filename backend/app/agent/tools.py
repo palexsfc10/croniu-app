@@ -2281,8 +2281,12 @@ TOOLS: dict[str, ToolDefinition] = {
     "list_clients_needing_accompaniment": ToolDefinition(
         name="list_clients_needing_accompaniment",
         description=(
-            "Lista clientes com ciclo ativo cujo último acompanhamento (avaliação) é "
-            "mais antigo que N dias, ou que nunca tiveram um. Ordenado do mais urgente."
+            "Lista clientes com ciclo ativo cuja ÚLTIMA AVALIAÇÃO registrada é mais antiga "
+            "que N dias, ou que nunca tiveram uma. Isto é um sinal de avaliação pendente, "
+            "não de acompanhamento contínuo — o Croniu ainda não tem um registro dedicado "
+            "de acompanhamento (contato/percepção) separado da avaliação. Nunca descreva "
+            "isto ao usuário como 'sem acompanhamento'; diga 'sem avaliação recente' ou "
+            "'avaliação pendente'. Ordenado do mais urgente."
         ),
         parameters={
             "type": "object",

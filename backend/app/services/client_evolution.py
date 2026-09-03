@@ -1,16 +1,23 @@
-"""Acompanhamentos (client-evolution check-ins): "clientes que precisam de
-acompanhamento" derived from real, already-existing data — never a
-persisted/invented signal. A client counts as pending when they have an
-active cycle (real accompaniment in progress) and either never had a
-non-archived evaluation, or their most recent one is older than
-`days_threshold`.
+"""Gate correction (2026-09-02): Croniu distinguishes Acompanhamento
+(registro contínuo de evolução/contato/percepção) from Avaliação (medição
+estruturada e periódica) — they are NOT the same concept. An inspection
+confirmed there is no dedicated, repeated, timestamped accompaniment log
+anywhere in the backend: `Client.notes` is a single overwritten field (no
+history), `Cycle.last_contacted_at`/`contact_confirmed_at` are
+renewal-specific, and `ClientJourney` has no repeated log. `ClientEvaluation`
+(avaliação) is the only real, dated, per-client registration mechanism that
+exists today. So `list_pending()` below is honestly an **avaliação-pendente**
+signal (active cycle + no recent/no evaluation), never presented as a
+generic "acompanhamento" pendency the product doesn't actually track yet —
+see the frontend's `/app/accompaniment` page, whose "Pendentes" tab is
+labeled "Avaliações pendentes" for the same reason. Function/route/tool
+names were kept stable (already-delivered contract) — only the honesty of
+labels/descriptions changed.
 
 Naming note: `app/services/accompaniment.py` already exists and implements
 a *different* concept — the client-onboarding "Preparar acompanhamento"
 readiness checklist (`ClientJourney.accompaniment_checklist`). This module
-is deliberately named differently to avoid colliding with that file; the
-product-facing "Acompanhamentos" screen (evolution/check-in records,
-backed by `ClientEvaluation`) has no prior backend module of its own.
+is deliberately named differently to avoid colliding with that file.
 """
 
 from __future__ import annotations

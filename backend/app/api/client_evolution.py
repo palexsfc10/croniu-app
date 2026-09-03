@@ -1,8 +1,10 @@
-"""Acompanhamentos (client-evolution check-ins) — read-only, additive.
-
-See `app.services.client_evolution` for the naming note on why this isn't
-called `accompaniment.py` (that name is already taken by the unrelated
-onboarding-checklist module).
+"""Acompanhamentos — read-only, additive. Route path kept stable
+(already-delivered contract) even though the underlying signal is
+honestly an avaliação-pendente one, not a dedicated accompaniment log —
+see `app.services.client_evolution`'s module docstring for the full gate
+correction note (2026-09-02) and the naming note on why this isn't called
+`accompaniment.py` (already taken by the unrelated onboarding-checklist
+module).
 """
 
 from __future__ import annotations

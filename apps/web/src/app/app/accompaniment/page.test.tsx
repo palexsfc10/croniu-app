@@ -76,7 +76,7 @@ describe("AccompanimentPage desktop — Pendentes vs Histórico, listas densas",
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
     await within(desktop).findByText("Ana Nunca Avaliada");
     expect(within(desktop).getByText("Bruno Atrasado")).toBeInTheDocument();
-    expect(within(desktop).getByText("Nunca acompanhado")).toBeInTheDocument();
+    expect(within(desktop).getByText("Nunca avaliado")).toBeInTheDocument();
     expect(within(desktop).getByText("44 dias")).toBeInTheDocument();
   });
 
@@ -117,7 +117,7 @@ describe("AccompanimentPage desktop — Pendentes vs Histórico, listas densas",
     const { container } = render(<AccompanimentPage />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
     await within(desktop).findByText("Ana Nunca Avaliada");
-    fireEvent.change(within(desktop).getByLabelText("Período sem acompanhamento"), {
+    fireEvent.change(within(desktop).getByLabelText("Período sem avaliação"), {
       target: { value: "30" },
     });
     await new Promise((r) => setTimeout(r, 0));
@@ -164,6 +164,42 @@ describe("AccompanimentPage — empty state, never a bare notes collection", () 
     });
     const { container } = render(<AccompanimentPage />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
-    expect(await within(desktop).findByText("Ninguém pendente.")).toBeInTheDocument();
+    expect(await within(desktop).findByText("Nenhuma avaliação pendente.")).toBeInTheDocument();
+  });
+});
+
+describe("AccompanimentPage — gate correction (2026-09-02): avaliação vs acompanhamento", () => {
+  beforeEach(() => vi.mocked(apiFetch).mockReset());
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("labels the pending tab as avaliação pendente, never as a generic acompanhamento pendency", async () => {
+    mockApi();
+    const { container } = render(<AccompanimentPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Ana Nunca Avaliada");
+    expect(
+      within(desktop).getByRole("tab", { name: /Avaliações pendentes/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("never asserts a pendência of 'acompanhamento' anywhere on the page — the product has no such log yet", async () => {
+    mockApi();
+    const { container } = render(<AccompanimentPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Ana Nunca Avaliada");
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/acompanhamento pendente/i);
+    expect(text).not.toMatch(/sem acompanhamento/i);
+  });
+
+  it("shows the never-evaluated badge as 'Nunca avaliado', not 'Nunca acompanhado'", async () => {
+    mockApi();
+    const { container } = render(<AccompanimentPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Nunca avaliado");
+    expect(within(desktop).queryByText("Nunca acompanhado")).not.toBeInTheDocument();
   });
 });

@@ -1,13 +1,23 @@
 "use client";
 
 /**
- * Acompanhamentos — client-evolution check-ins (backed by `ClientEvaluation`).
+ * Acompanhamentos. IMPORTANT domain note (gate correction, 2026-09-02):
+ * Croniu distinguishes Acompanhamento (registro contínuo de evolução/
+ * contato/percepção) from Avaliação (medição estruturada e periódica).
+ * There is today **no dedicated accompaniment log/table** anywhere in the
+ * backend — `Client.notes` is a single overwritten field (no history),
+ * `Cycle.last_contacted_at`/`contact_confirmed_at` are renewal-specific,
+ * and `ClientJourney` has no repeated log. The only real, dated,
+ * per-client registration mechanism that exists is `ClientEvaluation`
+ * (avaliação — see `backend/app/services/client_evolution.py`). So this
+ * page's "Pendentes" tab is honestly labeled **avaliação pendente**, not
+ * "acompanhamento pendente" — it never claims a continuous-accompaniment
+ * pendency the product doesn't actually track yet. "Histórico" shows only
+ * published avaliações — never mixed with any other registro type.
  * Distinct from Rotinas (`/app/routines`, task reminders) and from the
  * client-onboarding "Preparar acompanhamento" checklist nested under
  * `/app/clients/[clientId]/accompaniment` (a different, pre-existing
- * concept — see `backend/app/services/client_evolution.py` for the naming
- * note). "Pendentes" here is a real, derived signal (active cycle + no
- * recent evaluation) — never a persisted/invented flag.
+ * concept).
  */
 
 import Link from "next/link";
@@ -63,7 +73,7 @@ function PendingRowView({ row, timeZone }: { row: PendingRow; timeZone: string }
       </td>
       <td className="py-2.5 pr-3 tabular-nums">
         {row.days_since_last_evaluation == null ? (
-          <Badge tone="danger">Nunca acompanhado</Badge>
+          <Badge tone="danger">Nunca avaliado</Badge>
         ) : (
           <Badge tone={row.days_since_last_evaluation >= 30 ? "danger" : "warning"}>
             {row.days_since_last_evaluation} dias
@@ -132,7 +142,8 @@ export default function AccompanimentPage() {
         <div>
           <h1 className="h-display text-3xl text-[var(--color-ink)]">Acompanhamentos</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            Registros de evolução do cliente — distinto da Agenda e das Rotinas.
+            Avaliações registradas por cliente — distinto da Agenda e das Rotinas. Sem um registro
+            dedicado de acompanhamento contínuo ainda, o sinal usa a avaliação mais recente.
           </p>
         </div>
 
@@ -155,7 +166,7 @@ export default function AccompanimentPage() {
             }`}
           >
             <IconClipboardList className="mr-1.5 inline h-4 w-4" aria-hidden />
-            Pendentes {pending.length > 0 ? `· ${pending.length}` : ""}
+            Avaliações pendentes {pending.length > 0 ? `· ${pending.length}` : ""}
           </button>
           <button
             type="button"
@@ -173,9 +184,9 @@ export default function AccompanimentPage() {
           </button>
           {tab === "pending" ? (
             <label className="ml-auto flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
-              Sem acompanhamento há mais de
+              Sem avaliação há mais de
               <select
-                aria-label="Período sem acompanhamento"
+                aria-label="Período sem avaliação"
                 value={daysThreshold}
                 onChange={(e) => setDaysThreshold(Number(e.target.value))}
                 className="min-h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2"
@@ -195,9 +206,9 @@ export default function AccompanimentPage() {
         {!loading && tab === "pending" ? (
           pending.length === 0 ? (
             <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-4 py-8 text-center">
-              <p className="font-medium">Ninguém pendente.</p>
+              <p className="font-medium">Nenhuma avaliação pendente.</p>
               <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                Todos os clientes com ciclo ativo têm um acompanhamento recente.
+                Todos os clientes com ciclo ativo têm uma avaliação recente.
               </p>
             </div>
           ) : (
@@ -206,8 +217,8 @@ export default function AccompanimentPage() {
                 <tr className="border-b border-[var(--color-border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                   <th className="py-2 pr-3">Cliente</th>
                   <th className="py-2 pr-3">Serviço/ciclo</th>
-                  <th className="py-2 pr-3">Último acompanhamento</th>
-                  <th className="py-2 pr-3">Período sem acompanhamento</th>
+                  <th className="py-2 pr-3">Última avaliação</th>
+                  <th className="py-2 pr-3">Dias sem avaliação</th>
                   <th className="py-2 pr-3">Próximo compromisso</th>
                   <th className="py-2 pr-3">Ação</th>
                 </tr>
@@ -229,7 +240,7 @@ export default function AccompanimentPage() {
         {!loading && tab === "history" ? (
           recent.length === 0 ? (
             <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-4 py-8 text-center">
-              <p className="font-medium">Nenhuma evolução publicada ainda.</p>
+              <p className="font-medium">Nenhuma avaliação publicada ainda.</p>
             </div>
           ) : (
             <table className="w-full border-collapse text-sm">
@@ -271,7 +282,7 @@ export default function AccompanimentPage() {
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Acompanhamentos</h1>
           <p className="text-sm text-[var(--color-ink-muted)]">
-            Clientes que precisam de um registro de evolução.
+            Clientes com avaliação pendente ou nunca avaliados.
           </p>
         </header>
         {error ? (
@@ -283,9 +294,9 @@ export default function AccompanimentPage() {
 
         {!loading && pending.length === 0 ? (
           <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4">
-            <p className="font-medium">Ninguém pendente.</p>
+            <p className="font-medium">Nenhuma avaliação pendente.</p>
             <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-              Todos os clientes com ciclo ativo têm um acompanhamento recente.
+              Todos os clientes com ciclo ativo têm uma avaliação recente.
             </p>
           </div>
         ) : null}
@@ -302,7 +313,7 @@ export default function AccompanimentPage() {
                   <p className="text-sm text-[var(--color-ink-muted)]">{row.service_name || "Sem ciclo"}</p>
                 </div>
                 {row.days_since_last_evaluation == null ? (
-                  <Badge tone="danger">Nunca</Badge>
+                  <Badge tone="danger">Nunca avaliado</Badge>
                 ) : (
                   <Badge tone={row.days_since_last_evaluation >= 30 ? "danger" : "warning"}>
                     {row.days_since_last_evaluation}d
@@ -332,7 +343,7 @@ export default function AccompanimentPage() {
         ) : null}
 
         <Button fullWidth variant="secondary" onClick={() => setTab(tab === "history" ? "pending" : "history")}>
-          {tab === "history" ? "Ver pendentes" : "Ver histórico recente"}
+          {tab === "history" ? "Ver avaliações pendentes" : "Ver histórico recente"}
         </Button>
         {tab === "history" ? (
           <ul className="space-y-2">
