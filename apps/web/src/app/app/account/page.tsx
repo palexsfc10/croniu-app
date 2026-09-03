@@ -1,8 +1,164 @@
 "use client";
 
+import { useState } from "react";
 import { BackLink } from "@/components/app/back-link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { formatMembershipRole } from "@/lib/role-label";
+import { apiFetch, type WhatsAppConsent } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { TextField } from "@/components/ui/text-field";
+import { IconWhatsApp } from "@/components/ui/icons";
+
+function formatConsentDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function WhatsAppSection() {
+  const { me, refresh } = useAuth();
+  const saved = me?.user.contact_whatsapp_e164 ?? null;
+  const consentAt = me?.user.whatsapp_marketing_consent_at ?? null;
+  const [value, setValue] = useState(saved ?? "");
+  const [consentChecked, setConsentChecked] = useState(Boolean(consentAt));
+  const [busy, setBusy] = useState<"save" | "revoke" | "remove" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  async function patch(body: Record<string, unknown>) {
+    const result = await apiFetch<WhatsAppConsent>("/api/v1/users/me/whatsapp-consent", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    if (result.error) {
+      setError(result.error.message);
+      return false;
+    }
+    await refresh();
+    return true;
+  }
+
+  async function save() {
+    setBusy("save");
+    setError(null);
+    setInfo(null);
+    const trimmed = value.trim();
+    const ok = await patch({
+      contact_whatsapp_e164: trimmed || null,
+      consent_granted: trimmed ? consentChecked : null,
+    });
+    setBusy(null);
+    if (ok) setInfo("WhatsApp atualizado.");
+  }
+
+  async function revokeConsent() {
+    setBusy("revoke");
+    setError(null);
+    setInfo(null);
+    const ok = await patch({ consent_granted: false });
+    setBusy(null);
+    if (ok) {
+      setConsentChecked(false);
+      setInfo("Consentimento revogado. O número continua salvo, mas não usamos mais para contato comercial.");
+    }
+  }
+
+  async function removeNumber() {
+    setBusy("remove");
+    setError(null);
+    setInfo(null);
+    const ok = await patch({ contact_whatsapp_e164: "" });
+    setBusy(null);
+    if (ok) {
+      setValue("");
+      setConsentChecked(false);
+      setInfo("WhatsApp removido.");
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] p-4">
+      <div className="flex items-center gap-2">
+        <IconWhatsApp className="h-5 w-5 text-[var(--color-success)]" />
+        <h2 className="text-sm font-semibold text-[var(--color-ink)]">Seu WhatsApp</h2>
+      </div>
+      <p className="text-sm text-[var(--color-ink-muted)]">
+        Totalmente opcional. Usamos para falar com você sobre onboarding, suporte, o período de
+        teste e ofertas — nunca para outra finalidade, e nunca para clientes ou terceiros.
+      </p>
+
+      {error ? (
+        <p role="alert" className="text-sm text-[var(--color-danger)]">
+          {error}
+        </p>
+      ) : null}
+      {info ? (
+        <p role="status" className="text-sm text-[var(--color-success)]">
+          {info}
+        </p>
+      ) : null}
+
+      <TextField
+        label="Número"
+        placeholder="(11) 99999-0000"
+        inputMode="tel"
+        autoComplete="tel"
+        hint="Fora do Brasil? Inclua o código do seu país (ex.: +44 7911 123456)."
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+
+      <label className="flex items-start gap-2 text-sm text-[var(--color-ink)]">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={consentChecked}
+          onChange={(e) => setConsentChecked(e.target.checked)}
+        />
+        <span>
+          Autorizo o Croniu a me contatar por esse WhatsApp sobre onboarding, suporte, o período
+          de teste e ofertas.
+        </span>
+      </label>
+
+      <p className="text-xs text-[var(--color-ink-muted)]">
+        {consentAt
+          ? `Consentimento ativo desde ${formatConsentDate(consentAt)}.`
+          : "Sem consentimento ativo hoje — não entramos em contato comercial por WhatsApp."}
+      </p>
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button size="sm" loading={busy === "save"} disabled={busy !== null} onClick={() => void save()}>
+          Salvar
+        </Button>
+        {consentAt ? (
+          <Button
+            size="sm"
+            variant="outline"
+            loading={busy === "revoke"}
+            disabled={busy !== null}
+            onClick={() => void revokeConsent()}
+          >
+            Revogar consentimento
+          </Button>
+        ) : null}
+        {saved ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            loading={busy === "remove"}
+            disabled={busy !== null}
+            onClick={() => void removeNumber()}
+          >
+            Remover número
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 export default function AccountPage() {
   const { me } = useAuth();
@@ -37,6 +193,7 @@ export default function AccountPage() {
           </div>
         ))}
       </dl>
+      <WhatsAppSection />
     </div>
   );
 }
