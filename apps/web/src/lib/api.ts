@@ -76,6 +76,16 @@ export type Service = {
   updated_at: string;
 };
 
+/** GET /services/usage — real, recomputed counters per service. A service with
+ * no cycle at all is simply absent from the list (render zero for it).
+ * `running_cycles` counts only contracts inside their own period right now. */
+export type ServiceUsage = {
+  service_id: string;
+  running_cycles: number;
+  total_cycles: number;
+  distinct_clients: number;
+};
+
 export type CycleTemplate = {
   id: string;
   name: string;

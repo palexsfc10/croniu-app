@@ -33,6 +33,7 @@ import {
 import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 import { formatCycleVigencyCard, formatHumanDate } from "@/lib/date-format";
 import { cycleListStatus, cycleListStatusTone, selectDisplayCycle } from "@/lib/cycle-period";
+import { buildCycleRow, renewalTarget } from "@/lib/cycle-central";
 import { protocolStatusTone } from "@/lib/status-tone";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
@@ -208,6 +209,28 @@ export function ClientProfile({ clientId }: Props) {
   const publishedEvaluations = evaluations.filter((ev) => ev.status === "published");
   const anamnesisDone = Boolean(journey?.anamnesis_reviewed_at);
   const prepareHref = `/app/clients/${clientId}/accompaniment`;
+
+  // Renewal offer reuses the very same derivation as the Ciclos central, so a
+  // cycle never looks renewable here and non-renewable there. It only ever
+  // produces a link into the existing flow — clicking mutates nothing.
+  const activeCycleRow = activeCycle
+    ? buildCycleRow(activeCycle, {
+        allCycles: cycles,
+        receivables,
+        nextAppointmentByClientId: nextAppointment
+          ? { [clientId]: nextAppointment }
+          : {},
+        openRenewalCycleIds: new Set<string>(),
+        today: todayIso,
+      })
+    : null;
+  const cycleRenewalHref = activeCycleRow
+    ? renewalTarget(activeCycleRow, `${returnResumo}?tab=plano`)
+    : null;
+  // Every other cycle of this client, newest first — the real contract history.
+  const pastCycles = cycles
+    .filter((c) => c.id !== activeCycle?.id)
+    .sort((a, b) => b.starts_on.localeCompare(a.starts_on));
 
   const next = (() => {
     const name = item ? firstName(item.full_name) : terms.client;
@@ -884,6 +907,11 @@ export function ClientProfile({ clientId }: Props) {
                           activeCycle.lesson_count != null
                             ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} aulas realizadas`
                             : null,
+                          // Agenda associada, no escopo deste ciclo — o detalhe
+                          // completo continua na aba Agenda, sem duplicá-la aqui.
+                          nextAppointment
+                            ? `Próxima sessão ${formatHumanDate(nextAppointment.starts_at.slice(0, 10))}`
+                            : null,
                         ]
                           .filter(Boolean)
                           .join(" · ")
@@ -902,6 +930,11 @@ export function ClientProfile({ clientId }: Props) {
                           label: "Criar ciclo",
                           variant: "primary",
                         }
+                  }
+                  extras={
+                    cycleRenewalHref
+                      ? [{ href: cycleRenewalHref, label: "Preparar renovação" }]
+                      : []
                   }
                 />
                 <AccompanimentCard
@@ -947,6 +980,36 @@ export function ClientProfile({ clientId }: Props) {
                   }
                 />
               </div>
+
+              {pastCycles.length ? (
+                <div>
+                  <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                    Histórico de ciclos
+                  </h2>
+                  <ul className="space-y-1.5">
+                    {pastCycles.map((c) => (
+                      <li key={c.id}>
+                        <Link
+                          href={`/app/cycles/${c.id}`}
+                          className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-[var(--color-ink)]">
+                              {c.service_name}
+                            </span>
+                            <span className="block text-xs text-[var(--color-ink-muted)]">
+                              {formatCycleVigencyCard(c.starts_on, c.ends_on).range}
+                            </span>
+                          </span>
+                          <Badge tone={cycleListStatusTone(c, todayIso)}>
+                            {cycleListStatus(c, todayIso)}
+                          </Badge>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </>
           )}
         </section>

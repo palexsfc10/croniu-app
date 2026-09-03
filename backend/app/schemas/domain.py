@@ -96,6 +96,20 @@ class ServiceOut(BaseModel):
     updated_at: datetime
 
 
+class ServiceUsageOut(BaseModel):
+    """Real, recomputed-per-request usage of one catalog service.
+
+    See `app.services.catalog_usage` for the exact definition of each counter —
+    notably `running_cycles` excludes rows left at "active" past their
+    `ends_on`, so it never overstates how many contracts are actually running.
+    """
+
+    service_id: UUID
+    running_cycles: int
+    total_cycles: int
+    distinct_clients: int
+
+
 class CycleCreate(BaseModel):
     client_id: UUID
     service_id: UUID
