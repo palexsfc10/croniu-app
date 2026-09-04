@@ -26,6 +26,41 @@ import {
 } from "./types";
 import { useVoiceRecorder, type VoiceRecorderControls } from "./use-voice-recorder";
 
+const SCROLL_CONTAINER_SELECTOR = "[data-assistant-scroll-container]";
+const BOTTOM_SENTINEL_SELECTOR = "[data-assistant-bottom-sentinel]";
+
+function isElementVisible(el: HTMLElement): boolean {
+  if (typeof el.checkVisibility === "function") return el.checkVisibility();
+  let node: HTMLElement | null = el;
+  while (node) {
+    if (getComputedStyle(node).display === "none") return false;
+    node = node.parentElement;
+  }
+  return true;
+}
+
+/**
+ * The global Assistant layer mounts the SAME conversation (this hook's one
+ * instance) into two DOM subtrees at once — the desktop panel and the
+ * mobile overlay — showing only one per breakpoint via CSS (`hidden
+ * lg:block` / `lg:hidden`), not conditional rendering. A plain `useRef`
+ * attached via `ref={...}` in both subtrees only ever holds whichever one
+ * committed last, which doesn't reliably match whichever is actually
+ * visible right now — confirmed live: `scrollToBottom()` was calling
+ * `scrollIntoView` on the *hidden* subtree's sentinel, a silent no-op,
+ * while the visible transcript stayed pinned at the top through an entire
+ * real conversation. Querying fresh by a `data-` marker and picking the
+ * currently-visible match sidesteps the ref race entirely.
+ */
+function getVisibleAssistantEl(selector: string): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const candidates = document.querySelectorAll<HTMLElement>(selector);
+  for (const el of candidates) {
+    if (isElementVisible(el)) return el;
+  }
+  return null;
+}
+
 function newClientMessageId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -79,8 +114,6 @@ export function useAssistantConversation(opts: {
   enabled?: boolean;
 } = {}) {
   const enabled = opts.enabled ?? true;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottomRef = useRef(true);
   const programmaticScrollRef = useRef(false);
@@ -191,7 +224,7 @@ export function useAssistantConversation(opts: {
   }
 
   const isNearBottom = useCallback(() => {
-    const el = scrollRef.current;
+    const el = getVisibleAssistantEl(SCROLL_CONTAINER_SELECTOR);
     if (!el) return true;
     return el.scrollHeight - el.scrollTop - el.clientHeight < 96;
   }, []);
@@ -205,14 +238,11 @@ export function useAssistantConversation(opts: {
       // growing the transcript's height while the animation is catching
       // up, `isNearBottom()` can transiently read false mid-flight, which
       // flips `stickToBottomRef` off and silently stops autoscroll for the
-      // rest of the conversation (confirmed live: after a few real
-      // back-to-back messages, the transcript stayed stuck well above the
-      // latest message, with no user-visible "jump to bottom" affordance
-      // explaining why). The window covers a "smooth" animation's typical
-      // duration; "auto" resolves in a single frame so a short window is
-      // enough either way.
+      // rest of the conversation. The window covers a "smooth" animation's
+      // typical duration; "auto" resolves in a single frame so a short
+      // window is enough either way.
       programmaticScrollRef.current = true;
-      bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+      getVisibleAssistantEl(BOTTOM_SENTINEL_SELECTOR)?.scrollIntoView({ behavior, block: "end" });
       setShowJump(false);
       window.setTimeout(
         () => {
@@ -742,8 +772,6 @@ export function useAssistantConversation(opts: {
   }
 
   return {
-    scrollRef,
-    bottomRef,
     textareaRef,
     threadsPanelRef,
     threadsTriggerRef,

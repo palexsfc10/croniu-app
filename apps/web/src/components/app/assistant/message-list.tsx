@@ -206,8 +206,6 @@ export function MessageList({
   showQuickAccess: boolean;
 }) {
   const {
-    scrollRef,
-    bottomRef,
     messages,
     busy,
     recording,
@@ -222,7 +220,7 @@ export function MessageList({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
-        ref={scrollRef}
+        data-assistant-scroll-container=""
         className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4"
         onScroll={onTranscriptScroll}
       >
@@ -249,7 +247,7 @@ export function MessageList({
               {error}
             </p>
           ) : null}
-          <div ref={bottomRef} className="h-2" />
+          <div data-assistant-bottom-sentinel="" className="h-2" />
         </div>
       </div>
 
