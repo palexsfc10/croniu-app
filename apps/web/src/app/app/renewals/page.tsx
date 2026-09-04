@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
 import { PageTitle } from "@/components/ui/page-title";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
+import { ListCard } from "@/components/ui/list-card";
 import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 import {
   AwaitingClientSheet,
@@ -257,10 +258,7 @@ export default function RenewalsPage() {
           {/* Mobile: cartões resumidos, nunca a tabela comprimida. */}
           <ul className="space-y-2.5 lg:hidden">
             {filtered.map((row) => (
-              <li
-                key={row.source_cycle_id}
-                className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
-              >
+              <ListCard as="li" key={row.source_cycle_id} className="space-y-2 px-3.5 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Link
                     href={`/app/clients/${row.client_id}?tab=plano`}
@@ -287,7 +285,7 @@ export default function RenewalsPage() {
                   onEndWithoutRenewal={() => setEndTarget(row)}
                   stacked
                 />
-              </li>
+              </ListCard>
             ))}
           </ul>
         </>

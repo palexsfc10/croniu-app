@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
+import { ListCard } from "@/components/ui/list-card";
 
 /** What the professional charges, in words — never a raw enum. */
 function priceLabel(service: Service): string {
@@ -172,10 +173,7 @@ export default function ServicesPage() {
         <ul className="space-y-2 lg:hidden">
           {rows.map(({ service, usage: u }) => (
             <li key={service.id}>
-              <Link
-                href={`/app/services/${service.id}`}
-                className="block rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3"
-              >
+              <ListCard href={`/app/services/${service.id}`} className="block px-3.5 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <p className="min-w-0 truncate font-semibold text-[var(--color-ink)]">
                     {service.name}
@@ -191,7 +189,7 @@ export default function ServicesPage() {
                   {u.running_cycles} ciclo{u.running_cycles === 1 ? "" : "s"} em andamento ·{" "}
                   {u.distinct_clients} cliente{u.distinct_clients === 1 ? "" : "s"}
                 </p>
-              </Link>
+              </ListCard>
             </li>
           ))}
         </ul>

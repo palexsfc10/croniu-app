@@ -286,7 +286,7 @@ export default function DesignSystemPage() {
             </tbody>
           </table>
         </TableShell>
-        <ListCard>
+        <ListCard className="block px-3.5 py-3">
           <p className="font-semibold text-[var(--color-ink)]">Ana Souza</p>
           <p className="text-sm text-[var(--color-ink-muted)]">Pilates · próxima sessão amanhã</p>
         </ListCard>

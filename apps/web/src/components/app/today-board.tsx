@@ -238,7 +238,7 @@ function FinanceCompact({
           <div>
             <p className="text-xs text-[var(--color-ink-muted)]">Vencido</p>
             <p
-              className={`text-base font-semibold tabular-nums ${finance.overdue_cents > 0 ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"}`}
+              className={`text-base font-semibold tabular-nums ${finance.overdue_cents > 0 ? "text-[var(--color-financial-overdue)]" : "text-[var(--color-ink)]"}`}
             >
               {formatBRL(finance.overdue_cents)}
             </p>

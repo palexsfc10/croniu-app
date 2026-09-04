@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PageTitle } from "@/components/ui/page-title";
+import { Badge } from "@/components/ui/badge";
 import { BackLink } from "@/components/app/back-link";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
@@ -447,11 +448,7 @@ function AvailabilitySection() {
       description="Configure seus horários de atendimento para que o Croniu identifique vagas disponíveis na sua agenda."
     >
       <div className="flex items-center gap-2">
-        {configured ? (
-          <span className="rounded-full bg-[var(--color-success-subtle)] px-2 py-0.5 text-xs font-semibold text-[var(--color-success)]">
-            Configurado
-          </span>
-        ) : null}
+        {configured ? <Badge tone="success">Configurado</Badge> : null}
       </div>
 
       {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}

@@ -31,6 +31,7 @@ import {
 import { buildRenewalCaseIndex, renewalStatusLabel, renewalStatusTone } from "@/lib/renewal-status";
 import { PageTitle } from "@/components/ui/page-title";
 import { Avatar } from "@/components/ui/avatar";
+import { ListCard } from "@/components/ui/list-card";
 import { cycleListStatus } from "@/lib/cycle-period";
 import { formatPhoneBR } from "@/lib/status-labels";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -378,9 +379,9 @@ function ClientCard({
 }) {
   const { client } = row;
   return (
-    <Link
+    <ListCard
       href={`/app/clients/${client.id}`}
-      className="flex min-h-16 items-center gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm transition-all hover:-translate-y-px hover:shadow-md"
+      className="flex min-h-16 items-center gap-3.5 px-4 py-3"
     >
       <Avatar initials={clientInitials(client.full_name)} size="md" />
       <span className="min-w-0 flex-1">
@@ -408,7 +409,7 @@ function ClientCard({
         ) : null}
       </span>
       <IconChevronRight className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)]" />
-    </Link>
+    </ListCard>
   );
 }
 

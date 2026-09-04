@@ -463,6 +463,48 @@ h3,
   }
 }
 
+/* Assistant orb — the one global, always-reachable entry point into the
+   Assistant (mobile bottom-nav center slot). A gradient-filled circle with
+   a soft ambient glow behind it, distinct from every other nav icon on
+   purpose: this is the one surface in the whole shell that's allowed to
+   feel alive. The glow breathes slowly and stops under reduced-motion;
+   the orb itself never animates (only the halo behind it does), so the
+   icon stays perfectly legible either way. */
+@keyframes assistant-orb-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
+}
+
+.assistant-orb-glow {
+  position: absolute;
+  inset: -6px;
+  border-radius: 999px;
+  background: var(--gradient-ai);
+  filter: blur(6px);
+  animation: assistant-orb-breathe 3.2s ease-in-out infinite;
+  z-index: 0;
+}
+
+.assistant-orb {
+  position: relative;
+  background: var(--gradient-ai);
+  box-shadow: var(--shadow-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-orb-glow {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 /* Bottom nav */
 .app-bottom-nav {
   background-color: color-mix(in srgb, var(--color-surface) 88%, var(--brand-50));

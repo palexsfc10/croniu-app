@@ -30,6 +30,7 @@ import {
 } from "@/lib/cycle-central";
 import { buildRenewalCaseIndex, renewalStatusLabel } from "@/lib/renewal-status";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
+import { ListCard } from "@/components/ui/list-card";
 import { cycleInPeriod, periodBounds, type PeriodPreset } from "@/lib/cycle-period";
 import {
   formatCycleVigencyCard,
@@ -488,10 +489,7 @@ export default function CyclesPage() {
                 : CYCLE_ALERT_LABEL[row.alerts[0]]
               : null;
             return (
-              <li
-                key={c.id}
-                className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
-              >
+              <ListCard as="li" key={c.id} className="px-3.5 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-[var(--color-ink)]">{c.client_name}</p>
@@ -533,7 +531,7 @@ export default function CyclesPage() {
                     Abrir cliente
                   </Link>
                 </div>
-              </li>
+              </ListCard>
             );
           })}
         </ul>

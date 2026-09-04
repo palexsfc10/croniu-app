@@ -546,6 +546,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {mobileNavItems.map((item) => {
               const active = isNavActive(pathname, item.href);
               const { Icon } = item;
+
+              if (item.href === "/app/assistant") {
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-label={item.label}
+                    aria-current={active ? "page" : undefined}
+                    className="flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[0.65rem] font-semibold text-[var(--color-ai-hover)] sm:text-xs"
+                  >
+                    <span className="relative -mt-4 flex h-11 w-11 items-center justify-center">
+                      <span className="assistant-orb-glow" aria-hidden />
+                      <span
+                        className={`assistant-orb relative z-[1] flex h-11 w-11 items-center justify-center rounded-full ${active ? "ring-2 ring-[var(--color-ai)] ring-offset-2 ring-offset-[var(--color-surface)]" : ""}`}
+                      >
+                        <Icon className="h-5 w-5 text-[var(--color-ai-foreground)]" aria-hidden />
+                      </span>
+                    </span>
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+                );
+              }
+
               return (
                 <Link
                   key={item.href}

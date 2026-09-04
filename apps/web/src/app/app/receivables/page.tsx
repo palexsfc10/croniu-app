@@ -12,6 +12,7 @@ import { BlockError } from "@/components/ui/block-error";
 import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 import { isReceivableOverdue, isReceivablePending } from "@/lib/client-list";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
+import { ListCard } from "@/components/ui/list-card";
 import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 import {
   isReceivableUpcoming,
@@ -349,10 +350,7 @@ export default function ReceivablesPage() {
           {visible.map((r) => {
             const overdue = isReceivableOverdue(r, today);
             return (
-              <li
-                key={r.id}
-                className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
-              >
+              <ListCard as="li" key={r.id} className="px-3.5 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-[var(--color-ink)]">{r.client_name}</p>
@@ -384,7 +382,7 @@ export default function ReceivablesPage() {
                     Abrir cliente
                   </Link>
                 </div>
-              </li>
+              </ListCard>
             );
           })}
         </ul>
