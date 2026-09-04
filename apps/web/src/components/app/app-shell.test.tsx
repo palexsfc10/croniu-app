@@ -246,17 +246,15 @@ describe("AppShell desktop workspace structure", () => {
         <p>content</p>
       </AppShell>,
     );
-    const expected = [
-      "/app",
-      "/app/agenda",
-      "/app/clients",
-      "/app/routines",
-      "/app/profile",
-      "/app/assistant",
-    ];
+    const expected = ["/app", "/app/agenda", "/app/clients", "/app/routines", "/app/profile"];
     const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
     for (const href of expected) {
       expect(hrefs).toContain(href);
     }
+    // Assistente is a global layer trigger now (opens the persistent
+    // panel/overlay instead of navigating) — a button, not a link. The
+    // route itself stays reachable as a full page/deep link; that's
+    // covered by the Assistant page's own test suite.
+    expect(screen.getAllByRole("button", { name: "Abrir o Assistente Croniu" }).length).toBeGreaterThan(0);
   });
 });

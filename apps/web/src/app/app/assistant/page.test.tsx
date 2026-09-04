@@ -120,18 +120,17 @@ describe("AssistantPage premium shell", () => {
     mockStatus();
     render(<AssistantPage />);
 
-    expect(await screen.findByRole("heading", { name: "Assistente" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Assistente Croniu" })).toBeInTheDocument();
     expect(screen.getByLabelText("Voltar")).toBeInTheDocument();
     expect(screen.getAllByLabelText("Nova conversa").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Conversas")).toBeInTheDocument();
 
-    expect(screen.queryByText("Assistente Croniu")).not.toBeInTheDocument();
     expect(screen.queryByText(/^Voltar$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Enviar voz automaticamente:/i)).not.toBeInTheDocument();
 
     // Greeting uses mocked auth name (hour-dependent prefix)
     expect(screen.getByText(/Pedro/)).toBeInTheDocument();
-    expect(screen.getByText("O que vamos organizar hoje?")).toBeInTheDocument();
+    expect(screen.getByText("Posso consultar seu negócio, organizar prioridades e executar ações com sua confirmação.")).toBeInTheDocument();
     expect(screen.getByText(/Nada é alterado sem sua confirmação/i)).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /Meu dia/i })).toBeInTheDocument();
@@ -158,7 +157,7 @@ describe("AssistantPage premium shell", () => {
   it("opens thread selector and starts a new conversation", async () => {
     mockStatus();
     render(<AssistantPage />);
-    await screen.findByRole("heading", { name: "Assistente" });
+    await screen.findByRole("heading", { name: "Assistente Croniu" });
 
     fireEvent.click(screen.getByLabelText("Conversas"));
     const dialog = await screen.findByRole("dialog", { name: /Conversas recentes/i });
@@ -178,7 +177,7 @@ describe("AssistantPage premium shell", () => {
   it("does not create a thread on mount or listing", async () => {
     mockStatus();
     render(<AssistantPage />);
-    await screen.findByRole("heading", { name: "Assistente" });
+    await screen.findByRole("heading", { name: "Assistente Croniu" });
     await waitFor(() => {
       expect(apiFetch.mock.calls.some((c) => String(c[0]).includes("/agent/status"))).toBe(true);
     });
@@ -235,7 +234,7 @@ describe("AssistantPage premium shell", () => {
     });
 
     render(<AssistantPage />);
-    expect(await screen.findByText("O que vamos organizar hoje?")).toBeInTheDocument();
+    expect(await screen.findByText("Posso consultar seu negócio, organizar prioridades e executar ações com sua confirmação.")).toBeInTheDocument();
     expect(screen.queryByText(/Seu dia está livre/i)).not.toBeInTheDocument();
   });
 
@@ -286,7 +285,7 @@ describe("AssistantPage premium shell", () => {
 
     expect(await screen.findByText(/Seu dia está organizado/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Meu dia/i })).not.toBeInTheDocument();
-    expect(screen.queryByText("O que vamos organizar hoje?")).not.toBeInTheDocument();
+    expect(screen.queryByText("Posso consultar seu negócio, organizar prioridades e executar ações com sua confirmação.")).not.toBeInTheDocument();
 
     const messageCalls = apiFetch.mock.calls.filter((c) => String(c[0]).includes("/messages"));
     expect(messageCalls.length).toBeGreaterThanOrEqual(1);
@@ -528,7 +527,7 @@ describe("AssistantPage premium shell", () => {
     });
 
     render(<AssistantPage />);
-    expect(await screen.findByText("O que vamos organizar hoje?")).toBeInTheDocument();
+    expect(await screen.findByText("Posso consultar seu negócio, organizar prioridades e executar ações com sua confirmação.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Conversas"));
     const openDialog = await screen.findByRole("dialog", { name: /Conversas recentes/i });
@@ -733,7 +732,7 @@ describe("AssistantPage mobile — camada operacional (resumo, acesso rápido, c
   it("offers quick-access chips to Agenda, Clientes and Rotinas", async () => {
     mockStatus();
     render(<AssistantPage />);
-    await screen.findByText("O que vamos organizar hoje?");
+    await screen.findByText("Posso consultar seu negócio, organizar prioridades e executar ações com sua confirmação.");
     const quickAccess = screen.getByRole("group", { name: "Acesso rápido" });
     expect(within(quickAccess).getByRole("link", { name: /^Agenda$/ })).toHaveAttribute(
       "href",

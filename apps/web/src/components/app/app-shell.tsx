@@ -12,6 +12,11 @@ import {
 } from "react";
 import { BrandMark, BrandWordmark } from "@/components/brand";
 import { CommandPalette } from "@/components/app/command-palette";
+import {
+  AssistantLayerProvider,
+  useAssistantLayer,
+  useAssistantPanelSpacing,
+} from "@/components/app/assistant/assistant-layer-provider";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch, type MyReferral } from "@/lib/api";
@@ -100,6 +105,116 @@ function assistantLinkClass(active: boolean) {
       ? "bg-[var(--color-ai-subtle)] text-[var(--color-ai-hover)]"
       : "text-[var(--color-ai)] hover:bg-[var(--color-ai-subtle)]",
   ].join(" ");
+}
+
+/** Desktop sidebar's "Assistente" row — opens the persistent side panel
+ * instead of navigating away, per the layer fatia. `/app/assistant` stays
+ * reachable as a deep link/full page; this is just no longer how the
+ * sidebar itself gets there. */
+function AssistantSidebarButton({ active }: { active: boolean }) {
+  const { open } = useAssistantLayer();
+  return (
+    <button
+      type="button"
+      className={["mt-2 w-full", assistantLinkClass(active)].join(" ")}
+      aria-label="Abrir o Assistente Croniu"
+      onClick={() => open()}
+    >
+      <BrandMark size="xs" decorative />
+      Assistente
+      <Badge tone="ai">IA</Badge>
+    </button>
+  );
+}
+
+/** Mobile topbar's compact "IA" pill — same behavior change as the sidebar
+ * button; the bottom-nav orb is the primary mobile entry, this is a
+ * secondary always-visible one. */
+function AssistantTopbarButton({ active }: { active: boolean }) {
+  const { open } = useAssistantLayer();
+  return (
+    <button
+      type="button"
+      className={assistantLinkClass(active)}
+      aria-label="Abrir o Assistente Croniu"
+      onClick={() => open()}
+    >
+      <BrandMark size="xs" decorative />
+      <span className="text-sm">IA</span>
+    </button>
+  );
+}
+
+/** Wraps the routed page content — adds right padding equal to the desktop
+ * panel's width while it's open, so page content reflows instead of
+ * sitting behind the panel (`useAssistantPanelSpacing` is a no-op class on
+ * every other viewport/state). */
+function MainContent({ assistantActive, children }: { assistantActive: boolean; children: React.ReactNode }) {
+  const panelSpacing = useAssistantPanelSpacing();
+  return (
+    <main
+      // Bottom padding clears the fixed mobile bottom-nav height + its
+      // safe-area inset (7rem normally, 4.25rem on the assistant screen
+      // which has its own composer instead of a page scroll) — not a
+      // token because it's shell-chrome-specific, not a design value.
+      className={[
+        assistantActive
+          ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
+          : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-6 lg:pb-5 xl:px-8",
+        "transition-[padding] duration-[var(--duration-normal)]",
+        panelSpacing,
+      ].join(" ")}
+    >
+      {/* Sidebar+content no longer share one global max-width (that centered
+          the whole shell and wasted the sides on wide screens) — the cap
+          lives here instead, on main's own content, so it can be wide
+          enough for dashboards/grids without becoming an unreadable full-
+          bleed slab on ultrawide monitors. The assistant screen manages its
+          own internal columns and needs the full height chain intact. */}
+      <div
+        className={
+          assistantActive
+            ? "flex h-full min-h-0 w-full flex-1 flex-col"
+            : "mx-auto w-full max-w-[1600px] 2xl:max-w-[1760px]"
+        }
+      >
+        <BillingGate>{children}</BillingGate>
+      </div>
+    </main>
+  );
+}
+
+/** The bottom-nav orb — the primary mobile entry point into the Assistant.
+ * Opens the persistent overlay layer instead of navigating; see
+ * `assistant-layer-provider.tsx`. */
+function AssistantOrbTab({
+  label,
+  Icon,
+  active,
+}: {
+  label: string;
+  Icon: ComponentType<SVGProps<SVGSVGElement> & { title?: string }>;
+  active: boolean;
+}) {
+  const { open } = useAssistantLayer();
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={() => open()}
+      className="flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[0.65rem] font-semibold text-[var(--color-ai-hover)] sm:text-xs"
+    >
+      <span className="relative -mt-4 flex h-11 w-11 items-center justify-center">
+        <span className="assistant-orb-glow" aria-hidden />
+        <span
+          className={`assistant-orb relative z-[1] flex h-11 w-11 items-center justify-center rounded-full ${active ? "ring-2 ring-[var(--color-ai)] ring-offset-2 ring-offset-[var(--color-surface)]" : ""}`}
+        >
+          <Icon className="h-5 w-5 text-[var(--color-ai-foreground)]" aria-hidden />
+        </span>
+      </span>
+      <span className="truncate">{label}</span>
+    </button>
+  );
 }
 
 function menuItemClass(danger = false) {
@@ -398,6 +513,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
+    <AssistantLayerProvider>
     <div
       className={[
         "flex w-full flex-col lg:flex-row",
@@ -452,16 +568,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
-            <Link
-              href="/app/assistant"
-              className={["mt-2", assistantLinkClass(assistantActive)].join(" ")}
-              aria-current={assistantActive ? "page" : undefined}
-              aria-label="Assistente com inteligência artificial"
-            >
-              <BrandMark size="xs" decorative />
-              Assistente
-              <Badge tone="ai">IA</Badge>
-            </Link>
+            <AssistantSidebarButton active={assistantActive} />
           </nav>
           <AccountSidebarLinks
             fullName={me.user.full_name}
@@ -488,15 +595,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ) : null}
             </div>
             <div className="flex items-center gap-1.5">
-              <Link
-                href="/app/assistant"
-                className={assistantLinkClass(assistantActive)}
-                aria-current={assistantActive ? "page" : undefined}
-                aria-label="Assistente com inteligência artificial"
-              >
-                <BrandMark size="xs" decorative />
-                <span className="text-sm">IA</span>
-              </Link>
+              <AssistantTopbarButton active={assistantActive} />
               <ProfileMenu
                 fullName={me.user.full_name}
                 orgName={me.organization.name}
@@ -510,33 +609,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {pathname === "/app" ? <PwaInstallBanner /> : null}
 
-        <main
-          // Bottom padding clears the fixed mobile bottom-nav height + its
-          // safe-area inset (7rem normally, 4.25rem on the assistant screen
-          // which has its own composer instead of a page scroll) — not a
-          // token because it's shell-chrome-specific, not a design value.
-          className={
-            assistantActive
-              ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
-              : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-6 lg:pb-5 xl:px-8"
-          }
-        >
-          {/* Sidebar+content no longer share one global max-width (that centered
-              the whole shell and wasted the sides on wide screens) — the cap
-              lives here instead, on main's own content, so it can be wide
-              enough for dashboards/grids without becoming an unreadable full-
-              bleed slab on ultrawide monitors. The assistant screen manages its
-              own internal columns and needs the full height chain intact. */}
-          <div
-            className={
-              assistantActive
-                ? "flex h-full min-h-0 w-full flex-1 flex-col"
-                : "mx-auto w-full max-w-[1600px] 2xl:max-w-[1760px]"
-            }
-          >
-            <BillingGate>{children}</BillingGate>
-          </div>
-        </main>
+        <MainContent assistantActive={assistantActive}>{children}</MainContent>
 
         <nav
           aria-label="Navegação principal"
@@ -548,25 +621,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               const { Icon } = item;
 
               if (item.href === "/app/assistant") {
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-label={item.label}
-                    aria-current={active ? "page" : undefined}
-                    className="flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[0.65rem] font-semibold text-[var(--color-ai-hover)] sm:text-xs"
-                  >
-                    <span className="relative -mt-4 flex h-11 w-11 items-center justify-center">
-                      <span className="assistant-orb-glow" aria-hidden />
-                      <span
-                        className={`assistant-orb relative z-[1] flex h-11 w-11 items-center justify-center rounded-full ${active ? "ring-2 ring-[var(--color-ai)] ring-offset-2 ring-offset-[var(--color-surface)]" : ""}`}
-                      >
-                        <Icon className="h-5 w-5 text-[var(--color-ai-foreground)]" aria-hidden />
-                      </span>
-                    </span>
-                    <span className="truncate">{item.label}</span>
-                  </Link>
-                );
+                return <AssistantOrbTab key={item.href} label={item.label} Icon={Icon} active={active} />;
               }
 
               return (
@@ -597,5 +652,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <CommandPalette />
     </div>
+    </AssistantLayerProvider>
   );
 }

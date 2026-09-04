@@ -378,3 +378,11 @@ export function IconClock({ className = "", ...props }: IconProps) {
     </svg>
   );
 }
+
+export function IconMinus({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
