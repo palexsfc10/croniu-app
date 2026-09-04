@@ -55,6 +55,11 @@
      briefing block, the active sidebar item. Everything else stays on
      plain --color-surface so elevation keeps meaning proportion. */
   --color-surface-elevated: color-mix(in srgb, #ffffff 97%, var(--brand-100));
+  /* Piloto: fundo do item ativo da navegação — antes usava
+     --color-surface-elevated (tingimento de 3%, quase imperceptível);
+     agora um tingimento próprio de 10% para dar presença real ao item
+     ativo sem virar um "pill" saturado. */
+  --color-nav-active-bg: color-mix(in srgb, #ffffff 90%, var(--brand-100));
   --color-ink: #152033;
   --color-ink-muted: #5b677a;
   --color-ink-subtle: #8b95a8;
@@ -537,9 +542,53 @@ h3,
   backdrop-filter: blur(12px);
 }
 
-/* Sidebar desktop surface */
+/* Sidebar desktop surface — piloto: tingimento de marca subiu de 8% para
+   11% (ainda dentro do que passa em contraste com texto --color-ink-muted
+   por cima; validado ao vivo). Borda direita permanece sólida (definida
+   no markup, não aqui) — nunca gradiente. */
 .app-sidebar {
-  background-color: color-mix(in srgb, var(--color-surface) 92%, var(--brand-50));
+  background-color: color-mix(in srgb, var(--color-surface) 89%, var(--brand-50));
+}
+
+/* Main content wash — piloto: o mesmo princípio já usado no fundo da
+   Cronia (leve degradê vertical em vez de cor plana), aplicado ao shell
+   inteiro em intensidade bem mais discreta — só um toque de profundidade
+   no topo da página, dissolvendo para --color-bg antes da metade da tela.
+   Nunca compete com conteúdo: é só o fundo. */
+.shell-main-wash {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-primary-subtle) 32%, transparent) 0%,
+    transparent 38%
+  );
+}
+
+/* Cronia's symbol in secondary entry points (sidebar row, mobile topbar
+   pill) — same vivid gradient identity as the orb, but restrained: no
+   permanent pulse. That breathing glow is reserved for the primary mobile
+   orb (the one deliberately "alive" spot in the bottom nav) — here, glow
+   only appears on hover, keyboard focus, or while the panel/overlay is
+   actually open (`.is-active`), and even then as a static glow, never
+   animated. */
+.cronia-symbol {
+  background: var(--gradient-ai-vivid);
+  box-shadow: none;
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.cronia-symbol.is-active {
+  box-shadow: var(--shadow-glow-ai);
+}
+
+button:hover > .cronia-symbol,
+button:focus-visible > .cronia-symbol {
+  box-shadow: var(--shadow-glow-ai);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cronia-symbol {
+    transition: none;
+  }
 }
 
 /* Status badge bases */

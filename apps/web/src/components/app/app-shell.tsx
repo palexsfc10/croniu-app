@@ -10,7 +10,7 @@ import {
   type ComponentType,
   type SVGProps,
 } from "react";
-import { BrandMark, BrandWordmark } from "@/components/brand";
+import { BrandWordmark } from "@/components/brand";
 import { CommandPalette } from "@/components/app/command-palette";
 import {
   AssistantLayerProvider,
@@ -88,12 +88,16 @@ function isAssistantActive(pathname: string) {
 
 function navLinkClass(active: boolean) {
   // Active state reads as "quietly current" rather than a loud filled pill:
-  // a raised-but-faint surface + a thin brand rail on the left, same
-  // vocabulary as .card-rail elsewhere, not a new pattern.
+  // a raised-but-faint surface + a brand rail on the left, same vocabulary
+  // as .card-rail elsewhere, not a new pattern. Piloto: rail thickened
+  // (2px → 3px) and the fill deepened from --color-surface-elevated (a
+  // near-invisible 3% tint) to a visible-but-calm 10% brand mix, for real
+  // presence without becoming a filled pill. No shadow — a "floating"
+  // nav item reads as a button, not a location in a list.
   return [
-    "min-h-11 rounded-[var(--radius-md)] border-l-2 py-2 pr-3 text-sm font-semibold transition-colors duration-[var(--duration-fast)]",
+    "min-h-11 rounded-[var(--radius-md)] border-l-[3px] py-2 pr-3 text-sm font-semibold transition-colors duration-[var(--duration-fast)]",
     active
-      ? "border-l-[var(--color-primary)] bg-[var(--color-surface-elevated)] pl-[calc(0.75rem-2px)] text-[var(--color-primary)] shadow-sm"
+      ? "border-l-[var(--color-primary)] bg-[var(--color-nav-active-bg)] pl-[calc(0.75rem-3px)] text-[var(--color-primary)]"
       : "border-l-transparent pl-3 text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]",
   ].join(" ");
 }
@@ -116,11 +120,16 @@ function AssistantSidebarButton({ active }: { active: boolean }) {
   return (
     <button
       type="button"
-      className={["mt-2 w-full", assistantLinkClass(active)].join(" ")}
+      className={["w-full", assistantLinkClass(active)].join(" ")}
       aria-label="Abrir a Cronia"
       onClick={() => open()}
     >
-      <BrandMark size="xs" decorative />
+      <span
+        aria-hidden
+        className={["cronia-symbol flex h-5 w-5 shrink-0 items-center justify-center rounded-full", active ? "is-active" : ""].join(" ")}
+      >
+        <IconSparkles className="h-3 w-3 text-white" />
+      </span>
       Cronia
       <Badge tone="ai">IA</Badge>
     </button>
@@ -139,7 +148,12 @@ function AssistantTopbarButton({ active }: { active: boolean }) {
       aria-label="Abrir a Cronia"
       onClick={() => open()}
     >
-      <BrandMark size="xs" decorative />
+      <span
+        aria-hidden
+        className={["cronia-symbol flex h-5 w-5 shrink-0 items-center justify-center rounded-full", active ? "is-active" : ""].join(" ")}
+      >
+        <IconSparkles className="h-3 w-3 text-white" />
+      </span>
       <span className="text-sm">IA</span>
     </button>
   );
@@ -161,7 +175,7 @@ function MainContent({ assistantActive, children }: { assistantActive: boolean; 
       className={[
         assistantActive
           ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
-          : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-6 lg:pb-5 xl:px-8",
+          : "shell-main-wash flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-6 lg:pb-5 xl:px-8",
         "transition-[padding] duration-[var(--duration-normal)]",
       ].join(" ")}
       style={panelSpacingStyle}
@@ -564,12 +578,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   className={["inline-flex items-center gap-2.5", navLinkClass(active)].join(" ")}
                   aria-current={active ? "page" : undefined}
                 >
-                  <Icon aria-hidden className="opacity-90" />
+                  <Icon aria-hidden className={active ? "opacity-100" : "opacity-90"} />
                   {item.label}
                 </Link>
               );
             })}
-            <AssistantSidebarButton active={assistantActive} />
+            {/* Cronia reads as a special layer, not one more item in the
+                operational list — spacing + a hairline divider carry that
+                hierarchy; no group label, which would add noise for a
+                single item. */}
+            <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+              <AssistantSidebarButton active={assistantActive} />
+            </div>
           </nav>
           <AccountSidebarLinks
             fullName={me.user.full_name}
