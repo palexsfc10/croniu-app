@@ -17,7 +17,9 @@ import {
   type Cycle,
   type Protocol,
   type Receivable,
+  type RenewalCaseView,
 } from "@/lib/api";
+import { renewalStatusLabel, renewalStatusTone } from "@/lib/renewal-status";
 import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor, safeReturnTo, t } from "@/lib/nomenclature";
 import { EmptyStateGuide } from "@/components/ui/empty-state-guide";
@@ -165,6 +167,7 @@ export function ClientProfile({ clientId }: Props) {
   const [todayIso, setTodayIso] = useState("2026-01-01");
   const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [renewalCases, setRenewalCases] = useState<RenewalCaseView[]>([]);
 
   const terms = nomenclatureFor(me?.organization.profession_code);
   const returnResumo = `/app/clients/${clientId}`;
@@ -172,7 +175,7 @@ export function ClientProfile({ clientId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [c, a, j, p, cy, pref, ev, rb, sub, appts, recv] = await Promise.all([
+    const [c, a, j, p, cy, pref, ev, rb, sub, appts, recv, ren] = await Promise.all([
       apiFetch<Client>(`/api/v1/clients/${clientId}`),
       apiFetch<ClientAccess>(`/api/v1/clients/${clientId}/public-access`),
       apiFetch<ClientJourney>(`/api/v1/clients/${clientId}/journey`),
@@ -188,6 +191,7 @@ export function ClientProfile({ clientId }: Props) {
       ),
       apiFetch<Appointment[]>(`/api/v1/clients/${clientId}/appointments?limit=10`),
       apiFetch<Receivable[]>(`/api/v1/clients/${clientId}/receivables`),
+      apiFetch<RenewalCaseView[]>("/api/v1/renewal-cases?scope=all"),
     ]);
     if (c.error) setError(c.error.message);
     else setItem(c.data ?? null);
@@ -207,6 +211,7 @@ export function ClientProfile({ clientId }: Props) {
     if (sub.data?.length) setSubmissionId(sub.data[0].id);
     if (appts.data) setAppointments(appts.data);
     if (recv.data) setReceivables(recv.data);
+    if (ren.data) setRenewalCases(ren.data.filter((r) => r.client_id === clientId));
     setLoading(false);
   }, [clientId]);
 
@@ -265,6 +270,9 @@ export function ClientProfile({ clientId }: Props) {
   // Renewal offer reuses the very same derivation as the Ciclos central, so a
   // cycle never looks renewable here and non-renewable there. It only ever
   // produces a link into the existing flow — clicking mutates nothing.
+  const openRenewalCycleIds = new Set(
+    renewalCases.filter((r) => r.portal_requested).map((r) => r.source_cycle_id),
+  );
   const activeCycleRow = activeCycle
     ? buildCycleRow(activeCycle, {
         allCycles: cycles,
@@ -272,9 +280,12 @@ export function ClientProfile({ clientId }: Props) {
         nextAppointmentByClientId: nextAppointment
           ? { [clientId]: nextAppointment }
           : {},
-        openRenewalCycleIds: new Set<string>(),
+        openRenewalCycleIds,
         today: todayIso,
       })
+    : null;
+  const activeCycleRenewalCase = activeCycle
+    ? renewalCases.find((r) => r.source_cycle_id === activeCycle.id)
     : null;
   const cycleRenewalHref = activeCycleRow
     ? renewalTarget(activeCycleRow, `${returnResumo}?tab=plano`)
@@ -966,6 +977,11 @@ export function ClientProfile({ clientId }: Props) {
                           nextAppointment
                             ? `Próxima sessão ${formatHumanDate(nextAppointment.starts_at.slice(0, 10))}`
                             : null,
+                          // Processo de renovação — distinto do status do ciclo
+                          // acima (programado/em andamento/encerrado).
+                          activeCycleRenewalCase
+                            ? `Renovação: ${renewalStatusLabel(activeCycleRenewalCase.display_status)}`
+                            : null,
                         ]
                           .filter(Boolean)
                           .join(" · ")
@@ -1041,26 +1057,44 @@ export function ClientProfile({ clientId }: Props) {
                     Histórico de ciclos
                   </h2>
                   <ul className="space-y-1.5">
-                    {pastCycles.map((c) => (
-                      <li key={c.id}>
-                        <Link
-                          href={`/app/cycles/${c.id}`}
-                          className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate text-[var(--color-ink)]">
-                              {c.service_name}
+                    {pastCycles.map((c) => {
+                      const renewalCase = renewalCases.find((r) => r.source_cycle_id === c.id);
+                      return (
+                        <li key={c.id}>
+                          <Link
+                            href={`/app/cycles/${c.id}`}
+                            className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-[var(--color-ink)]">
+                                {c.service_name}
+                              </span>
+                              <span className="block text-xs text-[var(--color-ink-muted)]">
+                                {formatCycleVigencyCard(c.starts_on, c.ends_on).range}
+                              </span>
                             </span>
-                            <span className="block text-xs text-[var(--color-ink-muted)]">
-                              {formatCycleVigencyCard(c.starts_on, c.ends_on).range}
+                            <span className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                              <Badge tone={cycleListStatusTone(c, todayIso)}>
+                                {cycleListStatus(c, todayIso)}
+                              </Badge>
+                              {renewalCase ? (
+                                <Badge tone={renewalStatusTone(renewalCase.display_status)}>
+                                  {renewalStatusLabel(renewalCase.display_status)}
+                                </Badge>
+                              ) : null}
                             </span>
-                          </span>
-                          <Badge tone={cycleListStatusTone(c, todayIso)}>
-                            {cycleListStatus(c, todayIso)}
-                          </Badge>
-                        </Link>
-                      </li>
-                    ))}
+                          </Link>
+                          {renewalCase?.successor_cycle_id ? (
+                            <Link
+                              href={`/app/cycles/${renewalCase.successor_cycle_id}`}
+                              className="ml-3 mt-1 inline-block text-xs font-medium text-[var(--color-link)] hover:underline"
+                            >
+                              Ver ciclo renovado →
+                            </Link>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}

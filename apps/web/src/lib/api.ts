@@ -153,6 +153,35 @@ export type Cycle = {
   is_nearing_end: boolean;
 };
 
+/** GET /renewal-cases — the professional-side renewal process, one row per
+ * cycle that ever needed a renewal decision. `display_status` is always
+ * derived server-side (never trust a stale client-side computation of it):
+ * "upcoming" | "pending" | "awaiting_client" | "overdue" | "renewed" |
+ * "ended_without_renewal". Distinct from `RenewalRequest`, which is only the
+ * portal-submitted client signal (`portal_requested` here echoes whether one
+ * exists, but is never itself a resolution). */
+export type RenewalCaseView = {
+  case_id: string | null;
+  client_id: string;
+  client_name: string | null;
+  source_cycle_id: string;
+  service_name: string | null;
+  ends_on: string;
+  display_status:
+    | "upcoming"
+    | "pending"
+    | "awaiting_client"
+    | "overdue"
+    | "renewed"
+    | "ended_without_renewal";
+  portal_requested: boolean;
+  next_contact_date: string | null;
+  resolution_reason: "client_declined" | "no_response" | "service_ended" | "other" | null;
+  resolution_note: string | null;
+  resolved_at: string | null;
+  successor_cycle_id: string | null;
+};
+
 /** GET /receivables/overview — real aggregates over the professional's own
  * client receivables. Never Croniu's own subscription (that stays in
  * Conta/Assinatura, unrelated to this endpoint). */

@@ -37,6 +37,7 @@ from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
 from app.services import evaluations as eval_svc
 from app.services import my_cycle as my_cycle_svc
+from app.services import renewal_case as renewal_case_svc
 from app.services import status_labels
 from app.services.auth import AuthError
 
@@ -211,6 +212,11 @@ class ListRenewalRequestsArgs(BaseModel):
         default=None,
         pattern="^(requested|acknowledged|payment_reported|resolved|dismissed)$",
     )
+
+
+class ListRenewalCasesArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: str = Field(default="needs_decision", pattern="^(needs_decision|all)$")
 
 
 # --------------------------------------------------------------------------
@@ -1162,6 +1168,34 @@ def _list_renewal_requests(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
     }
 
 
+def _list_renewal_cases(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Real renewal *cases* (próxima/pendente/aguardando cliente/atrasada/
+    renovada/encerrada) — distinct from `list_renewal_requests`, which only
+    lists portal-submitted client signals."""
+    parsed = ListRenewalCasesArgs.model_validate(args)
+    today = _tool_today(ctx)
+    rows = renewal_case_svc.list_renewal_cases(
+        ctx.db, organization_id=ctx.organization_id, today=today, scope=parsed.scope
+    )
+    return {
+        "count": len(rows),
+        "renewal_cases": [
+            {
+                "cycle_id": str(r.source_cycle_id),
+                "client_name": r.client_name,
+                "service_name": r.service_name,
+                "ends_on": r.ends_on.isoformat(),
+                "status": r.display_status,
+                "portal_requested": r.portal_requested,
+                "next_contact_date": r.next_contact_date.isoformat()
+                if r.next_contact_date
+                else None,
+            }
+            for r in rows
+        ],
+    }
+
+
 # --------------------------------------------------------------------------
 # Write tools (propose_*) — argument schemas
 # --------------------------------------------------------------------------
@@ -1289,6 +1323,19 @@ class ProposeCreateCycleArgs(BaseModel):
 class ProposeCancelCycleArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     cycle_id: uuid.UUID
+
+
+class ProposeMarkAwaitingClientArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cycle_id: uuid.UUID
+    next_contact_date: date
+
+
+class ProposeEndRenewalWithoutRenewalArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cycle_id: uuid.UUID
+    resolution_reason: Literal["client_declined", "no_response", "service_ended", "other"]
+    resolution_note: str | None = Field(default=None, max_length=2000)
 
 
 class ProposeRecordPaymentArgs(BaseModel):
@@ -1897,6 +1944,93 @@ def execute_cancel_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[st
     return {"id": str(cycle.id), "kind": "cycle", "status": cycle.status}
 
 
+_RESOLUTION_REASON_LABEL = {
+    "client_declined": "cliente recusou",
+    "no_response": "sem resposta",
+    "service_ended": "serviço encerrado",
+    "other": "outro motivo",
+}
+
+
+def _propose_mark_awaiting_client(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeMarkAwaitingClientArgs.model_validate(args)
+    cycle = domain_svc.get_cycle(
+        ctx.db, organization_id=ctx.organization_id, cycle_id=parsed.cycle_id
+    )
+    client_name = cycle.client.full_name if cycle.client else "cliente"
+    when = parsed.next_contact_date.strftime("%d/%m/%Y")
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_mark_awaiting_client",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f"Marcar a renovação de {client_name} como “aguardando cliente”, "
+            f"com retorno previsto para {when}."
+        ),
+        "summary_fields": {
+            "Cliente": client_name,
+            "Próximo contato": when,
+        },
+        "risk_class": "write_common",
+    }
+
+
+def execute_mark_awaiting_client(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeMarkAwaitingClientArgs.model_validate(arguments)
+    case = renewal_case_svc.mark_awaiting_client(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        cycle_id=parsed.cycle_id,
+        next_contact_date=parsed.next_contact_date,
+    )
+    return {
+        "id": str(case.id),
+        "kind": "renewal_case",
+        "status": case.status,
+        "next_contact_date": case.next_contact_date.isoformat()
+        if case.next_contact_date
+        else None,
+    }
+
+
+def _propose_end_renewal_without_renewal(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeEndRenewalWithoutRenewalArgs.model_validate(args)
+    cycle = domain_svc.get_cycle(
+        ctx.db, organization_id=ctx.organization_id, cycle_id=parsed.cycle_id
+    )
+    client_name = cycle.client.full_name if cycle.client else "cliente"
+    reason_label = _RESOLUTION_REASON_LABEL[parsed.resolution_reason]
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_end_renewal_without_renewal",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f"Encerrar a renovação de {client_name} sem criar um novo ciclo "
+            f"(motivo: {reason_label}). Nenhum ciclo é alterado — apenas o "
+            f"processo de renovação é fechado."
+        ),
+        "summary_fields": {
+            "Cliente": client_name,
+            "Motivo": reason_label,
+        },
+        "risk_class": "write_common",
+    }
+
+
+def execute_end_renewal_without_renewal(
+    ctx: ToolContext, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    parsed = ProposeEndRenewalWithoutRenewalArgs.model_validate(arguments)
+    case = renewal_case_svc.end_without_renewal(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        cycle_id=parsed.cycle_id,
+        resolution_reason=parsed.resolution_reason,
+        resolution_note=parsed.resolution_note,
+    )
+    return {"id": str(case.id), "kind": "renewal_case", "status": case.status}
+
+
 def _propose_record_payment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ProposeRecordPaymentArgs.model_validate(args)
     receivable = domain_svc.get_receivable(
@@ -2225,6 +2359,27 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="read",
         requires_confirmation=False,
         handler=_list_renewal_requests,
+    ),
+    "list_renewal_cases": ToolDefinition(
+        name="list_renewal_cases",
+        description=(
+            "Lista os processos reais de renovação (próxima, decisão pendente, "
+            "aguardando cliente, atrasada, renovada, encerrada sem renovação) — "
+            "diferente de list_renewal_requests, que só lista pedidos enviados "
+            "pelo cliente no Portal. scope=needs_decision (padrão) traz só o "
+            "que exige uma decisão agora; scope=all inclui também o histórico "
+            "resolvido (renovada/encerrada)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "enum": ["needs_decision", "all"]},
+            },
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_list_renewal_cases,
     ),
     # --- Read: clientes ----------------------------------------------------
     "find_client": ToolDefinition(
@@ -2774,6 +2929,53 @@ TOOLS: dict[str, ToolDefinition] = {
         handler=_propose_cancel_cycle,
         risk_class="write_sensitive",
     ),
+    "propose_mark_awaiting_client": ToolDefinition(
+        name="propose_mark_awaiting_client",
+        description=(
+            "Propõe marcar a renovação de um ciclo como 'aguardando cliente', com "
+            "uma próxima data de contato obrigatória — para o caso não ficar "
+            "esquecido. Não cria nem altera nenhum ciclo. Exige confirmação."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "cycle_id": {"type": "string", "format": "uuid"},
+                "next_contact_date": {"type": "string", "format": "date"},
+            },
+            "required": ["cycle_id", "next_contact_date"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_mark_awaiting_client,
+        risk_class="write_common",
+    ),
+    "propose_end_renewal_without_renewal": ToolDefinition(
+        name="propose_end_renewal_without_renewal",
+        description=(
+            "Propõe encerrar o processo de renovação de um ciclo sem criar um "
+            "novo ciclo, com um motivo controlado (cliente recusou, sem "
+            "resposta, serviço encerrado, outro). Não cria nem altera nenhum "
+            "ciclo — apenas fecha o processo de renovação. Exige confirmação."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "cycle_id": {"type": "string", "format": "uuid"},
+                "resolution_reason": {
+                    "type": "string",
+                    "enum": ["client_declined", "no_response", "service_ended", "other"],
+                },
+                "resolution_note": {"type": "string", "maxLength": 2000},
+            },
+            "required": ["cycle_id", "resolution_reason"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_end_renewal_without_renewal,
+        risk_class="write_common",
+    ),
     "propose_record_payment": ToolDefinition(
         name="propose_record_payment",
         description="Propõe marcar um recebimento como pago. Exige confirmação do usuário.",
@@ -2930,6 +3132,8 @@ WRITE_EXECUTORS: dict[str, Callable[[ToolContext, dict[str, Any]], dict[str, Any
     "mark_appointment_outcome": execute_mark_appointment_outcome,
     "create_cycle": execute_create_cycle,
     "cancel_cycle": execute_cancel_cycle,
+    "mark_awaiting_client": execute_mark_awaiting_client,
+    "end_renewal_without_renewal": execute_end_renewal_without_renewal,
     "record_payment": execute_record_payment,
     "create_evaluation_draft": execute_create_evaluation_draft,
     "publish_evaluation": execute_publish_evaluation,

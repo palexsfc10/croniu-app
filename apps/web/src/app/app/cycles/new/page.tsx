@@ -53,6 +53,11 @@ function NewIntelligentCycleForm() {
   const { me } = useAuth();
   const orgTz = me?.organization.timezone || "America/Sao_Paulo";
   const renewalRequestId = search.get("renewalRequestId");
+  // Generic renewal link (Central de Ciclos, Cliente 360°, Central de
+  // Renovações "Preparar renovação") — used when there is no portal-
+  // submitted renewalRequestId. Ends the source cycle and links the
+  // renewal case the same way the renewalRequestId path already does.
+  const renewedFromCycleId = search.get("renewedFrom");
   const [step, setStep] = useState(1);
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -106,6 +111,7 @@ function NewIntelligentCycleForm() {
     if (startsOn) params.set("startsOn", startsOn);
     if (weekdays.length) params.set("weekdays", weekdays.join(","));
     if (renewalRequestId) params.set("renewalRequestId", renewalRequestId);
+    if (renewedFromCycleId) params.set("renewedFrom", renewedFromCycleId);
     const existingReturn = safeReturnTo(search.get("returnTo"));
     if (existingReturn) params.set("returnTo", existingReturn);
     const q = params.toString();
@@ -222,6 +228,8 @@ function NewIntelligentCycleForm() {
     }
     if (renewalRequestId) {
       body.renewal_request_id = renewalRequestId;
+    } else if (renewedFromCycleId) {
+      body.renewed_from_cycle_id = renewedFromCycleId;
     }
     const result = await apiFetch<Cycle>("/api/v1/cycles/intelligent", {
       method: "POST",
@@ -596,7 +604,9 @@ function NewIntelligentCycleForm() {
                 ? "Salvando…"
                 : renewalRequestId
                   ? "Confirmar pagamento e aprovar renovação"
-                  : "Confirmar ciclo"}
+                  : renewedFromCycleId
+                    ? "Confirmar renovação"
+                    : "Confirmar ciclo"}
             </Button>
           </div>
         </div>

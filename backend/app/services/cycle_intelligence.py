@@ -14,6 +14,7 @@ from app.models.cycle import Cycle
 from app.models.cycle_template import CycleTemplate
 from app.models.location import Location
 from app.models.receivable import Receivable
+from app.models.renewal_case import RenewalCase
 from app.models.renewal_request import RenewalRequest
 from app.schemas.cycle_intelligence import (
     CyclePreviewIn,
@@ -28,6 +29,7 @@ from app.services import agenda as agenda_svc
 from app.services import cycle_guard as cycle_guard_svc
 from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
+from app.services import renewal_case as renewal_case_svc
 from app.services import cycle_calc
 from app.services.auth import AuthError
 from app.services.cycle_calc import compose_financial, compute_renewal_on, enumerate_lesson_dates
@@ -333,6 +335,48 @@ def create_intelligent_cycle(
                 422,
             )
 
+    renewed_from_cycle: Cycle | None = None
+    if payload.renewal_request_id is None and payload.renewed_from_cycle_id is not None:
+        renewed_from_cycle = db.scalar(
+            select(Cycle).where(
+                Cycle.organization_id == organization_id,
+                Cycle.id == payload.renewed_from_cycle_id,
+            )
+        )
+        if renewed_from_cycle is None:
+            raise AuthError("cycle_not_found", "Ciclo de origem não encontrado.", 404)
+        if renewed_from_cycle.client_id != payload.client_id:
+            raise AuthError(
+                "renewal_client_mismatch",
+                "O ciclo de origem não pertence a este cliente.",
+                422,
+            )
+        if renewed_from_cycle.status == "cancelled":
+            raise AuthError(
+                "cycle_cancelled",
+                "Um ciclo cancelado não pode ser usado como origem de renovação.",
+                422,
+            )
+        existing_case = db.scalar(
+            select(RenewalCase).where(
+                RenewalCase.organization_id == organization_id,
+                RenewalCase.source_cycle_id == renewed_from_cycle.id,
+            )
+        )
+        if existing_case is not None and existing_case.status == "renewed":
+            if existing_case.successor_cycle_id is not None:
+                return domain_svc.get_cycle(
+                    db,
+                    organization_id=organization_id,
+                    cycle_id=existing_case.successor_cycle_id,
+                )
+        if existing_case is not None and existing_case.status == "ended_without_renewal":
+            raise AuthError(
+                "renewal_closed",
+                "Este processo de renovação já foi encerrado sem renovação.",
+                422,
+            )
+
     template = get_template(
         db, organization_id=organization_id, template_id=payload.cycle_template_id
     )
@@ -373,11 +417,12 @@ def create_intelligent_cycle(
             422,
         )
 
-    exclude_cycle_id = (
+    source_cycle_id_to_end: uuid.UUID | None = (
         renewal_row.source_cycle_id
         if renewal_row is not None and renewal_row.source_cycle_id is not None
-        else None
+        else (renewed_from_cycle.id if renewed_from_cycle is not None else None)
     )
+    exclude_cycle_id = source_cycle_id_to_end
     cycle_guard_svc.assert_no_duplicate_or_overlap(
         db,
         organization_id=organization_id,
@@ -412,11 +457,7 @@ def create_intelligent_cycle(
     # Renewal approval will end the source cycle and cancel its future scheduled
     # appointments after create. Exclude that source from conflict detection so a
     # legitimate same-slot renewal is not blocked by appointments about to be cancelled.
-    exclude_cycle_id = (
-        renewal_row.source_cycle_id
-        if renewal_row is not None and renewal_row.source_cycle_id is not None
-        else None
-    )
+    exclude_cycle_id = source_cycle_id_to_end
     hits = schedule_svc.find_occurrence_conflicts(
         db,
         organization_id=organization_id,
@@ -540,11 +581,13 @@ def create_intelligent_cycle(
         renewal_row.resolved_at = datetime.now(UTC)
         renewal_row.created_cycle_id = cycle.id
         db.add(renewal_row)
+
+    if source_cycle_id_to_end is not None:
         # Source cycle leaves the operational "active nearing" surface once renewed.
         source = db.scalar(
             select(Cycle).where(
                 Cycle.organization_id == organization_id,
-                Cycle.id == renewal_row.source_cycle_id,
+                Cycle.id == source_cycle_id_to_end,
             )
         )
         if source is not None and source.status == "active":
@@ -564,6 +607,30 @@ def create_intelligent_cycle(
             for appt in future_open:
                 appt.status = "cancelled"
                 db.add(appt)
+        # A portal-submitted request for this exact source cycle is now
+        # genuinely resolved too, even when this cycle came from the generic
+        # "Preparar renovação" flow (not the renewal_request_id path) —
+        # never leave a client's request looking open once the professional
+        # already renewed them another way.
+        if renewal_row is None:
+            open_request = db.scalar(
+                select(RenewalRequest).where(
+                    RenewalRequest.organization_id == organization_id,
+                    RenewalRequest.source_cycle_id == source_cycle_id_to_end,
+                    RenewalRequest.status.in_(("requested", "acknowledged", "payment_reported")),
+                )
+            )
+            if open_request is not None:
+                open_request.status = "resolved"
+                open_request.resolved_at = datetime.now(UTC)
+                open_request.created_cycle_id = cycle.id
+                db.add(open_request)
+        renewal_case_svc.mark_renewed(
+            db,
+            organization_id=organization_id,
+            source_cycle_id=source_cycle_id_to_end,
+            successor_cycle_id=cycle.id,
+        )
 
     db.flush()
     hits_final = schedule_svc.find_occurrence_conflicts(

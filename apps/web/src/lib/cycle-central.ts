@@ -142,7 +142,11 @@ export function renewalTarget(row: CycleRow, returnTo: string): string | null {
   if (!isRenewalEligible(row)) return null;
   if (row.hasOpenRenewalRequest) return "/app/renewals";
   const { cycle } = row;
-  const params = new URLSearchParams({ clientId: cycle.client_id, serviceId: cycle.service_id });
+  const params = new URLSearchParams({
+    clientId: cycle.client_id,
+    serviceId: cycle.service_id,
+    renewedFrom: cycle.id,
+  });
   if (cycle.cycle_template_id) params.set("templateId", cycle.cycle_template_id);
   if (cycle.weekdays?.length) params.set("weekdays", cycle.weekdays.join(","));
   params.set("returnTo", returnTo);

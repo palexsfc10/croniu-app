@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { AttentionItem, Cycle, FinancialSummary, HomeSummary } from "@/lib/api";
+import type { AttentionItem, FinancialSummary, HomeSummary, RenewalCaseView } from "@/lib/api";
 import { apiFetch, formatBRL, formatDateBR, formatOrgDateTime } from "@/lib/api";
 import type { BillingEntitlement } from "@/lib/billing";
+import { renewalStatusLabel } from "@/lib/renewal-status";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
 import {
@@ -564,14 +566,49 @@ function PriorityQueue({
 }
 
 // ---------------------------------------------------------------------------
-// Renovações — cycles perto do fim ainda sem contato confirmado
-// (home/summary.renewals, já calculado pelo backend). Bloco omitido quando
-// não há nenhuma renovação real pendente — nunca uma seção vazia forçada.
+// Renovações — só o que exige decisão: próximas, aguardando cliente,
+// atrasadas e solicitações do Portal (GET /renewal-cases?scope=needs_decision,
+// já filtra renovadas/encerradas). Fonte própria, não `summary.renewals` —
+// esse endpoint é case-aware (aguardando cliente é um estado real agora, não
+// mais o booleano contact_confirmed_at). Nunca reproduz a Central de
+// Renovações inteira: só a lista compacta + link. Bloco omitido quando não
+// há nenhuma pendência real — nunca uma seção vazia forçada.
 // ---------------------------------------------------------------------------
 
-function RenewalsBlock({ renewals }: { renewals: Cycle[] }) {
-  if (!renewals.length) return null;
-  const visible = renewals.slice(0, 3);
+function useRenewalCases() {
+  const [rows, setRows] = useState<RenewalCaseView[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<RenewalCaseView[]>(
+        "/api/v1/renewal-cases?scope=needs_decision",
+      );
+      if (cancelled) return;
+      if (result.error) {
+        setFailed(true);
+        return;
+      }
+      setRows(result.data ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return { rows, failed };
+}
+
+function RenewalsBlock() {
+  const { rows, failed } = useRenewalCases();
+  if (failed) {
+    return (
+      <section aria-label="Renovações" className="space-y-2">
+        <BlockError message="Não foi possível carregar as renovações." />
+      </section>
+    );
+  }
+  if (!rows || !rows.length) return null;
+  const visible = rows.slice(0, 3);
   return (
     <section
       aria-label="Renovações"
@@ -579,23 +616,31 @@ function RenewalsBlock({ renewals }: { renewals: Cycle[] }) {
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-          Renovações · {renewals.length}
+          Renovações · {rows.length}
         </h2>
         <Link href="/app/renewals" className="text-sm font-medium text-[var(--color-link)] hover:underline">
           Ver todas
         </Link>
       </div>
       <ul className="divide-y divide-[var(--color-border)]">
-        {visible.map((cycle) => (
-          <li key={cycle.id} className="flex items-center justify-between gap-3 py-2">
+        {visible.map((row) => (
+          <li key={row.source_cycle_id} className="flex items-center justify-between gap-3 py-2">
             <div className="min-w-0">
-              <p className="truncate font-medium text-[var(--color-ink)]">{cycle.client_name || "Cliente"}</p>
+              <p className="flex flex-wrap items-center gap-1.5">
+                <span className="truncate font-medium text-[var(--color-ink)]">
+                  {row.client_name || "Cliente"}
+                </span>
+                {row.portal_requested ? <Badge tone="warning">Cliente pediu</Badge> : null}
+              </p>
               <p className="truncate text-sm text-[var(--color-ink-muted)]">
-                {cycle.service_name ? `${cycle.service_name} · ` : ""}termina em {formatDateBR(cycle.ends_on)}
+                {renewalStatusLabel(row.display_status)}
+                {row.display_status === "awaiting_client" && row.next_contact_date
+                  ? ` · contato em ${formatDateBR(row.next_contact_date)}`
+                  : ` · termina ${formatDateBR(row.ends_on)}`}
               </p>
             </div>
             <Link
-              href={`/app/cycles/${cycle.id}`}
+              href="/app/renewals"
               className="shrink-0 text-sm font-medium text-[var(--color-link)] hover:underline"
             >
               Revisar
@@ -995,7 +1040,7 @@ export function TodayBoard({ summary }: Props) {
               financeFailed={financeFailed}
             />
             <PriorityQueue items={combinedPriority} failedSources={failedSources} limit={8} />
-            <RenewalsBlock renewals={summary.renewals} />
+            <RenewalsBlock />
             <FinanceCompact
               pendingPayments={summary.pending_payments}
               finance={finance}
