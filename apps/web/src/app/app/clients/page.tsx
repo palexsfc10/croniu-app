@@ -296,7 +296,7 @@ function FinanceiroCell({ row }: { row: ClientRow }) {
     return <span className="text-sm text-[var(--color-ink-muted)]">Em dia</span>;
   }
   return (
-    <span className="flex items-center gap-1.5">
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5">
       <span
         className={`text-sm font-medium tabular-nums ${
           row.overdueReceivablesCount > 0 ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"
