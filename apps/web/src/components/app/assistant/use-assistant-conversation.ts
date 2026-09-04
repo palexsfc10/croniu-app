@@ -69,7 +69,16 @@ export function useAssistantConversation(opts: {
   initialPrompt?: string;
   initialContext?: string | null;
   initialReturnTo?: string | null;
+  /** Gates the mount-time data fetches (`/agent/status`, `/agent/threads`,
+   * `/home/summary`) — defaults to `true`, matching the full page's
+   * always-fetch-on-mount behavior (visiting the page implies wanting the
+   * data). The global layer's persistent instance passes `false` until the
+   * user actually opens it for the first time, since that instance is
+   * mounted on every page load — without this, every navigation in the app
+   * would fire 3 extra requests for a panel that may never open. */
+  enabled?: boolean;
 } = {}) {
+  const enabled = opts.enabled ?? true;
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -220,6 +229,7 @@ export function useAssistantConversation(opts: {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     void (async () => {
       const result = await apiFetch<AgentStatus>("/api/v1/agent/status");
@@ -232,9 +242,10 @@ export function useAssistantConversation(opts: {
     return () => {
       cancelled = true;
     };
-  }, [loadThreads]);
+  }, [enabled, loadThreads]);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     void (async () => {
       const result = await apiFetch<HomeSummary>("/api/v1/home/summary");
@@ -243,7 +254,7 @@ export function useAssistantConversation(opts: {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     const node = textareaRef.current;

@@ -71,10 +71,14 @@ export function AssistantLayerProvider({ children }: { children: ReactNode }) {
   const { me } = useAuth();
   const pathname = usePathname();
   const [uiState, setUiState] = useState<UiState>("closed");
+  // Once true, stays true — the instance stays "warm" after the first open
+  // (closing/minimizing must never re-trigger a fetch or drop what's
+  // loaded), but nothing fires before that first open.
+  const [everOpened, setEverOpened] = useState(false);
   const lastFocusRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const conversation = useAssistantConversation({});
+  const conversation = useAssistantConversation({ enabled: everOpened });
 
   const greeting = useMemo(
     () => personalGreeting(me?.user.full_name, me?.organization.timezone),
@@ -86,6 +90,7 @@ export function AssistantLayerProvider({ children }: { children: ReactNode }) {
       if (typeof document !== "undefined") {
         lastFocusRef.current = document.activeElement as HTMLElement | null;
       }
+      setEverOpened(true);
       if (opts) {
         conversation.applyEntryContext({
           prompt: opts.prompt,
@@ -232,8 +237,18 @@ export function AssistantLayerProvider({ children }: { children: ReactNode }) {
  * Tailwind's build-time scanner only picks up class names it can see
  * verbatim in source — an interpolated `lg:pr-[${PANEL_WIDTH}]` would never
  * get its CSS generated and the padding would silently never apply. Keep
- * this literal in sync with `PANEL_WIDTH` above by hand. */
+ * this literal in sync with `PANEL_WIDTH` above by hand.
+ *
+ * The trailing `!` (Tailwind v4 important-modifier syntax) is load-bearing,
+ * not decoration: `<main>` already carries `lg:px-6 xl:px-8` (symmetric
+ * horizontal padding) at the same `lg:`/`xl:` breakpoints. Both utilities
+ * set `padding-right`, and Tailwind resolves same-specificity conflicts by
+ * the order it *generates* the utilities into the stylesheet — which has
+ * no relationship to source order in a `className` string. Without `!`,
+ * this class silently lost that fight in testing (computed padding-right
+ * stayed at the base 24px instead of 440px) — real content sat behind the
+ * panel despite the class being present in the DOM the whole time. */
 export function useAssistantPanelSpacing(): string {
   const { uiState } = useAssistantLayer();
-  return uiState === "open" ? "lg:pr-[440px]" : "";
+  return uiState === "open" ? "lg:pr-[440px]!" : "";
 }

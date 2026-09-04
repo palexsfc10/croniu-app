@@ -20,21 +20,32 @@ import DesignSystemPageClient from "@/app/app/dev/design-system/design-system-cl
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   notFoundSpy.mockClear();
   headersState.host = "app.example.com";
 });
 
 describe("DesignSystemPage — server-side gate, real 404 in PRD", () => {
-  it("calls notFound() (a real 404, before any client JS ships) on a non-HML host", async () => {
+  it("calls notFound() (a real 404, before any client JS ships) when neither signal matches", async () => {
     headersState.host = "app.croniu.com.br";
+    vi.stubEnv("CRONIU_ENV", "");
     await expect(DesignSystemPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(notFoundSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the reference page on an HML host, without calling notFound()", async () => {
+  it("renders on an HML host even without CRONIU_ENV set (Host alone is sufficient)", async () => {
     headersState.host = "croniu-hml.ntws.cloud";
-    // The client component's own secondary check reads window.location —
-    // stub it too, so both layers agree this is really HML.
+    vi.stubEnv("CRONIU_ENV", "");
+    vi.stubGlobal("location", { ...window.location, hostname: "croniu-hml.ntws.cloud" });
+    const jsx = await DesignSystemPage();
+    render(jsx);
+    expect(notFoundSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Design System Croniu" })).toBeInTheDocument();
+  });
+
+  it("renders when CRONIU_ENV=hml is set even on a non-matching host (env var alone is sufficient)", async () => {
+    headersState.host = "app.example.com";
+    vi.stubEnv("CRONIU_ENV", "hml");
     vi.stubGlobal("location", { ...window.location, hostname: "croniu-hml.ntws.cloud" });
     const jsx = await DesignSystemPage();
     render(jsx);

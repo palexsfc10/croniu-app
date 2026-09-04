@@ -89,6 +89,18 @@ describe("AssistantLayerProvider — global persistent layer", () => {
     apiFetch.mockReset();
   });
 
+  it("never calls the agent API before the first open() — lazy init, no background cost for a panel that's never opened", async () => {
+    renderHarness();
+    // Give any stray mount-time effect a chance to fire before asserting.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(apiFetch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("open"));
+    await waitFor(() => {
+      expect(apiFetch.mock.calls.some((c) => String(c[0]).includes("/agent/status"))).toBe(true);
+    });
+  });
+
   it("is hidden until open() is called, and shows the Assistant Croniu experience once opened", async () => {
     renderHarness();
     expect(screen.queryAllByText("Assistente Croniu")).toHaveLength(0);
