@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
 import { IconSparkles } from "@/components/ui/icons";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   AwaitingClientSheet,
   EndWithoutRenewalSheet,
@@ -112,7 +113,7 @@ export default function RenewalsPage() {
     <div className="space-y-5 animate-fade-up">
       <BackLink href="/app" label="Início" />
       <header className="space-y-1">
-        <h1 className="h-display text-2xl text-[var(--color-ink)] md:text-3xl">Renovações</h1>
+        <PageTitle>Renovações</PageTitle>
         <p className="text-sm text-[var(--color-ink-muted)]">
           O processo de renovação de cada cliente — separado do status do ciclo.
         </p>

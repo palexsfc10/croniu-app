@@ -10,6 +10,8 @@ import {
   IconLogOut,
   IconUser,
 } from "@/components/ui/icons";
+import { PageTitle } from "@/components/ui/page-title";
+import { Button } from "@/components/ui/button";
 
 const ROWS: {
   href: string;
@@ -55,7 +57,7 @@ export default function SettingsHubPage() {
   return (
     <div className="mx-auto max-w-lg animate-fade-up">
       <header className="mb-5">
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Conta e configurações</h1>
+        <PageTitle>Conta e configurações</PageTitle>
         {me ? (
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             {me.user.full_name} · {me.organization.name}
@@ -69,7 +71,9 @@ export default function SettingsHubPage() {
             href={row.href}
             className="flex min-h-14 items-center gap-3 border-b border-[var(--color-border)]/60 px-4 py-3 last:border-b-0 hover:bg-[var(--color-surface-subtle)]"
           >
-            <row.Icon className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)]" aria-hidden />
+            <span className="icon-tile icon-tile-primary h-10 w-10">
+              <row.Icon className="h-5 w-5" aria-hidden />
+            </span>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--color-ink)]">{row.title}</p>
               <p className="truncate text-xs text-[var(--color-ink-muted)]">{row.description}</p>
@@ -77,14 +81,15 @@ export default function SettingsHubPage() {
           </Link>
         ))}
       </div>
-      <button
-        type="button"
+      <Button
+        variant="outline-danger"
+        fullWidth
+        className="mt-4"
         onClick={() => void logout()}
-        className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-danger)]/30 text-sm font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)]"
       >
         <IconLogOut className="h-4 w-4" aria-hidden />
         Sair
-      </button>
+      </Button>
     </div>
   );
 }

@@ -7,7 +7,6 @@ import {
   useId,
   useRef,
   useState,
-  useSyncExternalStore,
   type ComponentType,
   type SVGProps,
 } from "react";
@@ -16,6 +15,7 @@ import { CommandPalette } from "@/components/app/command-palette";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch, type MyReferral } from "@/lib/api";
+import { useIsHmlEnvironment } from "@/lib/environment";
 import {
   IconActivity,
   IconCalendarDays,
@@ -27,6 +27,7 @@ import {
   IconClipboardList,
   IconLink,
   IconSearch,
+  IconSliders,
   IconSparkles,
   IconUser,
   IconUsersRound,
@@ -115,11 +116,13 @@ function ProfileMenu({
   fullName,
   orgName,
   showReferralLink,
+  isHml,
   onLogout,
 }: {
   fullName: string;
   orgName: string;
   showReferralLink: boolean;
+  isHml: boolean;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -223,6 +226,17 @@ function ProfileMenu({
               Meu link de indicação
             </Link>
           ) : null}
+          {isHml ? (
+            <Link
+              role="menuitem"
+              href="/app/dev/design-system"
+              className={menuItemClass()}
+              onClick={close}
+            >
+              <IconSliders className="h-4 w-4 opacity-80" aria-hidden />
+              Design System
+            </Link>
+          ) : null}
           <div className="my-1 border-t border-[var(--color-border)]" />
           <button
             type="button"
@@ -246,11 +260,13 @@ function AccountSidebarLinks({
   fullName,
   orgName,
   showReferralLink,
+  isHml,
   onLogout,
 }: {
   fullName: string;
   orgName: string;
   showReferralLink: boolean;
+  isHml: boolean;
   onLogout: () => void;
 }) {
   return (
@@ -289,6 +305,15 @@ function AccountSidebarLinks({
           Meu link de indicação
         </Link>
       ) : null}
+      {isHml ? (
+        <Link
+          href="/app/dev/design-system"
+          className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+        >
+          <IconSliders className="h-4 w-4 opacity-80" aria-hidden />
+          Design System
+        </Link>
+      ) : null}
       <button
         type="button"
         onClick={onLogout}
@@ -298,19 +323,6 @@ function AccountSidebarLinks({
         Sair
       </button>
     </div>
-  );
-}
-
-/** True only on the HML hostname — never on PRD. useSyncExternalStore (not a
- * state-in-effect) is the React-sanctioned way to read a value that only
- * exists client-side without a hydration mismatch: the server snapshot is
- * always false, so the badge simply isn't there for the initial paint. */
-const noopSubscribe = () => () => {};
-function useIsHmlEnvironment() {
-  return useSyncExternalStore(
-    noopSubscribe,
-    () => window.location.hostname.startsWith("croniu-hml"),
-    () => false,
   );
 }
 
@@ -455,6 +467,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             fullName={me.user.full_name}
             orgName={me.organization.name}
             showReferralLink={referral?.enabled ?? false}
+            isHml={isHml}
             onLogout={doLogout}
           />
           <p className="px-4 py-2 text-[0.65rem] font-medium text-[var(--color-ink-subtle)] opacity-70">
@@ -488,6 +501,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 fullName={me.user.full_name}
                 orgName={me.organization.name}
                 showReferralLink={referral?.enabled ?? false}
+                isHml={isHml}
                 onLogout={doLogout}
               />
             </div>

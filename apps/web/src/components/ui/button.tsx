@@ -8,6 +8,7 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
     | "outline"
     | "ghost"
     | "danger"
+    | "outline-danger"
     | "success"
     | "ai"
     | "brand";
@@ -33,6 +34,7 @@ const variants: Record<NonNullable<Props["variant"]>, string> = {
   outline: "btn-outline",
   ghost: "btn-ghost",
   danger: "btn-danger",
+  "outline-danger": "btn-outline-danger",
   success: "btn-success",
   ai: "btn-ai",
   brand: "btn-secondary",

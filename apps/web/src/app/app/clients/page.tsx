@@ -29,6 +29,8 @@ import {
   type ClientRow,
 } from "@/lib/client-list";
 import { buildRenewalCaseIndex, renewalStatusLabel, renewalStatusTone } from "@/lib/renewal-status";
+import { PageTitle } from "@/components/ui/page-title";
+import { Avatar } from "@/components/ui/avatar";
 import { cycleListStatus } from "@/lib/cycle-period";
 import { formatPhoneBR } from "@/lib/status-labels";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -45,7 +47,6 @@ import {
   IconClipboardList,
   IconLink,
   IconPlus,
-  IconUser,
   IconWhatsApp,
 } from "@/components/ui/icons";
 
@@ -345,12 +346,7 @@ function ClientTableRow({
       className={`grid ${GRID_COLUMNS} items-center gap-3 rounded-[var(--radius-md)] px-3 py-3 transition-colors hover:bg-[var(--color-surface-subtle)]`}
     >
       <span className="flex min-w-0 items-center gap-3">
-        <span
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-xs font-semibold text-[var(--color-primary)]"
-          aria-hidden
-        >
-          {clientInitials(client.full_name) || <IconUser className="h-4 w-4" />}
-        </span>
+        <Avatar initials={clientInitials(client.full_name)} size="sm" />
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
             <span className="truncate font-semibold text-[var(--color-ink)]">{client.full_name}</span>
@@ -386,12 +382,7 @@ function ClientCard({
       href={`/app/clients/${client.id}`}
       className="flex min-h-16 items-center gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm transition-all hover:-translate-y-px hover:shadow-md"
     >
-      <span
-        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-sm font-semibold text-[var(--color-primary)]"
-        aria-hidden
-      >
-        {clientInitials(client.full_name) || <IconUser className="h-4 w-4" />}
-      </span>
+      <Avatar initials={clientInitials(client.full_name)} size="md" />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-1.5">
           <span className="truncate font-semibold text-[var(--color-ink)]">{client.full_name}</span>
@@ -508,7 +499,7 @@ export default function ClientsPage() {
     <div className="space-y-5 animate-fade-up pb-4 md:space-y-6">
       <header className="space-y-3">
         <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)] md:text-[2.25rem]">{title}</h1>
+          <PageTitle>{title}</PageTitle>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             Pessoas que você atende, com o próximo passo à vista.
           </p>

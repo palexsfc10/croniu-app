@@ -100,6 +100,42 @@
   --color-pause: var(--color-ai);
   --color-late: #c2410c;
 
+  /* —— Domain-named aliases ——
+     Financeiro and Renovações don't get their own hue family — that would
+     be color without meaning (a "financial blue" and a "renewal purple"
+     next to the real semantic states would just compete with them). They
+     already communicate through the same success/warning/danger/info scale
+     everything else uses (recebido=success, vencido=danger, aguardando
+     cliente=info, atrasado=danger…). What they lacked was a *name* at the
+     token layer, so a screen reaches for "the financial-overdue color"
+     instead of reimplementing which generic state that maps to. */
+  --color-financial-positive: var(--color-success);
+  --color-financial-positive-subtle: var(--color-success-subtle);
+  --color-financial-overdue: var(--color-danger);
+  --color-financial-overdue-subtle: var(--color-danger-subtle);
+  --color-financial-pending: var(--color-ink-muted);
+
+  --color-renewal-upcoming: var(--color-info);
+  --color-renewal-pending: var(--color-warning);
+  --color-renewal-awaiting: var(--color-info);
+  --color-renewal-overdue: var(--color-danger);
+  --color-renewal-resolved: var(--color-success);
+  --color-renewal-closed: var(--color-neutral);
+
+  /* Tonal fill for an icon's own background — "fundo tonal", not the icon's
+     stroke color itself. Same alpha across every tone so a row of mixed
+     icons (KPIs, priority queue, section headers) reads as one family. */
+  --icon-tile-alpha: 12%;
+
+  /* Named so any AI touchpoint (entry cards, hover states, empty states)
+     reaches for "the AI gradient" instead of re-deriving this color-mix by
+     hand — one gradient, recognizable everywhere the Assistant shows up. */
+  --gradient-ai: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-ai-subtle) 90%, transparent),
+    color-mix(in srgb, var(--color-primary-subtle) 70%, transparent)
+  );
+
   /* —— Elevation —— */
   --shadow-sm: 0 1px 2px rgb(21 32 51 / 6%);
   --shadow-md: 0 8px 24px rgb(21 32 51 / 8%);
@@ -184,14 +220,6 @@
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Architectural placeholders only — no dark theme this sprint */
-    --color-bg-dark-ready: #0f141f;
-    --color-surface-dark-ready: #171d2b;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -336,6 +364,19 @@ h3,
   filter: brightness(0.94);
 }
 
+/* A destructive action that shouldn't visually shout — "Sair", not
+   "Excluir". Same shape family as .btn-outline, danger-tinted text/border
+   instead of the solid fill .btn-danger reserves for irreversible actions. */
+.btn-outline-danger {
+  background-color: transparent;
+  color: var(--color-danger);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+
+.btn-outline-danger:hover:not(:disabled) {
+  background-color: var(--color-danger-subtle);
+}
+
 .btn-success {
   background-color: var(--color-success);
   color: #ffffff;
@@ -355,23 +396,6 @@ h3,
 .btn-ai:hover:not(:disabled) {
   background-color: var(--color-ai-hover);
   border-color: var(--color-ai-hover);
-}
-
-/* Legacy alias — maps soft wash to secondary */
-.btn-brand-soft {
-  background-color: var(--color-primary-subtle);
-  color: var(--color-primary);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-  box-shadow: none;
-}
-
-.btn-brand-soft:hover:not(:disabled) {
-  background-color: var(--brand-100);
-  border-color: color-mix(in srgb, var(--color-primary) 26%, transparent);
-}
-
-.btn-brand-soft:active:not(:disabled) {
-  filter: brightness(0.98);
 }
 
 /* Assistant chat motion (respects reduced motion) */
@@ -554,13 +578,60 @@ h3,
 
 /* AI surface (assistant entry / panels only) */
 .surface-ai {
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-ai-subtle) 90%, transparent),
-      color-mix(in srgb, var(--color-primary-subtle) 70%, transparent)
-    );
+  background: var(--gradient-ai);
   border: 1px solid var(--color-ai-border);
+}
+
+/* Tonal icon backgrounds — a filled circle/square behind an icon, colored
+   at low alpha from the same tone as the icon's stroke. Use `.icon-tile` on
+   the wrapper and `.icon-tile-{tone}` for the fill; the icon itself keeps
+   its normal `currentColor` stroke, which this sets via `color`. */
+.icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.icon-tile-primary {
+  background: color-mix(in srgb, var(--color-primary) var(--icon-tile-alpha), transparent);
+  color: var(--color-primary);
+}
+
+.icon-tile-ai {
+  background: color-mix(in srgb, var(--color-ai) var(--icon-tile-alpha), transparent);
+  color: var(--color-ai-hover);
+}
+
+.icon-tile-success {
+  background: color-mix(in srgb, var(--color-success) var(--icon-tile-alpha), transparent);
+  color: var(--color-success);
+}
+
+.icon-tile-warning {
+  background: color-mix(in srgb, var(--color-warning) var(--icon-tile-alpha), transparent);
+  color: var(--color-warning);
+}
+
+.icon-tile-danger {
+  background: color-mix(in srgb, var(--color-danger) var(--icon-tile-alpha), transparent);
+  color: var(--color-danger);
+}
+
+.icon-tile-info {
+  background: color-mix(in srgb, var(--color-info) var(--icon-tile-alpha), transparent);
+  color: var(--color-info);
+}
+
+.icon-tile-progress {
+  background: color-mix(in srgb, var(--color-progress) var(--icon-tile-alpha), transparent);
+  color: var(--color-progress);
+}
+
+.icon-tile-neutral {
+  background: var(--color-surface-subtle);
+  color: var(--color-ink-muted);
 }
 
 /* Deterministic daily-briefing surface (Home only) — deliberately brand

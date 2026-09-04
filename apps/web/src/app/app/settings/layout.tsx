@@ -21,10 +21,10 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="mx-auto flex w-full max-w-5xl gap-8">
-      <aside className="hidden w-52 shrink-0 md:block">
+      <aside className="hidden w-52 shrink-0 lg:block">
         <div className="sticky top-20 space-y-4">
           <div>
-            <h1 className="h-display text-2xl text-[var(--color-ink)]">Conta e configurações</h1>
+            <h2 className="h-display text-2xl text-[var(--color-ink)]">Conta e configurações</h2>
           </div>
           <nav aria-label="Seções de configurações" className="flex flex-col gap-1">
             {SECTIONS.map((item) => {

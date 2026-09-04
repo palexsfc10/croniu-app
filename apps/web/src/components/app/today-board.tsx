@@ -33,6 +33,7 @@ import {
 } from "@/lib/setup-copy";
 import { EVALUATION_SAVED_KEY } from "@/lib/evaluation-flow";
 import { buildBriefing, isNewProfessional } from "@/lib/home-briefing";
+import { PageTitle } from "@/components/ui/page-title";
 
 type Props = {
   summary: HomeSummary;
@@ -984,9 +985,7 @@ export function TodayBoard({ summary }: Props) {
     <div className="space-y-5 animate-fade-up md:space-y-6">
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <div>
-          <h1 className="h-display text-[1.5rem] text-[var(--color-ink)] md:text-[1.875rem]">
-            {headline}
-          </h1>
+          <PageTitle>{headline}</PageTitle>
           <p className="text-sm capitalize text-[var(--color-ink-muted)]">
             {today} · {me?.organization.name}
           </p>
