@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -295,7 +296,7 @@ function NewIntelligentCycleForm() {
           Ciclo para <strong className="text-[var(--color-ink)]">{client.full_name}</strong>
         </p>
       ) : null}
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo ciclo</h1>
+      <PageTitle>Novo ciclo</PageTitle>
       <p className="text-sm text-[var(--color-ink-muted)]">Passo {step} de 4</p>
 
       {step === 1 ? (

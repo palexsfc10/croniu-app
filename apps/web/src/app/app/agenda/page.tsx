@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
+import { PageTitle } from "@/components/ui/page-title";
 import { appointmentStatusTone } from "@/lib/status-tone";
 import {
   addDaysToIsoDate,
@@ -427,7 +428,7 @@ export default function AgendaPage() {
       <div className="hidden space-y-4 lg:block">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="h-display text-3xl text-[var(--color-ink)]">Agenda</h1>
+            <PageTitle>Agenda</PageTitle>
             <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
               {prefs ? `Fuso ${prefs.timezone}` : "Calendário"}
             </p>
@@ -543,7 +544,7 @@ export default function AgendaPage() {
       {/* Mobile: daily timeline + pocket assistant — never the desktop grid compressed. */}
       <div className="space-y-3 lg:hidden" aria-label="Agenda do dia">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="h-display text-2xl text-[var(--color-ink)]">Agenda</h1>
+          <PageTitle>Agenda</PageTitle>
           <Link
             href={`/app/assistant?prompt=${encodeURIComponent("Sobre minha agenda: ")}&context=${encodeURIComponent(`Agenda: ${day ? formatHumanDate(day) : "hoje"}`)}&returnTo=${encodeURIComponent(`/app/agenda?day=${day ?? ""}&view=${view}`)}`}
           >

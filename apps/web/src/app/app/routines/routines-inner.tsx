@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch, formatDateBR } from "@/lib/api";
@@ -613,7 +614,7 @@ export default function RoutinesPageInner() {
       <div className="hidden space-y-4 lg:block">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="h-display text-3xl text-[var(--color-ink)]">Rotinas</h1>
+            <PageTitle>Rotinas</PageTitle>
             <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
               Trabalho a realizar — distinto da Agenda (compromissos com data e horário).
             </p>

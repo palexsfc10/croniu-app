@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { BackLink } from "@/components/app/back-link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor } from "@/lib/nomenclature";
@@ -146,7 +147,7 @@ export default function ManualPage() {
     <div className="space-y-5 animate-fade-up">
       <BackLink href="/app/help" label="Ajuda e feedback" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Manual</h1>
+        <PageTitle>Manual</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Guia do Croniu alinhado ao produto atual. Termos acompanham a sua profissão.
         </p>

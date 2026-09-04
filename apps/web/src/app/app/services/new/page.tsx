@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState } from "react";
+import { PageTitle } from "@/components/ui/page-title";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
@@ -100,7 +101,7 @@ function NewServiceForm() {
   return (
     <div className="space-y-4 animate-fade-up">
       <BackLink href={returnTo} label="Voltar" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo serviço</h1>
+      <PageTitle>Novo serviço</PageTitle>
       <p className="text-sm text-[var(--color-ink-muted)]">
         O serviço descreve o que você oferece. O valor não é preenchido automaticamente.
       </p>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useCallback, useEffect, useState } from "react";
 import {
   apiFetch,
@@ -399,7 +400,7 @@ export default function ClientsIntakePage() {
     <div className="space-y-6 animate-fade-up">
       <BackLink href="/app/clients" label="Clientes" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Onboarding de clientes</h1>
+        <PageTitle>Onboarding de clientes</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Entrada e evolução do cadastro de cada cliente. Formulário: {formTitle}.
         </p>

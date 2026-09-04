@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -199,7 +200,7 @@ export default function CyclesPage() {
       <BackLink href="/app" label="Início" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">Ciclos</h1>
+          <PageTitle>Ciclos</PageTitle>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             Contratos de clientes em execução. Para o que você oferece, veja{" "}
             <Link href="/app/services" className="font-medium text-[var(--color-link)] hover:underline">

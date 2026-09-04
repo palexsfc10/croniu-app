@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -118,7 +119,7 @@ export default function EditCyclePage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <BackLink href={`/app/cycles/${params.cycleId}`} label="Ciclo" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Editar ciclo</h1>
+      <PageTitle>Editar ciclo</PageTitle>
       {cycle?.is_legacy ? (
         <p className="text-sm text-[var(--color-ink-muted)]">
           Ciclo legado: só observações. Para alterar datas ou valores, crie um ciclo novo.

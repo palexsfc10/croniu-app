@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { PageTitle } from "@/components/ui/page-title";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   apiFetch,
@@ -232,9 +233,7 @@ function OnboardingWizardInner() {
 
       {step === 1 ? (
         <section className="flex flex-1 flex-col justify-center gap-4 animate-fade-up">
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">
-            Bem-vindo, {fullName.split(" ")[0] || "por aqui"} 👋
-          </h1>
+          <PageTitle>Bem-vindo, {fullName.split(" ")[0] || "por aqui"} 👋</PageTitle>
           <p className="text-[var(--color-ink-muted)]">
             <strong className="text-[var(--color-ink)]">{orgName}</strong> já está pronto.
             Faltam só alguns detalhes rápidos para deixar o Croniu do seu jeito — leva menos de um

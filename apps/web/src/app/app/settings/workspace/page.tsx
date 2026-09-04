@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PageTitle } from "@/components/ui/page-title";
 import { BackLink } from "@/components/app/back-link";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
@@ -711,7 +712,7 @@ export default function WorkspacePage() {
     <div className="mx-auto max-w-2xl space-y-5 animate-fade-up">
       <BackLink href="/app/settings" label="Conta e configurações" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Workspace</h1>
+        <PageTitle>Workspace</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Dados do seu negócio — separados da sua conta pessoal e da assinatura do Croniu.
         </p>

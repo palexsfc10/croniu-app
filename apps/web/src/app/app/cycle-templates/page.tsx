@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -60,7 +61,7 @@ export default function CycleTemplatesPage() {
       <BackLink href="/app/profile" label="Mais" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">Modelos de ciclo</h1>
+          <PageTitle>Modelos de ciclo</PageTitle>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             Estrutura reutilizável: com que frequência e por quanto tempo. O valor vem do{" "}
             <Link href="/app/services" className="font-medium text-[var(--color-link)] hover:underline">

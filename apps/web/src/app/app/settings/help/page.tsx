@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { usePathname } from "next/navigation";
 import { FormEvent, useId, useRef, useState } from "react";
 import { BackLink } from "@/components/app/back-link";
@@ -80,7 +81,7 @@ export default function HelpFeedbackPage() {
     <div className="mx-auto max-w-lg space-y-5 animate-fade-up">
       <BackLink href="/app/settings" label="Conta e configurações" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Ajuda e privacidade</h1>
+        <PageTitle>Ajuda e privacidade</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Consulte o manual, nossas políticas ou envie uma mensagem para a equipe do Croniu.
         </p>

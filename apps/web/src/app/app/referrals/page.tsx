@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PageTitle } from "@/components/ui/page-title";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
 import { IconCopy, IconWhatsApp } from "@/components/ui/icons";
@@ -59,7 +60,7 @@ export default function ReferralsPage() {
     <div className="mx-auto max-w-lg space-y-4 animate-fade-up">
       <BackLink href="/app" label="Início" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Indique o Croniu</h1>
+        <PageTitle>Indique o Croniu</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Indique o Croniu. Quem se cadastrar pelo seu link recebe {referral.discount_percent ?? 10}%
           de desconto enquanto mantiver a assinatura.

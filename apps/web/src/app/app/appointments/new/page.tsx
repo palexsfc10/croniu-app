@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import {
@@ -102,7 +103,7 @@ function NewAppointmentForm() {
   return (
     <form onSubmit={submit} className="space-y-4 animate-fade-up">
       <BackLink href="/app/agenda" label="Agenda" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo compromisso</h1>
+      <PageTitle>Novo compromisso</PageTitle>
 
       <label className="block space-y-1.5" htmlFor="appointment-client">
         <span className="text-sm font-medium">Cliente</span>

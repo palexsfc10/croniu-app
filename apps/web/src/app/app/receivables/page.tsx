@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, formatBRL, formatDateBR, type FinancialOverview, type Receivable } from "@/lib/api";
 import { BackLink } from "@/components/app/back-link";
@@ -121,7 +122,7 @@ export default function ReceivablesPage() {
     <div className="space-y-6 animate-fade-up">
       <BackLink href="/app" label="Início" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Financeiro</h1>
+        <PageTitle>Financeiro</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Cobranças reais dos seus clientes, geradas pelos ciclos. A assinatura do Croniu fica em{" "}
           <Link href="/app/settings/billing" className="font-medium text-[var(--color-link)] hover:underline">

@@ -1,6 +1,7 @@
 "use client";
 
 import { SettingsGroup, SettingsRow } from "@/components/app/settings-list";
+import { PageTitle } from "@/components/ui/page-title";
 import { InstallCroniuRow } from "@/components/pwa/install-croniu-row";
 import {
   IconActivity,
@@ -17,7 +18,7 @@ export default function MorePage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 animate-fade-up md:max-w-3xl">
       <header className="space-y-1">
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Mais</h1>
+        <PageTitle>Mais</PageTitle>
         <p className="text-sm text-[var(--color-ink-muted)]">
           Configure como o Croniu funciona para você.
         </p>

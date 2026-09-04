@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useEffect, useRef, useState } from "react";
 import { BackLink } from "@/components/app/back-link";
 import { Button } from "@/components/ui/button";
@@ -107,7 +108,7 @@ export default function BillingPage() {
     <div className="mx-auto max-w-lg space-y-4 animate-fade-up">
       <BackLink href="/app/settings" label="Conta e configurações" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Plano e assinatura</h1>
+        <PageTitle>Plano e assinatura</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Croniu · plano mensal {formatBRL(amount)}
           {hasResolvedSubscription ? "." : " · trial de 7 dias."}

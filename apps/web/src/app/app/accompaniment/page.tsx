@@ -21,6 +21,7 @@
  */
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -144,7 +145,7 @@ export default function AccompanimentPage() {
       {/* Desktop: Pendentes vs Histórico, dense lists. */}
       <div className="hidden space-y-4 lg:block">
         <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">Acompanhamentos</h1>
+          <PageTitle>Acompanhamentos</PageTitle>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             Avaliações registradas por cliente — distinto da Agenda e das Rotinas. Sem um registro
             dedicado de acompanhamento contínuo ainda, o sinal usa a avaliação mais recente.

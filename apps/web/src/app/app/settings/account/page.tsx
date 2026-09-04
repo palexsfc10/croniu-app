@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PageTitle } from "@/components/ui/page-title";
 import { BackLink } from "@/components/app/back-link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { formatMembershipRole } from "@/lib/role-label";
@@ -211,7 +212,7 @@ export default function AccountPage() {
     <div className="mx-auto max-w-lg space-y-5 animate-fade-up">
       <BackLink href="/app/settings" label="Conta e configurações" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Minha conta</h1>
+        <PageTitle>Minha conta</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Dados da sua conta no Croniu.
         </p>
