@@ -316,8 +316,10 @@ function ExecutiveBriefing({
           )}
         </div>
         <Link href={assistantHref("Analise meu dia: ")} className="shrink-0">
-          <Button variant="secondary" className="min-h-9 px-3 text-sm">
-            <IconSparkles className="mr-1.5 h-4 w-4" aria-hidden />
+          <Button variant="secondary" className="hover-lift min-h-9 gap-2 px-3 text-sm">
+            <span className="icon-tile icon-tile-hero -ml-1 h-6 w-6" aria-hidden>
+              <IconSparkles className="h-3.5 w-3.5" />
+            </span>
             Analisar meu dia
           </Button>
         </Link>
@@ -367,13 +369,14 @@ function StatTile({
   Icon: (props: { className?: string; "aria-hidden"?: boolean }) => React.ReactElement;
 }) {
   return (
-    <div className="min-w-[8.5rem] flex-1 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm">
+    <div className="hover-lift min-w-[8.5rem] flex-1 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm">
       <div className="flex items-center gap-1.5 text-[var(--color-ink-subtle)]">
         <Icon className="h-3.5 w-3.5" aria-hidden />
         <p className="text-xs">{label}</p>
       </div>
       <p
-        className={`mt-1 text-lg font-semibold tabular-nums ${tone === "danger" ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"}`}
+        className={`mt-1 text-xl tabular-nums ${tone === "danger" ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"}`}
+        style={{ fontWeight: 750, letterSpacing: "-0.02em" }}
       >
         {value}
       </p>
@@ -799,7 +802,7 @@ function QuickActions() {
         context={ASSISTANT_HOME_CONTEXT.context}
         returnTo={ASSISTANT_HOME_CONTEXT.returnTo}
       >
-        Perguntar à IA
+        Perguntar à Cronia
       </AskAssistantLink>
     </nav>
   );

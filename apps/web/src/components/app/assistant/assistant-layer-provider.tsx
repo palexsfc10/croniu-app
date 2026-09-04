@@ -204,7 +204,7 @@ export function AssistantLayerProvider({ children }: { children: ReactNode }) {
             ref={panelRef}
             role="dialog"
             aria-modal="false"
-            aria-label="Assistente Croniu"
+            aria-label="Cronia"
             className="fixed inset-y-0 right-0 z-40 hidden border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-lg)] lg:block"
             style={{ width: PANEL_WIDTH }}
           >
@@ -221,7 +221,7 @@ export function AssistantLayerProvider({ children }: { children: ReactNode }) {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Assistente Croniu"
+            aria-label="Cronia"
             className="fixed inset-0 z-40 flex flex-col bg-[var(--color-surface)] pt-[env(safe-area-inset-top)] lg:hidden"
           >
             <AssistantExperience

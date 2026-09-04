@@ -512,7 +512,7 @@ export default function ClientsIntakePage() {
           context="Onboarding de clientes"
           returnTo="/app/clients/intake"
         >
-          Perguntar ao Assistente sobre estes clientes
+          Perguntar à Cronia sobre estes clientes
         </AskAssistantLink>
       </div>
     </div>

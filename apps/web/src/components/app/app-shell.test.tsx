@@ -251,10 +251,10 @@ describe("AppShell desktop workspace structure", () => {
     for (const href of expected) {
       expect(hrefs).toContain(href);
     }
-    // Assistente is a global layer trigger now (opens the persistent
+    // Cronia is a global layer trigger now (opens the persistent
     // panel/overlay instead of navigating) — a button, not a link. The
     // route itself stays reachable as a full page/deep link; that's
     // covered by the Assistant page's own test suite.
-    expect(screen.getAllByRole("button", { name: "Abrir o Assistente Croniu" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Abrir a Cronia" }).length).toBeGreaterThan(0);
   });
 });

@@ -83,13 +83,17 @@ export default function DesignSystemPageClient() {
   return (
     <div className="animate-fade-up space-y-8 pb-16">
       <header className="space-y-1">
-        <Badge tone="warning">Somente dev/HML — nunca exposta em PRD</Badge>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone="warning">Somente dev/HML — nunca exposta em PRD</Badge>
+          <Badge tone="ai">Piloto: direção mais viva — Início, Cliente 360°, Cronia</Badge>
+        </div>
         <PageTitle>Design System Croniu</PageTitle>
         <p className="max-w-2xl text-sm text-[var(--color-ink-muted)]">
           A gramática visual oficial do produto: tokens semânticos, componentes compartilhados e as
           regras que os unem. Esta página é a fonte de verdade para validar qualquer tela nova antes
           de propagar — se algo aqui parecer errado, o token/componente é o lugar certo para corrigir,
-          nunca a tela individual.
+          nunca a tela individual. Itens marcados &ldquo;piloto&rdquo; abaixo são a direção aprovada
+          em avaliação em três superfícies antes de propagar ao resto do produto.
         </p>
       </header>
 
@@ -118,12 +122,23 @@ export default function DesignSystemPageClient() {
           <Swatch name="Superfície elevada" varName="--color-surface-elevated" />
           <Swatch name="Fundo" varName="--color-bg" />
           <Swatch name="Borda" varName="--color-border" />
+          <Swatch name="Elétrico (piloto)" varName="--color-electric" />
+          <Swatch name="Elétrico deep (piloto)" varName="--color-electric-deep" />
         </div>
-        <div className="h-16 rounded-[var(--radius-lg)]" style={{ background: "var(--gradient-ai)" }} />
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          <code className="font-mono">--gradient-ai</code> — reservado para o Assistente. Não usar em
-          nada que não seja gerado por IA.
-        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <div className="h-16 rounded-[var(--radius-lg)]" style={{ background: "var(--gradient-ai)" }} />
+            <p className="mt-1.5 text-xs text-[var(--color-ink-muted)]">
+              <code className="font-mono">--gradient-ai</code> — fundo de painel da Cronia (deliberadamente pálido, para não competir com texto por cima). Nunca em nada fora dela.
+            </p>
+          </div>
+          <div>
+            <div className="h-16 rounded-[var(--radius-lg)]" style={{ background: "var(--gradient-ai-vivid)" }} />
+            <p className="mt-1.5 text-xs text-[var(--color-ink-muted)]">
+              <code className="font-mono">--gradient-ai-vivid</code> — orbe, glow e ícones-herói da Cronia. O ciano é um acento de apoio só aqui; nunca vira cor estrutural.
+            </p>
+          </div>
+        </div>
       </Block>
 
       <Block title="Tipografia" description="Uma escala, um peso de destaque por nível.">
@@ -139,6 +154,17 @@ export default function DesignSystemPageClient() {
           <p className="text-xs text-[var(--color-ink-muted)]">
             Legenda/rótulo auxiliar — <code className="font-mono">text-xs</code>. Reservar para
             metadados curtos (datas, contagens), nunca para o conteúdo principal de uma linha.
+          </p>
+        </div>
+        <div className="border-t border-[var(--color-border)] pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
+            Número-herói (<code className="font-mono normal-case">.text-number-hero</code>) — piloto
+          </p>
+          <p className="mt-1 text-4xl text-[var(--color-ink)] text-number-hero">32</p>
+          <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+            Estático — nunca conta/anima. Reservado ao único número mais importante de uma tela
+            (o KPI de destaque em Início, por exemplo). Legível de imediato, sem competir com o
+            texto ao redor.
           </p>
         </div>
       </Block>
@@ -172,6 +198,18 @@ export default function DesignSystemPageClient() {
               <IconSparkles className="h-5 w-5" />
             </span>
           ))}
+        </div>
+        <p className="text-sm font-medium text-[var(--color-ink)]">
+          Ícone-herói (`.icon-tile-hero`) — piloto
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="icon-tile icon-tile-hero h-10 w-10">
+            <IconSparkles className="h-5 w-5" />
+          </span>
+          <p className="max-w-md text-xs text-[var(--color-ink-muted)]">
+            Gradiente vívido + glow colorido — reservado a um único ícone por tela: a Cronia, ou o
+            KPI de destaque. Todo o resto ao redor continua no tile tonal plano de sempre.
+          </p>
         </div>
       </Block>
 
@@ -249,11 +287,27 @@ export default function DesignSystemPageClient() {
           </div>
           <div className="surface-ai rounded-[var(--radius-lg)] p-4">
             <p className="text-sm font-medium">surface-ai</p>
-            <p className="text-xs text-[var(--color-ink-muted)]">Só entradas/painéis do Assistente.</p>
+            <p className="text-xs text-[var(--color-ink-muted)]">Só entradas/painéis da Cronia.</p>
           </div>
           <div className="card-rail card-rail-warning rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
             <p className="text-sm font-medium">card-rail-warning</p>
             <p className="text-xs text-[var(--color-ink-muted)]">Trilho de acento lateral por tom.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="surface-briefing hover-lift rounded-[var(--radius-lg)] p-4 shadow-sm">
+            <p className="text-sm font-medium">surface-briefing (dominante) — piloto</p>
+            <p className="text-xs text-[var(--color-ink-muted)]">
+              O ÚNICO momento visual dominante por tela — Início e Cliente 360°. Sempre brand
+              (indigo), nunca AI-violeta: é dado real, não algo que a Cronia analisou.
+            </p>
+          </div>
+          <div className="tap-feedback cursor-pointer rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+            <p className="text-sm font-medium">.tap-feedback (toque neste card) — piloto</p>
+            <p className="text-xs text-[var(--color-ink-muted)]">
+              Retorno tátil sutil (scale 0.97) ao toque, coberto por{" "}
+              <code className="font-mono">prefers-reduced-motion</code>.
+            </p>
           </div>
         </div>
       </Block>
@@ -300,16 +354,35 @@ export default function DesignSystemPageClient() {
         </div>
       </Block>
 
-      <Block title="IA" description="Violeta é exclusivo do Assistente — nunca usado fora dele.">
+      <Block
+        title="Cronia"
+        description={
+          'Assistente do Croniu. Violeta é exclusivo dela — nunca usado fora dela. Nome sempre "Cronia"; "Assistente do Croniu" só como descritor, quando precisa explicar.'
+        }
+      >
         <div className="flex flex-wrap items-center gap-3">
-          <Badge tone="ai">Sugestão da IA</Badge>
+          <Badge tone="ai">Sugestão da Cronia</Badge>
           <Button variant="ai">
             <IconSparkles className="h-4 w-4" />
-            Perguntar à IA
+            Perguntar à Cronia
           </Button>
           <span className="icon-tile icon-tile-ai h-10 w-10">
             <IconSparkles className="h-5 w-5" />
           </span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="relative flex h-14 w-14 items-center justify-center">
+            <span className="assistant-orb-glow" aria-hidden />
+            <span className="assistant-orb relative z-[1] flex h-14 w-14 items-center justify-center rounded-full">
+              <IconSparkles className="h-6 w-6 text-white" aria-hidden />
+            </span>
+          </div>
+          <p className="max-w-md text-xs text-[var(--color-ink-muted)]">
+            O orbe — entrada global da Cronia, sempre em{" "}
+            <code className="font-mono">--gradient-ai-vivid</code>. O halo respira lentamente e
+            para sob <code className="font-mono">prefers-reduced-motion</code>; o ícone em si
+            nunca anima, então permanece legível de qualquer forma.
+          </p>
         </div>
       </Block>
 
@@ -321,9 +394,15 @@ export default function DesignSystemPageClient() {
           </Button>
         </div>
         <p className="text-xs text-[var(--color-ink-muted)]">
-          `.animate-fade-up` (usado nesta página), `assistant-msg-in`, `assistant-typing` — todos
-          neutralizados sob <code className="font-mono">prefers-reduced-motion: reduce</code>.
+          `.animate-fade-up` (usado nesta página), `assistant-msg-in`, `assistant-typing`,
+          `.hover-lift`, `.tap-feedback` — todos neutralizados sob{" "}
+          <code className="font-mono">prefers-reduced-motion: reduce</code>.
         </p>
+        <ul className="list-disc space-y-1 pl-5 text-xs text-[var(--color-ink-muted)]">
+          <li>Números não contam/animam — sempre estáticos, fortes, legíveis de imediato.</li>
+          <li>Entrada suave (fade), hover nos poucos cards-herói, abertura da Cronia, confirmação de ações.</li>
+          <li>Nada além disso — motion é o tempero, não o prato.</li>
+        </ul>
       </Block>
 
       <ToastStack toasts={toasts} />

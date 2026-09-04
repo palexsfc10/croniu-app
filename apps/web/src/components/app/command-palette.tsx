@@ -3,12 +3,12 @@
 /**
  * Global Ctrl+K / Cmd+K quick-query palette — the fast path for a single
  * consulta ou ação rápida, deliberately shallow (no thread switcher, no
- * history, no voice). The full Assistente page is where conversation,
+ * history, no voice). The full Cronia page is where conversation,
  * history and richer operations live; this component only ever shows the
  * latest turn. It calls the same `/agent/chat` "convenience" endpoint the
  * backend already exposes for exactly this — it transparently reuses the
- * user's latest active thread, so anything asked here also shows up in the
- * Assistente page's history afterwards.
+ * user's latest active thread, so anything asked here also shows up in
+ * Cronia's history afterwards.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -164,7 +164,7 @@ export function CommandPalette() {
         ref={rootRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Consulta rápida ao Assistente"
+        aria-label="Consulta rápida à Cronia"
         className="w-full max-w-lg overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-md"
       >
         <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3.5 py-3">
@@ -198,8 +198,8 @@ export function CommandPalette() {
         <div className="max-h-[50vh] overflow-y-auto px-3.5 py-3">
           {!reply && !pending && !error ? (
             <p className="text-sm text-[var(--color-ink-subtle)]">
-              Consulta ou ação rápida — para conversa completa e histórico, abra a página
-              Assistente.
+              Consulta ou ação rápida — para conversa completa e histórico, abra a
+              Cronia.
             </p>
           ) : null}
           {busy && !reply ? (
@@ -230,7 +230,7 @@ export function CommandPalette() {
             onClick={() => setOpen(false)}
             className="text-xs font-medium text-[var(--color-link)]"
           >
-            Abrir Assistente completo
+            Abrir a Cronia completa
           </Link>
           <button
             type="button"

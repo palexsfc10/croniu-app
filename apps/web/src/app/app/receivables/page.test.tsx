@@ -148,7 +148,7 @@ describe("ReceivablesPage — Financeiro, separado da assinatura do Croniu", () 
     expect(within(mobile).getByText("Cliente Vencido")).toBeInTheDocument();
     expect(within(mobile).queryByRole("table")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /Perguntar ao Assistente sobre o financeiro/i }),
+      screen.getByRole("link", { name: /Perguntar à Cronia sobre o financeiro/i }),
     ).toHaveAttribute("href", expect.stringContaining("/app/assistant?"));
   });
 

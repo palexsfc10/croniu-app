@@ -129,12 +129,29 @@
 
   /* Named so any AI touchpoint (entry cards, hover states, empty states)
      reaches for "the AI gradient" instead of re-deriving this color-mix by
-     hand — one gradient, recognizable everywhere the Assistant shows up. */
+     hand — one gradient, recognizable everywhere the Assistant shows up.
+     Deliberately pale: this is a PANEL BACKGROUND gradient, sized to sit
+     behind readable text, not a vivid identity mark on its own. */
   --gradient-ai: linear-gradient(
     135deg,
     color-mix(in srgb, var(--color-ai-subtle) 90%, transparent),
     color-mix(in srgb, var(--color-primary-subtle) 70%, transparent)
   );
+
+  /* —— Vivid direction pilot (Cronia identity + hero moments) ——
+     A second, saturated gradient — NOT a replacement for --gradient-ai
+     above. That token stays pale on purpose (it sits behind readable text
+     in panels); this one is for the few places that should read as truly
+     alive: the Cronia orb, its glow, and hero icon tiles. Electric cyan is
+     a supporting accent only — never a background, never text, never a
+     button that needs to stand alone. It exists to give the violet→indigo
+     blend a cooler, more technical edge at the highlight end; it must
+     never become the third "structural" brand color next to indigo/violet. */
+  --color-electric: #22d3ee;
+  --color-electric-deep: #0891b2;
+  --gradient-ai-vivid: linear-gradient(135deg, var(--violet-600) 0%, var(--brand-700) 55%, var(--color-electric) 100%);
+  --shadow-glow-ai: 0 10px 34px -6px color-mix(in srgb, var(--violet-600) 38%, transparent);
+  --shadow-glow-primary: 0 10px 30px -8px color-mix(in srgb, var(--brand-700) 26%, transparent);
 
   /* —— Elevation —— */
   --shadow-sm: 0 1px 2px rgb(21 32 51 / 6%);
@@ -463,13 +480,15 @@ h3,
   }
 }
 
-/* Assistant orb — the one global, always-reachable entry point into the
-   Assistant (mobile bottom-nav center slot). A gradient-filled circle with
-   a soft ambient glow behind it, distinct from every other nav icon on
-   purpose: this is the one surface in the whole shell that's allowed to
-   feel alive. The glow breathes slowly and stops under reduced-motion;
-   the orb itself never animates (only the halo behind it does), so the
-   icon stays perfectly legible either way. */
+/* Assistant orb — the one global, always-reachable entry point into Cronia
+   (mobile bottom-nav center slot). A gradient-filled circle with a soft
+   ambient glow behind it, distinct from every other nav icon on purpose:
+   this is the one surface in the whole shell that's allowed to feel alive.
+   Uses --gradient-ai-vivid (not --gradient-ai, which is deliberately pale
+   for panel backgrounds) — the orb is the single most important place for
+   this identity to actually read as vivid. The glow breathes slowly and
+   stops under reduced-motion; the orb itself never animates (only the halo
+   behind it does), so the icon stays perfectly legible either way. */
 @keyframes assistant-orb-breathe {
   0%,
   100% {
@@ -486,16 +505,16 @@ h3,
   position: absolute;
   inset: -6px;
   border-radius: 999px;
-  background: var(--gradient-ai);
-  filter: blur(6px);
+  background: var(--gradient-ai-vivid);
+  filter: blur(7px);
   animation: assistant-orb-breathe 3.2s ease-in-out infinite;
   z-index: 0;
 }
 
 .assistant-orb {
   position: relative;
-  background: var(--gradient-ai);
-  box-shadow: var(--shadow-md);
+  background: var(--gradient-ai-vivid);
+  box-shadow: var(--shadow-glow-ai);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -676,11 +695,23 @@ h3,
   color: var(--color-ink-muted);
 }
 
-/* Deterministic daily-briefing surface (Home only) — deliberately brand
-   (indigo), never AI-violet: this block is assembled from real data with
-   no LLM call, and must never visually read as "the assistant already
-   analyzed this for you". Keep this distinction if the block is reused
-   elsewhere. */
+/* "Hero" icon treatment — the vivid gradient + white icon + colored glow,
+   reserved for the one icon per screen that should carry the most visual
+   weight (Cronia's own icon, a screen's single dominant metric). Every
+   other icon on that same screen stays a plain `.icon-tile-*` — mixing
+   more than one hero per view defeats the point. */
+.icon-tile-hero {
+  background: var(--gradient-ai-vivid);
+  color: #ffffff;
+  box-shadow: var(--shadow-glow-ai);
+}
+
+/* Deterministic hero surface — deliberately brand (indigo), never
+   AI-violet: this block is assembled from real data with no LLM call, and
+   must never visually read as "Cronia already analyzed this for you".
+   Used for the ONE dominant visual moment per screen: Home's executive
+   briefing, Cliente 360°'s relationship-state card. Never more than one
+   per screen — that's what makes it read as dominant. */
 .surface-briefing {
   background:
     linear-gradient(
@@ -689,4 +720,60 @@ h3,
       color-mix(in srgb, var(--color-primary-subtle) 55%, transparent)
     );
   border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+/* Hover-lift — desktop-only micro-interaction for the handful of hero
+   surfaces (dominant cards, KPI tiles). Never applied broadly; most cards
+   in the product stay static. Guarded by prefers-reduced-motion below. */
+.hover-lift {
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-lift {
+    transition: none;
+  }
+  .hover-lift:hover {
+    transform: none;
+  }
+}
+
+/* Tap feedback — a small, honest press response on touch for primary
+   buttons/cards, mobile's substitute for hover. Static numbers stay
+   static; this is about the *control*, not the data. */
+.tap-feedback {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.tap-feedback:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tap-feedback {
+    transition: none;
+  }
+  .tap-feedback:active {
+    transform: none;
+  }
+}
+
+/* Hero number — the one static, strong figure a screen leads with (a KPI,
+   a dominant metric). Bigger and heavier than the rest of the type scale,
+   never animated (counting up reads as gimmicky on a number the user
+   needs to trust immediately) — `tabular-nums` so it never reflows next
+   to its own label as digits change between loads. */
+.text-number-hero {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }

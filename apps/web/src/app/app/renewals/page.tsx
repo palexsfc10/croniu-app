@@ -149,7 +149,7 @@ export default function RenewalsPage() {
           context="Renovações"
           returnTo="/app/renewals"
         >
-          Perguntar à IA
+          Perguntar à Cronia
         </AskAssistantLink>
       </div>
 

@@ -120,7 +120,7 @@ describe("AssistantPage premium shell", () => {
     mockStatus();
     render(<AssistantPage />);
 
-    expect(await screen.findByRole("heading", { name: "Assistente Croniu" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Cronia" })).toBeInTheDocument();
     expect(screen.getByLabelText("Voltar")).toBeInTheDocument();
     expect(screen.getAllByLabelText("Nova conversa").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Conversas")).toBeInTheDocument();
@@ -157,7 +157,7 @@ describe("AssistantPage premium shell", () => {
   it("opens thread selector and starts a new conversation", async () => {
     mockStatus();
     render(<AssistantPage />);
-    await screen.findByRole("heading", { name: "Assistente Croniu" });
+    await screen.findByRole("heading", { name: "Cronia" });
 
     fireEvent.click(screen.getByLabelText("Conversas"));
     const dialog = await screen.findByRole("dialog", { name: /Conversas recentes/i });
@@ -177,7 +177,7 @@ describe("AssistantPage premium shell", () => {
   it("does not create a thread on mount or listing", async () => {
     mockStatus();
     render(<AssistantPage />);
-    await screen.findByRole("heading", { name: "Assistente Croniu" });
+    await screen.findByRole("heading", { name: "Cronia" });
     await waitFor(() => {
       expect(apiFetch.mock.calls.some((c) => String(c[0]).includes("/agent/status"))).toBe(true);
     });

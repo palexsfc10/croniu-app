@@ -819,7 +819,7 @@ export default function RoutinesPageInner() {
           <div className="flex items-center justify-between gap-2">
             <PageTitle>Rotinas</PageTitle>
             <AskAssistantLink prompt="Sobre minhas rotinas: " context="Rotinas" returnTo="/app/routines">
-              Perguntar à IA
+              Perguntar à Cronia
             </AskAssistantLink>
           </div>
           <p className="text-sm text-[var(--color-ink-muted)]">

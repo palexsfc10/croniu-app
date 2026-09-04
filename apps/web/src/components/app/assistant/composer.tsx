@@ -165,7 +165,8 @@ export function Composer({ conversation }: { conversation: AssistantConversation
               <Button
                 type="submit"
                 disabled={disabled || busy}
-                className="min-h-11 min-w-11 shrink-0 px-2"
+                className="min-h-11 min-w-11 shrink-0 border-transparent px-2 text-white"
+                style={{ background: "var(--gradient-ai-vivid)", boxShadow: "var(--shadow-glow-ai)" }}
                 aria-label="Enviar mensagem"
               >
                 <IconSend />

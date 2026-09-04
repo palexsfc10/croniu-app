@@ -246,7 +246,7 @@ describe("TodayBoard — compact Financeiro (recebido/vencido/próximo, never th
 });
 
 describe("TodayBoard — quick actions always point to real, existing routes", () => {
-  it("links to novo cliente, novo compromisso, nova rotina and o Assistente", async () => {
+  it("links to novo cliente, novo compromisso, nova rotina and a Cronia", async () => {
     board.items = [];
     render(<TodayBoard summary={BASE_SUMMARY} />);
     await screen.findByText("Financeiro");
@@ -263,7 +263,7 @@ describe("TodayBoard — quick actions always point to real, existing routes", (
       "href",
       "/app/routines",
     );
-    expect(screen.getByRole("link", { name: /Perguntar à IA/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Perguntar à Cronia/i })).toHaveAttribute(
       "href",
       expect.stringContaining("/app/assistant?"),
     );

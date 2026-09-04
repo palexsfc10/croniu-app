@@ -25,7 +25,7 @@ const variants: Record<NonNullable<Props["variant"]>, string> = {
 };
 
 /**
- * The "Perguntar à IA" entry point — was 4 visually different
+ * The "Perguntar à Cronia" entry point — was 4 visually different
  * implementations (a rounded-full AI pill, a `Button variant="secondary"`,
  * a full-width banner, a small primary-tinted chip) across 8 screens, all
  * linking to the same `/app/assistant?prompt=…` shape. One component, two

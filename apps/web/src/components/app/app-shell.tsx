@@ -60,7 +60,7 @@ const navItems: {
   { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
 ];
 
-/** Mobile bottom tab bar only — Assistente takes the center slot, in
+/** Mobile bottom tab bar only — Cronia takes the center slot, in
  * destaque, per "mobile é a camada operacional principal da IA". Rotinas
  * stays a full desktop sidebar item (`navItems` above, untouched) and is
  * still reachable on mobile via Mais → Rotinas (profile/page.tsx), so
@@ -72,7 +72,7 @@ const mobileNavItems: {
 }[] = [
   { href: "/app", label: "Início", Icon: IconHome },
   { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
-  { href: "/app/assistant", label: "Assistente", Icon: IconSparkles },
+  { href: "/app/assistant", label: "Cronia", Icon: IconSparkles },
   { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
   { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
 ];
@@ -107,7 +107,7 @@ function assistantLinkClass(active: boolean) {
   ].join(" ");
 }
 
-/** Desktop sidebar's "Assistente" row — opens the persistent side panel
+/** Desktop sidebar's "Cronia" row — opens the persistent side panel
  * instead of navigating away, per the layer fatia. `/app/assistant` stays
  * reachable as a deep link/full page; this is just no longer how the
  * sidebar itself gets there. */
@@ -117,11 +117,11 @@ function AssistantSidebarButton({ active }: { active: boolean }) {
     <button
       type="button"
       className={["mt-2 w-full", assistantLinkClass(active)].join(" ")}
-      aria-label="Abrir o Assistente Croniu"
+      aria-label="Abrir a Cronia"
       onClick={() => open()}
     >
       <BrandMark size="xs" decorative />
-      Assistente
+      Cronia
       <Badge tone="ai">IA</Badge>
     </button>
   );
@@ -136,7 +136,7 @@ function AssistantTopbarButton({ active }: { active: boolean }) {
     <button
       type="button"
       className={assistantLinkClass(active)}
-      aria-label="Abrir o Assistente Croniu"
+      aria-label="Abrir a Cronia"
       onClick={() => open()}
     >
       <BrandMark size="xs" decorative />

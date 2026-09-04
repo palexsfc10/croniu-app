@@ -172,7 +172,7 @@ function AssistantPreferencesSection() {
 
   return (
     <section className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] p-4">
-      <h2 className="text-sm font-semibold text-[var(--color-ink)]">Assistente</h2>
+      <h2 className="text-sm font-semibold text-[var(--color-ink)]">Cronia</h2>
       <p className="text-sm text-[var(--color-ink-muted)]">
         Preferência local deste dispositivo — não é salva no servidor.
       </p>
@@ -190,7 +190,7 @@ function AssistantPreferencesSection() {
         Enviar voz automaticamente após a transcrição
       </label>
       <p id="voice-auto-send-help" className="text-xs text-[var(--color-ink-subtle)]">
-        Quando ligado, o áudio transcrito é enviado ao assistente sem passo extra. Também
+        Quando ligado, o áudio transcrito é enviado à Cronia sem passo extra. Também
         disponível no menu do microfone (toque prolongado / botão direito).
       </p>
     </section>

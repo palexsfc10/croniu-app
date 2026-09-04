@@ -127,8 +127,8 @@ export default function ManualPage() {
     },
     {
       id: "ia",
-      title: "IA",
-      body: "O assistente consulta agenda, ciclos e pendências. Ações de escrita pedem confirmação. Pode estar desativado na organização.",
+      title: "Cronia",
+      body: "A Cronia, assistente do Croniu, consulta agenda, ciclos e pendências. Ações de escrita pedem confirmação. Pode estar desativada na organização.",
       href: "/app/assistant",
     },
     {

@@ -145,6 +145,125 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "historico", label: "Histórico" },
 ];
 
+type NextStep = {
+  title: string;
+  isPending: boolean;
+  text: string;
+  cta: string | null;
+  href: string | null;
+};
+
+function RelationshipFact({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "danger" | "warning";
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
+        {label}
+      </p>
+      <p
+        className={`mt-0.5 truncate text-sm font-semibold ${
+          tone === "danger"
+            ? "text-[var(--color-danger)]"
+            : tone === "warning"
+              ? "text-[var(--color-warning)]"
+              : "text-[var(--color-ink)]"
+        }`}
+      >
+        {value}
+      </p>
+      {sub ? <p className="truncate text-xs text-[var(--color-ink-muted)]">{sub}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * The one dominant visual moment on Cliente 360° — the current state of the
+ * relationship (ciclo, avaliação, renovação, financeiro) plus the single
+ * next action, in one surface instead of five equal-weight cards competing
+ * for attention. Everything else on the Resumo tab (contato, anamnese,
+ * portal, rotinas) stays in the plain flat grid it was already in — mixing
+ * more than one "hero" surface per screen defeats the point. Brand
+ * (indigo), never AI-violet: this is real client data, not something
+ * Cronia analyzed (see `.surface-briefing`'s own comment in globals.css).
+ */
+function RelationshipStateCard({
+  next,
+  activeCycle,
+  nextAppointment,
+  latestEvaluation,
+  pendingReceivables,
+  overdueReceivables,
+  pendingTotalCents,
+  timeZone,
+  todayIso,
+}: {
+  next: NextStep;
+  activeCycle: Cycle | null;
+  nextAppointment: Appointment | null;
+  latestEvaluation: ClientEvaluation | null;
+  pendingReceivables: Receivable[];
+  overdueReceivables: Receivable[];
+  pendingTotalCents: number;
+  timeZone: string;
+  todayIso: string;
+}) {
+  const cycleValue = activeCycle?.service_name || "Sem ciclo ativo";
+  const cycleProgress = activeCycle
+    ? activeCycle.lesson_count != null
+      ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} sessões`
+      : cycleListStatus(activeCycle, todayIso)
+    : undefined;
+  const evaluationValue = latestEvaluation
+    ? `${protocolStatusLabel(latestEvaluation.status)} · ${formatDateBR((latestEvaluation.published_at || latestEvaluation.created_at).slice(0, 10))}`
+    : "Nenhuma registrada";
+  const renewalValue =
+    activeCycle?.is_nearing_end && activeCycle.days_remaining != null
+      ? `Em ${activeCycle.days_remaining} ${activeCycle.days_remaining === 1 ? "dia" : "dias"}`
+      : "—";
+  const financeValue = pendingReceivables.length > 0 ? formatBRL(pendingTotalCents) : "Em dia";
+  const nextSessionValue = nextAppointment
+    ? `${formatOrgDate(nextAppointment.starts_at, timeZone)} · ${formatOrgDateTime(nextAppointment.starts_at, timeZone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`
+    : "Sem agendamento";
+
+  return (
+    <div className="surface-briefing hover-lift rounded-[var(--radius-lg)] p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+            {next.title}
+          </p>
+          <p className="text-base font-medium text-[var(--color-ink)]">{next.text}</p>
+        </div>
+        {next.cta && next.href ? (
+          <Link href={next.href} className="shrink-0">
+            <Button className="min-h-9 px-3 text-sm">{next.cta}</Button>
+          </Link>
+        ) : null}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-[var(--color-primary)]/12 pt-3.5 sm:grid-cols-5">
+        <RelationshipFact label="Ciclo" value={cycleValue} sub={cycleProgress} />
+        <RelationshipFact label="Próxima sessão" value={nextSessionValue} />
+        <RelationshipFact label="Avaliação" value={evaluationValue} />
+        <RelationshipFact label="Renovação" value={renewalValue} tone={renewalValue !== "—" ? "warning" : undefined} />
+        <RelationshipFact
+          label="Financeiro"
+          value={financeValue}
+          tone={overdueReceivables.length > 0 ? "danger" : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ClientProfile({ clientId }: Props) {
   const router = useRouter();
   const search = useSearchParams();
@@ -669,17 +788,17 @@ export function ClientProfile({ clientId }: Props) {
             </div>
           ) : item ? (
             <>
-              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-                  {next.title}
-                </p>
-                <p className="mt-1 text-sm text-[var(--color-ink)]">{next.text}</p>
-                {next.cta && next.href ? (
-                  <Link href={next.href} className="mt-3 inline-block">
-                    <Button>{next.cta}</Button>
-                  </Link>
-                ) : null}
-              </div>
+              <RelationshipStateCard
+                next={next}
+                activeCycle={activeCycle}
+                nextAppointment={nextAppointment}
+                latestEvaluation={latestEvaluation}
+                pendingReceivables={pendingReceivables}
+                overdueReceivables={overdueReceivables}
+                pendingTotalCents={pendingTotalCents}
+                timeZone={timeZone}
+                todayIso={todayIso}
+              />
 
               {alerts.length > 0 ? (
                 <div className="space-y-1.5 rounded-[var(--radius-md)] border border-[var(--color-warning)]/25 bg-[var(--color-warning-subtle)] p-3">
@@ -715,79 +834,10 @@ export function ClientProfile({ clientId }: Props) {
                 </div>
                 <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    Serviço e ciclo
-                  </dt>
-                  <dd className="mt-1 text-sm text-[var(--color-ink)]">
-                    {activeCycle?.service_name || "Sem ciclo ativo"}
-                  </dd>
-                  {activeCycle ? (
-                    <dd className="text-sm text-[var(--color-ink-muted)]">
-                      {cycleListStatus(activeCycle, todayIso)}
-                    </dd>
-                  ) : null}
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    Progresso
-                  </dt>
-                  <dd className="mt-1 text-sm tabular-nums text-[var(--color-ink)]">
-                    {activeCycle?.lesson_count != null
-                      ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} sessões`
-                      : "—"}
-                  </dd>
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    Próxima sessão
-                  </dt>
-                  <dd className="mt-1 text-sm text-[var(--color-ink)]">
-                    {nextAppointment
-                      ? `${formatOrgDate(nextAppointment.starts_at, timeZone)} · ${formatOrgDateTime(nextAppointment.starts_at, timeZone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`
-                      : "Sem agendamento"}
-                  </dd>
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    Última avaliação
-                  </dt>
-                  <dd className="mt-1 text-sm text-[var(--color-ink)]">
-                    {latestEvaluation
-                      ? `${protocolStatusLabel(latestEvaluation.status)} · ${formatDateBR((latestEvaluation.published_at || latestEvaluation.created_at).slice(0, 10))}`
-                      : "Nenhuma registrada"}
-                  </dd>
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                     Anamnese
                   </dt>
                   <dd className="mt-1 text-sm text-[var(--color-ink)]">
                     {anamnesisDone ? "Revisada" : submissionId ? "Aguardando revisão" : "Não enviada"}
-                  </dd>
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    Financeiro
-                  </dt>
-                  <dd className="mt-1 text-sm text-[var(--color-ink)]">
-                    {pendingReceivables.length > 0 ? formatBRL(pendingTotalCents) : "Em dia"}
-                  </dd>
-                  {overdueReceivables.length > 0 ? (
-                    <dd>
-                      <Badge tone="danger">
-                        {overdueReceivables.length}{" "}
-                        {overdueReceivables.length === 1 ? "atrasada" : "atrasadas"}
-                      </Badge>
-                    </dd>
-                  ) : null}
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    Renovação
-                  </dt>
-                  <dd className="mt-1 text-sm text-[var(--color-ink)]">
-                    {activeCycle?.is_nearing_end && activeCycle.days_remaining != null
-                      ? `Em ${activeCycle.days_remaining} ${activeCycle.days_remaining === 1 ? "dia" : "dias"}`
-                      : "—"}
                   </dd>
                 </div>
                 <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
@@ -1346,17 +1396,17 @@ export function ClientProfile({ clientId }: Props) {
           deeper detail behind explicit disclosure, never all at once. */}
       {item ? (
         <div className="space-y-3 lg:hidden" aria-label="Resumo do cliente">
-          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-              {next.title}
-            </p>
-            <p className="mt-1 text-sm text-[var(--color-ink)]">{next.text}</p>
-            {next.cta && next.href ? (
-              <Link href={next.href} className="mt-3 inline-block">
-                <Button>{next.cta}</Button>
-              </Link>
-            ) : null}
-          </div>
+          <RelationshipStateCard
+            next={next}
+            activeCycle={activeCycle}
+            nextAppointment={nextAppointment}
+            latestEvaluation={latestEvaluation}
+            pendingReceivables={pendingReceivables}
+            overdueReceivables={overdueReceivables}
+            pendingTotalCents={pendingTotalCents}
+            timeZone={timeZone}
+            todayIso={todayIso}
+          />
 
           {alerts.length > 0 ? (
             <div className="space-y-1.5 rounded-[var(--radius-md)] border border-[var(--color-warning)]/25 bg-[var(--color-warning-subtle)] p-3">
@@ -1386,58 +1436,6 @@ export function ClientProfile({ clientId }: Props) {
               </div>
             </div>
           ) : null}
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                Próxima sessão
-              </p>
-              <p className="mt-1 text-sm text-[var(--color-ink)]">
-                {nextAppointment
-                  ? `${formatOrgDate(nextAppointment.starts_at, timeZone)} · ${formatOrgDateTime(nextAppointment.starts_at, timeZone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`
-                  : "Sem agendamento"}
-              </p>
-            </div>
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                Plano e ciclo
-              </p>
-              <p className="mt-1 truncate text-sm text-[var(--color-ink)]">
-                {activeCycle?.service_name || "Sem ciclo ativo"}
-              </p>
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                {activeCycle
-                  ? activeCycle.lesson_count != null
-                    ? `${activeCycle.lessons_completed ?? 0} de ${activeCycle.lesson_count} sessões`
-                    : cycleListStatus(activeCycle, todayIso)
-                  : "—"}
-              </p>
-            </div>
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                Última evolução
-              </p>
-              <p className="mt-1 truncate text-sm text-[var(--color-ink)]">
-                {latestEvaluation
-                  ? `${protocolStatusLabel(latestEvaluation.status)} · ${formatDateBR((latestEvaluation.published_at || latestEvaluation.created_at).slice(0, 10))}`
-                  : "Nenhuma registrada"}
-              </p>
-            </div>
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                Financeiro
-              </p>
-              <p className="mt-1 text-sm text-[var(--color-ink)]">
-                {pendingReceivables.length > 0 ? formatBRL(pendingTotalCents) : "Em dia"}
-              </p>
-              {overdueReceivables.length > 0 ? (
-                <Badge tone="danger">
-                  {overdueReceivables.length}{" "}
-                  {overdueReceivables.length === 1 ? "atrasada" : "atrasadas"}
-                </Badge>
-              ) : null}
-            </div>
-          </div>
 
           <details className="group rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm font-semibold text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">

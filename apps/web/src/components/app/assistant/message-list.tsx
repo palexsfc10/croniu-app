@@ -6,6 +6,7 @@ import {
   IconChevronDown,
   IconClipboardList,
   IconShieldCheck,
+  IconSparkles,
   IconUsersRound,
 } from "@/components/ui/icons";
 import { ProposalCard } from "./proposal-card";
@@ -21,7 +22,7 @@ function TypingIndicator() {
   return (
     <div
       className="assistant-msg-enter mr-auto flex max-w-[88%] items-center gap-2 rounded-2xl rounded-bl-md bg-[var(--color-surface)] px-3.5 py-3 shadow-sm ring-1 ring-[var(--color-border)]/80"
-      aria-label="Assistente digitando"
+      aria-label="Cronia digitando"
     >
       <span className="assistant-typing-dot h-1.5 w-1.5 rounded-full bg-[var(--color-ink-muted)]" />
       <span className="assistant-typing-dot h-1.5 w-1.5 rounded-full bg-[var(--color-ink-muted)]" />
@@ -108,18 +109,29 @@ function EmptyState({
   const { homeSummary, threads, disabled, busy, setInput, send } = conversation;
   return (
     <div className="assistant-msg-enter mx-auto flex w-full max-w-md flex-col justify-center gap-4 px-1 py-6 sm:py-10">
-      <div className="space-y-1.5 text-center sm:text-left">
-        <p className="text-[1.65rem] font-semibold leading-tight tracking-tight text-[var(--color-ink)] sm:text-3xl">
-          {greeting.headline}
-          {greeting.first ? " 👋" : ""}
-        </p>
-        <p className="text-sm text-[var(--color-ink-muted)] sm:text-base">
-          Posso consultar seu negócio, organizar prioridades e executar ações com sua confirmação.
-        </p>
-        <p className="inline-flex items-center justify-center gap-1.5 text-xs text-[var(--color-ink-subtle)] sm:justify-start">
-          <IconShieldCheck className="h-3.5 w-3.5 shrink-0 text-[var(--color-success)]" aria-hidden />
-          Nada é alterado sem sua confirmação.
-        </p>
+      <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:items-start sm:text-left">
+        <span className="relative hidden h-11 w-11 shrink-0 items-center justify-center sm:flex" aria-hidden>
+          <span className="assistant-orb-glow" />
+          <span className="assistant-orb relative z-[1] flex h-11 w-11 items-center justify-center rounded-full">
+            <IconSparkles className="h-5 w-5 text-white" />
+          </span>
+        </span>
+        <div className="space-y-1.5">
+          <p className="text-[1.65rem] font-semibold leading-tight tracking-tight text-[var(--color-ink)] sm:text-3xl">
+            {greeting.headline}
+            {greeting.first ? " 👋" : ""}
+          </p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ai-hover)]">
+            Cronia · assistente do Croniu
+          </p>
+          <p className="text-sm text-[var(--color-ink-muted)] sm:text-base">
+            Posso consultar seu negócio, organizar prioridades e executar ações com sua confirmação.
+          </p>
+          <p className="inline-flex items-center justify-center gap-1.5 text-xs text-[var(--color-ink-subtle)] sm:justify-start">
+            <IconShieldCheck className="h-3.5 w-3.5 shrink-0 text-[var(--color-success)]" aria-hidden />
+            Nada é alterado sem sua confirmação.
+          </p>
+        </div>
       </div>
 
       {showQuickAccess ? (

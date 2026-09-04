@@ -544,7 +544,7 @@ export default function CyclesPage() {
         returnTo="/app/cycles"
         className="lg:hidden"
       >
-        Perguntar ao Assistente sobre estes ciclos
+        Perguntar à Cronia sobre estes ciclos
       </AskAssistantLink>
     </div>
   );

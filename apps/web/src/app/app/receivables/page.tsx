@@ -395,7 +395,7 @@ export default function ReceivablesPage() {
         returnTo="/app/receivables"
         className="lg:hidden"
       >
-        Perguntar ao Assistente sobre o financeiro
+        Perguntar à Cronia sobre o financeiro
       </AskAssistantLink>
     </div>
   );

@@ -48,7 +48,7 @@ export function ContextSidebar({ conversation }: { conversation: AssistantConver
   const { contextLabel, contextReturnTo, recentActivity } = conversation;
   return (
     <aside
-      aria-label="Painel lateral do Assistente"
+      aria-label="Painel lateral da Cronia"
       className="hidden w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-[var(--color-border)]/70 bg-[var(--color-surface)]/60 p-4 lg:flex"
     >
       {contextLabel ? (

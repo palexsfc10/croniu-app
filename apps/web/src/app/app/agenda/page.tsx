@@ -550,7 +550,7 @@ export default function AgendaPage() {
             context={`Agenda: ${day ? formatHumanDate(day) : "hoje"}`}
             returnTo={`/app/agenda?day=${day ?? ""}&view=${view}`}
           >
-            Perguntar à IA
+            Perguntar à Cronia
           </AskAssistantLink>
         </div>
 

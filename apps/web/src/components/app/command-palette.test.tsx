@@ -35,7 +35,7 @@ function ctrlK() {
   fireEvent.keyDown(document, { key: "k", ctrlKey: true });
 }
 
-describe("CommandPalette (Ctrl+K) — quick query, distinct from the full Assistente page", () => {
+describe("CommandPalette (Ctrl+K) — quick query, distinct from the full Cronia page", () => {
   it("is closed by default and opens on Ctrl+K", () => {
     render(<CommandPalette />);
     expect(screen.queryByRole("dialog", { name: /Consulta rápida/i })).not.toBeInTheDocument();
@@ -54,12 +54,12 @@ describe("CommandPalette (Ctrl+K) — quick query, distinct from the full Assist
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("explains itself as quick-only and links out to the full Assistente page for history/conversation", () => {
+  it("explains itself as quick-only and links out to the full Cronia page for history/conversation", () => {
     render(<CommandPalette />);
     ctrlK();
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText(/para conversa completa e histórico, abra a página/i)).toBeInTheDocument();
-    expect(within(dialog).getByRole("link", { name: /Abrir Assistente completo/i })).toHaveAttribute(
+    expect(within(dialog).getByText(/para conversa completa e histórico, abra a/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: /Abrir a Cronia completa/i })).toHaveAttribute(
       "href",
       "/app/assistant",
     );

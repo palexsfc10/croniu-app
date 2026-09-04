@@ -10,8 +10,9 @@ import type { AssistantConversation } from "./use-assistant-conversation";
 export type AssistantLayout = "page" | "panel" | "overlay";
 
 /**
- * Header bar — "Assistente Croniu", the conversation-history trigger, "Nova
- * conversa", and (panel/overlay only) minimize/close. `layout="page"` keeps
+ * Header bar — "Cronia" (Croniu's assistant), the conversation-history
+ * trigger, "Nova conversa", and (panel/overlay only) minimize/close.
+ * `layout="page"` keeps
  * a real back-link (there's a place to go back to); `panel`/`overlay` never
  * navigate — they're a layer over whatever page is already showing, so
  * minimize/close hide the layer instead.
@@ -51,7 +52,7 @@ export function AssistantHeader({
         </Link>
       ) : null}
       <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight text-[var(--color-ink)]">
-        Assistente Croniu
+        Cronia
       </h1>
       <div className={layout === "page" ? "relative lg:hidden" : "relative"}>
         <button
@@ -82,13 +83,13 @@ export function AssistantHeader({
         <>
           <IconButton
             icon={<IconMinus className="h-5 w-5" />}
-            aria-label="Minimizar Assistente"
+            aria-label="Minimizar Cronia"
             variant="ghost"
             onClick={onMinimize}
           />
           <IconButton
             icon={<IconX className="h-5 w-5" />}
-            aria-label="Fechar Assistente"
+            aria-label="Fechar Cronia"
             variant="ghost"
             onClick={onClose}
           />

@@ -178,10 +178,10 @@ describe("Agenda page — mobile: daily timeline + assistant, never the desktop 
     expect(clientLink).toHaveAttribute("href", "/app/clients/c1");
   });
 
-  it("offers a prominent 'Perguntar à IA' entry point prefilling the assistant, never auto-sending", async () => {
+  it("offers a prominent 'Perguntar à Cronia' entry point prefilling the assistant, never auto-sending", async () => {
     const { container } = render(<AgendaPage />);
     const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
-    const aiLink = within(mobile).getByRole("link", { name: /Perguntar à IA/i });
+    const aiLink = within(mobile).getByRole("link", { name: /Perguntar à Cronia/i });
     expect(aiLink.getAttribute("href")).toContain("/app/assistant?prompt=");
   });
 
