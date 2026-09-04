@@ -64,7 +64,10 @@ const NEARING_CASE = {
   source_cycle_id: "cy-near",
   service_name: "Treino Funcional",
   ends_on: "2026-09-20",
-  display_status: "upcoming",
+  // "pending" (needs a decision) rather than "upcoming" (informational
+  // only, >7 days out) — this fixture models a cycle the professional
+  // still needs to act on, which is what the dependent tests exercise.
+  display_status: "pending",
   portal_requested: false,
   next_contact_date: null,
   resolution_reason: null,

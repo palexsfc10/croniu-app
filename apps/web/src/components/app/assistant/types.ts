@@ -130,12 +130,29 @@ export function actionHeadline(status: ActionUiStatus, risk?: string) {
 
 export function proposalTitle(toolName: string, summary: string) {
   const map: Record<string, string> = {
-    propose_create_appointment: "Novo compromisso",
     propose_create_client: "Novo cliente",
-    propose_create_cycle: "Novo ciclo",
-    propose_update_appointment: "Atualizar compromisso",
+    propose_create_routine: "Nova rotina",
+    propose_cancel_routine: "Cancelar rotina",
+    propose_create_appointment: "Novo compromisso",
+    propose_reschedule_appointment: "Remarcar compromisso",
     propose_cancel_appointment: "Cancelar compromisso",
+    propose_mark_appointment_outcome: "Atualizar compromisso",
+    propose_create_cycle: "Novo ciclo",
+    propose_cancel_cycle: "Cancelar ciclo",
+    propose_mark_awaiting_client: "Aguardando cliente",
+    propose_end_renewal_without_renewal: "Encerrar sem renovação",
+    propose_record_payment: "Confirmar pagamento",
+    propose_create_evaluation_draft: "Rascunho de avaliação",
+    propose_publish_evaluation: "Publicar avaliação",
+    propose_add_milestone: "Novo marco",
+    propose_complete_occurrence: "Concluir ocorrência",
+    propose_complete_occurrences: "Concluir ocorrências",
+    propose_defer_occurrence: "Adiar ocorrência",
   };
+  // Every entry above is a human title chosen up front — falling back to
+  // the raw `summary` text (as this default still does for any future,
+  // unmapped tool) is the safety net the product rule requires, not the
+  // normal path.
   return map[toolName] || summary.split("·")[0]?.trim() || "Proposta de ação";
 }
 

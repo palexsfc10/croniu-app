@@ -6,6 +6,7 @@ import type { AttentionItem, FinancialSummary, HomeSummary, RenewalCaseView } fr
 import { apiFetch, formatBRL, formatDateBR, formatOrgDateTime } from "@/lib/api";
 import type { BillingEntitlement } from "@/lib/billing";
 import { renewalStatusLabel } from "@/lib/renewal-status";
+import { ATTENTION_PRIORITY_RANK } from "@/lib/attention-priority";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -104,6 +105,7 @@ function accompanimentToAttentionItems(rows: AccompanimentRow[] | null): Attenti
     href: `/app/clients/${row.client_id}?tab=prontuario`,
     entity_id: row.client_id,
     tone: "warning",
+    priority_rank: ATTENTION_PRIORITY_RANK.overdueRoutineOrEvaluation,
   }));
 }
 
@@ -163,6 +165,7 @@ function priorityRoutinesToAttentionItems(items: RoutineOccurrence[] | null): At
             : "/app/routines",
         entity_id: item.id,
         tone: "danger",
+        priority_rank: ATTENTION_PRIORITY_RANK.overdueRoutineOrEvaluation,
       };
     });
 }
@@ -970,7 +973,15 @@ export function TodayBoard({ summary }: Props) {
   const attention = summary.attention_items ?? [];
   const accompanimentItems = accompanimentToAttentionItems(accompaniment);
   const priorityRoutineItems = priorityRoutinesToAttentionItems(routinesToday);
-  const combinedPriority = [...attention, ...accompanimentItems, ...priorityRoutineItems];
+  // Each source is fetched independently for failure isolation — a broken
+  // accompaniment/routines endpoint must never take Home's own attention
+  // items down with it — so the merge stays client-side. Sorting by the
+  // shared `priority_rank` (backend-supplied for Home items, matched here
+  // for the other two sources) keeps the queue deterministic without
+  // re-deriving any business rule in the frontend.
+  const combinedPriority = [...attention, ...accompanimentItems, ...priorityRoutineItems].sort(
+    (a, b) => (a.priority_rank ?? 99) - (b.priority_rank ?? 99),
+  );
   const failedSources = [
     accompanimentFailed ? "avaliações pendentes" : null,
     routinesFailed ? "rotinas atrasadas" : null,

@@ -156,10 +156,10 @@ export type Cycle = {
 /** GET /renewal-cases — the professional-side renewal process, one row per
  * cycle that ever needed a renewal decision. `display_status` is always
  * derived server-side (never trust a stale client-side computation of it):
- * "upcoming" | "pending" | "awaiting_client" | "overdue" | "renewed" |
- * "ended_without_renewal". Distinct from `RenewalRequest`, which is only the
- * portal-submitted client signal (`portal_requested` here echoes whether one
- * exists, but is never itself a resolution). */
+ * "upcoming" | "pending" | "requested" | "awaiting_client" | "overdue" |
+ * "renewed" | "ended_without_renewal". Distinct from `RenewalRequest`, which
+ * is only the portal-submitted client signal (`portal_requested` here echoes
+ * whether one exists, but is never itself a resolution). */
 export type RenewalCaseView = {
   case_id: string | null;
   client_id: string;
@@ -170,6 +170,7 @@ export type RenewalCaseView = {
   display_status:
     | "upcoming"
     | "pending"
+    | "requested"
     | "awaiting_client"
     | "overdue"
     | "renewed"
@@ -236,6 +237,11 @@ export type AttentionItem = {
   entity_id: string;
   client_name?: string | null;
   tone?: string;
+  /** Deterministic cross-kind urgency tier from the backend (lower = more
+   * urgent) — see ATTENTION_PRIORITY_RANK in lib/attention-priority.ts for
+   * the shared tier numbers used to rank items that don't come from Home's
+   * own endpoint (accompaniment, routines). */
+  priority_rank?: number;
 };
 
 export type Location = {

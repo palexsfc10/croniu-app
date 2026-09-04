@@ -67,7 +67,7 @@ describe("EvaluationEditor", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Publicar no portal/i }));
     expect(
-      screen.getByText(/ficará disponível no portal Meu Ciclo/i),
+      screen.getByText(/ficará disponível na Área do cliente/i),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Confirmar publicação/i }));
 

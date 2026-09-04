@@ -11,6 +11,8 @@ export function renewalStatusLabel(status: RenewalCaseView["display_status"]): s
       return "Renovação próxima";
     case "pending":
       return "Decisão pendente";
+    case "requested":
+      return "Cliente solicitou renovação";
     case "awaiting_client":
       return "Aguardando cliente";
     case "overdue":
@@ -29,6 +31,8 @@ export function renewalStatusTone(status: RenewalCaseView["display_status"]): Ba
     case "upcoming":
       return "info";
     case "pending":
+      return "warning";
+    case "requested":
       return "warning";
     case "awaiting_client":
       return "info";
@@ -63,10 +67,11 @@ export const RESOLUTION_REASON_OPTIONS = (
 const ORDER: Record<RenewalCaseView["display_status"], number> = {
   overdue: 0,
   awaiting_client: 1,
-  pending: 2,
-  upcoming: 3,
-  renewed: 4,
-  ended_without_renewal: 5,
+  requested: 2,
+  pending: 3,
+  upcoming: 4,
+  renewed: 5,
+  ended_without_renewal: 6,
 };
 
 export function sortRenewalCases(rows: RenewalCaseView[]): RenewalCaseView[] {
@@ -79,7 +84,7 @@ export function sortRenewalCases(rows: RenewalCaseView[]): RenewalCaseView[] {
 }
 
 export function isNeedsDecisionStatus(status: RenewalCaseView["display_status"]): boolean {
-  return status !== "renewed" && status !== "ended_without_renewal";
+  return status !== "renewed" && status !== "ended_without_renewal" && status !== "upcoming";
 }
 
 /**

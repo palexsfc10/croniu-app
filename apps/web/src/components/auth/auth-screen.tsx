@@ -23,7 +23,13 @@ export function AuthScreen({
 }: AuthScreenProps) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-6 sm:px-5 sm:pt-10 md:max-w-lg md:justify-center">
-      <div className="animate-fade-up flex min-h-0 flex-1 flex-col gap-6 md:flex-none">
+      {/* No `flex-1` here on purpose: stretching this block to the full
+          viewport height on mobile is what pushed each form's `mt-auto`
+          submit button all the way to the bottom, leaving a large empty gap
+          on short screens (360/390px) and jumping around when the virtual
+          keyboard opens. Natural content height plus `md:justify-center` on
+          `main` still centers the card on desktop. */}
+      <div className="animate-fade-up flex flex-col gap-6">
         <header className="grid grid-cols-[1fr_auto] items-center gap-3">
           <div className="min-w-0 justify-self-start">
             {backHref ? (

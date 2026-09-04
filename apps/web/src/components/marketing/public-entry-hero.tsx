@@ -19,7 +19,6 @@ const AREAS = [
   { label: "Agenda", Icon: IconCalendarDays },
   { label: "Rotinas", Icon: IconCheck },
   { label: "Financeiro", Icon: IconBanknote },
-  { label: "IA", Icon: IconSparkles },
 ] as const;
 
 export function PublicEntryHero({ next = null }: Props) {
@@ -52,7 +51,8 @@ export function PublicEntryHero({ next = null }: Props) {
               com mais clareza.
             </h1>
             <p className="max-w-md text-base leading-relaxed text-[var(--color-ink-muted)] sm:text-lg">
-              Clientes, agenda, rotinas, financeiro e IA reunidos no Croniu Workspace.
+              Clientes, agenda, rotinas e financeiro reunidos no Croniu Workspace, com a Cronia
+              como sua assistente.
             </p>
           </div>
 
@@ -84,6 +84,15 @@ export function PublicEntryHero({ next = null }: Props) {
                 {label}
               </li>
             ))}
+            <li className="flex min-h-10 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/80 px-3.5 py-1.5 text-sm font-medium text-[var(--color-ink)]">
+              <span className="relative flex h-4 w-4 items-center justify-center">
+                <span className="assistant-orb-glow" aria-hidden />
+                <span className="assistant-orb relative z-[1] flex h-4 w-4 items-center justify-center rounded-full">
+                  <IconSparkles className="h-2.5 w-2.5 text-[var(--color-ai-foreground)]" aria-hidden />
+                </span>
+              </span>
+              Cronia, sua assistente
+            </li>
           </ul>
         </section>
 

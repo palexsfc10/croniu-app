@@ -41,7 +41,7 @@ function monthLabel(month: string): string {
 function TrendChart({ trend }: { trend: FinancialOverview["monthly_trend"] }) {
   const max = Math.max(1, ...trend.map((m) => m.received_cents));
   return (
-    <div aria-label="Evolução do recebido nos últimos meses" className="space-y-2">
+    <div aria-label="Evolução do recebido nos últimos meses" className="space-y-1.5">
       <h2 className="text-sm font-semibold text-[var(--color-ink-muted)]">
         Evolução do recebido
       </h2>
@@ -62,7 +62,16 @@ function TrendChart({ trend }: { trend: FinancialOverview["monthly_trend"] }) {
             </span>
           </div>
         ))}
+        {/* Keeps the last bar's label from sitting flush against the
+            scroll container's edge — without this, it reads as cut off
+            on narrow screens even though the bar itself is fully rendered. */}
+        <div aria-hidden className="w-1 shrink-0" />
       </div>
+      {trend.length > 4 ? (
+        <p className="text-xs text-[var(--color-ink-subtle)] sm:hidden">
+          Arraste para o lado para ver mais meses →
+        </p>
+      ) : null}
     </div>
   );
 }

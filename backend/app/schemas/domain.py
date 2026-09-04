@@ -228,6 +228,13 @@ class AttentionItemOut(BaseModel):
     entity_id: UUID
     client_name: str | None = None
     tone: str = "warning"
+    # Deterministic cross-kind urgency tier (lower = more urgent), per the
+    # product rule: overdue payment < renewal atrasada < solicitação
+    # explícita do cliente < rotina/avaliação atrasada < renovação próxima (7d)
+    # < cobrança vencendo (7d). The frontend merges this list with two other
+    # endpoints (accompaniment, routines) client-side and must sort on this
+    # field rather than re-deriving the tiers itself.
+    priority_rank: int = 99
 
 
 class HomeSummaryOut(BaseModel):

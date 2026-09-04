@@ -1233,6 +1233,11 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     overdue = [item for item in pending if item.due_on < today]
     due_today = [item for item in pending if item.due_on == today]
     due_later = [item for item in pending if item.due_on > today]
+    # A receivable due more than a week out is an indicator/Financeiro
+    # concern only — it must never become the Home hero action either.
+    due_later_this_week = [
+        item for item in due_later if (item.due_on - today).days <= HOME_CYCLE_ENDING_WINDOW_DAYS
+    ]
 
     day_agenda = agenda_svc.list_day_agenda(db, organization_id=organization_id, day=today)
     has_conflict = day_agenda.conflict_count > 0
@@ -1246,7 +1251,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     priority = select_home_priority(
         overdue=overdue,
         due_today=due_today,
-        due_later=due_later,
+        due_later=due_later_this_week,
         pay_reports=pay_reports,
         ended_unrenewed=ended_unrenewed,
         renewal_reqs=renewal_reqs,
@@ -1255,6 +1260,17 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         conflict_entity_id=conflict_entity_id,
         appointments_needing_outcome=appointments_needing_outcome,
     )
+
+    # Deterministic cross-kind urgency tiers for the "Precisa de decisão"
+    # queue (lower = more urgent). Shared with the frontend's `today-board`
+    # merge — see ATTENTION_PRIORITY_RANK in apps/web/src/lib/attention-priority.ts.
+    RANK_OVERDUE_PAYMENT = 0
+    RANK_RENEWAL_OVERDUE = 1
+    RANK_CLIENT_REQUEST = 2
+    RANK_OVERDUE_ROUTINE_OR_EVALUATION = 3
+    RANK_RENEWAL_NEARING = 4
+    RANK_PAYMENT_DUE_SOON = 5
+    RANK_APPOINTMENT_SECONDARY = 6
 
     attention: list[AttentionItemOut] = []
     for rr in renewal_reqs:
@@ -1267,6 +1283,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=rr.id,
                 client_name=rr.client_name,
                 tone="warning",
+                priority_rank=RANK_CLIENT_REQUEST,
             )
         )
     for pr in pay_reports:
@@ -1279,12 +1296,18 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=pr.id,
                 client_name=pr.client_name,
                 tone="warning",
+                priority_rank=RANK_CLIENT_REQUEST,
             )
         )
-    for pay in pending:
+    # A receivable due more than a week out is not yet a "decision" — it
+    # stays a Financeiro/indicator concern only. Overdue and due-within-7-days
+    # are the only two buckets that ever enter the decision queue.
+    decision_pending = [item for item in pending if (item.due_on - today).days <= HOME_CYCLE_ENDING_WINDOW_DAYS]
+    for pay in decision_pending:
+        overdue_payment = pay.due_on < today
         label = (
             f"Recebimento atrasado · venceu {pay.due_on.strftime('%d/%m/%Y')}"
-            if pay.due_on < today
+            if overdue_payment
             else f"Recebimento pendente · vence {pay.due_on.strftime('%d/%m/%Y')}"
         )
         attention.append(
@@ -1296,6 +1319,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=pay.id,
                 client_name=pay.client_name,
                 tone="warning",
+                priority_rank=RANK_OVERDUE_PAYMENT if overdue_payment else RANK_PAYMENT_DUE_SOON,
             )
         )
     for cycle in ended_unrenewed:
@@ -1308,6 +1332,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=cycle.id,
                 client_name=cycle.client_name,
                 tone="warning",
+                priority_rank=RANK_RENEWAL_OVERDUE,
             )
         )
     for cycle in nearing:
@@ -1320,6 +1345,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=cycle.id,
                 client_name=cycle.client_name,
                 tone="warning",
+                priority_rank=RANK_RENEWAL_NEARING,
             )
         )
     for appt in appointments_needing_outcome:
@@ -1332,6 +1358,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=appt.id,
                 client_name=appt.client_name,
                 tone="neutral",
+                priority_rank=RANK_APPOINTMENT_SECONDARY,
             )
         )
 
@@ -1374,9 +1401,12 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 href="/app/clients/intake",
                 entity_id=organization_id,
                 tone="warning",
+                priority_rank=-1,
             ),
         )
         message = "Veja o que precisa da sua atenção hoje."
+
+    attention.sort(key=lambda item: item.priority_rank)
 
     has_active_service = bool(
         db.scalar(

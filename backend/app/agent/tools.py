@@ -40,6 +40,7 @@ from app.services import my_cycle as my_cycle_svc
 from app.services import renewal_case as renewal_case_svc
 from app.services import status_labels
 from app.services.auth import AuthError
+from app.utils.formatting import format_brl_cents
 
 
 class ToolContext(BaseModel):
@@ -2042,15 +2043,15 @@ def _propose_record_payment(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
             "code": "already_paid",
         }
     client_name = receivable.client.full_name if receivable.client else "cliente"
-    amount = (receivable.amount_cents or 0) / 100
+    amount_label = format_brl_cents(receivable.amount_cents)
     return {
         "needs_confirmation": True,
         "tool_name": "propose_record_payment",
         "arguments": parsed.model_dump(mode="json"),
-        "summary": f"Marcar recebimento de {client_name} (R$ {amount:.2f}) como pago.",
+        "summary": f"Marcar recebimento de {client_name} ({amount_label}) como pago.",
         "summary_fields": {
-            "client_name": client_name,
-            "amount_cents": receivable.amount_cents,
+            "Cliente": client_name,
+            "Valor": amount_label,
         },
         "risk_class": "write_sensitive",
     }
@@ -2080,7 +2081,7 @@ def _propose_mark_appointment_outcome(ctx: ToolContext, args: dict[str, Any]) ->
         "tool_name": "propose_mark_appointment_outcome",
         "arguments": parsed.model_dump(mode="json"),
         "summary": f"Marcar compromisso de {client_name} como {label}.",
-        "summary_fields": {"client_name": client_name, "outcome": parsed.outcome},
+        "summary_fields": {"Cliente": client_name, "Resultado": label.capitalize()},
         "risk_class": "write_common",
     }
 
@@ -2108,7 +2109,7 @@ def _propose_create_evaluation_draft(ctx: ToolContext, args: dict[str, Any]) -> 
         "summary": (
             f"Criar rascunho de avaliação “{parsed.title}” para o cliente {client.full_name}."
         ),
-        "summary_fields": {"client_name": client.full_name, "title": parsed.title},
+        "summary_fields": {"Cliente": client.full_name, "Título": parsed.title},
         "risk_class": "write_common",
     }
 
@@ -2157,7 +2158,7 @@ def _propose_publish_evaluation(ctx: ToolContext, args: dict[str, Any]) -> dict[
             f"Publicar a avaliação “{evaluation.title}” de {client.full_name}. "
             "O cliente passará a ver este registro no Portal."
         ),
-        "summary_fields": {"client_name": client.full_name, "title": evaluation.title},
+        "summary_fields": {"Cliente": client.full_name, "Título": evaluation.title},
         "risk_class": "write_common",
     }
 
@@ -2187,7 +2188,7 @@ def _propose_add_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
         "tool_name": "propose_add_milestone",
         "arguments": parsed.model_dump(mode="json"),
         "summary": f"Registrar marco “{parsed.title}” para {client.full_name}.",
-        "summary_fields": {"client_name": client.full_name, "title": parsed.title},
+        "summary_fields": {"Cliente": client.full_name, "Título": parsed.title},
         "risk_class": "write_common",
     }
 

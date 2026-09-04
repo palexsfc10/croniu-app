@@ -32,7 +32,7 @@ describe("PublicEntryHero", () => {
     expect(headings[0]).toHaveTextContent(/com mais clareza/i);
 
     expect(
-      screen.getByText(/Clientes, agenda, rotinas, financeiro e IA reunidos no Croniu Workspace/i),
+      screen.getByText(/Clientes, agenda, rotinas e financeiro reunidos no Croniu Workspace/i),
     ).toBeInTheDocument();
     expect(screen.getByText("Croniu Workspace")).toBeInTheDocument();
     expect(screen.getByText("Workspace")).toBeInTheDocument();
@@ -49,9 +49,10 @@ describe("PublicEntryHero", () => {
     expect(screen.queryByRole("link", { name: "Começar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Entrar" })).not.toBeInTheDocument();
 
-    for (const area of ["Clientes", "Agenda", "Rotinas", "Financeiro", "IA"]) {
+    for (const area of ["Clientes", "Agenda", "Rotinas", "Financeiro"]) {
       expect(screen.getByText(area)).toBeInTheDocument();
     }
+    expect(screen.getByText("Cronia, sua assistente")).toBeInTheDocument();
     expect(screen.getByText("© Croniu")).toBeInTheDocument();
   });
 

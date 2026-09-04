@@ -237,8 +237,56 @@ def test_portal_renewal_request_flags_the_case_without_marking_it_renewed(
     row = _find(full, cid)
     assert row is not None
     assert row["portal_requested"] is True
-    # A portal request alone is a signal, never a resolution.
-    assert row["display_status"] in {"pending", "upcoming", "awaiting_client", "overdue"}
+    # A portal request alone is a signal, never a resolution — but it does
+    # force the case into "requested" (needs a decision now), regardless of
+    # how many days remain on the cycle.
+    assert row["display_status"] in {"requested", "pending", "awaiting_client", "overdue"}
+
+
+def test_upcoming_renewal_excluded_until_portal_request_forces_decision(
+    client, register_payload, db_session
+):
+    """>7 days remaining with no client signal is informational only — it
+    must never enter the needs_decision queue. A `RenewalRequest` on that
+    same far-out cycle forces it in immediately, regardless of how many days
+    remain — this classification rule is independent of the portal
+    endpoint's own submission gate (`_cycle_is_near_end_for_portal`, in
+    `my_cycle.py`), which is a separate, pre-existing restriction on when a
+    *client* can self-submit the request. Inserting the row directly tests
+    the renewal-case classification rule on its own."""
+    from app.models.renewal_request import RenewalRequest
+
+    _auth(client, register_payload)
+    today = _today(client)
+    ids = _seed_cycle(
+        client, key="far-out-1", starts_on=today.isoformat(), duration_days=20
+    )
+    cid = ids["cycle_id"]
+
+    needs_decision = client.get("/api/v1/renewal-cases").json()
+    assert _find(needs_decision, cid) is None
+
+    full = client.get("/api/v1/renewal-cases?scope=all").json()
+    row = _find(full, cid)
+    assert row is not None
+    assert row["display_status"] == "upcoming"
+
+    org_id = client.get("/api/v1/auth/me").json()["organization"]["id"]
+    db_session.add(
+        RenewalRequest(
+            organization_id=org_id,
+            client_id=ids["client_id"],
+            source_cycle_id=cid,
+            status="requested",
+        )
+    )
+    db_session.commit()
+
+    needs_decision_after = client.get("/api/v1/renewal-cases").json()
+    row_after = _find(needs_decision_after, cid)
+    assert row_after is not None
+    assert row_after["display_status"] == "requested"
+    assert row_after["portal_requested"] is True
 
 
 def test_renewal_cases_are_isolated_per_organization(client, register_payload):

@@ -545,8 +545,8 @@ export function EvaluationEditor({
         ) : (
           <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
             <p className="text-sm">
-              Ao publicar, o conteúdo da seção “Visível ao cliente” ficará disponível no portal
-              Meu Ciclo. Notas privadas continuam ocultas.
+              Ao publicar, o conteúdo da seção “Visível ao cliente” ficará disponível na Área do
+              cliente. Notas privadas continuam ocultas.
             </p>
             <Button fullWidth disabled={busy} onClick={() => void publish()}>
               Confirmar publicação

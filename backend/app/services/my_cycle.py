@@ -51,6 +51,7 @@ from app.services import proof_storage
 from app.services import protocols as proto_svc
 from app.services.auth import AuthError
 from app.services.cycle_calc import compute_renewal_on
+from app.utils.formatting import format_brl_cents
 
 logger = logging.getLogger("croniu.my_cycle")
 
@@ -117,11 +118,7 @@ def _normalize_whatsapp_e164(raw: str | None) -> str | None:
     return digits
 
 
-def _format_brl_cents(cents: int | None) -> str:
-    value = (cents or 0) / 100
-    return (
-        f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    )
+_format_brl_cents = format_brl_cents
 
 
 def build_renewal_whatsapp_url(
@@ -706,6 +703,19 @@ def _build_view(
     elif latest_report and latest_report.status == "rejected":
         pay_status = "nao_confirmado"
 
+    # The cycle's own `value_cents` is a snapshot taken at creation time and
+    # can drift from reality — any receivable added after the fact (e.g.
+    # through the generic receivables endpoint, not the structured cycle
+    # financial-edit flow) has its own independent `amount_cents` that never
+    # writes back to the cycle. The real pending receivable (already fetched
+    # above for `report`/`latest_report`) is the source of truth for "how
+    # much is actually owed right now" — prefer it, falling back to the
+    # cycle snapshot only when there's no pending receivable to read from
+    # (e.g. nothing pending, already paid, cancelled).
+    display_value_cents = (
+        pending_recv.amount_cents if pending_recv is not None else cycle.value_cents
+    )
+
     block = PublicCycleBlock(
         service_name=cycle.service.name if cycle.service else "Serviço",
         status_summary=status_summary,
@@ -716,7 +726,7 @@ def _build_view(
         lessons_completed=lessons_completed,
         lessons_no_show=lessons_no_show,
         remaining_planned_lessons=remaining,
-        value_cents=cycle.value_cents,
+        value_cents=display_value_cents,
         payment_status=pay_status,
         renewal_request_status=renewal.status if renewal else None,
         payment_report_status=(

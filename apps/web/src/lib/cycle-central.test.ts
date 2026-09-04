@@ -111,10 +111,17 @@ describe("buildCycleRow — só dados reais, nunca progresso inventado", () => {
 
   it("flags renewal only when RenewalCase says the cycle still needs a decision — never a client+service+date guess", () => {
     const row = build(cycle({ is_nearing_end: true }), {
-      renewalCases: [renewalCase({ display_status: "upcoming" })],
+      renewalCases: [renewalCase({ display_status: "pending" })],
     });
     expect(row.alerts).toContain("renewal");
-    expect(row.renewalCase?.display_status).toBe("upcoming");
+    expect(row.renewalCase?.display_status).toBe("pending");
+  });
+
+  it("never flags renewal for a merely 'upcoming' (>7 days out) case — informational only, never a decision", () => {
+    const row = build(cycle({ is_nearing_end: true }), {
+      renewalCases: [renewalCase({ display_status: "upcoming" })],
+    });
+    expect(row.alerts).not.toContain("renewal");
   });
 
   it("never flags renewal for a cycle with no RenewalCase at all", () => {
@@ -198,7 +205,7 @@ describe("renewalTarget — sempre o fluxo existente, nunca uma mutação", () =
 
   it("pre-fills the existing cycle form from the source cycle, carrying returnTo", () => {
     const row = build(cycle({ is_nearing_end: true }), {
-      renewalCases: [renewalCase({ display_status: "upcoming" })],
+      renewalCases: [renewalCase({ display_status: "pending" })],
     });
     const href = renewalTarget(row, "/app/cycles");
     expect(href).toContain("/app/cycles/new?");
@@ -211,7 +218,7 @@ describe("renewalTarget — sempre o fluxo existente, nunca uma mutação", () =
 
   it("never carries a hardcoded duration — the template alone decides it", () => {
     const row = build(cycle({ is_nearing_end: true }), {
-      renewalCases: [renewalCase({ display_status: "upcoming" })],
+      renewalCases: [renewalCase({ display_status: "pending" })],
     });
     const href = renewalTarget(row, "/app/cycles") ?? "";
     expect(href).not.toMatch(/month|mes|duration/i);

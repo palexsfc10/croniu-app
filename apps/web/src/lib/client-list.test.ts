@@ -153,11 +153,21 @@ describe("buildClientRow — real, derived attention reasons (never invented)", 
     const row = buildClientRow(client, {
       ...baseOpts,
       cycles: [cycle],
-      renewalCases: buildRenewalCaseIndex([renewalCase({ source_cycle_id: "cy1", display_status: "upcoming" })]),
+      renewalCases: buildRenewalCaseIndex([renewalCase({ source_cycle_id: "cy1", display_status: "pending" })]),
     });
     expect(row.reasons).toContain("renewal");
     expect(row.reasons).not.toContain("onboarding");
-    expect(row.renewalCase?.display_status).toBe("upcoming");
+    expect(row.renewalCase?.display_status).toBe("pending");
+  });
+
+  it("does not flag 'renewal' for a cycle whose renewal is merely 'upcoming' (>7 days out) — informational only, never a decision", () => {
+    const cycle = baseCycle({ is_nearing_end: true, days_remaining: 20 });
+    const row = buildClientRow(client, {
+      ...baseOpts,
+      cycles: [cycle],
+      renewalCases: buildRenewalCaseIndex([renewalCase({ source_cycle_id: "cy1", display_status: "upcoming" })]),
+    });
+    expect(row.reasons).not.toContain("renewal");
   });
 
   it("does not flag 'renewal' for a nearing-end cycle with no RenewalCase at all", () => {

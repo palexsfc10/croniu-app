@@ -14,6 +14,7 @@ RESOLUTION_REASONS = ("client_declined", "no_response", "service_ended", "other"
 DISPLAY_STATUSES = (
     "upcoming",
     "pending",
+    "requested",
     "awaiting_client",
     "overdue",
     "renewed",

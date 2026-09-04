@@ -476,7 +476,7 @@ function OnboardingWizardInner() {
               <IconSparkles className="h-6 w-6 shrink-0 text-[var(--color-primary)]" />
               <span>
                 <span className="block font-semibold text-[var(--color-ink)]">
-                  Explorar com a IA
+                  Explorar com a Cronia
                 </span>
                 <span className="block text-sm text-[var(--color-ink-muted)]">
                   Pergunte o que o Croniu pode fazer por você.

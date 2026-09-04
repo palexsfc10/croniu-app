@@ -421,6 +421,18 @@ export function ClientProfile({ clientId }: Props) {
   const next = (() => {
     const name = item ? firstName(item.full_name) : terms.client;
     const prepareHref = `/app/clients/${clientId}/accompaniment`;
+    // Archived clients get no onboarding/creation nudges — the only
+    // meaningful "next step" for an archived client is reactivating them,
+    // which already has its own dedicated primary action.
+    if (item?.status === "archived") {
+      return {
+        title: "Cliente arquivado",
+        isPending: false,
+        text: `${name} está arquivado. Reative para retomar o acompanhamento.`,
+        cta: null as string | null,
+        href: null as string | null,
+      };
+    }
     const action = journey?.next_action;
     if (action === "organize_agenda") {
       return {
@@ -694,7 +706,42 @@ export function ClientProfile({ clientId }: Props) {
         </p>
       ) : null}
 
-      {item ? (
+      {item && item.status === "archived" ? (
+        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Ações do cliente">
+          <Button
+            type="button"
+            disabled={busy}
+            onClick={() => void reactivate()}
+            className="min-h-10 shrink-0 whitespace-nowrap px-3 text-sm"
+          >
+            <IconRefreshCw className="mr-1.5 h-4 w-4" aria-hidden />
+            Reativar cliente
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            className="min-h-10 shrink-0 whitespace-nowrap px-3 text-sm"
+            onClick={openNoteSheet}
+          >
+            <IconPlus className="mr-1.5 h-4 w-4" aria-hidden />
+            Adicionar anotação
+          </Button>
+          <Link
+            href={`/app/assistant?prompt=${encodeURIComponent(`Sobre ${item.full_name}: `)}&context=${encodeURIComponent(`Cliente: ${item.full_name}`)}&returnTo=${encodeURIComponent(returnResumo)}`}
+            className="shrink-0"
+          >
+            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
+              <IconSparkles className="mr-1.5 h-4 w-4" aria-hidden />
+              Perguntar sobre este cliente
+            </Button>
+          </Link>
+          <Link href={`/app/clients/${clientId}/edit`} className="shrink-0">
+            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
+              Editar
+            </Button>
+          </Link>
+        </div>
+      ) : item ? (
         <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Ações do cliente">
           <Link
             href={`/app/appointments/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnResumo)}`}
@@ -901,25 +948,33 @@ export function ClientProfile({ clientId }: Props) {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
               Próximas sessões
             </h2>
-            <Link
-              href={`/app/appointments/new?clientId=${clientId}&returnTo=${encodeURIComponent(`${returnResumo}?tab=agenda`)}`}
-            >
-              <Button variant="secondary" className="min-h-10 px-3 text-sm">
-                <IconCalendarPlus className="mr-1.5 h-4 w-4" aria-hidden />
-                Agendar
-              </Button>
-            </Link>
+            {item?.status !== "archived" ? (
+              <Link
+                href={`/app/appointments/new?clientId=${clientId}&returnTo=${encodeURIComponent(`${returnResumo}?tab=agenda`)}`}
+              >
+                <Button variant="secondary" className="min-h-10 px-3 text-sm">
+                  <IconCalendarPlus className="mr-1.5 h-4 w-4" aria-hidden />
+                  Agendar
+                </Button>
+              </Link>
+            ) : null}
           </div>
           {appointments.length === 0 ? (
             <EmptyStateGuide
               title="Nenhuma sessão agendada"
-              body="Este cliente não tem compromissos futuros na agenda."
+              body={
+                item?.status === "archived"
+                  ? "Cliente arquivado — reative para agendar novas sessões."
+                  : "Este cliente não tem compromissos futuros na agenda."
+              }
               action={
-                <Link
-                  href={`/app/appointments/new?clientId=${clientId}&returnTo=${encodeURIComponent(`${returnResumo}?tab=agenda`)}`}
-                >
-                  <Button>Agendar sessão</Button>
-                </Link>
+                item?.status !== "archived" ? (
+                  <Link
+                    href={`/app/appointments/new?clientId=${clientId}&returnTo=${encodeURIComponent(`${returnResumo}?tab=agenda`)}`}
+                  >
+                    <Button>Agendar sessão</Button>
+                  </Link>
+                ) : undefined
               }
             />
           ) : (
@@ -1029,11 +1084,13 @@ export function ClientProfile({ clientId }: Props) {
                   primary={
                     activeCycle
                       ? { href: `/app/cycles/${activeCycle.id}`, label: "Ver ciclo", variant: "secondary" }
-                      : {
-                          href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(`${returnResumo}?tab=plano`)}`,
-                          label: "Criar ciclo",
-                          variant: "primary",
-                        }
+                      : item?.status === "archived"
+                        ? undefined
+                        : {
+                            href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(`${returnResumo}?tab=plano`)}`,
+                            label: "Criar ciclo",
+                            variant: "primary",
+                          }
                   }
                   extras={
                     cycleRenewalHref
@@ -1176,12 +1233,14 @@ export function ClientProfile({ clientId }: Props) {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
                 Avaliações
               </h2>
-              <Link
-                href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`}
-                className="text-sm font-medium text-[var(--color-primary)]"
-              >
-                Registrar avaliação
-              </Link>
+              {item?.status !== "archived" ? (
+                <Link
+                  href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`}
+                  className="text-sm font-medium text-[var(--color-primary)]"
+                >
+                  Registrar avaliação
+                </Link>
+              ) : null}
             </div>
 
             {!evaluations.length ? (

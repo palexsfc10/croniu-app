@@ -19,7 +19,6 @@ from datetime import UTC, date, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.appointment import Appointment
 from app.models.cycle import Cycle
 from app.models.renewal_case import RenewalCase
 from app.models.renewal_request import RenewalRequest
@@ -30,6 +29,12 @@ from app.services.auth import AuthError
 
 OPEN_CASE_STATUSES = {"open", "awaiting_client"}
 TERMINAL_CASE_STATUSES = {"renewed", "ended_without_renewal"}
+# "upcoming" (>7 days out, no client-initiated signal) is informational only
+# — it must never enter the "needs_decision" queue alongside the terminal
+# statuses. Kept separate from TERMINAL_CASE_STATUSES because callers that
+# want the full history (scope="all") still need to distinguish "resolved"
+# from "just not urgent yet".
+NON_DECISION_STATUSES = TERMINAL_CASE_STATUSES | {"upcoming"}
 
 
 def _display_status(
@@ -39,6 +44,7 @@ def _display_status(
     today: date,
     days_remaining: int,
     lessons_remaining: int | None,
+    portal_requested: bool,
 ) -> str:
     if case is not None and case.status == "renewed":
         return "renewed"
@@ -58,6 +64,12 @@ def _display_status(
     # display-only, never written back.
     if case is None and cycle.contact_confirmed_at is not None:
         return "awaiting_client"
+
+    # The client explicitly asked, through the Portal, to renew — that's a
+    # decision waiting on the professional regardless of how far out the
+    # cycle actually ends.
+    if portal_requested:
+        return "requested"
 
     lessons_low = lessons_remaining is not None and lessons_remaining <= domain_svc.LESSONS_NEARING_REMAINING
     if lessons_low or (0 <= days_remaining <= domain_svc.HOME_CYCLE_ENDING_WINDOW_DAYS):
@@ -147,16 +159,22 @@ def list_renewal_cases(
         ended_candidate = cycle.status == "ended" or cycle_period_svc.is_elapsed(
             ends_on=cycle.ends_on, today=today
         )
+        portal_requested = cycle.id in portal_requested_cycle_ids
 
         has_case = case is not None
-        eligible = has_case or is_nearing or ended_candidate
+        eligible = has_case or is_nearing or ended_candidate or portal_requested
         if not eligible:
             continue
 
         # A newer active successor for the same client+service already
         # covers this cycle's renewal — never nag about the older one,
-        # unless it already has its own explicit case row (history).
-        if not has_case and _has_newer_active_successor(cycle, active_by_client_service):
+        # unless it already has its own explicit case row (history) or the
+        # client themselves asked to renew this specific cycle.
+        if (
+            not has_case
+            and not portal_requested
+            and _has_newer_active_successor(cycle, active_by_client_service)
+        ):
             continue
 
         status = _display_status(
@@ -165,8 +183,9 @@ def list_renewal_cases(
             today=today,
             days_remaining=days_remaining,
             lessons_remaining=lessons_remaining,
+            portal_requested=portal_requested,
         )
-        if scope == "needs_decision" and status in TERMINAL_CASE_STATUSES:
+        if scope == "needs_decision" and status in NON_DECISION_STATUSES:
             continue
 
         views.append(
@@ -178,7 +197,7 @@ def list_renewal_cases(
                 service_name=cycle.service.name if cycle.service else None,
                 ends_on=cycle.ends_on,
                 display_status=status,
-                portal_requested=cycle.id in portal_requested_cycle_ids,
+                portal_requested=portal_requested,
                 next_contact_date=case.next_contact_date if case else None,
                 resolution_reason=case.resolution_reason if case else None,
                 resolution_note=case.resolution_note if case else None,
@@ -187,7 +206,15 @@ def list_renewal_cases(
             )
         )
 
-    order = {"overdue": 0, "awaiting_client": 1, "pending": 2, "upcoming": 3, "renewed": 4, "ended_without_renewal": 5}
+    order = {
+        "overdue": 0,
+        "awaiting_client": 1,
+        "requested": 2,
+        "pending": 3,
+        "upcoming": 4,
+        "renewed": 5,
+        "ended_without_renewal": 6,
+    }
     views.sort(key=lambda v: (order.get(v.display_status, 9), not v.portal_requested, v.ends_on))
     return views
 

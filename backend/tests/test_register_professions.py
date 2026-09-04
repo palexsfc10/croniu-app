@@ -58,3 +58,25 @@ def test_profession_catalog_codes_are_stable(client, register_payload):
     assert profile.status_code == 200, profile.text
     codes = [row["code"] for row in profile.json()["catalog"]["professions"]]
     assert codes == [row["code"] for row in PROFESSION_OPTIONS]
+
+
+def test_profession_saved_in_onboarding_is_visible_in_settings(client, register_payload):
+    """Onboarding and Settings→Workspace read/write the exact same
+    `Organization.profession_code` through the exact same endpoint pair — a
+    GET right after the PATCH must never appear unset, which is what an
+    intermediary cache serving a stale response would look like."""
+    payload = {**register_payload, "profession_code": "personal_trainer"}
+    _auth(client, payload)
+
+    updated = client.patch(
+        "/api/v1/organization/profession",
+        json={"profession_code": "nutritionist"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["profession_code"] == "nutritionist"
+    assert updated.headers.get("cache-control") == "no-store"
+
+    settings_view = client.get("/api/v1/organization/profession")
+    assert settings_view.status_code == 200, settings_view.text
+    assert settings_view.json()["profession_code"] == "nutritionist"
+    assert settings_view.headers.get("cache-control") == "no-store"
