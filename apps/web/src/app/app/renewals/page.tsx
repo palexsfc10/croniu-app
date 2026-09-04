@@ -9,9 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
-import { IconSparkles } from "@/components/ui/icons";
 import { PageTitle } from "@/components/ui/page-title";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
+import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 import {
   AwaitingClientSheet,
   EndWithoutRenewalSheet,
@@ -26,10 +26,6 @@ import {
 
 type Scope = "needs_decision" | "all";
 type StatusFilter = "all" | RenewalCaseView["display_status"];
-
-function assistantHref(prompt: string) {
-  return `/app/assistant?prompt=${encodeURIComponent(prompt)}&context=${encodeURIComponent("Renovações")}&returnTo=${encodeURIComponent("/app/renewals")}`;
-}
 
 function renewHref(row: RenewalCaseView): string {
   const params = new URLSearchParams({
@@ -147,13 +143,13 @@ export default function RenewalsPage() {
             </button>
           ))}
         </div>
-        <Link
-          href={assistantHref("Quais renovações precisam da minha decisão agora?")}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[var(--color-ai-border)] bg-[var(--color-ai-subtle)] px-3 text-sm font-medium text-[var(--color-ai-hover)]"
+        <AskAssistantLink
+          prompt="Quais renovações precisam da minha decisão agora?"
+          context="Renovações"
+          returnTo="/app/renewals"
         >
-          <IconSparkles className="h-4 w-4" aria-hidden />
           Perguntar à IA
-        </Link>
+        </AskAssistantLink>
       </div>
 
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Situação">

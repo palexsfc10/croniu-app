@@ -34,6 +34,7 @@ import {
 import { EVALUATION_SAVED_KEY } from "@/lib/evaluation-flow";
 import { buildBriefing, isNewProfessional } from "@/lib/home-briefing";
 import { PageTitle } from "@/components/ui/page-title";
+import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 
 type Props = {
   summary: HomeSummary;
@@ -793,13 +794,13 @@ function QuickActions() {
           {label}
         </Link>
       ))}
-      <Link
-        href={assistantHref("")}
-        className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[var(--color-ai-border)] bg-[var(--color-ai-subtle)] px-3 py-1.5 text-sm font-medium text-[var(--color-ai-hover)] transition-colors hover:bg-[var(--color-ai-subtle)]/70"
+      <AskAssistantLink
+        prompt=""
+        context={ASSISTANT_HOME_CONTEXT.context}
+        returnTo={ASSISTANT_HOME_CONTEXT.returnTo}
       >
-        <IconSparkles className="h-4 w-4" aria-hidden />
         Perguntar à IA
-      </Link>
+      </AskAssistantLink>
     </nav>
   );
 }

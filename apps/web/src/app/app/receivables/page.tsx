@@ -12,6 +12,7 @@ import { BlockError } from "@/components/ui/block-error";
 import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 import { isReceivableOverdue, isReceivablePending } from "@/lib/client-list";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
+import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 import {
   isReceivableUpcoming,
   matchesReceivableView,
@@ -389,12 +390,15 @@ export default function ReceivablesPage() {
         </ul>
       ) : null}
 
-      <Link
-        href={`/app/assistant?prompt=${encodeURIComponent("Sobre o financeiro: ")}&context=${encodeURIComponent("Financeiro")}&returnTo=${encodeURIComponent("/app/receivables")}`}
-        className="block rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3.5 py-3 text-sm font-semibold text-[var(--color-ink)] lg:hidden"
+      <AskAssistantLink
+        variant="banner"
+        prompt="Sobre o financeiro: "
+        context="Financeiro"
+        returnTo="/app/receivables"
+        className="lg:hidden"
       >
         Perguntar ao Assistente sobre o financeiro
-      </Link>
+      </AskAssistantLink>
     </div>
   );
 }

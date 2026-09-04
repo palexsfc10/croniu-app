@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
+import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 import { IconChevronRight, IconMoreHorizontal, IconPlus } from "@/components/ui/icons";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BlockError } from "@/components/ui/block-error";
@@ -816,13 +817,10 @@ export default function RoutinesPageInner() {
       <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:hidden">
         <header className="space-y-1">
           <div className="flex items-center justify-between gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1>
-            <Link
-              href={`/app/assistant?prompt=${encodeURIComponent("Sobre minhas rotinas: ")}&context=${encodeURIComponent("Rotinas")}&returnTo=${encodeURIComponent("/app/routines")}`}
-              className="rounded-[var(--radius-md)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)] px-3 py-1.5 text-sm font-semibold text-[var(--color-ink)]"
-            >
+            <PageTitle>Rotinas</PageTitle>
+            <AskAssistantLink prompt="Sobre minhas rotinas: " context="Rotinas" returnTo="/app/routines">
               Perguntar à IA
-            </Link>
+            </AskAssistantLink>
           </div>
           <p className="text-sm text-[var(--color-ink-muted)]">
             {clientId

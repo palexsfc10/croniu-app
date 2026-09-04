@@ -2,6 +2,7 @@
 
 import { BackLink } from "@/components/app/back-link";
 import { PageTitle } from "@/components/ui/page-title";
+import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -538,12 +539,15 @@ export default function CyclesPage() {
         </ul>
       ) : null}
 
-      <Link
-        href={`/app/assistant?prompt=${encodeURIComponent("Sobre meus ciclos: ")}&context=${encodeURIComponent("Ciclos e renovações")}&returnTo=${encodeURIComponent("/app/cycles")}`}
-        className="block rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3.5 py-3 text-sm font-semibold text-[var(--color-ink)] lg:hidden"
+      <AskAssistantLink
+        variant="banner"
+        prompt="Sobre meus ciclos: "
+        context="Ciclos e renovações"
+        returnTo="/app/cycles"
+        className="lg:hidden"
       >
         Perguntar ao Assistente sobre estes ciclos
-      </Link>
+      </AskAssistantLink>
     </div>
   );
 }

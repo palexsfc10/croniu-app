@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconMoreHorizontal, IconWhatsApp } from "@/components/ui/icons";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
+import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 
 const EMPTY_BOARD: OnboardingBoard = {
   attention: [],
@@ -505,12 +506,14 @@ export default function ClientsIntakePage() {
           )}
         </section>
 
-        <Link
-          href={`/app/assistant?prompt=${encodeURIComponent("Sobre o cadastro de clientes: ")}&context=${encodeURIComponent("Onboarding de clientes")}&returnTo=${encodeURIComponent("/app/clients/intake")}`}
-          className="block rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)]/40 px-3.5 py-3 text-sm font-semibold text-[var(--color-ink)]"
+        <AskAssistantLink
+          variant="banner"
+          prompt="Sobre o cadastro de clientes: "
+          context="Onboarding de clientes"
+          returnTo="/app/clients/intake"
         >
           Perguntar ao Assistente sobre estes clientes
-        </Link>
+        </AskAssistantLink>
       </div>
     </div>
   );
