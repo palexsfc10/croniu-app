@@ -110,6 +110,7 @@ def cycles_suppressed_from_home_attention(
     active_cycles: list[Cycle],
     open_renewal_source_ids: set[uuid.UUID],
     completed_renewal_source_ids: set[uuid.UUID],
+    case_handled_source_ids: set[uuid.UUID] = frozenset(),
 ) -> set[uuid.UUID]:
     """Cycles that must not appear as generic 'cycle ending' on Hoje.
 
@@ -118,8 +119,16 @@ def cycles_suppressed_from_home_attention(
     2. Renewal already resolved with a created successor cycle
     3. Professional already registered renewal contact (contact_confirmed_at)
     4. Same client + same service already has a newer active cycle (manual renewal)
+    5. A `RenewalCase` already exists for this cycle in any non-"open" state
+       (awaiting_client/renewed/ended_without_renewal) — the professional
+       already made a real decision, so the generic nag must stop even when
+       no `RenewalRequest`/`contact_confirmed_at` was ever involved.
     """
-    suppressed = set(open_renewal_source_ids) | set(completed_renewal_source_ids)
+    suppressed = (
+        set(open_renewal_source_ids)
+        | set(completed_renewal_source_ids)
+        | set(case_handled_source_ids)
+    )
 
     for cycle in nearing:
         if cycle.contact_confirmed_at is not None:
@@ -1168,12 +1177,29 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         ).all()
     )
 
+    from app.models.renewal_case import RenewalCase
+
+    # A RenewalCase in any non-"open" state means the professional already
+    # made a real decision (aguardando cliente / renovada / encerrada sem
+    # renovação) — the generic "cycle ending" nag must stop for that cycle
+    # regardless of whether a RenewalRequest or contact_confirmed_at was
+    # ever involved (the new /app/renewals flow often has neither).
+    case_handled_source_ids = set(
+        db.scalars(
+            select(RenewalCase.source_cycle_id).where(
+                RenewalCase.organization_id == organization_id,
+                RenewalCase.status != "open",
+            )
+        ).all()
+    )
+
     all_for_successor = active_rows  # successor check uses active cycles
     suppressed_nearing = cycles_suppressed_from_home_attention(
         nearing=nearing_all,
         active_cycles=all_for_successor,
         open_renewal_source_ids=open_renewal_source_ids,
         completed_renewal_source_ids=completed_renewal_source_ids,
+        case_handled_source_ids=case_handled_source_ids,
     )
     nearing = [c for c in nearing_all if c.id not in suppressed_nearing]
     renewals = [item for item in nearing if item.contact_confirmed_at is None]
@@ -1183,6 +1209,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         active_cycles=all_for_successor,
         open_renewal_source_ids=open_renewal_source_ids,
         completed_renewal_source_ids=completed_renewal_source_ids,
+        case_handled_source_ids=case_handled_source_ids,
     )
     ended_unrenewed = [c for c in ended_all if c.id not in suppressed_ended]
 
