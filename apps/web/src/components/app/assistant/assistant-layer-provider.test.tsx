@@ -74,10 +74,12 @@ function Trigger() {
   );
 }
 
-/** jsdom has no real `matchMedia` — stub it so `useIsDesktopViewport` can
- * report a controllable value instead of silently short-circuiting to
- * `false` (matching the pattern already needed for the mobile scroll-lock
- * effect elsewhere in this file). */
+/** jsdom has no real `matchMedia` — stub it so `useMediaQuery` can report a
+ * controllable value instead of silently short-circuiting to `false`
+ * (matching the pattern already needed for the mobile scroll-lock effect
+ * elsewhere in this file). Always returns the same `matches` regardless of
+ * the query string — good enough for these tests, which only ever probe
+ * one query at a time. */
 function stubDesktopViewport(matches: boolean) {
   vi.stubGlobal(
     "matchMedia",
@@ -110,7 +112,7 @@ describe("AssistantLayerProvider — global persistent layer", () => {
     vi.unstubAllGlobals();
   });
 
-  it("reserves real space for the panel via inline style on desktop — not a Tailwind class (confirmed to lose the cascade against lg:px-6/xl:px-8 on <main> in live testing)", async () => {
+  it("reserves real space for the panel via inline style at the dock-safe width (1920px) — not a Tailwind class (confirmed to lose the cascade against lg:px-6/xl:px-8 on <main> in live testing)", async () => {
     stubDesktopViewport(true);
     renderHarness();
     expect(screen.getByTestId("panel-padding")).toHaveTextContent("none");
@@ -120,7 +122,7 @@ describe("AssistantLayerProvider — global persistent layer", () => {
     expect(screen.getByTestId("panel-padding")).toHaveTextContent("calc(440px + 32px)");
   });
 
-  it("reserves no space on a non-desktop viewport — the panel doesn't dock there, it overlays", async () => {
+  it("reserves no space below the dock-safe width — the panel still opens, but as an overlay, not a dock", async () => {
     stubDesktopViewport(false);
     renderHarness();
     fireEvent.click(screen.getByText("open"));

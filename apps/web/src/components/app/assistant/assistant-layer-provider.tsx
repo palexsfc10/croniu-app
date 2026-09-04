@@ -238,32 +238,45 @@ export function AssistantLayerProvider({ children }: { children: ReactNode }) {
   );
 }
 
-const DESKTOP_QUERY = "(min-width: 1024px)";
+// Reflow (reserving 472px of padding so content never sits behind the
+// panel) only holds up on genuinely wide screens. Live testing on
+// /app/clients — the densest desktop table in the product, 7 columns —
+// found real content collisions (a "Atrasado" amount/badge spilling into
+// the Renovação column) at 1024, 1280, 1440, 1536, 1680, and even 1800px
+// with the panel open; 1920px was the first width confirmed clean. Below
+// that, the panel still opens (same visual side-panel), but as a true
+// overlay: content keeps its full width and the panel's opaque background
+// covers whatever sits behind its 440px strip, rather than the workspace
+// trying to compress an already-dense table further.
+const DOCK_SAFE_QUERY = "(min-width: 1920px)";
 
-/** Tracks whether the viewport is currently at/above the `lg:` breakpoint,
- * updating live on resize — inline styles (unlike Tailwind classes) can't
- * express a media query on their own, so this is how `useAssistantPanelSpacing`
- * stays `lg:`-conditional without one. */
-function useIsDesktopViewport(): boolean {
-  const [isDesktop, setIsDesktop] = useState(false);
+/** Tracks whether `query` currently matches, updating live on resize —
+ * inline styles (unlike Tailwind classes) can't express a media query on
+ * their own, so this is how `useAssistantPanelSpacing` stays viewport-
+ * conditional without one. */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const mql = window.matchMedia(DESKTOP_QUERY);
+    const mql = window.matchMedia(query);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mount hydrate from matchMedia, same pattern used elsewhere for external-source hydration
-    setIsDesktop(mql.matches);
-    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    setMatches(mql.matches);
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
-  }, []);
-  return isDesktop;
+  }, [query]);
+  return matches;
 }
 
 /** Reserves room for the desktop panel so page content never sits behind
  * it — spread the result onto the app shell's main content wrapper as
- * `style`. Not a Tailwind class: `<main>` already carries `lg:px-6
- * xl:px-8` (symmetric horizontal padding) at those same breakpoints, both
- * setting `padding-right` — Tailwind resolves same-specificity conflicts
- * by the order it *generates* utilities into the stylesheet, which has no
+ * `style`. Only applied at `DOCK_SAFE_QUERY` and above (see its comment);
+ * between `lg:` (1024px, where the panel itself starts showing) and that
+ * safe width, the panel overlays instead — no padding is reserved. Not a
+ * Tailwind class: `<main>` already carries `lg:px-6 xl:px-8` (symmetric
+ * horizontal padding) at those same breakpoints, both setting
+ * `padding-right` — Tailwind resolves same-specificity conflicts by the
+ * order it *generates* utilities into the stylesheet, which has no
  * relationship to a class string's order or to the `!important` modifier
  * placement, and in testing the dynamic class silently lost that fight
  * (computed padding-right stayed at the base 24px instead of 440px) —
@@ -273,8 +286,8 @@ function useIsDesktopViewport(): boolean {
  * trying to out-specificity it. */
 export function useAssistantPanelSpacing(): { style?: CSSProperties } {
   const { visible } = useAssistantLayer();
-  const isDesktop = useIsDesktopViewport();
-  if (visible && isDesktop) {
+  const isDockSafe = useMediaQuery(DOCK_SAFE_QUERY);
+  if (visible && isDockSafe) {
     // Panel width + the widest base gutter (`xl:px-8` = 32px) so content
     // never sits closer to the panel than it would to the viewport edge.
     return { style: { paddingRight: "calc(440px + 32px)" } };
