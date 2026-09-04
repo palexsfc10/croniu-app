@@ -3,20 +3,65 @@
 import { SettingsGroup, SettingsRow } from "@/components/app/settings-list";
 import { PageTitle } from "@/components/ui/page-title";
 import { InstallCroniuRow } from "@/components/pwa/install-croniu-row";
+import Link from "next/link";
 import {
-  IconActivity,
-  IconBriefcase,
   IconClipboardList,
   IconLayers,
   IconLifeBuoy,
   IconMapPin,
-  IconRefreshCw,
   IconUser,
 } from "@/components/ui/icons";
+import type { ComponentType, SVGProps } from "react";
+
+type IconType = ComponentType<SVGProps<SVGSVGElement> & { title?: string }>;
+
+/** Grid card for the low-frequency tools that live here — Serviços, Ciclos
+ * e renovações, Rotinas and Acompanhamentos moved to the sidebar itself
+ * (they're daily-use, not occasional), so this page no longer duplicates
+ * them. What's left genuinely belongs in a "everything else" hub: tonal
+ * icon, title, one line of context — a grid, not another stacked list. */
+function ToolCard({
+  href,
+  title,
+  description,
+  Icon,
+  tone = "primary",
+}: {
+  href: string;
+  title: string;
+  description: string;
+  Icon: IconType;
+  tone?: "primary" | "ai";
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex flex-col gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] p-4 transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-subtle)]"
+    >
+      <span
+        className={[
+          "flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)]",
+          tone === "ai"
+            ? "bg-[var(--color-ai-subtle)] text-[var(--color-ai)]"
+            : "bg-[var(--color-primary-subtle)] text-[var(--color-primary)]",
+        ].join(" ")}
+        aria-hidden
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <span>
+        <span className="block text-sm font-semibold text-[var(--color-ink)]">{title}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-[var(--color-ink-muted)]">
+          {description}
+        </span>
+      </span>
+    </Link>
+  );
+}
 
 export default function MorePage() {
   return (
-    <div className="mx-auto max-w-2xl space-y-6 animate-fade-up md:max-w-3xl">
+    <div className="mx-auto w-full max-w-[1180px] space-y-6 animate-fade-up">
       <header className="space-y-1">
         <PageTitle>Mais</PageTitle>
         <p className="text-sm text-[var(--color-ink-muted)]">
@@ -33,65 +78,44 @@ export default function MorePage() {
         />
       </SettingsGroup>
 
-      <div className="grid gap-6 md:grid-cols-2 md:gap-5">
-        <SettingsGroup title="Operação">
-          <SettingsRow
-            href="/app/services"
-            title="Serviços"
-            description="O que você oferece, duração e valor."
-            Icon={IconBriefcase}
-          />
-          <SettingsRow
-            href="/app/cycles"
-            title="Ciclos e renovações"
-            description="Visão global de vigências, alertas e decisões de renovação."
-            Icon={IconRefreshCw}
-          />
-          <SettingsRow
-            href="/app/routines"
-            title="Rotinas"
-            description="Atrasadas, hoje, próximas e concluídas."
-            Icon={IconClipboardList}
-          />
-          <SettingsRow
-            href="/app/accompaniment"
-            title="Acompanhamentos"
-            description="Clientes pendentes de evolução e histórico registrado."
-            Icon={IconActivity}
-          />
-          <SettingsRow
+      <section className="space-y-2">
+        <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-ink-muted)]">
+          Ferramentas
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ToolCard
             href="/app/cycle-templates"
             title="Modelos de ciclo"
             description="Frequência e período reutilizáveis."
             Icon={IconLayers}
           />
-          <SettingsRow
-            href="/app/setup"
-            title="Configuração inicial"
-            description="Serviço e modelo mínimos para começar."
-            Icon={IconClipboardList}
-          />
-          <SettingsRow
-            href="/app/manual"
-            title="Manual"
-            description="Como o Croniu funciona hoje."
-            Icon={IconLifeBuoy}
-          />
-        </SettingsGroup>
-
-        <SettingsGroup title="Preferências">
-          <SettingsRow
+          <ToolCard
             href="/app/locations"
             title="Locais de atendimento"
             description="Onde você atende seus clientes."
             Icon={IconMapPin}
           />
+          <ToolCard
+            href="/app/setup"
+            title="Configuração inicial"
+            description="Serviço e modelo mínimos para começar."
+            Icon={IconClipboardList}
+          />
+          <ToolCard
+            href="/app/manual"
+            title="Manual"
+            description="Como o Croniu funciona hoje."
+            Icon={IconLifeBuoy}
+            tone="ai"
+          />
+        </div>
+      </section>
+
+      <div id="instalar-croniu" className="scroll-mt-20">
+        <SettingsGroup title="Aplicativo">
+          <InstallCroniuRow />
         </SettingsGroup>
       </div>
-
-      <SettingsGroup title="Aplicativo">
-        <InstallCroniuRow />
-      </SettingsGroup>
     </div>
   );
 }

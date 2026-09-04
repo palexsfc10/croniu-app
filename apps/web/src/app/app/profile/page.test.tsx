@@ -19,7 +19,6 @@ describe("Mais page", () => {
       "href",
       "/app/settings",
     );
-    expect(screen.getByRole("link", { name: /Serviços/i })).toHaveAttribute("href", "/app/services");
     expect(screen.getByRole("link", { name: /Modelos de ciclo/i })).toHaveAttribute(
       "href",
       "/app/cycle-templates",
@@ -35,6 +34,14 @@ describe("Mais page", () => {
     expect(screen.queryByRole("link", { name: /Horários de atendimento/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Preferências gerais/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Ajuda e feedback/i })).not.toBeInTheDocument();
+    // Rebuild: daily-use modules (Serviços, Ciclos e renovações, Rotinas,
+    // Acompanhamentos) moved to the sidebar itself — a duplicate entry
+    // here would be exactly the kind of no-distinct-purpose repetition
+    // the redesign removes.
+    expect(screen.queryByRole("link", { name: /^Serviços/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Ciclos e renovações/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Rotinas/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Acompanhamentos/i })).not.toBeInTheDocument();
     expect(screen.queryByText("Assinatura")).not.toBeInTheDocument();
     expect(screen.queryByText("owner")).not.toBeInTheDocument();
     expect(screen.queryByText(/E-mail/i)).not.toBeInTheDocument();

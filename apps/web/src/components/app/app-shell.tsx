@@ -7,10 +7,11 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentType,
   type SVGProps,
 } from "react";
-import { BrandWordmark } from "@/components/brand";
+import { BrandMark, BrandWordmark } from "@/components/brand";
 import { CommandPalette } from "@/components/app/command-palette";
 import {
   AssistantLayerProvider,
@@ -23,20 +24,32 @@ import { apiFetch, type MyReferral } from "@/lib/api";
 import { useIsHmlEnvironment } from "@/lib/environment";
 import {
   IconActivity,
+  IconBanknote,
+  IconBriefcase,
   IconCalendarDays,
+  IconCalendarPlus,
+  IconChevronLeft,
+  IconChevronRight,
   IconCreditCard,
+  IconExternalLink,
   IconHome,
+  IconLayers,
   IconLayoutGrid,
   IconLifeBuoy,
   IconLogOut,
   IconClipboardList,
   IconLink,
+  IconMapPin,
+  IconPlus,
+  IconRefreshCw,
   IconSearch,
+  IconShieldCheck,
   IconSliders,
   IconSparkles,
   IconUser,
   IconUsersRound,
 } from "@/components/ui/icons";
+import { MenuItem } from "@/components/ui/menu-item";
 import { BillingGate } from "@/components/billing/billing-gate";
 import { PwaInstallBanner } from "@/components/pwa/pwa-install-banner";
 import {
@@ -47,29 +60,84 @@ import {
 } from "@/lib/pwa-install";
 import { safeLocalStorage } from "@/lib/use-pwa-install-surface";
 
-const navItems: {
+type NavItem = {
   href: string;
   label: string;
   Icon: ComponentType<SVGProps<SVGSVGElement> & { title?: string }>;
-}[] = [
-  { href: "/app", label: "Início", Icon: IconHome },
-  { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
-  { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
-  { href: "/app/accompaniment", label: "Acompanhamentos", Icon: IconActivity },
-  { href: "/app/routines", label: "Rotinas", Icon: IconClipboardList },
-  { href: "/app/profile", label: "Mais", Icon: IconLayoutGrid },
+};
+
+/** Desktop sidebar groups — the Lab's conceptual hierarchy (Principal /
+ * Trabalho / Gestão) adapted to the routes that actually exist today. Only
+ * destinations with a real page are listed; "Avaliações" isn't its own
+ * group here because /app/accompaniment already *is* the avaliações-driven
+ * work surface (see its own rebuild), and a second entry pointing at the
+ * same place would be exactly the kind of duplicate-without-distinction
+ * the redesign is meant to remove. */
+const SIDEBAR_COLLAPSED_KEY = "croniu:sidebar-collapsed";
+
+// Same useSyncExternalStore-backed localStorage flag idiom as the initial
+// setup card's collapse state (lib/setup-copy.ts) — avoids both a
+// hydration mismatch (first client render must match SSR) and the
+// setState-in-effect anti-pattern a plain useState+useEffect would need.
+const sidebarCollapseListeners = new Set<() => void>();
+
+function subscribeSidebarCollapsed(onStoreChange: () => void) {
+  sidebarCollapseListeners.add(onStoreChange);
+  return () => {
+    sidebarCollapseListeners.delete(onStoreChange);
+  };
+}
+
+function getSidebarCollapsedSnapshot(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setSidebarCollapsedStorage(collapsed: boolean) {
+  try {
+    if (collapsed) window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "1");
+    else window.localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
+  } catch {
+    /* ignore */
+  }
+  sidebarCollapseListeners.forEach((cb) => cb());
+}
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Principal",
+    items: [
+      { href: "/app", label: "Início", Icon: IconHome },
+      { href: "/app/clients", label: "Clientes", Icon: IconUsersRound },
+      { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
+    ],
+  },
+  {
+    label: "Trabalho",
+    items: [
+      { href: "/app/routines", label: "Rotinas", Icon: IconClipboardList },
+      { href: "/app/accompaniment", label: "Acompanhamentos", Icon: IconActivity },
+    ],
+  },
+  {
+    label: "Gestão",
+    items: [
+      { href: "/app/cycles", label: "Ciclos e renovações", Icon: IconRefreshCw },
+      { href: "/app/receivables", label: "Financeiro", Icon: IconBanknote },
+      { href: "/app/services", label: "Serviços", Icon: IconLayers },
+    ],
+  },
 ];
 
 /** Mobile bottom tab bar only — Cronia takes the center slot, in
  * destaque, per "mobile é a camada operacional principal da IA". Rotinas
- * stays a full desktop sidebar item (`navItems` above, untouched) and is
+ * stays a full desktop sidebar item (`navGroups` above, untouched) and is
  * still reachable on mobile via Mais → Rotinas (profile/page.tsx), so
  * nothing existing disappears — it just isn't a primary tab anymore. */
-const mobileNavItems: {
-  href: string;
-  label: string;
-  Icon: ComponentType<SVGProps<SVGSVGElement> & { title?: string }>;
-}[] = [
+const mobileNavItems: NavItem[] = [
   { href: "/app", label: "Início", Icon: IconHome },
   { href: "/app/agenda", label: "Agenda", Icon: IconCalendarDays },
   { href: "/app/assistant", label: "Cronia", Icon: IconSparkles },
@@ -86,14 +154,24 @@ function isAssistantActive(pathname: string) {
   return pathname === "/app/assistant" || pathname.startsWith("/app/assistant/");
 }
 
-function navLinkClass(active: boolean) {
+function navLinkClass(active: boolean, collapsed = false) {
   // Active state reads as "quietly current" rather than a loud filled pill:
   // a raised-but-faint surface + a brand rail on the left, same vocabulary
   // as .card-rail elsewhere, not a new pattern. Piloto: rail thickened
   // (2px → 3px) and the fill deepened from --color-surface-elevated (a
   // near-invisible 3% tint) to a visible-but-calm 10% brand mix, for real
   // presence without becoming a filled pill. No shadow — a "floating"
-  // nav item reads as a button, not a location in a list.
+  // nav item reads as a button, not a location in a list. Collapsed: no
+  // room for the left rail + asymmetric padding trick, so the active state
+  // falls back to a plain centered fill instead.
+  if (collapsed) {
+    return [
+      "flex min-h-11 items-center justify-center rounded-[var(--radius-md)] text-sm font-semibold transition-colors duration-[var(--duration-fast)]",
+      active
+        ? "bg-[var(--color-nav-active-bg)] text-[var(--color-primary)]"
+        : "text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]",
+    ].join(" ");
+  }
   return [
     "min-h-11 rounded-[var(--radius-md)] border-l-[3px] py-2 pr-3 text-sm font-semibold transition-colors duration-[var(--duration-fast)]",
     active
@@ -102,9 +180,11 @@ function navLinkClass(active: boolean) {
   ].join(" ");
 }
 
-function assistantLinkClass(active: boolean) {
+function assistantLinkClass(active: boolean, collapsed = false) {
   return [
-    "inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-2 text-sm font-semibold transition-colors duration-[var(--duration-fast)]",
+    collapsed
+      ? "flex min-h-11 items-center justify-center rounded-[var(--radius-md)] text-sm font-semibold transition-colors duration-[var(--duration-fast)]"
+      : "inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-2 text-sm font-semibold transition-colors duration-[var(--duration-fast)]",
     active
       ? "bg-[var(--color-ai-subtle)] text-[var(--color-ai-hover)]"
       : "text-[var(--color-ai)] hover:bg-[var(--color-ai-subtle)]",
@@ -115,12 +195,16 @@ function assistantLinkClass(active: boolean) {
  * instead of navigating away, per the layer fatia. `/app/assistant` stays
  * reachable as a deep link/full page; this is just no longer how the
  * sidebar itself gets there. */
-function AssistantSidebarButton({ active }: { active: boolean }) {
+function AssistantSidebarButton({ active, collapsed = false }: { active: boolean; collapsed?: boolean }) {
   const { open, visible } = useAssistantLayer();
   return (
     <button
       type="button"
-      className={["w-full", assistantLinkClass(active)].join(" ")}
+      title={collapsed ? "Cronia" : undefined}
+      className={[
+        collapsed ? "group/navitem relative flex w-full justify-center" : "w-full",
+        assistantLinkClass(active, collapsed),
+      ].join(" ")}
       aria-label="Abrir a Cronia"
       onClick={() => open()}
     >
@@ -130,31 +214,19 @@ function AssistantSidebarButton({ active }: { active: boolean }) {
       >
         <IconSparkles className="h-3 w-3 text-white" />
       </span>
-      Cronia
-      <Badge tone="ai">IA</Badge>
-    </button>
-  );
-}
-
-/** Mobile topbar's compact "IA" pill — same behavior change as the sidebar
- * button; the bottom-nav orb is the primary mobile entry, this is a
- * secondary always-visible one. */
-function AssistantTopbarButton({ active }: { active: boolean }) {
-  const { open, visible } = useAssistantLayer();
-  return (
-    <button
-      type="button"
-      className={assistantLinkClass(active)}
-      aria-label="Abrir a Cronia"
-      onClick={() => open()}
-    >
-      <span
-        aria-hidden
-        className={["cronia-symbol flex h-5 w-5 shrink-0 items-center justify-center rounded-full", active || visible ? "is-active" : ""].join(" ")}
-      >
-        <IconSparkles className="h-3 w-3 text-white" />
-      </span>
-      <span className="text-sm">IA</span>
+      {!collapsed ? (
+        <>
+          Cronia
+          <Badge tone="ai">IA</Badge>
+        </>
+      ) : (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-full top-1/2 z-30 ml-2 -translate-y-1/2 whitespace-nowrap rounded-[var(--radius-sm)] bg-[var(--color-ink)] px-2 py-1 text-xs font-medium text-white opacity-0 shadow-md transition-opacity duration-[var(--duration-fast)] group-hover/navitem:opacity-100"
+        >
+          Cronia
+        </span>
+      )}
     </button>
   );
 }
@@ -211,7 +283,12 @@ function AssistantOrbTab({
   Icon: ComponentType<SVGProps<SVGSVGElement> & { title?: string }>;
   active: boolean;
 }) {
-  const { open } = useAssistantLayer();
+  const { open, visible } = useAssistantLayer();
+  // Discreet at rest, grows and glows fully once opened/focused — the orb
+  // shouldn't be the loudest thing on the bottom nav until it's actually
+  // in use. `transition-[width,height]` (not `transform: scale`) so the
+  // glow halo positioned around it via `inset` doesn't need to co-animate.
+  const isOn = active || visible;
   return (
     <button
       type="button"
@@ -219,12 +296,15 @@ function AssistantOrbTab({
       onClick={() => open()}
       className="flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[0.65rem] font-semibold text-[var(--color-ai-hover)] sm:text-xs"
     >
-      <span className="relative -mt-4 flex h-11 w-11 items-center justify-center">
-        <span className="assistant-orb-glow" aria-hidden />
+      <span className="relative -mt-3 flex h-11 w-11 items-center justify-center">
+        <span className={`assistant-orb-glow ${isOn ? "" : "assistant-orb-glow--idle"}`} aria-hidden />
         <span
-          className={`assistant-orb relative z-[1] flex h-11 w-11 items-center justify-center rounded-full ${active ? "ring-2 ring-[var(--color-ai)] ring-offset-2 ring-offset-[var(--color-surface)]" : ""}`}
+          className={[
+            "assistant-orb relative z-[1] flex items-center justify-center rounded-full transition-[width,height] duration-[var(--duration-normal)]",
+            isOn ? "h-11 w-11 ring-2 ring-[var(--color-ai)] ring-offset-2 ring-offset-[var(--color-surface)]" : "h-9 w-9",
+          ].join(" ")}
         >
-          <Icon className="h-5 w-5 text-[var(--color-ai-foreground)]" aria-hidden />
+          <Icon className={isOn ? "h-5 w-5 text-[var(--color-ai-foreground)]" : "h-4 w-4 text-[var(--color-ai-foreground)]"} aria-hidden />
         </span>
       </span>
       <span className="truncate">{label}</span>
@@ -242,17 +322,30 @@ function menuItemClass(danger = false) {
   ].join(" ");
 }
 
+/**
+ * The single place the professional's name/workspace surfaces — the
+ * sidebar itself no longer prints it (piloto: "reconstrução radical",
+ * seção 2). Two mount points share this component: the mobile topbar
+ * (always) and the desktop topbar (new). They intentionally show
+ * slightly different rows — desktop has its own separate "Ajuda" menu in
+ * the topbar, so repeating "Ajuda e feedback" here would be the exact
+ * kind of duplicate-without-distinction entry point the redesign is
+ * meant to remove; mobile has no such second entry point, so it keeps
+ * it. Design System is gone from both — it stays reachable only by
+ * typing the (server-gated) dev route directly, never from navegação
+ * comum.
+ */
 function ProfileMenu({
   fullName,
   orgName,
   showReferralLink,
-  isHml,
+  desktop = false,
   onLogout,
 }: {
   fullName: string;
   orgName: string;
   showReferralLink: boolean;
-  isHml: boolean;
+  desktop?: boolean;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -329,6 +422,15 @@ function ProfileMenu({
           </Link>
           <Link
             role="menuitem"
+            href="/app/settings/workspace"
+            className={menuItemClass()}
+            onClick={close}
+          >
+            <IconBriefcase className="h-4 w-4 opacity-80" aria-hidden />
+            Workspace
+          </Link>
+          <Link
+            role="menuitem"
             href="/app/settings/billing"
             className={menuItemClass()}
             onClick={close}
@@ -338,12 +440,32 @@ function ProfileMenu({
           </Link>
           <Link
             role="menuitem"
-            href="/app/settings/help"
+            href="/app/locations"
             className={menuItemClass()}
             onClick={close}
           >
-            <IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />
-            Ajuda e feedback
+            <IconMapPin className="h-4 w-4 opacity-80" aria-hidden />
+            Preferências
+          </Link>
+          {!desktop ? (
+            <Link
+              role="menuitem"
+              href="/app/settings/help"
+              className={menuItemClass()}
+              onClick={close}
+            >
+              <IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />
+              Ajuda e feedback
+            </Link>
+          ) : null}
+          <Link
+            role="menuitem"
+            href="/app/profile#instalar-croniu"
+            className={menuItemClass()}
+            onClick={close}
+          >
+            <IconExternalLink className="h-4 w-4 opacity-80" aria-hidden />
+            Instalar Croniu
           </Link>
           {showReferralLink ? (
             <Link
@@ -354,17 +476,6 @@ function ProfileMenu({
             >
               <IconLink className="h-4 w-4 opacity-80" aria-hidden />
               Meu link de indicação
-            </Link>
-          ) : null}
-          {isHml ? (
-            <Link
-              role="menuitem"
-              href="/app/dev/design-system"
-              className={menuItemClass()}
-              onClick={close}
-            >
-              <IconSliders className="h-4 w-4 opacity-80" aria-hidden />
-              Design System
             </Link>
           ) : null}
           <div className="my-1 border-t border-[var(--color-border)]" />
@@ -386,72 +497,156 @@ function ProfileMenu({
   );
 }
 
-function AccountSidebarLinks({
-  fullName,
-  orgName,
-  showReferralLink,
-  isHml,
-  onLogout,
-}: {
-  fullName: string;
-  orgName: string;
-  showReferralLink: boolean;
-  isHml: boolean;
-  onLogout: () => void;
-}) {
+/** Shared open/close-on-outside-click/Escape shell for the topbar's small
+ * dropdowns (Criar, Ajuda) — same interaction contract as ProfileMenu,
+ * factored out once both needed it instead of copy-pasting a third time. */
+function useDropdown() {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return { open, setOpen, rootRef, triggerRef, close: () => setOpen(false) };
+}
+
+function dropdownPanelClass() {
+  return "absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-md";
+}
+
+/** Topbar "+ Criar" — the one place to start any of the three things a
+ * professional creates day to day. Reuses the real creation destinations
+ * (client intake, appointment form, the routines page's own create
+ * dialog) instead of building a second, parallel creation flow. */
+function CreateMenu() {
+  const { open, setOpen, rootRef, triggerRef, close } = useDropdown();
   return (
-    <div className="space-y-0.5 border-t border-[var(--color-border)] px-2 py-3">
-      <div className="px-2 pb-2">
-        <p className="truncate text-sm font-semibold text-[var(--color-ink)]">{fullName}</p>
-        <p className="truncate text-xs text-[var(--color-ink-muted)]">{orgName}</p>
-      </div>
-      <Link
-        href="/app/settings/account"
-        className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+    <div className="relative" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3.5 text-sm font-semibold text-[var(--color-primary-foreground)] transition-colors hover:bg-[var(--color-primary-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
       >
-        <IconUser className="h-4 w-4 opacity-80" aria-hidden />
-        Minha conta
-      </Link>
-      <Link
-        href="/app/settings/billing"
-        className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
-      >
-        <IconCreditCard className="h-4 w-4 opacity-80" aria-hidden />
-        Plano e assinatura
-      </Link>
-      <Link
-        href="/app/settings/help"
-        className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+        <IconPlus className="h-4 w-4" aria-hidden />
+        Criar
+      </button>
+      {open ? (
+        <div role="menu" aria-label="Criar" className={dropdownPanelClass()}>
+          <MenuItem
+            role="menuitem"
+            href="/app/clients/new"
+            icon={<IconUser className="h-4 w-4 opacity-80" aria-hidden />}
+            onClick={close}
+          >
+            Novo cliente
+          </MenuItem>
+          <MenuItem
+            role="menuitem"
+            href="/app/appointments/new"
+            icon={<IconCalendarPlus className="h-4 w-4 opacity-80" aria-hidden />}
+            onClick={close}
+          >
+            Novo compromisso
+          </MenuItem>
+          <MenuItem
+            role="menuitem"
+            href="/app/routines?new=1"
+            icon={<IconClipboardList className="h-4 w-4 opacity-80" aria-hidden />}
+            onClick={close}
+          >
+            Nova rotina
+          </MenuItem>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Topbar "Ajuda" — consolidates the manual, keyboard shortcuts, the real
+ * feedback channel (there is only one today — Suporte and Feedback point
+ * at the same form on purpose, not two fake channels) and the legal
+ * pages. No sino/notificações here or anywhere in the topbar. */
+function HelpMenu() {
+  const { open, setOpen, rootRef, triggerRef, close } = useDropdown();
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm font-medium text-[var(--color-ink-muted)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
       >
         <IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />
-        Ajuda e feedback
-      </Link>
-      {showReferralLink ? (
-        <Link
-          href="/app/referrals"
-          className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
-        >
-          <IconLink className="h-4 w-4 opacity-80" aria-hidden />
-          Meu link de indicação
-        </Link>
-      ) : null}
-      {isHml ? (
-        <Link
-          href="/app/dev/design-system"
-          className="flex min-h-10 items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
-        >
-          <IconSliders className="h-4 w-4 opacity-80" aria-hidden />
-          Design System
-        </Link>
-      ) : null}
-      <button
-        type="button"
-        onClick={onLogout}
-        className="flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)]"
-      >
-        <IconLogOut className="h-4 w-4 opacity-80" aria-hidden />
-        Sair
+        Ajuda
       </button>
+      {open ? (
+        <div role="menu" aria-label="Ajuda" className={dropdownPanelClass()}>
+          <MenuItem
+            role="menuitem"
+            href="/app/manual"
+            icon={<IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />}
+            onClick={close}
+          >
+            Manual do Croniu
+          </MenuItem>
+          <MenuItem
+            role="menuitem"
+            icon={<IconSliders className="h-4 w-4 opacity-80" aria-hidden />}
+            onClick={() => window.dispatchEvent(new CustomEvent("croniu:open-command-palette"))}
+          >
+            Atalhos · ⌘K busca rápida
+          </MenuItem>
+          <MenuItem
+            role="menuitem"
+            href="/app/settings/help"
+            icon={<IconLifeBuoy className="h-4 w-4 opacity-80" aria-hidden />}
+            onClick={close}
+          >
+            Feedback e suporte
+          </MenuItem>
+          <div className="my-1 border-t border-[var(--color-border)]" />
+          <MenuItem
+            role="menuitem"
+            href="/termos"
+            external
+            icon={<IconShieldCheck className="h-4 w-4 opacity-80" aria-hidden />}
+          >
+            Termos de uso
+          </MenuItem>
+          <MenuItem
+            role="menuitem"
+            href="/privacidade"
+            external
+            icon={<IconShieldCheck className="h-4 w-4 opacity-80" aria-hidden />}
+          >
+            Política de privacidade
+          </MenuItem>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -461,6 +656,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { me, loading, logout } = useAuth();
   const [referral, setReferral] = useState<MyReferral | null>(null);
   const isHml = useIsHmlEnvironment();
+  const sidebarCollapsed = useSyncExternalStore(
+    subscribeSidebarCollapsed,
+    getSidebarCollapsedSnapshot,
+    () => false,
+  );
+
+  function toggleSidebarCollapsed() {
+    setSidebarCollapsedStorage(!sidebarCollapsed);
+  }
 
   useEffect(() => {
     if (!me) return;
@@ -535,77 +739,111 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         assistantActive ? "h-dvh overflow-hidden" : "min-h-dvh",
       ].join(" ")}
     >
-      <aside className="app-sidebar hidden border-[var(--color-border)] lg:flex lg:w-56 lg:shrink-0 lg:flex-col lg:border-r xl:w-64">
+      <aside
+        className={[
+          "app-sidebar hidden border-[var(--color-border)] lg:flex lg:shrink-0 lg:flex-col lg:border-r",
+          sidebarCollapsed ? "lg:w-[4.5rem]" : "lg:w-56 xl:w-64",
+        ].join(" ")}
+      >
         <div className="sticky top-0 flex min-h-dvh flex-col">
-          <div className="px-4 py-4">
-            <div className="flex items-baseline gap-1.5">
-              <BrandWordmark size="sm" surface="light" compact />
-              <span className="text-sm font-normal text-[var(--color-ink-subtle)]">Workspace</span>
-            </div>
-            {isHml ? (
-              <span className="mt-1.5 inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-2 py-0.5 text-[0.65rem] font-semibold text-[var(--color-ink-muted)]">
-                Ambiente de homologação
-              </span>
-            ) : null}
-            <p className="mt-1.5 truncate text-xs text-[var(--color-ink-muted)]">
-              {me.organization.name}
-            </p>
-          </div>
-          <div className="px-2 pb-2">
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent("croniu:open-command-palette"))}
-              className="flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-ink-muted)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-ink)]"
-            >
-              <IconSearch className="h-4 w-4 opacity-70" aria-hidden />
-              <span className="flex-1 text-left">Buscar ou perguntar</span>
-              <kbd className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-1.5 py-0.5 text-[0.65rem] font-semibold text-[var(--color-ink-subtle)]">
-                ⌘K
-              </kbd>
-            </button>
+          <div className={sidebarCollapsed ? "flex justify-center px-2 py-4" : "px-4 py-4"}>
+            {sidebarCollapsed ? (
+              <BrandMark size="sm" />
+            ) : (
+              <>
+                <div className="flex items-baseline gap-1.5">
+                  <BrandWordmark size="sm" surface="light" compact />
+                  <span className="text-sm font-normal text-[var(--color-ink-subtle)]">Workspace</span>
+                </div>
+                {isHml ? (
+                  <span className="mt-1.5 inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-2 py-0.5 text-[0.65rem] font-semibold text-[var(--color-ink-muted)]">
+                    Ambiente de homologação
+                  </span>
+                ) : null}
+              </>
+            )}
           </div>
           <nav
             aria-label="Navegação principal"
-            className="flex flex-1 flex-col gap-1 px-2 pb-3"
+            className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3"
           >
-            {navItems.map((item) => {
-              const active = isNavActive(pathname, item.href);
-              const { Icon } = item;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={["inline-flex items-center gap-2.5", navLinkClass(active)].join(" ")}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <Icon aria-hidden className={active ? "opacity-100" : "opacity-90"} />
-                  {item.label}
-                </Link>
-              );
-            })}
+            {navGroups.map((group) => (
+              <div key={group.label} className="mb-1">
+                {!sidebarCollapsed ? (
+                  <p className="px-3 pb-1 pt-3 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
+                    {group.label}
+                  </p>
+                ) : (
+                  <div className="pt-3" aria-hidden />
+                )}
+                <div className="flex flex-col gap-1">
+                  {group.items.map((item) => {
+                    const active = isNavActive(pathname, item.href);
+                    const { Icon } = item;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        title={sidebarCollapsed ? item.label : undefined}
+                        className={[
+                          sidebarCollapsed ? "justify-center" : "inline-flex items-center gap-2.5",
+                          "group/navitem relative",
+                          navLinkClass(active, sidebarCollapsed),
+                        ].join(" ")}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        <Icon aria-hidden className={active ? "opacity-100" : "opacity-90"} />
+                        {!sidebarCollapsed ? item.label : null}
+                        {sidebarCollapsed ? (
+                          <span
+                            role="tooltip"
+                            className="pointer-events-none absolute left-full top-1/2 z-30 ml-2 -translate-y-1/2 whitespace-nowrap rounded-[var(--radius-sm)] bg-[var(--color-ink)] px-2 py-1 text-xs font-medium text-white opacity-0 shadow-md transition-opacity duration-[var(--duration-fast)] group-hover/navitem:opacity-100"
+                          >
+                            {item.label}
+                          </span>
+                        ) : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
             {/* Cronia reads as a special layer, not one more item in the
                 operational list — spacing + a hairline divider carry that
                 hierarchy; no group label, which would add noise for a
                 single item. */}
             <div className="mt-3 border-t border-[var(--color-border)] pt-3">
-              <AssistantSidebarButton active={assistantActive} />
+              {!sidebarCollapsed ? (
+                <p className="px-3 pb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
+                  Experiência
+                </p>
+              ) : null}
+              <AssistantSidebarButton active={assistantActive} collapsed={sidebarCollapsed} />
             </div>
           </nav>
-          <AccountSidebarLinks
-            fullName={me.user.full_name}
-            orgName={me.organization.name}
-            showReferralLink={referral?.enabled ?? false}
-            isHml={isHml}
-            onLogout={doLogout}
-          />
-          <p className="px-4 py-2 text-[0.65rem] font-medium text-[var(--color-ink-subtle)] opacity-70">
-            by NTWS Labs
-          </p>
+          <div className="border-t border-[var(--color-border)] px-2 py-2.5">
+            <button
+              type="button"
+              onClick={toggleSidebarCollapsed}
+              aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+              className={[
+                "flex min-h-9 w-full items-center gap-2 rounded-[var(--radius-md)] px-2 text-xs font-medium text-[var(--color-ink-subtle)] transition-colors hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink-muted)]",
+                sidebarCollapsed ? "justify-center" : "justify-between",
+              ].join(" ")}
+            >
+              {!sidebarCollapsed ? <span className="opacity-70">by NTWS Labs</span> : null}
+              {sidebarCollapsed ? (
+                <IconChevronRight className="h-4 w-4" aria-hidden />
+              ) : (
+                <IconChevronLeft className="h-4 w-4" aria-hidden />
+              )}
+            </button>
+          </div>
         </div>
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 shrink-0 border-b border-[var(--color-border)]/80 bg-[var(--color-bg)]/90 px-4 py-2.5 backdrop-blur lg:hidden">
+        <header className="app-topbar-mobile sticky top-0 z-10 shrink-0 border-b border-[var(--color-border)]/80 bg-[var(--color-bg)]/90 px-4 py-2.5 backdrop-blur lg:hidden">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <BrandWordmark size="sm" surface="light" compact />
@@ -615,17 +853,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
               ) : null}
             </div>
-            <div className="flex items-center gap-1.5">
-              <AssistantTopbarButton active={assistantActive} />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Buscar"
+                onClick={() => window.dispatchEvent(new CustomEvent("croniu:open-command-palette"))}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--color-ink-muted)] transition-colors hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]"
+              >
+                <IconSearch className="h-5 w-5" aria-hidden />
+              </button>
               <ProfileMenu
                 fullName={me.user.full_name}
                 orgName={me.organization.name}
                 showReferralLink={referral?.enabled ?? false}
-                isHml={isHml}
                 onLogout={doLogout}
               />
             </div>
           </div>
+        </header>
+
+        <header className="app-topbar-desktop sticky top-0 z-10 hidden shrink-0 items-center gap-3 border-b border-[var(--color-border)]/80 bg-[var(--color-bg)]/90 px-6 py-3 backdrop-blur lg:flex">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("croniu:open-command-palette"))}
+            className="flex min-h-10 w-full max-w-xl items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-ink-muted)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-ink)]"
+          >
+            <IconSearch className="h-4 w-4 opacity-70" aria-hidden />
+            <span className="flex-1 truncate text-left">Buscar clientes, telas ou perguntar à Cronia</span>
+            <kbd className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-1.5 py-0.5 text-[0.65rem] font-semibold text-[var(--color-ink-subtle)]">
+              ⌘K
+            </kbd>
+          </button>
+          <div className="flex-1" aria-hidden />
+          <CreateMenu />
+          <HelpMenu />
+          <ProfileMenu
+            fullName={me.user.full_name}
+            orgName={me.organization.name}
+            showReferralLink={referral?.enabled ?? false}
+            desktop
+            onLogout={doLogout}
+          />
         </header>
 
         {pathname === "/app" ? <PwaInstallBanner /> : null}

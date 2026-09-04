@@ -11,6 +11,10 @@ type Props = {
   danger?: boolean;
   disabled?: boolean;
   external?: boolean;
+  /** Set to "menuitem" when the row lives inside a `role="menu"` popover —
+   * ARIA menus require it on every item. Omitted (the default) for rows
+   * used in a plain list/panel, e.g. Cliente 360°'s "Mais ações". */
+  role?: "menuitem";
 };
 
 function classes(danger: boolean, disabled: boolean) {
@@ -31,7 +35,16 @@ function classes(danger: boolean, disabled: boolean) {
  * now. Not `Button`: a menu row is full-width and left-aligned, a different
  * visual role than a standalone action.
  */
-export function MenuItem({ children, icon, href, onClick, danger = false, disabled = false, external = false }: Props) {
+export function MenuItem({
+  children,
+  icon,
+  href,
+  onClick,
+  danger = false,
+  disabled = false,
+  external = false,
+  role,
+}: Props) {
   const content = (
     <>
       {icon}
@@ -46,6 +59,7 @@ export function MenuItem({ children, icon, href, onClick, danger = false, disabl
           href={href}
           target="_blank"
           rel="noopener noreferrer"
+          role={role}
           className={classes(danger, disabled)}
           onClick={onClick}
         >
@@ -54,14 +68,20 @@ export function MenuItem({ children, icon, href, onClick, danger = false, disabl
       );
     }
     return (
-      <Link href={href} className={classes(danger, disabled)} onClick={onClick}>
+      <Link href={href} role={role} className={classes(danger, disabled)} onClick={onClick}>
         {content}
       </Link>
     );
   }
 
   return (
-    <button type="button" className={classes(danger, disabled)} disabled={disabled} onClick={onClick}>
+    <button
+      type="button"
+      role={role}
+      className={classes(danger, disabled)}
+      disabled={disabled}
+      onClick={onClick}
+    >
       {content}
     </button>
   );

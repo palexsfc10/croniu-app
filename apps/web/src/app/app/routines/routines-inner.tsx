@@ -202,6 +202,15 @@ export default function RoutinesPageInner() {
   const [customOpen, setCustomOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
 
+  // Entry point for the topbar's "+ Criar → Nova rotina" — it links to
+  // /app/routines?new=1 instead of duplicating this real dialog anywhere
+  // else in the shell.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount/param hydrate
+    if (search.get("new") === "1") setCustomOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Desktop dense-list controls — independent from the mobile tree below.
   const [deskView, setDeskView] = useState<DeskView>("all");
   const [deskQuery, setDeskQuery] = useState("");

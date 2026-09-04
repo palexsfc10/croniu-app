@@ -514,6 +514,16 @@ h3,
   filter: blur(7px);
   animation: assistant-orb-breathe 3.2s ease-in-out infinite;
   z-index: 0;
+  transition: inset var(--duration-normal) var(--ease-out), opacity var(--duration-normal) var(--ease-out);
+}
+
+/* At rest (closed, not the active route) the orb reads as present but
+   quiet — a smaller halo at lower opacity — so it doesn't outshine
+   whatever the professional actually opened the app to do. Opening it
+   (or landing on /app/assistant) restores the full glow above. */
+.assistant-orb-glow--idle {
+  inset: -3px;
+  opacity: 0.55;
 }
 
 .assistant-orb {
@@ -526,6 +536,9 @@ h3,
   .assistant-orb-glow {
     animation: none;
     opacity: 0.7;
+  }
+  .assistant-orb-glow--idle {
+    opacity: 0.5;
   }
 }
 
