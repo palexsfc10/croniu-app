@@ -33,6 +33,7 @@ vi.mock("@/components/auth/auth-provider", () => ({
 import {
   AssistantLayerProvider,
   useAssistantLayer,
+  useAssistantPanelSpacing,
 } from "@/components/app/assistant/assistant-layer-provider";
 
 function mockAgent() {
@@ -56,6 +57,7 @@ function mockAgent() {
  * button); tests drive the same path rather than reaching into internals. */
 function Trigger() {
   const layer = useAssistantLayer();
+  const { style } = useAssistantPanelSpacing();
   return (
     <div>
       <button onClick={() => layer.open()}>open</button>
@@ -66,7 +68,25 @@ function Trigger() {
       <button onClick={() => layer.restore()}>restore</button>
       <button onClick={() => layer.close()}>close</button>
       <span data-testid="ui-state">{layer.uiState}</span>
+      <span data-testid="visible">{String(layer.visible)}</span>
+      <span data-testid="panel-padding">{style?.paddingRight ?? "none"}</span>
     </div>
+  );
+}
+
+/** jsdom has no real `matchMedia` — stub it so `useIsDesktopViewport` can
+ * report a controllable value instead of silently short-circuiting to
+ * `false` (matching the pattern already needed for the mobile scroll-lock
+ * effect elsewhere in this file). */
+function stubDesktopViewport(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
   );
 }
 
@@ -87,6 +107,46 @@ describe("AssistantLayerProvider — global persistent layer", () => {
   afterEach(() => {
     cleanup();
     apiFetch.mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  it("reserves real space for the panel via inline style on desktop — not a Tailwind class (confirmed to lose the cascade against lg:px-6/xl:px-8 on <main> in live testing)", async () => {
+    stubDesktopViewport(true);
+    renderHarness();
+    expect(screen.getByTestId("panel-padding")).toHaveTextContent("none");
+
+    fireEvent.click(screen.getByText("open"));
+    await waitFor(() => expect(screen.getByTestId("visible")).toHaveTextContent("true"));
+    expect(screen.getByTestId("panel-padding")).toHaveTextContent("calc(440px + 32px)");
+  });
+
+  it("reserves no space on a non-desktop viewport — the panel doesn't dock there, it overlays", async () => {
+    stubDesktopViewport(false);
+    renderHarness();
+    fireEvent.click(screen.getByText("open"));
+    await waitFor(() => expect(screen.getByTestId("visible")).toHaveTextContent("true"));
+    expect(screen.getByTestId("panel-padding")).toHaveTextContent("none");
+  });
+
+  it("stops reserving space once suppressed by route, even though uiState stays 'open' (navigating to /app/assistant hides the layer, it doesn't close it)", async () => {
+    stubDesktopViewport(true);
+    const { rerender } = renderHarness();
+    fireEvent.click(screen.getByText("open"));
+    await waitFor(() => expect(screen.getByTestId("panel-padding")).toHaveTextContent("calc(440px + 32px)"));
+
+    // Simulate an SPA navigation to /app/assistant on the *same* mounted
+    // provider (a real route change never remounts it) by changing the
+    // mocked pathname and forcing a re-render.
+    routeState.pathname = "/app/assistant";
+    rerender(
+      <AssistantLayerProvider>
+        <Trigger />
+      </AssistantLayerProvider>,
+    );
+
+    expect(screen.getByTestId("ui-state")).toHaveTextContent("open");
+    expect(screen.getByTestId("visible")).toHaveTextContent("false");
+    expect(screen.getByTestId("panel-padding")).toHaveTextContent("none");
   });
 
   it("never calls the agent API before the first open() — lazy init, no background cost for a panel that's never opened", async () => {

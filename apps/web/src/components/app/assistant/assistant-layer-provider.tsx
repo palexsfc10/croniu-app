@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
@@ -26,6 +27,11 @@ type OpenOptions = {
 
 type AssistantLayerValue = {
   uiState: UiState;
+  /** `uiState === "open"` AND not suppressed by route (i.e. actually
+   * rendered on screen right now) — what layout code should check, since
+   * `uiState` alone stays "open" even while suppressed on `/app/assistant`
+   * itself (navigating there doesn't close the layer, just hides it). */
+  visible: boolean;
   open: (opts?: OpenOptions) => void;
   minimize: () => void;
   restore: () => void;
@@ -44,6 +50,7 @@ export function useAssistantLayer(): AssistantLayerValue {
   if (ctx) return ctx;
   return {
     uiState: "closed",
+    visible: false,
     open: () => {},
     minimize: () => {},
     restore: () => {},
@@ -181,8 +188,8 @@ export function AssistantLayerProvider({ children }: { children: ReactNode }) {
   }, [visible]);
 
   const value = useMemo<AssistantLayerValue>(
-    () => ({ uiState, open, minimize, restore, close }),
-    [uiState, open, minimize, restore, close],
+    () => ({ uiState, visible, open, minimize, restore, close }),
+    [uiState, visible, open, minimize, restore, close],
   );
 
   return (
@@ -231,24 +238,46 @@ export function AssistantLayerProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+/** Tracks whether the viewport is currently at/above the `lg:` breakpoint,
+ * updating live on resize — inline styles (unlike Tailwind classes) can't
+ * express a media query on their own, so this is how `useAssistantPanelSpacing`
+ * stays `lg:`-conditional without one. */
+function useIsDesktopViewport(): boolean {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount hydrate from matchMedia, same pattern used elsewhere for external-source hydration
+    setIsDesktop(mql.matches);
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+}
+
 /** Reserves room for the desktop panel so page content never sits behind
- * it — apply to the app shell's main content wrapper. The class name is a
- * literal (not built from `PANEL_WIDTH` via string interpolation) because
- * Tailwind's build-time scanner only picks up class names it can see
- * verbatim in source — an interpolated `lg:pr-[${PANEL_WIDTH}]` would never
- * get its CSS generated and the padding would silently never apply. Keep
- * this literal in sync with `PANEL_WIDTH` above by hand.
- *
- * The trailing `!` (Tailwind v4 important-modifier syntax) is load-bearing,
- * not decoration: `<main>` already carries `lg:px-6 xl:px-8` (symmetric
- * horizontal padding) at the same `lg:`/`xl:` breakpoints. Both utilities
- * set `padding-right`, and Tailwind resolves same-specificity conflicts by
- * the order it *generates* the utilities into the stylesheet — which has
- * no relationship to source order in a `className` string. Without `!`,
- * this class silently lost that fight in testing (computed padding-right
- * stayed at the base 24px instead of 440px) — real content sat behind the
- * panel despite the class being present in the DOM the whole time. */
-export function useAssistantPanelSpacing(): string {
-  const { uiState } = useAssistantLayer();
-  return uiState === "open" ? "lg:pr-[440px]!" : "";
+ * it — spread the result onto the app shell's main content wrapper as
+ * `style`. Not a Tailwind class: `<main>` already carries `lg:px-6
+ * xl:px-8` (symmetric horizontal padding) at those same breakpoints, both
+ * setting `padding-right` — Tailwind resolves same-specificity conflicts
+ * by the order it *generates* utilities into the stylesheet, which has no
+ * relationship to a class string's order or to the `!important` modifier
+ * placement, and in testing the dynamic class silently lost that fight
+ * (computed padding-right stayed at the base 24px instead of 440px) —
+ * real content sat behind the panel despite the class being in the DOM
+ * the whole time. An inline style always wins the cascade over any
+ * class-based rule, so this sidesteps the collision entirely instead of
+ * trying to out-specificity it. */
+export function useAssistantPanelSpacing(): { style?: CSSProperties } {
+  const { visible } = useAssistantLayer();
+  const isDesktop = useIsDesktopViewport();
+  if (visible && isDesktop) {
+    // Panel width + the widest base gutter (`xl:px-8` = 32px) so content
+    // never sits closer to the panel than it would to the viewport edge.
+    return { style: { paddingRight: "calc(440px + 32px)" } };
+  }
+  return {};
 }

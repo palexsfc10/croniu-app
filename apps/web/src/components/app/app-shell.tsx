@@ -147,10 +147,11 @@ function AssistantTopbarButton({ active }: { active: boolean }) {
 
 /** Wraps the routed page content — adds right padding equal to the desktop
  * panel's width while it's open, so page content reflows instead of
- * sitting behind the panel (`useAssistantPanelSpacing` is a no-op class on
- * every other viewport/state). */
+ * sitting behind the panel. `useAssistantPanelSpacing` returns an inline
+ * `style`, not a class, on purpose — see its own comment for why a
+ * Tailwind class silently lost the cascade here. */
 function MainContent({ assistantActive, children }: { assistantActive: boolean; children: React.ReactNode }) {
-  const panelSpacing = useAssistantPanelSpacing();
+  const { style: panelSpacingStyle } = useAssistantPanelSpacing();
   return (
     <main
       // Bottom padding clears the fixed mobile bottom-nav height + its
@@ -162,8 +163,8 @@ function MainContent({ assistantActive, children }: { assistantActive: boolean; 
           ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
           : "flex-1 px-4 py-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-6 lg:pb-5 xl:px-8",
         "transition-[padding] duration-[var(--duration-normal)]",
-        panelSpacing,
       ].join(" ")}
+      style={panelSpacingStyle}
     >
       {/* Sidebar+content no longer share one global max-width (that centered
           the whole shell and wasted the sides on wide screens) — the cap
