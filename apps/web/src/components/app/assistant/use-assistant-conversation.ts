@@ -83,6 +83,7 @@ export function useAssistantConversation(opts: {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottomRef = useRef(true);
+  const programmaticScrollRef = useRef(false);
   const actionLockRef = useRef(false);
   const threadsPanelRef = useRef<HTMLDivElement>(null);
   const threadsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -198,13 +199,33 @@ export function useAssistantConversation(opts: {
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "smooth") => {
       stickToBottomRef.current = true;
+      // A "smooth" scrollIntoView fires its own intermediate `scroll`
+      // events while it animates. Without this guard, `onTranscriptScroll`
+      // reads those as the user scrolling away — if a reply is still
+      // growing the transcript's height while the animation is catching
+      // up, `isNearBottom()` can transiently read false mid-flight, which
+      // flips `stickToBottomRef` off and silently stops autoscroll for the
+      // rest of the conversation (confirmed live: after a few real
+      // back-to-back messages, the transcript stayed stuck well above the
+      // latest message, with no user-visible "jump to bottom" affordance
+      // explaining why). The window covers a "smooth" animation's typical
+      // duration; "auto" resolves in a single frame so a short window is
+      // enough either way.
+      programmaticScrollRef.current = true;
       bottomRef.current?.scrollIntoView({ behavior, block: "end" });
       setShowJump(false);
+      window.setTimeout(
+        () => {
+          programmaticScrollRef.current = false;
+        },
+        behavior === "smooth" ? 500 : 50,
+      );
     },
     [],
   );
 
   const onTranscriptScroll = useCallback(() => {
+    if (programmaticScrollRef.current) return;
     const near = isNearBottom();
     stickToBottomRef.current = near;
     setShowJump(!near);
