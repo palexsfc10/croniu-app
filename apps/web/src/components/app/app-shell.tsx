@@ -116,7 +116,7 @@ function assistantLinkClass(active: boolean) {
  * reachable as a deep link/full page; this is just no longer how the
  * sidebar itself gets there. */
 function AssistantSidebarButton({ active }: { active: boolean }) {
-  const { open } = useAssistantLayer();
+  const { open, visible } = useAssistantLayer();
   return (
     <button
       type="button"
@@ -126,7 +126,7 @@ function AssistantSidebarButton({ active }: { active: boolean }) {
     >
       <span
         aria-hidden
-        className={["cronia-symbol flex h-5 w-5 shrink-0 items-center justify-center rounded-full", active ? "is-active" : ""].join(" ")}
+        className={["cronia-symbol flex h-5 w-5 shrink-0 items-center justify-center rounded-full", active || visible ? "is-active" : ""].join(" ")}
       >
         <IconSparkles className="h-3 w-3 text-white" />
       </span>
@@ -140,7 +140,7 @@ function AssistantSidebarButton({ active }: { active: boolean }) {
  * button; the bottom-nav orb is the primary mobile entry, this is a
  * secondary always-visible one. */
 function AssistantTopbarButton({ active }: { active: boolean }) {
-  const { open } = useAssistantLayer();
+  const { open, visible } = useAssistantLayer();
   return (
     <button
       type="button"
@@ -150,7 +150,7 @@ function AssistantTopbarButton({ active }: { active: boolean }) {
     >
       <span
         aria-hidden
-        className={["cronia-symbol flex h-5 w-5 shrink-0 items-center justify-center rounded-full", active ? "is-active" : ""].join(" ")}
+        className={["cronia-symbol flex h-5 w-5 shrink-0 items-center justify-center rounded-full", active || visible ? "is-active" : ""].join(" ")}
       >
         <IconSparkles className="h-3 w-3 text-white" />
       </span>
