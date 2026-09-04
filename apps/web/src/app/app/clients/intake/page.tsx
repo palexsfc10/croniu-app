@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconMoreHorizontal, IconWhatsApp } from "@/components/ui/icons";
+import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
 
 const EMPTY_BOARD: OnboardingBoard = {
   attention: [],
@@ -285,44 +286,38 @@ function DesktopGroup({
         </h2>
         <p className="text-sm text-[var(--color-ink-muted)]">{description}</p>
       </div>
-      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)]">
+      <TableShell>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--color-border)]/60 text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-              <th className="px-3.5 py-2.5">Cliente</th>
-              {!compact ? <th className="px-3.5 py-2.5">Entrada</th> : null}
-              <th className="px-3.5 py-2.5">Estado</th>
-              <th className="px-3.5 py-2.5">Tempo</th>
-              {!compact ? <th className="px-3.5 py-2.5">Falta</th> : null}
-              <th className="px-3.5 py-2.5">Próxima ação</th>
-            </tr>
+            <Tr>
+              <Th>Cliente</Th>
+              {!compact ? <Th>Entrada</Th> : null}
+              <Th>Estado</Th>
+              <Th>Tempo</Th>
+              {!compact ? <Th>Falta</Th> : null}
+              <Th>Próxima ação</Th>
+            </Tr>
           </thead>
           <tbody>
             {items.map((item) => {
               const next = nextActionFor(item);
               return (
-                <tr key={item.client_id} className="border-b border-[var(--color-border)]/50 last:border-b-0">
-                  <td className="px-3.5 py-3 font-medium text-[var(--color-ink)]">
+                <Tr key={item.client_id}>
+                  <Td className="font-medium text-[var(--color-ink)]">
                     <div className="flex flex-col gap-1">
                       <span>{item.client_name}</span>
                       {compact ? <AttentionBadges item={item} /> : null}
                     </div>
-                  </td>
+                  </Td>
                   {!compact ? (
-                    <td className="px-3.5 py-3 text-[var(--color-ink-muted)]">
-                      {entryTypeLabel(item.entry_type)}
-                    </td>
+                    <Td className="text-[var(--color-ink-muted)]">{entryTypeLabel(item.entry_type)}</Td>
                   ) : null}
-                  <td className="px-3.5 py-3 text-[var(--color-ink-muted)]">{item.stage_label}</td>
-                  <td className="px-3.5 py-3 text-[var(--color-ink-muted)]">
-                    {timeAgo(item.days_since_update)}
-                  </td>
+                  <Td className="text-[var(--color-ink-muted)]">{item.stage_label}</Td>
+                  <Td className="text-[var(--color-ink-muted)]">{timeAgo(item.days_since_update)}</Td>
                   {!compact ? (
-                    <td className="px-3.5 py-3 text-[var(--color-ink-muted)]">
-                      {item.attention_note || "—"}
-                    </td>
+                    <Td className="text-[var(--color-ink-muted)]">{item.attention_note || "—"}</Td>
                   ) : null}
-                  <td className="px-3.5 py-3">
+                  <Td>
                     <Link
                       href={next.href}
                       className="font-medium text-[var(--color-primary)] hover:underline"
@@ -333,13 +328,13 @@ function DesktopGroup({
                     <Link href={`/app/clients/${item.client_id}`} className="text-[var(--color-link)] hover:underline">
                       Abrir cliente
                     </Link>
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               );
             })}
           </tbody>
         </table>
-      </div>
+      </TableShell>
     </section>
   );
 }

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
 import { receivableStatusLabel, receivableStatusTone } from "@/lib/status-tone";
 import { isReceivableOverdue, isReceivablePending } from "@/lib/client-list";
+import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
 import {
   isReceivableUpcoming,
   matchesReceivableView,
@@ -276,67 +277,67 @@ export default function ReceivablesPage() {
 
       {/* Desktop: tabela densa */}
       {visible.length ? (
-        <div className="hidden overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] lg:block">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)]/60 text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                <th className="px-3.5 py-2.5">Cliente</th>
-                <th className="px-3.5 py-2.5">Serviço/Ciclo</th>
-                <th className="px-3.5 py-2.5">Vencimento</th>
-                <th className="px-3.5 py-2.5">Valor</th>
-                <th className="px-3.5 py-2.5">Status</th>
-                <th className="px-3.5 py-2.5">Recebimento</th>
-                <th className="px-3.5 py-2.5">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((r) => {
-                const overdue = isReceivableOverdue(r, today);
-                return (
-                  <tr key={r.id} className="border-b border-[var(--color-border)]/50 last:border-b-0">
-                    <td className="px-3.5 py-3 font-medium text-[var(--color-ink)]">
-                      <Link href={`/app/clients/${r.client_id}?tab=financeiro`} className="hover:underline">
-                        {r.client_name}
-                      </Link>
-                    </td>
-                    <td className="px-3.5 py-3 text-[var(--color-ink-muted)]">
-                      <Link href={`/app/cycles/${r.cycle_id}`} className="hover:underline">
-                        {r.cycle_service_name}
-                      </Link>
-                    </td>
-                    <td
-                      className={`px-3.5 py-3 tabular-nums ${
-                        overdue ? "font-medium text-[var(--color-danger)]" : "text-[var(--color-ink-muted)]"
-                      }`}
-                    >
-                      {formatDateBR(r.due_on)}
-                    </td>
-                    <td className="px-3.5 py-3 tabular-nums text-[var(--color-ink)]">
-                      {formatBRL(r.amount_cents)}
-                    </td>
-                    <td className="px-3.5 py-3">
-                      <Badge tone={receivableStatusTone(r.status, overdue)}>
-                        {overdue ? "Vencido" : receivableStatusLabel(r.status)}
-                      </Badge>
-                    </td>
-                    <td className="px-3.5 py-3 text-[var(--color-ink-muted)]">
-                      {r.status === "received"
-                        ? `${r.paid_at ? formatDateBR(r.paid_at.slice(0, 10)) : "—"}${r.payment_method ? ` · ${r.payment_method}` : ""}`
-                        : "—"}
-                    </td>
-                    <td className="px-3.5 py-3">
-                      <Link
-                        href={`/app/receivables/${r.id}?returnTo=${encodeURIComponent(RETURN_TO)}`}
-                        className="font-medium text-[var(--color-primary)] hover:underline"
+        <div className="hidden lg:block">
+          <TableShell>
+            <table className="w-full text-sm">
+              <thead>
+                <Tr>
+                  <Th>Cliente</Th>
+                  <Th>Serviço/Ciclo</Th>
+                  <Th>Vencimento</Th>
+                  <Th>Valor</Th>
+                  <Th>Status</Th>
+                  <Th>Recebimento</Th>
+                  <Th>Ação</Th>
+                </Tr>
+              </thead>
+              <tbody>
+                {visible.map((r) => {
+                  const overdue = isReceivableOverdue(r, today);
+                  return (
+                    <Tr key={r.id}>
+                      <Td className="font-medium text-[var(--color-ink)]">
+                        <Link href={`/app/clients/${r.client_id}?tab=financeiro`} className="hover:underline">
+                          {r.client_name}
+                        </Link>
+                      </Td>
+                      <Td className="text-[var(--color-ink-muted)]">
+                        <Link href={`/app/cycles/${r.cycle_id}`} className="hover:underline">
+                          {r.cycle_service_name}
+                        </Link>
+                      </Td>
+                      <Td
+                        className={`tabular-nums ${
+                          overdue ? "font-medium text-[var(--color-danger)]" : "text-[var(--color-ink-muted)]"
+                        }`}
                       >
-                        {receivableActionLabel(r)}
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        {formatDateBR(r.due_on)}
+                      </Td>
+                      <Td className="tabular-nums text-[var(--color-ink)]">{formatBRL(r.amount_cents)}</Td>
+                      <Td>
+                        <Badge tone={receivableStatusTone(r.status, overdue)}>
+                          {overdue ? "Vencido" : receivableStatusLabel(r.status)}
+                        </Badge>
+                      </Td>
+                      <Td className="text-[var(--color-ink-muted)]">
+                        {r.status === "received"
+                          ? `${r.paid_at ? formatDateBR(r.paid_at.slice(0, 10)) : "—"}${r.payment_method ? ` · ${r.payment_method}` : ""}`
+                          : "—"}
+                      </Td>
+                      <Td>
+                        <Link
+                          href={`/app/receivables/${r.id}?returnTo=${encodeURIComponent(RETURN_TO)}`}
+                          className="font-medium text-[var(--color-primary)] hover:underline"
+                        >
+                          {receivableActionLabel(r)}
+                        </Link>
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableShell>
         </div>
       ) : null}
 

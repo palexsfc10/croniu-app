@@ -30,6 +30,7 @@ import { IconClipboardList, IconHistory, IconUser } from "@/components/ui/icons"
 import { BackLink } from "@/components/app/back-link";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
 import { BlockError } from "@/components/ui/block-error";
 
 type PendingRow = {
@@ -65,16 +66,16 @@ function PendingRowView({ row, timeZone }: { row: PendingRow; timeZone: string }
   const returnTo = "/app/accompaniment";
   return (
     <>
-      <td className="py-2.5 pr-3 font-medium text-[var(--color-ink)]">
+      <Td className="font-medium text-[var(--color-ink)]">
         <Link href={`/app/clients/${row.client_id}`} className="hover:underline">
           {row.client_name}
         </Link>
-      </td>
-      <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">{row.service_name || "—"}</td>
-      <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
+      </Td>
+      <Td className="text-[var(--color-ink-muted)]">{row.service_name || "—"}</Td>
+      <Td className="text-[var(--color-ink-muted)]">
         {row.last_evaluation_at ? formatDatePt(row.last_evaluation_at, timeZone) : "Nunca"}
-      </td>
-      <td className="py-2.5 pr-3 tabular-nums">
+      </Td>
+      <Td className="tabular-nums">
         {row.days_since_last_evaluation == null ? (
           <Badge tone="danger">Nunca avaliado</Badge>
         ) : (
@@ -82,11 +83,11 @@ function PendingRowView({ row, timeZone }: { row: PendingRow; timeZone: string }
             {row.days_since_last_evaluation} dias
           </Badge>
         )}
-      </td>
-      <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
+      </Td>
+      <Td className="text-[var(--color-ink-muted)]">
         {row.next_appointment_at ? formatDatePt(row.next_appointment_at, timeZone) : "—"}
-      </td>
-      <td className="py-2.5 pr-3">
+      </Td>
+      <Td>
         <div className="flex flex-wrap gap-2">
           <Link
             href={`/app/clients/${row.client_id}/evaluations/new?returnTo=${encodeURIComponent(returnTo)}`}
@@ -98,7 +99,7 @@ function PendingRowView({ row, timeZone }: { row: PendingRow; timeZone: string }
             Abrir cliente
           </Link>
         </div>
-      </td>
+      </Td>
     </>
   );
 }
@@ -214,30 +215,27 @@ export default function AccompanimentPage() {
               description="Todos os clientes com ciclo ativo têm uma avaliação recente."
             />
           ) : (
-            <div className="overflow-hidden overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
-            <table className="w-full border-collapse text-sm">
+            <TableShell>
+            <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                  <th className="py-2.5 pl-3.5 pr-3">Cliente</th>
-                  <th className="py-2 pr-3">Serviço/ciclo</th>
-                  <th className="py-2 pr-3">Última avaliação</th>
-                  <th className="py-2 pr-3">Dias sem avaliação</th>
-                  <th className="py-2 pr-3">Próximo compromisso</th>
-                  <th className="py-2 pr-3">Ação</th>
-                </tr>
+                <Tr>
+                  <Th>Cliente</Th>
+                  <Th>Serviço/ciclo</Th>
+                  <Th>Última avaliação</Th>
+                  <Th>Dias sem avaliação</Th>
+                  <Th>Próximo compromisso</Th>
+                  <Th>Ação</Th>
+                </Tr>
               </thead>
               <tbody>
                 {pending.map((row) => (
-                  <tr
-                    key={row.client_id}
-                    className="border-b border-[var(--color-border)]/60 hover:bg-[var(--color-surface-subtle)]"
-                  >
+                  <Tr key={row.client_id} className="hover:bg-[var(--color-surface-subtle)]">
                     <PendingRowView row={row} timeZone={timeZone} />
-                  </tr>
+                  </Tr>
                 ))}
               </tbody>
             </table>
-            </div>
+            </TableShell>
           )
         ) : null}
 
@@ -245,38 +243,35 @@ export default function AccompanimentPage() {
           recent.length === 0 ? (
             <EmptyState title="Nenhuma avaliação publicada ainda" description="Publique uma avaliação para vê-la aqui." />
           ) : (
-            <div className="overflow-hidden overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
-            <table className="w-full border-collapse text-sm">
+            <TableShell>
+            <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                  <th className="py-2.5 pl-3.5 pr-3">Título</th>
-                  <th className="py-2 pr-3">Publicado em</th>
-                  <th className="py-2 pr-3">Ação</th>
-                </tr>
+                <Tr>
+                  <Th>Título</Th>
+                  <Th>Publicado em</Th>
+                  <Th>Ação</Th>
+                </Tr>
               </thead>
               <tbody>
                 {recent.map((ev) => (
-                  <tr
-                    key={ev.id}
-                    className="border-b border-[var(--color-border)]/60 hover:bg-[var(--color-surface-subtle)]"
-                  >
-                    <td className="py-2.5 pl-3.5 pr-3 font-medium text-[var(--color-ink)]">{ev.title}</td>
-                    <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
+                  <Tr key={ev.id} className="hover:bg-[var(--color-surface-subtle)]">
+                    <Td className="font-medium text-[var(--color-ink)]">{ev.title}</Td>
+                    <Td className="text-[var(--color-ink-muted)]">
                       {ev.published_at ? formatDatePt(ev.published_at, timeZone) : "—"}
-                    </td>
-                    <td className="py-2.5 pr-3">
+                    </Td>
+                    <Td>
                       <Link
                         href={`/app/clients/${ev.client_id}/evaluations/${ev.id}`}
                         className="text-sm font-medium text-[var(--color-link)]"
                       >
                         Abrir registro
                       </Link>
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                 ))}
               </tbody>
             </table>
-            </div>
+            </TableShell>
           )
         ) : null}
       </div>

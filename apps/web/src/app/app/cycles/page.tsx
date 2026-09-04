@@ -27,6 +27,7 @@ import {
   type CycleView,
 } from "@/lib/cycle-central";
 import { buildRenewalCaseIndex, renewalStatusLabel } from "@/lib/renewal-status";
+import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
 import { cycleInPeriod, periodBounds, type PeriodPreset } from "@/lib/cycle-period";
 import {
   formatCycleVigencyCard,
@@ -377,20 +378,20 @@ export default function CyclesPage() {
 
       {/* Desktop: tabela densa com todas as colunas reais */}
       {visible.length ? (
-        <div className="hidden overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] lg:block">
-          <div className="overflow-x-auto">
+        <div className="hidden lg:block">
+          <TableShell>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)]/60 text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                  <th className="px-3.5 py-2.5">Cliente</th>
-                  <th className="px-3.5 py-2.5">Serviço</th>
-                  <th className="px-3.5 py-2.5">Período</th>
-                  <th className="px-3.5 py-2.5">Situação</th>
-                  <th className="px-3.5 py-2.5">Progresso</th>
-                  <th className="px-3.5 py-2.5">Próxima sessão</th>
-                  <th className="px-3.5 py-2.5">Financeiro</th>
-                  <th className="px-3.5 py-2.5">Ações</th>
-                </tr>
+                <Tr>
+                  <Th>Cliente</Th>
+                  <Th>Serviço</Th>
+                  <Th>Período</Th>
+                  <Th>Situação</Th>
+                  <Th>Progresso</Th>
+                  <Th>Próxima sessão</Th>
+                  <Th>Financeiro</Th>
+                  <Th>Ações</Th>
+                </Tr>
               </thead>
               <tbody>
                 {visible.map((row) => {
@@ -398,8 +399,8 @@ export default function CyclesPage() {
                   const vigency = formatCycleVigencyCard(c.starts_on, c.ends_on);
                   const renewHref = renewalTarget(row, RETURN_TO);
                   return (
-                    <tr key={c.id} className="border-b border-[var(--color-border)]/50 last:border-b-0">
-                      <td className="px-3.5 py-3">
+                    <Tr key={c.id}>
+                      <Td>
                         <Link
                           href={`/app/clients/${c.client_id}?tab=plano`}
                           className="font-medium text-[var(--color-ink)] hover:underline"
@@ -415,31 +416,31 @@ export default function CyclesPage() {
                             ))}
                           </div>
                         ) : null}
-                      </td>
-                      <td className="px-3.5 py-3 text-[var(--color-ink-muted)]">{c.service_name}</td>
-                      <td className="px-3.5 py-3 text-[var(--color-ink-muted)] tabular-nums">
+                      </Td>
+                      <Td className="text-[var(--color-ink-muted)]">{c.service_name}</Td>
+                      <Td className="text-[var(--color-ink-muted)] tabular-nums">
                         <span className="block">{vigency.range}</span>
                         <span className="block text-xs">{vigency.renewal}</span>
-                      </td>
-                      <td className="px-3.5 py-3">
+                      </Td>
+                      <Td>
                         <Badge tone={row.statusTone}>{row.statusLabel}</Badge>
-                      </td>
-                      <td className="px-3.5 py-3 text-[var(--color-ink-muted)] tabular-nums">
+                      </Td>
+                      <Td className="text-[var(--color-ink-muted)] tabular-nums">
                         {row.progress ? `${row.progress.done} de ${row.progress.total}` : "—"}
-                      </td>
-                      <td className="px-3.5 py-3 text-[var(--color-ink-muted)] tabular-nums">
+                      </Td>
+                      <Td className="text-[var(--color-ink-muted)] tabular-nums">
                         {nextSessionLabel(row, tz)}
-                      </td>
-                      <td
-                        className={`px-3.5 py-3 tabular-nums ${
+                      </Td>
+                      <Td
+                        className={`tabular-nums ${
                           row.overdueCount > 0
                             ? "font-medium text-[var(--color-danger)]"
                             : "text-[var(--color-ink-muted)]"
                         }`}
                       >
                         {financeLabel(row)}
-                      </td>
-                      <td className="px-3.5 py-3">
+                      </Td>
+                      <Td>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           {renewHref ? (
                             <Link
@@ -463,13 +464,13 @@ export default function CyclesPage() {
                             </button>
                           ) : null}
                         </div>
-                      </td>
-                    </tr>
+                      </Td>
+                    </Tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
+          </TableShell>
         </div>
       ) : null}
 

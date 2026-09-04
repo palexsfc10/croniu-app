@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
 import { IconSparkles } from "@/components/ui/icons";
 import { PageTitle } from "@/components/ui/page-title";
+import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
 import {
   AwaitingClientSheet,
   EndWithoutRenewalSheet,
@@ -198,68 +199,63 @@ export default function RenewalsPage() {
       {filtered && filtered.length > 0 ? (
         <>
           {/* Desktop: tabela densa com todas as colunas reais. */}
-          <div className="hidden overflow-hidden overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm lg:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)]/60 text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                  <th className="px-3.5 py-2.5">Cliente</th>
-                  <th className="px-3.5 py-2.5">Serviço</th>
-                  <th className="px-3.5 py-2.5">Data final</th>
-                  <th className="px-3.5 py-2.5">Situação</th>
-                  <th className="px-3.5 py-2.5">Próxima ação/data</th>
-                  <th className="px-3.5 py-2.5">Origem</th>
-                  <th className="px-3.5 py-2.5">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr
-                    key={row.source_cycle_id}
-                    className="border-b border-[var(--color-border)]/60 align-top hover:bg-[var(--color-surface-subtle)]"
-                  >
-                    <td className="px-3.5 py-2.5 font-medium text-[var(--color-ink)]">
-                      <Link href={`/app/clients/${row.client_id}?tab=plano`} className="hover:underline">
-                        {row.client_name || "Cliente"}
-                      </Link>
-                    </td>
-                    <td className="px-3.5 py-2.5 text-[var(--color-ink-muted)]">
-                      {row.service_name || "—"}
-                    </td>
-                    <td className="px-3.5 py-2.5 tabular-nums text-[var(--color-ink-muted)]">
-                      {formatDateBR(row.ends_on)}
-                    </td>
-                    <td className="px-3.5 py-2.5">
-                      <Badge tone={renewalStatusTone(row.display_status)}>
-                        {renewalStatusLabel(row.display_status)}
-                      </Badge>
-                    </td>
-                    <td className="px-3.5 py-2.5 text-[var(--color-ink-muted)]">
-                      {row.display_status === "awaiting_client" && row.next_contact_date
-                        ? `Contato em ${formatDateBR(row.next_contact_date)}`
-                        : row.display_status === "ended_without_renewal" && row.resolution_reason
-                          ? RESOLUTION_REASON_LABEL[row.resolution_reason]
-                          : row.display_status === "renewed"
-                            ? "Ciclo criado"
-                            : "—"}
-                    </td>
-                    <td className="px-3.5 py-2.5">
-                      {row.portal_requested ? (
-                        <Badge tone="warning">Cliente pediu</Badge>
-                      ) : (
-                        <span className="text-[var(--color-ink-subtle)]">—</span>
-                      )}
-                    </td>
-                    <td className="px-3.5 py-2.5">
-                      <RowActions
-                        row={row}
-                        onAwaitingClient={() => setAwaitingTarget(row)}
-                        onEndWithoutRenewal={() => setEndTarget(row)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="hidden lg:block">
+            <TableShell>
+              <table className="w-full text-sm">
+                <thead>
+                  <Tr>
+                    <Th>Cliente</Th>
+                    <Th>Serviço</Th>
+                    <Th>Data final</Th>
+                    <Th>Situação</Th>
+                    <Th>Próxima ação/data</Th>
+                    <Th>Origem</Th>
+                    <Th>Ações</Th>
+                  </Tr>
+                </thead>
+                <tbody>
+                  {filtered.map((row) => (
+                    <Tr key={row.source_cycle_id} className="align-top hover:bg-[var(--color-surface-subtle)]">
+                      <Td className="font-medium text-[var(--color-ink)]">
+                        <Link href={`/app/clients/${row.client_id}?tab=plano`} className="hover:underline">
+                          {row.client_name || "Cliente"}
+                        </Link>
+                      </Td>
+                      <Td className="text-[var(--color-ink-muted)]">{row.service_name || "—"}</Td>
+                      <Td className="tabular-nums text-[var(--color-ink-muted)]">{formatDateBR(row.ends_on)}</Td>
+                      <Td>
+                        <Badge tone={renewalStatusTone(row.display_status)}>
+                          {renewalStatusLabel(row.display_status)}
+                        </Badge>
+                      </Td>
+                      <Td className="text-[var(--color-ink-muted)]">
+                        {row.display_status === "awaiting_client" && row.next_contact_date
+                          ? `Contato em ${formatDateBR(row.next_contact_date)}`
+                          : row.display_status === "ended_without_renewal" && row.resolution_reason
+                            ? RESOLUTION_REASON_LABEL[row.resolution_reason]
+                            : row.display_status === "renewed"
+                              ? "Ciclo criado"
+                              : "—"}
+                      </Td>
+                      <Td>
+                        {row.portal_requested ? (
+                          <Badge tone="warning">Cliente pediu</Badge>
+                        ) : (
+                          <span className="text-[var(--color-ink-subtle)]">—</span>
+                        )}
+                      </Td>
+                      <Td>
+                        <RowActions
+                          row={row}
+                          onAwaitingClient={() => setAwaitingTarget(row)}
+                          onEndWithoutRenewal={() => setEndTarget(row)}
+                        />
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableShell>
           </div>
 
           {/* Mobile: cartões resumidos, nunca a tabela comprimida. */}

@@ -7,6 +7,7 @@ import { apiFetch, formatBRL, type Service, type ServiceUsage } from "@/lib/api"
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
 
 /** What the professional charges, in words — never a raw enum. */
 function priceLabel(service: Service): string {
@@ -114,56 +115,54 @@ export default function ServicesPage() {
 
       {/* Desktop: tabela densa */}
       {rows.length ? (
-        <div className="hidden overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] lg:block">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)]/60 text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                <th className="px-3.5 py-2.5">Serviço</th>
-                <th className="px-3.5 py-2.5">Situação</th>
-                <th className="px-3.5 py-2.5">Cobrança</th>
-                <th className="px-3.5 py-2.5">Valor</th>
-                <th className="px-3.5 py-2.5">Duração</th>
-                <th className="px-3.5 py-2.5">Ciclos em andamento</th>
-                <th className="px-3.5 py-2.5">Clientes</th>
-                <th className="px-3.5 py-2.5">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ service, usage: u }) => (
-                <tr key={service.id} className="border-b border-[var(--color-border)]/50 last:border-b-0">
-                  <td className="px-3.5 py-3 font-medium text-[var(--color-ink)]">{service.name}</td>
-                  <td className="px-3.5 py-3">
-                    <Badge tone={service.status === "archived" ? "neutral" : "info"}>
-                      {service.status === "archived" ? "Arquivado" : "Ativo"}
-                    </Badge>
-                  </td>
-                  <td className="px-3.5 py-3 text-[var(--color-ink-muted)]">{billingLabel(service)}</td>
-                  <td className="px-3.5 py-3 tabular-nums text-[var(--color-ink)]">
-                    {service.pricing_mode === "fixed_period"
-                      ? formatBRL(service.fixed_price_cents)
-                      : formatBRL(service.default_price_cents)}
-                  </td>
-                  <td className="px-3.5 py-3 tabular-nums text-[var(--color-ink-muted)]">
-                    {service.default_duration_minutes} min
-                  </td>
-                  <td className="px-3.5 py-3 tabular-nums text-[var(--color-ink-muted)]">
-                    {u.running_cycles}
-                  </td>
-                  <td className="px-3.5 py-3 tabular-nums text-[var(--color-ink-muted)]">
-                    {u.distinct_clients}
-                  </td>
-                  <td className="px-3.5 py-3">
-                    <Link
-                      href={`/app/services/${service.id}`}
-                      className="font-medium text-[var(--color-primary)] hover:underline"
-                    >
-                      Editar
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="hidden lg:block">
+          <TableShell>
+            <table className="w-full text-sm">
+              <thead>
+                <Tr>
+                  <Th>Serviço</Th>
+                  <Th>Situação</Th>
+                  <Th>Cobrança</Th>
+                  <Th>Valor</Th>
+                  <Th>Duração</Th>
+                  <Th>Ciclos em andamento</Th>
+                  <Th>Clientes</Th>
+                  <Th>Ações</Th>
+                </Tr>
+              </thead>
+              <tbody>
+                {rows.map(({ service, usage: u }) => (
+                  <Tr key={service.id}>
+                    <Td className="font-medium text-[var(--color-ink)]">{service.name}</Td>
+                    <Td>
+                      <Badge tone={service.status === "archived" ? "neutral" : "info"}>
+                        {service.status === "archived" ? "Arquivado" : "Ativo"}
+                      </Badge>
+                    </Td>
+                    <Td className="text-[var(--color-ink-muted)]">{billingLabel(service)}</Td>
+                    <Td className="tabular-nums text-[var(--color-ink)]">
+                      {service.pricing_mode === "fixed_period"
+                        ? formatBRL(service.fixed_price_cents)
+                        : formatBRL(service.default_price_cents)}
+                    </Td>
+                    <Td className="tabular-nums text-[var(--color-ink-muted)]">
+                      {service.default_duration_minutes} min
+                    </Td>
+                    <Td className="tabular-nums text-[var(--color-ink-muted)]">{u.running_cycles}</Td>
+                    <Td className="tabular-nums text-[var(--color-ink-muted)]">{u.distinct_clients}</Td>
+                    <Td>
+                      <Link
+                        href={`/app/services/${service.id}`}
+                        className="font-medium text-[var(--color-primary)] hover:underline"
+                      >
+                        Editar
+                      </Link>
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </table>
+          </TableShell>
         </div>
       ) : null}
 

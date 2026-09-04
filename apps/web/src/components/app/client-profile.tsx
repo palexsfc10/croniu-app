@@ -54,6 +54,7 @@ import { ActionSheet } from "@/components/ui/action-sheet";
 import { TextArea } from "@/components/ui/text-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
+import { MenuItem } from "@/components/ui/menu-item";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   IconCalendarDays,
@@ -497,55 +498,35 @@ export function ClientProfile({ clientId }: Props) {
           </summary>
           <div className="absolute right-0 z-20 mt-1 min-w-[14rem] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-sm">
             {access?.has_active_link && access.public_url ? (
-              <a
+              <MenuItem
                 href={access.public_path ?? access.public_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex min-h-11 items-center gap-2 rounded-[var(--radius-sm)] px-2 py-2 text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
+                external
+                icon={<IconExternalLink className="h-4 w-4" aria-hidden />}
                 onClick={() => setMenuOpen(false)}
               >
-                <IconExternalLink className="h-4 w-4" aria-hidden />
                 Visualizar como cliente
-              </a>
+              </MenuItem>
             ) : null}
             {access?.has_active_link && access.public_url ? (
-              <button
-                type="button"
-                className="block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
-                onClick={() => void copyMenuAccess()}
-              >
-                Copiar acesso do portal
-              </button>
+              <MenuItem onClick={() => void copyMenuAccess()}>Copiar acesso do portal</MenuItem>
             ) : (
-              <button
-                type="button"
-                className="block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)]"
+              <MenuItem
                 onClick={() => {
                   setTab("resumo");
                   setMenuOpen(false);
                 }}
               >
                 Criar acesso do portal
-              </button>
+              </MenuItem>
             )}
             {item?.status === "archived" ? (
-              <button
-                type="button"
-                className="mt-1 block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)] disabled:pointer-events-none disabled:opacity-55"
-                disabled={busy}
-                onClick={() => void reactivate()}
-              >
+              <MenuItem disabled={busy} onClick={() => void reactivate()}>
                 Reativar
-              </button>
+              </MenuItem>
             ) : (
-              <button
-                type="button"
-                className="mt-1 block w-full min-h-11 rounded-[var(--radius-sm)] px-2 py-2 text-left text-sm text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger-subtle)] focus-visible:bg-[var(--color-danger-subtle)] disabled:pointer-events-none disabled:opacity-55"
-                disabled={busy}
-                onClick={() => void archive()}
-              >
+              <MenuItem danger disabled={busy} onClick={() => void archive()}>
                 Arquivar
-              </button>
+              </MenuItem>
             )}
           </div>
         </details>

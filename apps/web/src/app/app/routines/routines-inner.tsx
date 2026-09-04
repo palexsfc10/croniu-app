@@ -15,6 +15,7 @@ import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
 import { IconChevronRight, IconMoreHorizontal, IconPlus } from "@/components/ui/icons";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BlockError } from "@/components/ui/block-error";
@@ -699,42 +700,35 @@ export default function RoutinesPageInner() {
             }
           />
         ) : (
-          <div className="overflow-hidden overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
-          <table className="w-full border-collapse text-sm">
+          <TableShell>
+          <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--color-border)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                <th className="py-2.5 pl-3.5 pr-3">Rotina</th>
-                <th className="py-2 pr-3">Cliente</th>
-                <th className="py-2 pr-3">Tipo</th>
-                <th className="py-2 pr-3">Origem</th>
-                <th className="py-2 pr-3">Vencimento</th>
-                <th className="py-2 pr-3">Status</th>
-                <th className="py-2 pr-3">Ações</th>
-              </tr>
+              <Tr>
+                <Th>Rotina</Th>
+                <Th>Cliente</Th>
+                <Th>Tipo</Th>
+                <Th>Origem</Th>
+                <Th>Vencimento</Th>
+                <Th>Status</Th>
+                <Th>Ações</Th>
+              </Tr>
             </thead>
             <tbody>
               {filteredDeskItems.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b border-[var(--color-border)]/60 align-top hover:bg-[var(--color-surface-subtle)]"
-                >
-                  <td className="py-2.5 pl-3.5 pr-3 font-medium text-[var(--color-ink)]">
+                <Tr key={item.id} className="align-top hover:bg-[var(--color-surface-subtle)]">
+                  <Td className="font-medium text-[var(--color-ink)]">
                     {item.name || item.type_label}
-                  </td>
-                  <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
-                    {item.client_name || "—"}
-                  </td>
-                  <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">{item.type_label}</td>
-                  <td className="py-2.5 pr-3 text-[var(--color-ink-muted)]">
-                    {sourceLabel(item.source)}
-                  </td>
-                  <td className="py-2.5 pr-3 tabular-nums">
+                  </Td>
+                  <Td className="text-[var(--color-ink-muted)]">{item.client_name || "—"}</Td>
+                  <Td className="text-[var(--color-ink-muted)]">{item.type_label}</Td>
+                  <Td className="text-[var(--color-ink-muted)]">{sourceLabel(item.source)}</Td>
+                  <Td className="tabular-nums">
                     <span className={item.overdue ? "font-semibold text-[var(--color-danger)]" : ""}>
                       {formatDateBR(item.due_on)}
                       {item.overdue ? " · Atrasada" : ""}
                     </span>
-                  </td>
-                  <td className="py-2.5 pr-3">
+                  </Td>
+                  <Td>
                     <Badge
                       tone={
                         item.status === "completed"
@@ -748,8 +742,8 @@ export default function RoutinesPageInner() {
                     >
                       {item.status_label}
                     </Badge>
-                  </td>
-                  <td className="py-2.5 pr-3">
+                  </Td>
+                  <Td>
                     <RoutineActions
                       item={item}
                       busy={busy}
@@ -757,12 +751,12 @@ export default function RoutinesPageInner() {
                       onDefer={(id) => void decide(id, "deferred")}
                       onCancel={(id) => void decide(id, "cancelled")}
                     />
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
             </tbody>
           </table>
-          </div>
+          </TableShell>
         )}
 
         <div className="grid gap-4 lg:grid-cols-2">
