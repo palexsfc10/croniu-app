@@ -6,7 +6,8 @@ import {
   renewalTarget,
   type CycleRow,
 } from "@/lib/cycle-central";
-import type { Appointment, Cycle, Receivable } from "@/lib/api";
+import { buildRenewalCaseIndex } from "@/lib/renewal-status";
+import type { Appointment, Cycle, Receivable, RenewalCaseView } from "@/lib/api";
 
 const TODAY = "2026-09-03";
 
@@ -55,12 +56,30 @@ function receivable(over: Partial<Receivable> = {}): Receivable {
   } as Receivable;
 }
 
-function build(c: Cycle, opts: Partial<Parameters<typeof buildCycleRow>[1]> = {}): CycleRow {
+function renewalCase(over: Partial<RenewalCaseView> = {}): RenewalCaseView {
+  return {
+    case_id: "case1",
+    client_id: "cl1",
+    client_name: "Ana",
+    source_cycle_id: "cy1",
+    service_name: "Aula",
+    ends_on: "2026-10-01",
+    display_status: "upcoming",
+    portal_requested: false,
+    next_contact_date: null,
+    resolution_reason: null,
+    resolution_note: null,
+    resolved_at: null,
+    successor_cycle_id: null,
+    ...over,
+  } as RenewalCaseView;
+}
+
+function build(c: Cycle, opts: { receivables?: Receivable[]; nextAppointmentByClientId?: Record<string, Appointment>; renewalCases?: RenewalCaseView[]; today?: string } = {}): CycleRow {
   return buildCycleRow(c, {
-    allCycles: opts.allCycles ?? [c],
     receivables: opts.receivables ?? [],
     nextAppointmentByClientId: opts.nextAppointmentByClientId ?? {},
-    openRenewalCycleIds: opts.openRenewalCycleIds ?? new Set<string>(),
+    renewalCases: buildRenewalCaseIndex(opts.renewalCases ?? []),
     today: opts.today ?? TODAY,
   });
 }
@@ -90,18 +109,30 @@ describe("buildCycleRow — só dados reais, nunca progresso inventado", () => {
     expect(overdue.overdueCount).toBe(1);
   });
 
-  it("flags renewal when the cycle is nearing its end and nothing succeeds it", () => {
-    const row = build(cycle({ is_nearing_end: true }));
+  it("flags renewal only when RenewalCase says the cycle still needs a decision — never a client+service+date guess", () => {
+    const row = build(cycle({ is_nearing_end: true }), {
+      renewalCases: [renewalCase({ display_status: "upcoming" })],
+    });
     expect(row.alerts).toContain("renewal");
-    expect(row.hasSuccessor).toBe(false);
+    expect(row.renewalCase?.display_status).toBe("upcoming");
   });
 
-  it("never nags about renewal once a successor cycle already exists", () => {
-    const current = cycle({ id: "cy1", is_nearing_end: true, ends_on: "2026-10-01" });
-    const successor = cycle({ id: "cy2", starts_on: "2026-10-01", ends_on: "2026-12-01" });
-    const row = build(current, { allCycles: [current, successor] });
-    expect(row.hasSuccessor).toBe(true);
+  it("never flags renewal for a cycle with no RenewalCase at all", () => {
+    const row = build(cycle({ is_nearing_end: true }));
     expect(row.alerts).not.toContain("renewal");
+    expect(row.renewalCase).toBeNull();
+  });
+
+  it("never nags about renewal once the case is resolved — renewed or ended without renewal, regardless of successor cycles existing", () => {
+    const renewed = build(cycle({ is_nearing_end: true }), {
+      renewalCases: [renewalCase({ display_status: "renewed", successor_cycle_id: "cy2" })],
+    });
+    expect(renewed.alerts).not.toContain("renewal");
+
+    const endedWithoutRenewal = build(cycle({ status: "ended", ends_on: "2026-08-01" }), {
+      renewalCases: [renewalCase({ display_status: "ended_without_renewal" })],
+    });
+    expect(endedWithoutRenewal.alerts).not.toContain("renewal");
   });
 
   it("flags no_schedule only for a running cycle with neither weekdays nor a time", () => {
@@ -113,10 +144,13 @@ describe("buildCycleRow — só dados reais, nunca progresso inventado", () => {
     expect(upcoming.alerts).not.toContain("no_schedule");
   });
 
-  it("raises no alert at all for a cancelled cycle", () => {
+  it("raises no alert at all for a cancelled cycle, even with an open renewal case", () => {
     const row = build(
       cycle({ status: "cancelled", is_nearing_end: true, weekdays: null, default_starts_time: null }),
-      { receivables: [receivable({ due_on: "2026-08-01" })] },
+      {
+        receivables: [receivable({ due_on: "2026-08-01" })],
+        renewalCases: [renewalCase({ display_status: "overdue" })],
+      },
     );
     expect(row.alerts).toEqual([]);
   });
@@ -155,15 +189,17 @@ describe("renewalTarget — sempre o fluxo existente, nunca uma mutação", () =
     expect(isRenewalEligible(build(cycle()))).toBe(false);
   });
 
-  it("sends the professional to the real request queue when the client already asked", () => {
+  it("sends the professional to the real request queue when the RenewalCase says the client already asked through the portal", () => {
     const row = build(cycle({ is_nearing_end: true }), {
-      openRenewalCycleIds: new Set(["cy1"]),
+      renewalCases: [renewalCase({ display_status: "pending", portal_requested: true })],
     });
     expect(renewalTarget(row, "/app/cycles")).toBe("/app/renewals");
   });
 
   it("pre-fills the existing cycle form from the source cycle, carrying returnTo", () => {
-    const row = build(cycle({ is_nearing_end: true }));
+    const row = build(cycle({ is_nearing_end: true }), {
+      renewalCases: [renewalCase({ display_status: "upcoming" })],
+    });
     const href = renewalTarget(row, "/app/cycles");
     expect(href).toContain("/app/cycles/new?");
     expect(href).toContain("clientId=cl1");
@@ -174,14 +210,16 @@ describe("renewalTarget — sempre o fluxo existente, nunca uma mutação", () =
   });
 
   it("never carries a hardcoded duration — the template alone decides it", () => {
-    const row = build(cycle({ is_nearing_end: true }));
+    const row = build(cycle({ is_nearing_end: true }), {
+      renewalCases: [renewalCase({ display_status: "upcoming" })],
+    });
     const href = renewalTarget(row, "/app/cycles") ?? "";
     expect(href).not.toMatch(/month|mes|duration/i);
   });
 
-  it("offers renewal for an ended cycle with no successor", () => {
+  it("offers renewal for an ended cycle whose case is still overdue", () => {
     const ended = cycle({ status: "ended", ends_on: "2026-08-01" });
-    const row = build(ended);
+    const row = build(ended, { renewalCases: [renewalCase({ display_status: "overdue" })] });
     expect(isRenewalEligible(row)).toBe(true);
   });
 });

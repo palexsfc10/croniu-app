@@ -57,12 +57,28 @@ const HEALTHY = {
   is_nearing_end: false,
 };
 
+const NEARING_CASE = {
+  case_id: "case-near",
+  client_id: "cl1",
+  client_name: "Ana Vencendo",
+  source_cycle_id: "cy-near",
+  service_name: "Treino Funcional",
+  ends_on: "2026-09-20",
+  display_status: "upcoming",
+  portal_requested: false,
+  next_contact_date: null,
+  resolution_reason: null,
+  resolution_note: null,
+  resolved_at: null,
+  successor_cycle_id: null,
+};
+
 function mockApi(over: Record<string, unknown> = {}) {
   const data: Record<string, unknown> = {
     "/api/v1/cycles": [NEARING, HEALTHY],
     "/api/v1/receivables": [],
     "/api/v1/agenda/next-appointments": {},
-    "/api/v1/renewal-requests": [],
+    "/api/v1/renewal-cases?scope=all": [NEARING_CASE],
     "/api/v1/organization/preferences": { local_today: TODAY },
     ...over,
   };
@@ -154,11 +170,9 @@ describe("CyclesPage — central de contratos, hierarquia e dados reais", () => 
     expect(container.textContent).not.toMatch(/\+1 m[êe]s/i);
   });
 
-  it("routes 'Preparar renovação' to the real request queue when the client already asked", async () => {
+  it("routes 'Preparar renovação' to the real request queue when the RenewalCase says the client already asked through the portal", async () => {
     mockApi({
-      "/api/v1/renewal-requests": [
-        { id: "rr1", source_cycle_id: "cy-near", status: "requested" },
-      ],
+      "/api/v1/renewal-cases?scope=all": [{ ...NEARING_CASE, portal_requested: true }],
     });
     const { desktop } = await renderLoaded("Ana Vencendo");
     const row = within(desktop).getByText("Ana Vencendo").closest("tr") as HTMLElement;
@@ -168,12 +182,25 @@ describe("CyclesPage — central de contratos, hierarquia e dados reais", () => 
     );
   });
 
-  it("never offers renewal for a cycle that already has a successor", async () => {
-    const successor = { ...HEALTHY, id: "cy-succ", client_id: "cl1", starts_on: "2026-09-20", ends_on: "2026-11-20" };
-    mockApi({ "/api/v1/cycles": [NEARING, successor] });
+  it("never offers renewal once the RenewalCase says it's already renewed, regardless of what other cycles exist", async () => {
+    mockApi({
+      "/api/v1/renewal-cases?scope=all": [
+        { ...NEARING_CASE, display_status: "renewed", successor_cycle_id: "cy-succ" },
+      ],
+    });
     const { container } = render(<CyclesPage />);
-    // With a successor there is no alert left, so the attention view is empty
-    // and neither the table nor the renewal action is rendered at all.
+    // With the case resolved there is no alert left, so the attention view is
+    // empty and neither the table nor the renewal action is rendered at all.
+    await screen.findByText("Nenhum ciclo exigindo atenção");
+    expect(container.querySelector(".hidden.lg\\:block")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Preparar renovação" })).not.toBeInTheDocument();
+  });
+
+  it("never offers renewal once the RenewalCase says it ended without renewal", async () => {
+    mockApi({
+      "/api/v1/renewal-cases?scope=all": [{ ...NEARING_CASE, display_status: "ended_without_renewal" }],
+    });
+    const { container } = render(<CyclesPage />);
     await screen.findByText("Nenhum ciclo exigindo atenção");
     expect(container.querySelector(".hidden.lg\\:block")).toBeNull();
     expect(screen.queryByRole("link", { name: "Preparar renovação" })).not.toBeInTheDocument();

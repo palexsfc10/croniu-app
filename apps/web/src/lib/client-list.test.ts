@@ -7,7 +7,8 @@ import {
   mobileAttentionDetail,
   primaryAttentionReason,
 } from "@/lib/client-list";
-import type { Appointment, Client, Cycle, Receivable } from "@/lib/api";
+import { buildRenewalCaseIndex } from "@/lib/renewal-status";
+import type { Appointment, Client, Cycle, Receivable, RenewalCaseView } from "@/lib/api";
 
 const client: Client = {
   id: "c1",
@@ -103,6 +104,25 @@ function baseReceivable(overrides: Partial<Receivable> = {}): Receivable {
   };
 }
 
+function renewalCase(overrides: Partial<RenewalCaseView> = {}): RenewalCaseView {
+  return {
+    case_id: "case1",
+    client_id: "c1",
+    client_name: "Pedro Xavier",
+    source_cycle_id: "cy1",
+    service_name: "Aula",
+    ends_on: "2026-08-20",
+    display_status: "upcoming",
+    portal_requested: false,
+    next_contact_date: null,
+    resolution_reason: null,
+    resolution_note: null,
+    resolved_at: null,
+    successor_cycle_id: null,
+    ...overrides,
+  } as RenewalCaseView;
+}
+
 describe("buildClientRow — real, derived attention reasons (never invented)", () => {
   const today = "2026-08-14";
   const baseOpts = {
@@ -110,6 +130,7 @@ describe("buildClientRow — real, derived attention reasons (never invented)", 
     receivables: [] as Receivable[],
     nextAppointmentByClientId: {} as Record<string, Appointment>,
     pendingIntakeClientIds: new Set<string>(),
+    renewalCases: buildRenewalCaseIndex([]),
     today,
   };
 
@@ -127,17 +148,45 @@ describe("buildClientRow — real, derived attention reasons (never invented)", 
     expect(row.reasons).toContain("onboarding");
   });
 
-  it("flags 'renewal' when the active cycle is nearing its end with no upcoming replacement", () => {
+  it("flags 'renewal' only when RenewalCase says the cycle still needs a decision — never a bare is_nearing_end guess", () => {
     const cycle = baseCycle({ is_nearing_end: true, days_remaining: 3 });
-    const row = buildClientRow(client, { ...baseOpts, cycles: [cycle] });
+    const row = buildClientRow(client, {
+      ...baseOpts,
+      cycles: [cycle],
+      renewalCases: buildRenewalCaseIndex([renewalCase({ source_cycle_id: "cy1", display_status: "upcoming" })]),
+    });
     expect(row.reasons).toContain("renewal");
     expect(row.reasons).not.toContain("onboarding");
+    expect(row.renewalCase?.display_status).toBe("upcoming");
   });
 
-  it("does not flag 'renewal' when an upcoming cycle already covers the renewal", () => {
-    const active = baseCycle({ is_nearing_end: true, days_remaining: 3 });
-    const upcoming = baseCycle({ id: "cy2", starts_on: "2026-08-21", ends_on: "2026-09-21" });
-    const row = buildClientRow(client, { ...baseOpts, cycles: [active, upcoming] });
+  it("does not flag 'renewal' for a nearing-end cycle with no RenewalCase at all", () => {
+    const cycle = baseCycle({ is_nearing_end: true, days_remaining: 3 });
+    const row = buildClientRow(client, { ...baseOpts, cycles: [cycle] });
+    expect(row.reasons).not.toContain("renewal");
+  });
+
+  it("never flags 'renewal' once the case is resolved — a professional-closed 'ended_without_renewal' cycle must never re-surface as a pending renewal", () => {
+    const ended = baseCycle({ status: "ended", starts_on: "2026-06-01", ends_on: "2026-06-30" });
+    const row = buildClientRow(client, {
+      ...baseOpts,
+      cycles: [ended],
+      renewalCases: buildRenewalCaseIndex([
+        renewalCase({ source_cycle_id: "cy1", display_status: "ended_without_renewal" }),
+      ]),
+    });
+    expect(row.reasons).not.toContain("renewal");
+  });
+
+  it("never flags 'renewal' once the case is renewed, even though there is no active/upcoming cycle in this snapshot", () => {
+    const ended = baseCycle({ status: "ended", starts_on: "2026-06-01", ends_on: "2026-06-30" });
+    const row = buildClientRow(client, {
+      ...baseOpts,
+      cycles: [ended],
+      renewalCases: buildRenewalCaseIndex([
+        renewalCase({ source_cycle_id: "cy1", display_status: "renewed", successor_cycle_id: "cy2" }),
+      ]),
+    });
     expect(row.reasons).not.toContain("renewal");
   });
 
@@ -218,6 +267,7 @@ describe("matchesView", () => {
     receivables: [],
     nextAppointmentByClientId: {},
     pendingIntakeClientIds: new Set<string>(),
+    renewalCases: buildRenewalCaseIndex([]),
     today,
   });
 
@@ -243,6 +293,7 @@ describe("primaryAttentionReason / mobileAttentionDetail — mobile shows one he
     receivables: [] as Receivable[],
     nextAppointmentByClientId: {} as Record<string, Appointment>,
     pendingIntakeClientIds: new Set<string>(),
+    renewalCases: buildRenewalCaseIndex([]),
     today,
   };
 
@@ -262,11 +313,17 @@ describe("primaryAttentionReason / mobileAttentionDetail — mobile shows one he
     expect(mobileAttentionDetail(row)).toContain("atrasado");
   });
 
-  it("shows the real days-remaining count for 'renewal', never a generic label alone", () => {
+  it("shows the real RenewalCase status label for 'renewal' when a case exists", () => {
     const cycle = baseCycle({ is_nearing_end: true, days_remaining: 4 });
-    const row = buildClientRow(client, { ...baseOpts, cycles: [cycle] });
+    const row = buildClientRow(client, {
+      ...baseOpts,
+      cycles: [cycle],
+      renewalCases: buildRenewalCaseIndex([
+        renewalCase({ source_cycle_id: "cy1", display_status: "awaiting_client" }),
+      ]),
+    });
     expect(primaryAttentionReason(row)).toBe("renewal");
-    expect(mobileAttentionDetail(row)).toBe("Renovação em 4 dias");
+    expect(mobileAttentionDetail(row)).toBe("Aguardando cliente");
   });
 
   it("falls back to the plain reason label when there is no numeric detail to show (e.g. onboarding)", () => {

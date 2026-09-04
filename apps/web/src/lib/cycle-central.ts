@@ -2,7 +2,7 @@
  * Row derivation for the Ciclos central (contratos de clientes).
  *
  * Composes data already fetched in bulk — cycles, receivables, next
- * appointments, open renewal requests — into one row per cycle. Every field is
+ * appointments, renewal cases — into one row per cycle. Every field is
  * real: nothing here invents progress, pendency or a renewal date the backend
  * does not already know.
  *
@@ -11,11 +11,25 @@
  *   count has no honest denominator — the row shows no bar at all).
  * - any renewal side effect. `renewalTarget` only produces a *link* into the
  *   flow that already exists; clicking it mutates nothing.
+ * - renewal eligibility itself: `RenewalCase` (via `renewal-status.ts`'s
+ *   `RenewalCaseIndex`) is the single source of truth for whether a cycle
+ *   still needs a renewal decision. This file used to guess with a
+ *   client+service+date heuristic (`findSuccessor`) — that duplicated the
+ *   backend's own suppression rule and could disagree with it (e.g. a cycle
+ *   explicitly closed via "Encerrar sem renovar" kept showing the badge,
+ *   since the heuristic had no successor cycle to find). Removed in favor of
+ *   consuming the same `/renewal-cases` projection every other screen uses.
  */
 
 import type { Appointment, Cycle, Receivable } from "@/lib/api";
 import type { BadgeTone } from "@/components/ui/badge";
 import { cycleBucket, cycleListStatus, cycleListStatusTone } from "@/lib/cycle-period";
+import {
+  cycleRenewalCase,
+  isNeedsDecisionStatus,
+  type RenewalCaseIndex,
+} from "@/lib/renewal-status";
+import type { RenewalCaseView } from "@/lib/api";
 
 export type CycleAlert = "renewal" | "financial" | "no_schedule";
 
@@ -32,10 +46,8 @@ export type CycleRow = {
   nextAppointment: Appointment | null;
   pendingCents: number;
   overdueCount: number;
-  /** A renewal the client already asked for through the portal. */
-  hasOpenRenewalRequest: boolean;
-  /** Another cycle of the same client+service that starts at or after this one ends. */
-  hasSuccessor: boolean;
+  /** The RenewalCase tracking this cycle's renewal process, if one exists. */
+  renewalCase: RenewalCaseView | null;
   alerts: CycleAlert[];
   progress: { done: number; total: number } | null;
 };
@@ -48,46 +60,26 @@ function isOverdue(r: Receivable, today: string): boolean {
   return isPending(r) && r.due_on < today;
 }
 
-/**
- * True when another cycle for the same client and service picks up at or after
- * this one's end — i.e. it was already renewed, so no renewal alert is due.
- * Mirrors the backend's own suppression rule in
- * `domain.cycles_suppressed_from_home_attention` (renewed cycles stop nagging).
- */
-function findSuccessor(cycle: Cycle, all: Cycle[]): boolean {
-  return all.some(
-    (other) =>
-      other.id !== cycle.id &&
-      other.client_id === cycle.client_id &&
-      other.service_id === cycle.service_id &&
-      other.status !== "cancelled" &&
-      other.starts_on >= cycle.starts_on &&
-      other.ends_on > cycle.ends_on,
-  );
-}
-
 export function buildCycleRow(
   cycle: Cycle,
   opts: {
-    allCycles: Cycle[];
     receivables: Receivable[];
     nextAppointmentByClientId: Record<string, Appointment>;
-    openRenewalCycleIds: Set<string>;
+    renewalCases: RenewalCaseIndex;
     today: string;
   },
 ): CycleRow {
-  const { allCycles, receivables, nextAppointmentByClientId, openRenewalCycleIds, today } = opts;
+  const { receivables, nextAppointmentByClientId, renewalCases, today } = opts;
 
   const mine = receivables.filter((r) => r.cycle_id === cycle.id);
   const pending = mine.filter(isPending);
   const overdue = mine.filter((r) => isOverdue(r, today));
   const bucket = cycleBucket(cycle, today);
-  const hasSuccessor = findSuccessor(cycle, allCycles);
-  const hasOpenRenewalRequest = openRenewalCycleIds.has(cycle.id);
+  const renewalCase = cycleRenewalCase(cycle.id, renewalCases);
 
   const alerts: CycleAlert[] = [];
   if (cycle.status !== "cancelled") {
-    if (!hasSuccessor && (cycle.is_nearing_end || bucket === "ended")) {
+    if (renewalCase && isNeedsDecisionStatus(renewalCase.display_status)) {
       alerts.push("renewal");
     }
     if (overdue.length > 0) alerts.push("financial");
@@ -108,8 +100,7 @@ export function buildCycleRow(
       bucket === "active" ? (nextAppointmentByClientId[cycle.client_id] ?? null) : null,
     pendingCents: pending.reduce((sum, r) => sum + r.amount_cents, 0),
     overdueCount: overdue.length,
-    hasOpenRenewalRequest,
-    hasSuccessor,
+    renewalCase,
     alerts,
     progress:
       cycle.lesson_count != null
@@ -140,7 +131,7 @@ export function matchesCycleView(row: CycleRow, view: CycleView, today: string):
  */
 export function renewalTarget(row: CycleRow, returnTo: string): string | null {
   if (!isRenewalEligible(row)) return null;
-  if (row.hasOpenRenewalRequest) return "/app/renewals";
+  if (row.renewalCase?.portal_requested) return "/app/renewals";
   const { cycle } = row;
   const params = new URLSearchParams({
     clientId: cycle.client_id,
@@ -153,10 +144,10 @@ export function renewalTarget(row: CycleRow, returnTo: string): string | null {
   return `/app/cycles/new?${params.toString()}`;
 }
 
-/** Only cycles that could actually be renewed: not cancelled, not already
- * succeeded by another cycle, and either ending soon or already over. */
+/** Only cycles that still need a renewal decision, per `RenewalCase` — not
+ * cancelled, and either awaiting/pending/overdue/upcoming (never `renewed` or
+ * `ended_without_renewal`). */
 export function isRenewalEligible(row: CycleRow): boolean {
   if (row.cycle.status === "cancelled") return false;
-  if (row.hasSuccessor) return false;
   return row.alerts.includes("renewal");
 }

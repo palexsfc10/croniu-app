@@ -14,6 +14,7 @@ import {
   type IntakeSubmissionListItem,
   type NextAppointmentsByClient,
   type Receivable,
+  type RenewalCaseView,
 } from "@/lib/api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor } from "@/lib/nomenclature";
@@ -27,6 +28,7 @@ import {
   type ClientListView,
   type ClientRow,
 } from "@/lib/client-list";
+import { buildRenewalCaseIndex, renewalStatusLabel, renewalStatusTone } from "@/lib/renewal-status";
 import { cycleListStatus } from "@/lib/cycle-period";
 import { formatPhoneBR } from "@/lib/status-labels";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -306,9 +308,15 @@ function FinanceiroCell({ row }: { row: ClientRow }) {
 }
 
 function RenovacaoCell({ row }: { row: ClientRow }) {
+  if (row.renewalCase) {
+    return (
+      <Badge tone={renewalStatusTone(row.renewalCase.display_status)}>
+        {renewalStatusLabel(row.renewalCase.display_status)}
+      </Badge>
+    );
+  }
   const cycle = row.activeCycle;
-  if (!cycle) return <span className="text-sm text-[var(--color-ink-muted)]">—</span>;
-  if (cycle.is_nearing_end && cycle.days_remaining != null) {
+  if (cycle?.is_nearing_end && cycle.days_remaining != null) {
     return (
       <Badge tone="warning">
         {cycle.days_remaining} {cycle.days_remaining === 1 ? "dia" : "dias"}
@@ -420,6 +428,7 @@ export default function ClientsPage() {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [nextAppointments, setNextAppointments] = useState<NextAppointmentsByClient>({});
+  const [renewalCases, setRenewalCases] = useState<RenewalCaseView[]>([]);
   const [today, setToday] = useState("");
   const [pendingIntakes, setPendingIntakes] = useState<IntakeSubmissionListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -437,14 +446,16 @@ export default function ClientsPage() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      const [result, cycleRes, home, pendingRes, receivablesRes, nextApptRes] = await Promise.all([
-        apiFetch<Client[]>(`/api/v1/clients?status=${statusFilter}`),
-        apiFetch<Cycle[]>("/api/v1/cycles"),
-        apiFetch<HomeSummary>("/api/v1/home/summary"),
-        apiFetch<IntakeSubmissionListItem[]>("/api/v1/intake-submissions?status=pending_review"),
-        apiFetch<Receivable[]>("/api/v1/receivables"),
-        apiFetch<NextAppointmentsByClient>("/api/v1/agenda/next-appointments"),
-      ]);
+      const [result, cycleRes, home, pendingRes, receivablesRes, nextApptRes, renewalCasesRes] =
+        await Promise.all([
+          apiFetch<Client[]>(`/api/v1/clients?status=${statusFilter}`),
+          apiFetch<Cycle[]>("/api/v1/cycles"),
+          apiFetch<HomeSummary>("/api/v1/home/summary"),
+          apiFetch<IntakeSubmissionListItem[]>("/api/v1/intake-submissions?status=pending_review"),
+          apiFetch<Receivable[]>("/api/v1/receivables"),
+          apiFetch<NextAppointmentsByClient>("/api/v1/agenda/next-appointments"),
+          apiFetch<RenewalCaseView[]>("/api/v1/renewal-cases?scope=all"),
+        ]);
       if (cancelled) return;
       if (result.error) setError(result.error.message);
       else {
@@ -456,6 +467,7 @@ export default function ClientsPage() {
       setPendingIntakes(pendingRes.data ?? []);
       setReceivables(receivablesRes.data ?? []);
       setNextAppointments(nextApptRes.data ?? {});
+      setRenewalCases(renewalCasesRes.data ?? []);
       setLoading(false);
     })();
     return () => {
@@ -468,6 +480,8 @@ export default function ClientsPage() {
     [pendingIntakes],
   );
 
+  const renewalCaseIndex = useMemo(() => buildRenewalCaseIndex(renewalCases), [renewalCases]);
+
   const rows = useMemo(() => {
     return items.map((client) =>
       buildClientRow(client, {
@@ -475,10 +489,11 @@ export default function ClientsPage() {
         receivables,
         nextAppointmentByClientId: nextAppointments,
         pendingIntakeClientIds,
+        renewalCases: renewalCaseIndex,
         today,
       }),
     );
-  }, [items, cycles, receivables, nextAppointments, pendingIntakeClientIds, today]);
+  }, [items, cycles, receivables, nextAppointments, pendingIntakeClientIds, renewalCaseIndex, today]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

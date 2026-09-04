@@ -1,6 +1,7 @@
-import type { Appointment, Client, Cycle, Receivable } from "@/lib/api";
+import type { Appointment, Client, Cycle, Receivable, RenewalCaseView } from "@/lib/api";
 import { cycleBucket } from "@/lib/cycle-period";
 import { formatPhoneBR } from "@/lib/status-labels";
+import { cycleRenewalCase, isNeedsDecisionStatus, renewalStatusLabel, type RenewalCaseIndex } from "@/lib/renewal-status";
 
 export type ClientListBadge =
   | { tone: "neutral"; label: string }
@@ -74,6 +75,10 @@ export type ClientRow = {
   pendingReceivablesTotalCents: number;
   overdueReceivablesCount: number;
   hasPendingIntake: boolean;
+  /** The RenewalCase driving the "renewal" reason, if any of this client's
+   * cycles has one that still needs a decision. Source of truth — see
+   * `renewal-status.ts`. */
+  renewalCase: RenewalCaseView | null;
   reasons: AttentionReason[];
 };
 
@@ -100,10 +105,11 @@ export function buildClientRow(
     receivables: Receivable[];
     nextAppointmentByClientId: Record<string, Appointment>;
     pendingIntakeClientIds: Set<string>;
+    renewalCases: RenewalCaseIndex;
     today: string;
   },
 ): ClientRow {
-  const { cycles, receivables, nextAppointmentByClientId, pendingIntakeClientIds, today } = opts;
+  const { cycles, receivables, nextAppointmentByClientId, pendingIntakeClientIds, renewalCases, today } = opts;
   const mine = cycles.filter((c) => c.client_id === client.id);
   const activeCycle = mine.find((c) => cycleBucket(c, today) === "active") ?? null;
   const upcomingCycle = mine.find((c) => cycleBucket(c, today) === "upcoming") ?? null;
@@ -117,11 +123,18 @@ export function buildClientRow(
   const hasPendingIntake = pendingIntakeClientIds.has(client.id);
   const hasAnyCycleEver = mine.length > 0;
 
+  // RenewalCase is the source of truth for whether this client needs a
+  // renewal decision — not a client+service+date guess. A cycle explicitly
+  // closed via "Encerrar sem renovar" must never re-surface here just
+  // because it has no active/upcoming successor.
+  const renewalCase =
+    mine
+      .map((c) => cycleRenewalCase(c.id, renewalCases))
+      .find((rc): rc is RenewalCaseView => rc != null && isNeedsDecisionStatus(rc.display_status)) ?? null;
+
   const reasons: AttentionReason[] = [];
   if (client.status === "active") {
-    if ((activeCycle?.is_nearing_end && !upcomingCycle) || (!activeCycle && !upcomingCycle && hasAnyCycleEver)) {
-      reasons.push("renewal");
-    }
+    if (renewalCase) reasons.push("renewal");
     if (overdue.length > 0) reasons.push("financial");
     if (hasPendingIntake || !hasAnyCycleEver) reasons.push("onboarding");
     else if (!activeCycle && !upcomingCycle) reasons.push("no_accompaniment");
@@ -136,6 +149,7 @@ export function buildClientRow(
     pendingReceivablesTotalCents,
     overdueReceivablesCount: overdue.length,
     hasPendingIntake,
+    renewalCase,
     reasons,
   };
 }
@@ -172,9 +186,12 @@ export function mobileAttentionDetail(row: ClientRow): string | null {
   if (reason === "financial") {
     return `${ATTENTION_REASON_LABEL.financial} · atrasado`;
   }
-  if (reason === "renewal" && row.activeCycle?.days_remaining != null) {
-    const days = row.activeCycle.days_remaining;
-    return `${ATTENTION_REASON_LABEL.renewal} em ${days} ${days === 1 ? "dia" : "dias"}`;
+  if (reason === "renewal") {
+    if (row.renewalCase) return renewalStatusLabel(row.renewalCase.display_status);
+    if (row.activeCycle?.days_remaining != null) {
+      const days = row.activeCycle.days_remaining;
+      return `${ATTENTION_REASON_LABEL.renewal} em ${days} ${days === 1 ? "dia" : "dias"}`;
+    }
   }
   return ATTENTION_REASON_LABEL[reason];
 }

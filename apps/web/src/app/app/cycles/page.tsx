@@ -9,6 +9,7 @@ import {
   type Cycle,
   type NextAppointmentsByClient,
   type Receivable,
+  type RenewalCaseView,
 } from "@/lib/api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
   type CycleRow,
   type CycleView,
 } from "@/lib/cycle-central";
+import { buildRenewalCaseIndex, renewalStatusLabel } from "@/lib/renewal-status";
 import { cycleInPeriod, periodBounds, type PeriodPreset } from "@/lib/cycle-period";
 import {
   formatCycleVigencyCard,
@@ -46,8 +48,6 @@ const VIEWS: { id: CycleView; label: string }[] = [
   { id: "all", label: "Todos" },
 ];
 
-type RenewalRequestLite = { id: string; source_cycle_id: string; status: string };
-
 function nextSessionLabel(row: CycleRow, tz: string): string {
   const appt = row.nextAppointment;
   if (!appt) return "—";
@@ -61,6 +61,14 @@ function financeLabel(row: CycleRow): string {
   return "Em dia";
 }
 
+/** The "Renovação" alert badge shows the real RenewalCase status (e.g.
+ * "Aguardando cliente") whenever a case exists, instead of the generic label
+ * — this is the one place Central de Ciclos surfaces renewal state, so it
+ * must reflect the same source of truth as Central de Renovações. */
+function renewalAlertLabel(row: CycleRow): string {
+  return row.renewalCase ? renewalStatusLabel(row.renewalCase.display_status) : CYCLE_ALERT_LABEL.renewal;
+}
+
 export default function CyclesPage() {
   const { me } = useAuth();
   const tz = me?.organization.timezone || "America/Sao_Paulo";
@@ -68,7 +76,7 @@ export default function CyclesPage() {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [nextAppointments, setNextAppointments] = useState<NextAppointmentsByClient>({});
-  const [openRenewalCycleIds, setOpenRenewalCycleIds] = useState<Set<string>>(new Set());
+  const [renewalCases, setRenewalCases] = useState<RenewalCaseView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -83,11 +91,11 @@ export default function CyclesPage() {
   const [serviceFilter, setServiceFilter] = useState("");
 
   async function load() {
-    const [cyc, rec, appts, renewals, pref] = await Promise.all([
+    const [cyc, rec, appts, cases, pref] = await Promise.all([
       apiFetch<Cycle[]>("/api/v1/cycles"),
       apiFetch<Receivable[]>("/api/v1/receivables"),
       apiFetch<NextAppointmentsByClient>("/api/v1/agenda/next-appointments"),
-      apiFetch<RenewalRequestLite[]>("/api/v1/renewal-requests"),
+      apiFetch<RenewalCaseView[]>("/api/v1/renewal-cases?scope=all"),
       apiFetch<{ local_today: string }>("/api/v1/organization/preferences"),
     ]);
     if (pref.data?.local_today) {
@@ -101,13 +109,7 @@ export default function CyclesPage() {
     }
     setReceivables(rec.data ?? []);
     setNextAppointments(appts.data ?? {});
-    setOpenRenewalCycleIds(
-      new Set(
-        (renewals.data ?? [])
-          .filter((r) => r.status === "requested" || r.status === "acknowledged" || r.status === "payment_reported")
-          .map((r) => r.source_cycle_id),
-      ),
-    );
+    setRenewalCases(cases.data ?? []);
     setLoading(false);
   }
 
@@ -122,18 +124,19 @@ export default function CyclesPage() {
     };
   }, []);
 
+  const renewalCaseIndex = useMemo(() => buildRenewalCaseIndex(renewalCases), [renewalCases]);
+
   const rows = useMemo(
     () =>
       cycles.map((c) =>
         buildCycleRow(c, {
-          allCycles: cycles,
           receivables,
           nextAppointmentByClientId: nextAppointments,
-          openRenewalCycleIds,
+          renewalCases: renewalCaseIndex,
           today,
         }),
       ),
-    [cycles, receivables, nextAppointments, openRenewalCycleIds, today],
+    [cycles, receivables, nextAppointments, renewalCaseIndex, today],
   );
 
   const period = periodBounds(preset, today, monthCursor, customStart, customEnd);
@@ -407,7 +410,7 @@ export default function CyclesPage() {
                           <div className="mt-1 flex flex-wrap gap-1">
                             {row.alerts.map((a) => (
                               <Badge key={a} tone={a === "financial" ? "danger" : "warning"}>
-                                {CYCLE_ALERT_LABEL[a]}
+                                {a === "renewal" ? renewalAlertLabel(row) : CYCLE_ALERT_LABEL[a]}
                               </Badge>
                             ))}
                           </div>
@@ -476,7 +479,11 @@ export default function CyclesPage() {
           {visible.map((row) => {
             const c = row.cycle;
             const renewHref = renewalTarget(row, RETURN_TO);
-            const headline = row.alerts.length ? CYCLE_ALERT_LABEL[row.alerts[0]] : null;
+            const headline = row.alerts.length
+              ? row.alerts[0] === "renewal"
+                ? renewalAlertLabel(row)
+                : CYCLE_ALERT_LABEL[row.alerts[0]]
+              : null;
             return (
               <li
                 key={c.id}

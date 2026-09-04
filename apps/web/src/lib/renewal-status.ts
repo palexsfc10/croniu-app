@@ -81,3 +81,28 @@ export function sortRenewalCases(rows: RenewalCaseView[]): RenewalCaseView[] {
 export function isNeedsDecisionStatus(status: RenewalCaseView["display_status"]): boolean {
   return status !== "renewed" && status !== "ended_without_renewal";
 }
+
+/**
+ * Single lookup structure every screen must share instead of re-deriving
+ * renewal state on its own — keyed by `source_cycle_id`, the cycle whose
+ * renewal process the case tracks. `RenewalCase` is the source of truth
+ * whenever a row exists for a cycle; a cycle with no entry here simply has no
+ * renewal process yet (e.g. it isn't near its end).
+ */
+export type RenewalCaseIndex = Map<string, RenewalCaseView>;
+
+export function buildRenewalCaseIndex(rows: RenewalCaseView[]): RenewalCaseIndex {
+  const index: RenewalCaseIndex = new Map();
+  for (const row of rows) {
+    index.set(row.source_cycle_id, row);
+  }
+  return index;
+}
+
+export function cycleRenewalCase(
+  cycleId: string | null | undefined,
+  index: RenewalCaseIndex,
+): RenewalCaseView | null {
+  if (!cycleId) return null;
+  return index.get(cycleId) ?? null;
+}

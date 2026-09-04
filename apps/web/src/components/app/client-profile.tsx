@@ -19,7 +19,12 @@ import {
   type Receivable,
   type RenewalCaseView,
 } from "@/lib/api";
-import { renewalStatusLabel, renewalStatusTone } from "@/lib/renewal-status";
+import {
+  buildRenewalCaseIndex,
+  cycleRenewalCase,
+  renewalStatusLabel,
+  renewalStatusTone,
+} from "@/lib/renewal-status";
 import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor, safeReturnTo, t } from "@/lib/nomenclature";
 import { EmptyStateGuide } from "@/components/ui/empty-state-guide";
@@ -267,25 +272,23 @@ export function ClientProfile({ clientId }: Props) {
   const anamnesisDone = Boolean(journey?.anamnesis_reviewed_at);
   const prepareHref = `/app/clients/${clientId}/accompaniment`;
 
-  // Renewal offer reuses the very same derivation as the Ciclos central, so a
-  // cycle never looks renewable here and non-renewable there. It only ever
-  // produces a link into the existing flow — clicking mutates nothing.
-  const openRenewalCycleIds = new Set(
-    renewalCases.filter((r) => r.portal_requested).map((r) => r.source_cycle_id),
-  );
+  // Renewal offer reuses the very same derivation as the Ciclos central, fed
+  // by the same RenewalCase index, so a cycle never looks renewable here and
+  // non-renewable there. It only ever produces a link into the existing flow
+  // — clicking mutates nothing.
+  const renewalCaseIndex = buildRenewalCaseIndex(renewalCases);
   const activeCycleRow = activeCycle
     ? buildCycleRow(activeCycle, {
-        allCycles: cycles,
         receivables,
         nextAppointmentByClientId: nextAppointment
           ? { [clientId]: nextAppointment }
           : {},
-        openRenewalCycleIds,
+        renewalCases: renewalCaseIndex,
         today: todayIso,
       })
     : null;
   const activeCycleRenewalCase = activeCycle
-    ? renewalCases.find((r) => r.source_cycle_id === activeCycle.id)
+    ? cycleRenewalCase(activeCycle.id, renewalCaseIndex)
     : null;
   const cycleRenewalHref = activeCycleRow
     ? renewalTarget(activeCycleRow, `${returnResumo}?tab=plano`)
@@ -1058,7 +1061,7 @@ export function ClientProfile({ clientId }: Props) {
                   </h2>
                   <ul className="space-y-1.5">
                     {pastCycles.map((c) => {
-                      const renewalCase = renewalCases.find((r) => r.source_cycle_id === c.id);
+                      const renewalCase = cycleRenewalCase(c.id, renewalCaseIndex);
                       return (
                         <li key={c.id}>
                           <Link
