@@ -48,6 +48,7 @@ import {
   IconClipboardList,
   IconLink,
   IconPlus,
+  IconSliders,
   IconWhatsApp,
 } from "@/components/ui/icons";
 
@@ -209,6 +210,11 @@ const VIEW_OPTIONS: { value: ClientListView; label: string }[] = [
   { value: "financial", label: "Financeiro" },
   { value: "no_accompaniment", label: "Sem acompanhamento" },
 ];
+
+/** Mobile shows only these as quick pills — Onboarding/Financeiro/Sem
+ * acompanhamento move into "Mais filtros" so the header doesn't push the
+ * list itself below the first fold. */
+const MOBILE_QUICK_VIEWS: ClientListView[] = ["all", "attention", "renewal"];
 
 type SortKey = "name" | "attention" | "next_session";
 
@@ -429,6 +435,7 @@ export default function ClientsPage() {
   const [view, setView] = useState<ClientListView>("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("name");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const terms = nomenclatureFor(me?.organization.profession_code);
   const title = terms.clients.charAt(0).toUpperCase() + terms.clients.slice(1);
   const addLabel = `Adicionar ${terms.client}`;
@@ -521,12 +528,26 @@ export default function ClientsPage() {
             Pessoas que você atende, com o próximo passo à vista.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Desktop: both full actions, as before. Mobile: "Adicionar" folds
+            to an icon-only "+" (same action every other "+" in the
+            redesign already means) so the header takes less of the first
+            fold; "Convidar" stays reachable, just more compact. */}
+        <div className="hidden items-center gap-2 lg:flex">
           <Link href="/app/clients/new" className="min-w-0">
             <Button className="whitespace-nowrap">
               <IconPlus className="mr-1.5 h-4 w-4" />
               {addLabel}
             </Button>
+          </Link>
+          <InviteButton />
+        </div>
+        <div className="flex items-center gap-2 lg:hidden">
+          <Link
+            href="/app/clients/new"
+            aria-label={addLabel}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+          >
+            <IconPlus className="h-5 w-5" />
           </Link>
           <InviteButton />
         </div>
@@ -583,7 +604,8 @@ export default function ClientsPage() {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por situação">
+        {/* Desktop: every view + sort inline, as before. */}
+        <div className="hidden flex-wrap gap-2 lg:flex" role="group" aria-label="Filtrar por situação">
           {VIEW_OPTIONS.map(({ value, label }) => {
             const count = value === "all" ? rows.length : rows.filter((r) => matchesView(r, value)).length;
             return (
@@ -594,6 +616,63 @@ export default function ClientsPage() {
             );
           })}
         </div>
+
+        {/* Mobile: only the 3 most-used views as quick pills — the rest
+            (Onboarding/Financeiro/Sem acompanhamento) plus Ordenar por
+            move into "Mais filtros", so the list itself still starts
+            within the first fold instead of below two wrapped pill rows. */}
+        <div className="flex flex-wrap items-center gap-2 lg:hidden" role="group" aria-label="Filtrar por situação">
+          {MOBILE_QUICK_VIEWS.map((value) => {
+            const label = VIEW_OPTIONS.find((v) => v.value === value)!.label;
+            const count = value === "all" ? rows.length : rows.filter((r) => matchesView(r, value)).length;
+            return (
+              <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
+                {label}
+                {value !== "all" && count > 0 ? ` · ${count}` : ""}
+              </SegmentedToggle>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--color-border)] px-3 text-sm font-medium text-[var(--color-ink-muted)]"
+          >
+            <IconSliders className="h-3.5 w-3.5" aria-hidden />
+            Mais filtros
+          </button>
+        </div>
+
+        <ActionSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} labelledBy="clients-more-filters-title">
+          <h2 id="clients-more-filters-title" className="text-base font-semibold text-[var(--color-ink)]">
+            Mais filtros
+          </h2>
+          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Outras situações">
+            {VIEW_OPTIONS.filter((v) => !MOBILE_QUICK_VIEWS.includes(v.value)).map(({ value, label }) => {
+              const count = rows.filter((r) => matchesView(r, value)).length;
+              return (
+                <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
+                  {label}
+                  {count > 0 ? ` · ${count}` : ""}
+                </SegmentedToggle>
+              );
+            })}
+          </div>
+          <label className="mt-4 flex items-center gap-2 text-sm">
+            <span className="text-[var(--color-ink-muted)]">Ordenar por</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="min-h-11 flex-1 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+            >
+              <option value="name">Nome</option>
+              <option value="attention">Atenção</option>
+              <option value="next_session">Próxima sessão</option>
+            </select>
+          </label>
+          <Button fullWidth className="mt-4" onClick={() => setFiltersOpen(false)}>
+            Aplicar
+          </Button>
+        </ActionSheet>
 
         <div className="flex flex-wrap items-center gap-2">
           {showSearch ? (
@@ -607,7 +686,7 @@ export default function ClientsPage() {
               />
             </label>
           ) : null}
-          <label className="flex items-center gap-2 text-sm">
+          <label className="hidden items-center gap-2 text-sm lg:flex">
             <span className="text-[var(--color-ink-muted)]">Ordenar por</span>
             <select
               value={sort}

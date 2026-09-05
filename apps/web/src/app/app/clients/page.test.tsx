@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client, IntakeLink, IntakeSubmissionListItem } from "@/lib/api";
 
@@ -93,8 +93,12 @@ function mockApi({
   });
 }
 
+// Desktop and mobile each render their own independent InviteButton
+// instance now (one hidden per breakpoint via CSS, both present in
+// jsdom) — any one of them drives the identical flow, so tests just pick
+// the first match rather than assuming a single trigger exists.
 async function openInviteSheetAndWaitReady() {
-  fireEvent.click(await screen.findByRole("button", { name: "Convidar aluno" }));
+  fireEvent.click((await screen.findAllByRole("button", { name: "Convidar aluno" }))[0]!);
   await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
 }
 
@@ -111,13 +115,17 @@ describe("ClientsPage — invite flow", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows a single invite action, no duplicates, when the list is empty", async () => {
+  it("shows exactly one invite action per breakpoint (desktop + mobile each have their own, never duplicated within either)", async () => {
     mockApi({ clients: [] });
-    render(<ClientsPage />);
+    const { container } = render(<ClientsPage />);
 
     await screen.findByText("Nenhum aluno cadastrado");
-    expect(screen.getAllByRole("button", { name: "Convidar aluno" })).toHaveLength(1);
-    expect(screen.getAllByRole("link", { name: /Adicionar aluno/i })).toHaveLength(1);
+    const desktopHeader = container.querySelector(".hidden.items-center.gap-2.lg\\:flex") as HTMLElement;
+    const mobileHeader = container.querySelector(".flex.items-center.gap-2.lg\\:hidden") as HTMLElement;
+    expect(within(desktopHeader).getAllByRole("button", { name: "Convidar aluno" })).toHaveLength(1);
+    expect(within(mobileHeader).getAllByRole("button", { name: "Convidar aluno" })).toHaveLength(1);
+    expect(within(desktopHeader).getAllByRole("link", { name: /Adicionar aluno/i })).toHaveLength(1);
+    expect(within(mobileHeader).getAllByRole("link", { name: /Adicionar aluno/i })).toHaveLength(1);
     expect(screen.queryByText(/Crie o link/i)).not.toBeInTheDocument();
     expect(
       screen.getByText(/Cadastre um aluno manualmente ou envie um convite/i),
@@ -132,7 +140,7 @@ describe("ClientsPage — invite flow", () => {
     });
     render(<ClientsPage />);
     await screen.findAllByText("Ana Aluna");
-    expect(screen.getByRole("button", { name: "Convidar aluno" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Convidar aluno" }).length).toBeGreaterThan(0);
   });
 
   it("reuses an existing link without ever asking to create one, and never shows the raw URL", async () => {
@@ -150,9 +158,9 @@ describe("ClientsPage — invite flow", () => {
   it("creates the link automatically when none exists yet, with no 'create link' wording and no visible URL", async () => {
     mockApi({ link: noActiveLink, createResult: activeLink });
     render(<ClientsPage />);
-    await screen.findByRole("button", { name: "Convidar aluno" });
+    await screen.findAllByRole("button", { name: "Convidar aluno" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Convidar aluno" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Convidar aluno" })[0]!);
     expect(await screen.findByText("Preparando convite…")).toBeInTheDocument();
 
     await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
@@ -164,7 +172,7 @@ describe("ClientsPage — invite flow", () => {
   it("does not fire a second create request on rapid repeated taps", async () => {
     mockApi({ link: noActiveLink, createResult: activeLink });
     render(<ClientsPage />);
-    const trigger = await screen.findByRole("button", { name: "Convidar aluno" });
+    const trigger = (await screen.findAllByRole("button", { name: "Convidar aluno" }))[0]!;
 
     fireEvent.click(trigger);
     fireEvent.click(trigger);
@@ -229,7 +237,7 @@ describe("ClientsPage — invite flow", () => {
       return { data: null, error: { code: "not_found", message: "unexpected" }, status: 404 };
     });
     render(<ClientsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Convidar aluno" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Convidar aluno" }))[0]!);
 
     expect(
       await screen.findByText("Não foi possível preparar o convite. Tente novamente."),
@@ -242,7 +250,7 @@ describe("ClientsPage — invite flow", () => {
   it("exposes the invite trigger and panel with accessible roles", async () => {
     mockApi({ link: activeLink });
     render(<ClientsPage />);
-    const trigger = await screen.findByRole("button", { name: "Convidar aluno" });
+    const trigger = (await screen.findAllByRole("button", { name: "Convidar aluno" }))[0]!;
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -346,6 +354,30 @@ describe("ClientsPage — nomenclature has no flash", () => {
     // flash, because there is no later re-render that changes it once
     // profession_code stays unknown.
     expect(screen.getByRole("heading", { name: "Clientes" })).toBeInTheDocument();
+  });
+
+  it("mobile shows only Todos/Atenção/Renovação as quick pills, with the rest behind 'Mais filtros'", async () => {
+    authState.professionCode = "personal_trainer";
+    mockApi({ clients: [] });
+    const { container } = render(<ClientsPage />);
+    await screen.findByText("Nenhum aluno cadastrado");
+
+    const mobileFilters = container.querySelector(
+      '[role="group"][aria-label="Filtrar por situação"].lg\\:hidden',
+    ) as HTMLElement;
+    expect(within(mobileFilters).getByRole("button", { name: "Todos" })).toBeInTheDocument();
+    expect(within(mobileFilters).getByRole("button", { name: "Atenção" })).toBeInTheDocument();
+    expect(within(mobileFilters).getByRole("button", { name: "Renovação" })).toBeInTheDocument();
+    expect(within(mobileFilters).queryByRole("button", { name: "Onboarding" })).not.toBeInTheDocument();
+    expect(within(mobileFilters).queryByRole("button", { name: "Financeiro" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(within(mobileFilters).getByRole("button", { name: /Mais filtros/i }));
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByRole("button", { name: "Onboarding" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Financeiro" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Sem acompanhamento" })).toBeInTheDocument();
+    expect(within(sheet).getByText("Ordenar por")).toBeInTheDocument();
   });
 
   it("renders a dense table for desktop (hidden below lg) and a card list for mobile (hidden from lg up)", async () => {
