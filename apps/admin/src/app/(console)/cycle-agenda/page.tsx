@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Table, THead, Th, TBody, Tr, Td, TableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { IconCalendarCheck } from "@/components/ui/icons";
+import type { BadgeTone } from "@/components/ui/badge";
 
 type IntegrityItem = {
   cycle_id: string;
@@ -36,6 +41,13 @@ const LABEL: Record<string, string> = {
   divergent: "Divergente",
   critical: "Crítico",
   unknown: "Desconhecido",
+};
+
+const INTEGRITY_TONE: Record<string, BadgeTone> = {
+  intact: "success",
+  divergent: "warning",
+  critical: "danger",
+  unknown: "neutral",
 };
 
 export default function CycleAgendaPage() {
@@ -79,13 +91,13 @@ export default function CycleAgendaPage() {
           {(["intact", "divergent", "critical", "unknown"] as const).map((key) => (
             <div
               key={key}
-              className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2"
+              className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2"
             >
               <p className="text-[11px] uppercase text-[var(--color-ink-muted)]">{LABEL[key]}</p>
               <p className="text-xl font-semibold tabular-nums">{data.summary[key]}</p>
             </div>
           ))}
-          <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
             <p className="text-[11px] uppercase text-[var(--color-ink-muted)]">Órfãos</p>
             <p className="text-xl font-semibold tabular-nums">
               {data.summary.orphan_appointments}
@@ -96,7 +108,7 @@ export default function CycleAgendaPage() {
 
       <div className="flex flex-wrap gap-2">
         <select
-          className="min-h-11 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+          className="min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
@@ -107,7 +119,7 @@ export default function CycleAgendaPage() {
           <option value="unknown">Desconhecido</option>
         </select>
         <input
-          className="min-h-11 min-w-[16rem] rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+          className="min-h-11 min-w-[16rem] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
           placeholder="Filtrar organization_id"
           value={orgId}
           onChange={(e) => setOrgId(e.target.value)}
@@ -124,62 +136,48 @@ export default function CycleAgendaPage() {
       ) : null}
 
       {!data ? (
-        <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
+        <TableSkeleton columns={6} />
       ) : data.items.length === 0 ? (
-        <p className="rounded border border-dashed border-[var(--color-border)] p-4 text-sm text-[var(--color-ink-muted)]">
-          Nenhum ciclo encontrado com os filtros atuais.
-        </p>
+        <EmptyState
+          icon={<IconCalendarCheck className="h-8 w-8" />}
+          title="Nenhum ciclo encontrado com os filtros atuais"
+        />
       ) : (
-        <div className="overflow-x-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-muted)]">
-              <tr>
-                <th className="px-3 py-2">Organização</th>
-                <th className="px-3 py-2">Previstas</th>
-                <th className="px-3 py-2">Criadas</th>
-                <th className="px-3 py-2">Integridade</th>
-                <th className="px-3 py-2">Origem</th>
-                <th className="px-3 py-2">Última ocorrência</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((row) => (
-                <tr key={row.cycle_id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="px-3 py-3">
-                    <Link
-                      className="font-semibold text-[var(--color-primary)]"
-                      href={`/organizations/${row.organization_id}`}
-                    >
-                      {row.organization_name}
-                    </Link>
-                    <div className="text-xs text-[var(--color-ink-muted)]">{row.cycle_id}</div>
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">{row.planned_sessions ?? "—"}</td>
-                  <td className="px-3 py-3 tabular-nums">{row.appointments_created}</td>
-                  <td className="px-3 py-3">
-                    <span
-                      className={
-                        row.integrity === "critical"
-                          ? "font-semibold text-[var(--color-danger)]"
-                          : row.integrity === "divergent"
-                            ? "font-semibold text-amber-700"
-                            : ""
-                      }
-                    >
-                      {LABEL[row.integrity] || row.integrity}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3">{row.origin}</td>
-                  <td className="px-3 py-3">
-                    {row.last_appointment_at
-                      ? new Date(row.last_appointment_at).toLocaleString("pt-BR")
-                      : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <THead>
+            <Th>Organização</Th>
+            <Th>Previstas</Th>
+            <Th>Criadas</Th>
+            <Th>Integridade</Th>
+            <Th>Origem</Th>
+            <Th>Última ocorrência</Th>
+          </THead>
+          <TBody>
+            {data.items.map((row) => (
+              <Tr key={row.cycle_id}>
+                <Td>
+                  <Link className="font-semibold text-[var(--color-primary)] hover:underline" href={`/organizations/${row.organization_id}`}>
+                    {row.organization_name}
+                  </Link>
+                  <div className="text-xs text-[var(--color-ink-muted)]">{row.cycle_id}</div>
+                </Td>
+                <Td className="tabular-nums">{row.planned_sessions ?? "—"}</Td>
+                <Td className="tabular-nums">{row.appointments_created}</Td>
+                <Td>
+                  <Badge tone={INTEGRITY_TONE[row.integrity] ?? "neutral"}>
+                    {LABEL[row.integrity] || row.integrity}
+                  </Badge>
+                </Td>
+                <Td>{row.origin}</Td>
+                <Td>
+                  {row.last_appointment_at
+                    ? new Date(row.last_appointment_at).toLocaleString("pt-BR")
+                    : "—"}
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
       )}
     </div>
   );

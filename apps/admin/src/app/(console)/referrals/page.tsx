@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch, type Paginated, type UserListItem } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Table, THead, Th, TBody, Tr, Td, TableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { IconCheck, IconGift, IconSearch } from "@/components/ui/icons";
 
 type PartnerSummary = {
   partner_id: string;
@@ -165,13 +170,13 @@ export default function ReferralsPage() {
         </p>
       </div>
 
-      <section className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <h2 className="text-lg font-semibold text-[var(--color-ink)]">Habilitar divulgador</h2>
+      <Card>
+        <CardHeader title="Habilitar divulgador" />
 
         {!selectedUser ? (
           <div className="space-y-2">
             <form
-              className="flex flex-col gap-2 sm:flex-row"
+              className="flex flex-col gap-2 sm:flex-row sm:items-end"
               onSubmit={(event) => {
                 event.preventDefault();
                 void searchUsers();
@@ -184,9 +189,9 @@ export default function ReferralsPage() {
                   onChange={(e) => setUserSearch(e.target.value)}
                 />
               </div>
-              <div className="flex items-end">
-                <Button type="submit">Buscar</Button>
-              </div>
+              <Button type="submit">
+                <IconSearch className="h-4 w-4" /> Buscar
+              </Button>
             </form>
             {userSearchStatus === "empty" ? (
               <p className="text-sm text-[var(--color-ink-muted)]">
@@ -210,11 +215,7 @@ export default function ReferralsPage() {
                         {user.organization_name ? ` · ${user.organization_name}` : ""}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setSelectedUser(user)}
-                    >
+                    <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedUser(user)}>
                       Selecionar
                     </Button>
                   </li>
@@ -231,7 +232,7 @@ export default function ReferralsPage() {
                   {selectedUser.email_masked}
                 </p>
               </div>
-              <Button type="button" variant="ghost" onClick={() => setSelectedUser(null)}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedUser(null)}>
                 Trocar
               </Button>
             </div>
@@ -251,8 +252,8 @@ export default function ReferralsPage() {
                   </p>
                 ) : null}
                 {codeAvailable === true ? (
-                  <p className="mt-1 text-xs text-[var(--color-success,theme(colors.green.600))]">
-                    Código disponível.
+                  <p className="mt-1 flex items-center gap-1 text-xs font-medium text-[var(--color-success)]">
+                    <IconCheck className="h-3.5 w-3.5" /> Código disponível.
                   </p>
                 ) : null}
               </div>
@@ -281,7 +282,7 @@ export default function ReferralsPage() {
             </Button>
           </div>
         )}
-      </section>
+      </Card>
 
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
@@ -291,89 +292,80 @@ export default function ReferralsPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--color-ink)]">Divulgadores</h2>
-        {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
+        {loading ? <TableSkeleton columns={9} /> : null}
         {!loading && partners.length === 0 ? (
-          <p className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] p-4 text-sm text-[var(--color-ink-muted)]">
-            Nenhum divulgador habilitado ainda.
-          </p>
+          <EmptyState icon={<IconGift className="h-8 w-8" />} title="Nenhum divulgador habilitado ainda" />
         ) : null}
-        {partners.length > 0 ? (
-          <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-muted)]">
-                <tr>
-                  <th className="px-3 py-2">Divulgador</th>
-                  <th className="px-3 py-2">Código</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Desconto</th>
-                  <th className="px-3 py-2">Comissão prevista</th>
-                  <th className="px-3 py-2">Cadastros</th>
-                  <th className="px-3 py-2">Pagantes</th>
-                  <th className="px-3 py-2">Ativos</th>
-                  <th className="px-3 py-2" title="Estimativa baseada nas assinaturas ativas. Não representa comissão paga.">
-                    Comissão mensal prevista ⓘ
-                  </th>
-                  <th className="px-3 py-2">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {partners.map((partner) => (
-                  <tr key={partner.partner_id} className="border-b border-[var(--color-border)] last:border-0">
-                    <td className="px-3 py-3">
-                      <p className="font-medium">{partner.user_full_name}</p>
-                      <p className="text-xs text-[var(--color-ink-muted)]">{partner.user_email}</p>
-                    </td>
-                    <td className="px-3 py-3 font-mono text-xs">{partner.code ?? "—"}</td>
-                    <td className="px-3 py-3">
-                      {partner.enabled ? (
-                        <span className="text-[var(--color-success,theme(colors.green.600))]">Ativo</span>
-                      ) : (
-                        <span className="text-[var(--color-ink-muted)]">Inativo</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3">{partner.discount_percent ?? 10}%</td>
-                    <td className="px-3 py-3">
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step="0.01"
-                        defaultValue={partner.commission_percent ?? ""}
-                        className="w-20 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm"
-                        onBlur={(e) => {
-                          if (e.target.value && e.target.value !== partner.commission_percent) {
-                            void updateCommission(partner, e.target.value);
-                          }
-                        }}
-                      />
-                      %
-                    </td>
-                    <td className="px-3 py-3">{partner.signups}</td>
-                    <td className="px-3 py-3">{partner.payers}</td>
-                    <td className="px-3 py-3">{partner.active}</td>
-                    <td className="px-3 py-3">
-                      {formatCents(partner.projected_monthly_commission_cents)}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-col gap-1">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={!partner.link}
-                          onClick={() => void copyLink(partner)}
-                        >
-                          {copiedId === partner.partner_id ? "Copiado!" : "Copiar link"}
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={() => void toggleStatus(partner)}>
-                          {partner.enabled ? "Desabilitar" : "Habilitar"}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {!loading && partners.length > 0 ? (
+          <Table>
+            <THead>
+              <Th>Divulgador</Th>
+              <Th>Código</Th>
+              <Th>Status</Th>
+              <Th>Desconto</Th>
+              <Th>Comissão prevista</Th>
+              <Th>Cadastros</Th>
+              <Th>Pagantes</Th>
+              <Th>Ativos</Th>
+              <Th title="Estimativa baseada nas assinaturas ativas. Não representa comissão paga.">
+                Comissão mensal prevista ⓘ
+              </Th>
+              <Th>Ações</Th>
+            </THead>
+            <TBody>
+              {partners.map((partner) => (
+                <Tr key={partner.partner_id}>
+                  <Td>
+                    <p className="font-medium">{partner.user_full_name}</p>
+                    <p className="text-xs text-[var(--color-ink-muted)]">{partner.user_email}</p>
+                  </Td>
+                  <Td className="font-mono text-xs">{partner.code ?? "—"}</Td>
+                  <Td>
+                    <Badge tone={partner.enabled ? "success" : "neutral"}>
+                      {partner.enabled ? "Ativo" : "Inativo"}
+                    </Badge>
+                  </Td>
+                  <Td>{partner.discount_percent ?? 10}%</Td>
+                  <Td>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      defaultValue={partner.commission_percent ?? ""}
+                      className="w-20 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm"
+                      onBlur={(e) => {
+                        if (e.target.value && e.target.value !== partner.commission_percent) {
+                          void updateCommission(partner, e.target.value);
+                        }
+                      }}
+                    />
+                    %
+                  </Td>
+                  <Td>{partner.signups}</Td>
+                  <Td>{partner.payers}</Td>
+                  <Td>{partner.active}</Td>
+                  <Td>{formatCents(partner.projected_monthly_commission_cents)}</Td>
+                  <Td>
+                    <div className="flex flex-col gap-1">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!partner.link}
+                        onClick={() => void copyLink(partner)}
+                      >
+                        {copiedId === partner.partner_id ? "Copiado!" : "Copiar link"}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => void toggleStatus(partner)}>
+                        {partner.enabled ? "Desabilitar" : "Habilitar"}
+                      </Button>
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
         ) : null}
       </section>
     </div>
