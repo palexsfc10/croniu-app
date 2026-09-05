@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const replace = vi.fn();
@@ -58,8 +58,10 @@ describe("EvaluationEditor", () => {
 
     render(<EvaluationEditor clientId="c1" />);
 
-    expect(screen.getByText(/Visível ao cliente/i)).toBeInTheDocument();
-    expect(screen.getByText(/Anotação privada/i)).toBeInTheDocument();
+    // Both appear twice now — once as the section heading, once as the
+    // desktop side nav's quick-jump link to that same section.
+    expect(screen.getByRole("heading", { name: /Visível ao cliente/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/Anotação privada/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Nunca aparece no portal/i)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/^Título$/i), {
@@ -78,6 +80,24 @@ describe("EvaluationEditor", () => {
       .mocked(apiFetch)
       .mock.calls.find((c) => String(c[0]).includes("/publish"));
     expect(publishCall).toBeTruthy();
+  });
+
+  it("offers a section quick-jump nav (desktop) and a collapsible portal preview (mobile), instead of one long undifferentiated scroll", () => {
+    render(<EvaluationEditor clientId="c1" />);
+    const nav = screen.getByRole("navigation", { name: "Seções" });
+    expect(within(nav).getByRole("link", { name: "Visível ao cliente" })).toHaveAttribute(
+      "href",
+      "#eval-section-publico",
+    );
+    expect(within(nav).getByRole("link", { name: "Critérios" })).toHaveAttribute(
+      "href",
+      "#eval-section-criterios",
+    );
+    expect(within(nav).getByRole("link", { name: "Anotação privada" })).toHaveAttribute(
+      "href",
+      "#eval-section-privado",
+    );
+    expect(screen.getByText("Ver prévia do portal")).toBeInTheDocument();
   });
 
   it("allows optional criteria", () => {

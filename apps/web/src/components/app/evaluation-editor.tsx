@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   apiFetch,
   type ClientEvaluation,
@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@/components/auth/auth-provider";
 import { evaluationGuidance } from "@/lib/form-guidance";
 import { EVALUATION_SAVED_KEY } from "@/lib/evaluation-flow";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { SuggestionChips } from "@/components/ui/suggestion-chips";
 import { FormSectionIntro } from "@/components/ui/form-section-intro";
 import { FieldHint } from "@/components/ui/field-hint";
@@ -89,6 +90,96 @@ function toPayload(form: FormState) {
       sort_order: index,
     })),
   };
+}
+
+/** Desktop: an always-open, clearly-bounded section — this is where
+ * "seções claras" comes from. Mobile: the same content behind a
+ * `<details>`, closed by default — the redesign's "uma seção por vez"
+ * for the two secondary sections (Critérios, Anotação privada); the
+ * primary "Visível ao cliente" section stays a plain section on every
+ * viewport since it's the one thing almost everyone opening this form
+ * actually came to fill in. `tone="private"` gives the anotação privada
+ * section a visibly different (amber) surface — the "distinção forte
+ * entre conteúdo público e nota privada" the redesign asked for, not
+ * just a dashed border easy to miss. */
+function CollapsibleSection({
+  id,
+  title,
+  description,
+  tone = "default",
+  children,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+  tone?: "default" | "private";
+  children: ReactNode;
+}) {
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const surface =
+    tone === "private"
+      ? "border-[var(--color-warning)]/35 bg-[var(--color-warning-subtle)]/40"
+      : "border-[var(--color-border)] bg-[var(--color-surface)]";
+
+  if (isDesktop) {
+    return (
+      <section id={id} aria-label={title} className={`space-y-3 rounded-[var(--radius-lg)] border p-4 ${surface}`}>
+        <div>
+          <h2 className="text-base font-semibold text-[var(--color-ink)]">{title}</h2>
+          {description ? <p className="text-sm text-[var(--color-ink-muted)]">{description}</p> : null}
+        </div>
+        {children}
+      </section>
+    );
+  }
+  return (
+    <details id={id} className={`space-y-3 rounded-[var(--radius-lg)] border p-4 ${surface}`}>
+      <summary className="cursor-pointer text-base font-semibold text-[var(--color-ink)] [&::-webkit-details-marker]:hidden">
+        {title}
+      </summary>
+      <div className="space-y-3 pt-2">
+        {description ? <p className="text-sm text-[var(--color-ink-muted)]">{description}</p> : null}
+        {children}
+      </div>
+    </details>
+  );
+}
+
+/** Same content shown two ways: an always-visible sticky sidebar column
+ * on desktop, and a collapsible "Ver prévia do portal" on mobile (a
+ * permanent third column has nowhere to go on a narrow screen). One
+ * component, so the two can never show different content. */
+function PortalPreview({ form }: { form: FormState }) {
+  return (
+    <>
+      <p className="text-sm font-medium">{form.title || "Sem título"}</p>
+      {form.summary ? <p className="text-sm whitespace-pre-wrap">{form.summary}</p> : null}
+      {form.achievements ? (
+        <p className="text-sm whitespace-pre-wrap">
+          <span className="font-medium">Conquistas: </span>
+          {form.achievements}
+        </p>
+      ) : null}
+      {form.next_goals ? (
+        <p className="text-sm whitespace-pre-wrap">
+          <span className="font-medium">Próximos objetivos: </span>
+          {form.next_goals}
+        </p>
+      ) : null}
+      {form.client_message ? <p className="text-sm whitespace-pre-wrap">{form.client_message}</p> : null}
+      {form.criteria.length > 0 ? (
+        <ul className="space-y-1 text-sm">
+          {form.criteria.map((c, i) => (
+            <li key={i}>
+              {c.name || "Critério"}
+              {c.score != null ? ` · ${c.score}/${c.scale_max ?? 5}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="text-xs text-[var(--color-ink-muted)]">Notas privadas não entram nesta prévia.</p>
+    </>
+  );
 }
 
 type Props = {
@@ -301,7 +392,30 @@ export function EvaluationEditor({
         </p>
       ) : null}
 
-      <section className="space-y-3" aria-label="Visível ao cliente">
+      <div className="lg:grid lg:grid-cols-[160px_minmax(0,1fr)_300px] lg:items-start lg:gap-6">
+      <nav aria-label="Seções" className="hidden lg:sticky lg:top-4 lg:col-start-1 lg:flex lg:flex-col lg:gap-1 lg:self-start">
+        <a
+          href="#eval-section-publico"
+          className="rounded-[var(--radius-sm)] px-2 py-1.5 text-sm font-medium text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]"
+        >
+          Visível ao cliente
+        </a>
+        <a
+          href="#eval-section-criterios"
+          className="rounded-[var(--radius-sm)] px-2 py-1.5 text-sm font-medium text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]"
+        >
+          Critérios
+        </a>
+        <a
+          href="#eval-section-privado"
+          className="rounded-[var(--radius-sm)] px-2 py-1.5 text-sm font-medium text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-ink)]"
+        >
+          Anotação privada
+        </a>
+      </nav>
+
+      <div className="space-y-4 lg:col-start-2 lg:min-w-0">
+      <section id="eval-section-publico" className="space-y-3" aria-label="Visível ao cliente">
         <FormSectionIntro
           title="Visível ao cliente"
           description="O que estiver nesta seção pode ser publicado no portal. Nada é publicado sem o seu toque em Publicar."
@@ -405,11 +519,7 @@ export function EvaluationEditor({
         />
       </section>
 
-      <section className="space-y-3" aria-label="Critérios opcionais">
-        <div>
-          <h2 className="text-base font-semibold">Critérios (opcional)</h2>
-          <p className="text-sm text-[var(--color-ink-muted)]">{SCALE_HINT}</p>
-        </div>
+      <CollapsibleSection id="eval-section-criterios" title="Critérios (opcional)" description={SCALE_HINT}>
         {form.criteria.map((c, index) => (
           <div
             key={index}
@@ -475,61 +585,44 @@ export function EvaluationEditor({
         <Button type="button" variant="secondary" fullWidth onClick={addCriterion}>
           Adicionar critério
         </Button>
-      </section>
+      </CollapsibleSection>
 
-      <section
-        className="space-y-3 rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-bg)] p-3"
-        aria-label="Anotação privada"
+      <CollapsibleSection
+        id="eval-section-privado"
+        title="Anotação privada"
+        description="Nunca aparece no portal do cliente."
+        tone="private"
       >
-        <h2 className="text-base font-semibold">Anotação privada</h2>
-        <p className="text-sm text-[var(--color-ink-muted)]">
-          Nunca aparece no portal do cliente.
-        </p>
         <TextArea
           label="Notas privadas"
           value={form.private_notes}
           onChange={(e) => updateField("private_notes", e.target.value)}
         />
-      </section>
+      </CollapsibleSection>
+      </div>
 
-      <section
-        className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
+      <aside
         aria-label="Pré-visualização do portal"
+        className="hidden lg:sticky lg:top-4 lg:col-start-3 lg:block lg:space-y-2 lg:self-start lg:rounded-[var(--radius-lg)] lg:border lg:border-[var(--color-border)] lg:bg-[var(--color-surface-muted)] lg:p-3"
       >
         <h2 className="text-base font-semibold">Prévia do portal</h2>
-        <p className="text-sm font-medium">{form.title || "Sem título"}</p>
-        {form.summary ? <p className="text-sm whitespace-pre-wrap">{form.summary}</p> : null}
-        {form.achievements ? (
-          <p className="text-sm whitespace-pre-wrap">
-            <span className="font-medium">Conquistas: </span>
-            {form.achievements}
-          </p>
-        ) : null}
-        {form.next_goals ? (
-          <p className="text-sm whitespace-pre-wrap">
-            <span className="font-medium">Próximos objetivos: </span>
-            {form.next_goals}
-          </p>
-        ) : null}
-        {form.client_message ? (
-          <p className="text-sm whitespace-pre-wrap">{form.client_message}</p>
-        ) : null}
-        {form.criteria.length > 0 ? (
-          <ul className="space-y-1 text-sm">
-            {form.criteria.map((c, i) => (
-              <li key={i}>
-                {c.name || "Critério"}
-                {c.score != null ? ` · ${c.score}/${c.scale_max ?? 5}` : ""}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          Notas privadas não entram nesta prévia.
-        </p>
-      </section>
+        <PortalPreview form={form} />
+      </aside>
+      </div>
 
-      <div className="flex flex-col gap-2 pb-4">
+      <details
+        aria-label="Pré-visualização do portal"
+        className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 lg:hidden"
+      >
+        <summary className="cursor-pointer text-base font-semibold [&::-webkit-details-marker]:hidden">
+          Ver prévia do portal
+        </summary>
+        <div className="space-y-2 pt-2">
+          <PortalPreview form={form} />
+        </div>
+      </details>
+
+      <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 py-3 backdrop-blur">
         <Button fullWidth disabled={busy} onClick={() => void saveDraft()}>
           Salvar rascunho
         </Button>
