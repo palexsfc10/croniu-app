@@ -356,28 +356,29 @@ describe("ClientsPage — nomenclature has no flash", () => {
     expect(screen.getByRole("heading", { name: "Clientes" })).toBeInTheDocument();
   });
 
-  it("mobile shows only Todos/Atenção/Renovação as quick pills, with the rest behind 'Mais filtros'", async () => {
+  it("shows only Todos/Atenção/Renovação as quick pills (same compact toolbar for desktop and mobile), with the rest behind 'Mais filtros'", async () => {
     authState.professionCode = "personal_trainer";
     mockApi({ clients: [] });
-    const { container } = render(<ClientsPage />);
+    render(<ClientsPage />);
     await screen.findByText("Nenhum aluno cadastrado");
 
-    const mobileFilters = container.querySelector(
-      '[role="group"][aria-label="Filtrar por situação"].lg\\:hidden',
-    ) as HTMLElement;
-    expect(within(mobileFilters).getByRole("button", { name: "Todos" })).toBeInTheDocument();
-    expect(within(mobileFilters).getByRole("button", { name: "Atenção" })).toBeInTheDocument();
-    expect(within(mobileFilters).getByRole("button", { name: "Renovação" })).toBeInTheDocument();
-    expect(within(mobileFilters).queryByRole("button", { name: "Onboarding" })).not.toBeInTheDocument();
-    expect(within(mobileFilters).queryByRole("button", { name: "Financeiro" })).not.toBeInTheDocument();
+    const toolbar = screen.getByRole("group", { name: "Filtrar e ordenar" });
+    expect(within(toolbar).getByRole("button", { name: "Todos" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "Atenção" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "Renovação" })).toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "Onboarding" })).not.toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "Financeiro" })).not.toBeInTheDocument();
+    // Ordenar por is always in the compact toolbar itself now — never
+    // hidden behind "Mais filtros" nor duplicated inside it.
+    expect(within(toolbar).getByText("Ordenar por")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    fireEvent.click(within(mobileFilters).getByRole("button", { name: /Mais filtros/i }));
+    fireEvent.click(within(toolbar).getByRole("button", { name: /Mais filtros/i }));
     const sheet = screen.getByRole("dialog");
     expect(within(sheet).getByRole("button", { name: "Onboarding" })).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "Financeiro" })).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "Sem acompanhamento" })).toBeInTheDocument();
-    expect(within(sheet).getByText("Ordenar por")).toBeInTheDocument();
+    expect(within(sheet).queryByText("Ordenar por")).not.toBeInTheDocument();
   });
 
   it("renders a dense table for desktop (hidden below lg) and a card list for mobile (hidden from lg up)", async () => {

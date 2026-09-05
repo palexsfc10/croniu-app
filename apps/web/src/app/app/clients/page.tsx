@@ -510,46 +510,49 @@ export default function ClientsPage() {
   return (
     <div className="space-y-5 animate-fade-up pb-4 md:space-y-6">
       <header className="space-y-3">
-        <div>
-          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-            <PageTitle>{title}</PageTitle>
-            {!loading ? (
-              <span className="text-sm font-medium text-[var(--color-ink-muted)]">
-                {rows.length}
-                {attentionCount > 0
-                  ? ` · ${attentionCount} ${attentionCount === 1 ? "precisa" : "precisam"} de atenção`
-                  : statusFilter === "active" && rows.length > 0
-                    ? " · carteira em dia"
-                    : ""}
-              </span>
-            ) : null}
+        {/* Faixa 1: título/contagem à esquerda, ações à direita — uma única
+            faixa, não título+descrição empilhados acima de uma faixa de
+            botões separada. Desktop mantém os dois botões completos;
+            mobile compacta "Adicionar" para o mesmo "+" que qualquer outro
+            "+" do produto já significa, "Convidar" continua alcançável. */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+              <PageTitle>{title}</PageTitle>
+              {!loading ? (
+                <span className="text-sm font-medium text-[var(--color-ink-muted)]">
+                  {rows.length}
+                  {attentionCount > 0
+                    ? ` · ${attentionCount} ${attentionCount === 1 ? "precisa" : "precisam"} de atenção`
+                    : statusFilter === "active" && rows.length > 0
+                      ? " · carteira em dia"
+                      : ""}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              Pessoas que você atende, com o próximo passo à vista.
+            </p>
           </div>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            Pessoas que você atende, com o próximo passo à vista.
-          </p>
-        </div>
-        {/* Desktop: both full actions, as before. Mobile: "Adicionar" folds
-            to an icon-only "+" (same action every other "+" in the
-            redesign already means) so the header takes less of the first
-            fold; "Convidar" stays reachable, just more compact. */}
-        <div className="hidden items-center gap-2 lg:flex">
-          <Link href="/app/clients/new" className="min-w-0">
-            <Button className="whitespace-nowrap">
-              <IconPlus className="mr-1.5 h-4 w-4" />
-              {addLabel}
-            </Button>
-          </Link>
-          <InviteButton />
-        </div>
-        <div className="flex items-center gap-2 lg:hidden">
-          <Link
-            href="/app/clients/new"
-            aria-label={addLabel}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
-          >
-            <IconPlus className="h-5 w-5" />
-          </Link>
-          <InviteButton />
+          <div className="hidden shrink-0 items-center gap-2 lg:flex">
+            <Link href="/app/clients/new" className="min-w-0">
+              <Button className="whitespace-nowrap">
+                <IconPlus className="mr-1.5 h-4 w-4" />
+                {addLabel}
+              </Button>
+            </Link>
+            <InviteButton />
+          </div>
+          <div className="flex shrink-0 items-center gap-2 lg:hidden">
+            <Link
+              href="/app/clients/new"
+              aria-label={addLabel}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+            >
+              <IconPlus className="h-5 w-5" />
+            </Link>
+            <InviteButton />
+          </div>
         </div>
         {pendingIntakes.length > 0 ? (
           <Link
@@ -586,120 +589,90 @@ export default function ClientsPage() {
         ) : null}
       </header>
 
-      <div className="space-y-3">
-        <div className="flex gap-2">
-          {(
-            [
-              ["active", "Ativos"],
-              ["archived", "Arquivados"],
-            ] as const
-          ).map(([value, label]) => (
-            <SegmentedToggle
-              key={value}
-              active={statusFilter === value}
-              onClick={() => setStatusFilter(value)}
-            >
-              {label}
-            </SegmentedToggle>
-          ))}
-        </div>
-
-        {/* Desktop: every view + sort inline, as before. */}
-        <div className="hidden flex-wrap gap-2 lg:flex" role="group" aria-label="Filtrar por situação">
-          {VIEW_OPTIONS.map(({ value, label }) => {
-            const count = value === "all" ? rows.length : rows.filter((r) => matchesView(r, value)).length;
-            return (
-              <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
-                {label}
-                {value !== "all" && count > 0 ? ` · ${count}` : ""}
-              </SegmentedToggle>
-            );
-          })}
-        </div>
-
-        {/* Mobile: only the 3 most-used views as quick pills — the rest
-            (Onboarding/Financeiro/Sem acompanhamento) plus Ordenar por
-            move into "Mais filtros", so the list itself still starts
-            within the first fold instead of below two wrapped pill rows. */}
-        <div className="flex flex-wrap items-center gap-2 lg:hidden" role="group" aria-label="Filtrar por situação">
-          {MOBILE_QUICK_VIEWS.map((value) => {
-            const label = VIEW_OPTIONS.find((v) => v.value === value)!.label;
-            const count = value === "all" ? rows.length : rows.filter((r) => matchesView(r, value)).length;
-            return (
-              <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
-                {label}
-                {value !== "all" && count > 0 ? ` · ${count}` : ""}
-              </SegmentedToggle>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setFiltersOpen(true)}
-            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--color-border)] px-3 text-sm font-medium text-[var(--color-ink-muted)]"
+      {/* Faixa 2: Ativos/Arquivados, filtros e ordenação numa toolbar
+          compacta única — mesma para desktop e mobile. Os 3 filtros mais
+          usados (Todos/Atenção/Renovação) ficam à mostra; o resto
+          (Onboarding/Financeiro/Sem acompanhamento) recolhe em "Mais
+          filtros", que agora também é onde o desktop os alcança — não
+          mais uma lista fixa de 6 chips ocupando sozinha uma linha
+          inteira antes mesmo de haver algo para filtrar. */}
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar e ordenar">
+        {(
+          [
+            ["active", "Ativos"],
+            ["archived", "Arquivados"],
+          ] as const
+        ).map(([value, label]) => (
+          <SegmentedToggle
+            key={value}
+            active={statusFilter === value}
+            onClick={() => setStatusFilter(value)}
           >
-            <IconSliders className="h-3.5 w-3.5" aria-hidden />
-            Mais filtros
-          </button>
-        </div>
-
-        <ActionSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} labelledBy="clients-more-filters-title">
-          <h2 id="clients-more-filters-title" className="text-base font-semibold text-[var(--color-ink)]">
-            Mais filtros
-          </h2>
-          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Outras situações">
-            {VIEW_OPTIONS.filter((v) => !MOBILE_QUICK_VIEWS.includes(v.value)).map(({ value, label }) => {
-              const count = rows.filter((r) => matchesView(r, value)).length;
-              return (
-                <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
-                  {label}
-                  {count > 0 ? ` · ${count}` : ""}
-                </SegmentedToggle>
-              );
-            })}
-          </div>
-          <label className="mt-4 flex items-center gap-2 text-sm">
-            <span className="text-[var(--color-ink-muted)]">Ordenar por</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              className="min-h-11 flex-1 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
-            >
-              <option value="name">Nome</option>
-              <option value="attention">Atenção</option>
-              <option value="next_session">Próxima sessão</option>
-            </select>
+            {label}
+          </SegmentedToggle>
+        ))}
+        {MOBILE_QUICK_VIEWS.map((value) => {
+          const label = VIEW_OPTIONS.find((v) => v.value === value)!.label;
+          const count = value === "all" ? rows.length : rows.filter((r) => matchesView(r, value)).length;
+          return (
+            <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
+              {label}
+              {value !== "all" && count > 0 ? ` · ${count}` : ""}
+            </SegmentedToggle>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setFiltersOpen(true)}
+          className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--color-border)] px-3 text-sm font-medium text-[var(--color-ink-muted)]"
+        >
+          <IconSliders className="h-3.5 w-3.5" aria-hidden />
+          Mais filtros
+        </button>
+        {showSearch ? (
+          <label className="block min-w-[10rem] flex-1">
+            <span className="sr-only">Buscar {terms.client}</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Buscar ${terms.client}`}
+              className="min-h-9 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+            />
           </label>
-          <Button fullWidth className="mt-4" onClick={() => setFiltersOpen(false)}>
-            Aplicar
-          </Button>
-        </ActionSheet>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {showSearch ? (
-            <label className="block flex-1 min-w-[12rem]">
-              <span className="sr-only">Buscar {terms.client}</span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Buscar ${terms.client}`}
-                className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
-              />
-            </label>
-          ) : null}
-          <label className="hidden items-center gap-2 text-sm lg:flex">
-            <span className="text-[var(--color-ink-muted)]">Ordenar por</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              className="min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
-            >
-              <option value="name">Nome</option>
-              <option value="attention">Atenção</option>
-              <option value="next_session">Próxima sessão</option>
-            </select>
-          </label>
-        </div>
+        ) : null}
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-[var(--color-ink-muted)]">Ordenar por</span>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="min-h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+          >
+            <option value="name">Nome</option>
+            <option value="attention">Atenção</option>
+            <option value="next_session">Próxima sessão</option>
+          </select>
+        </label>
       </div>
+
+      <ActionSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} labelledBy="clients-more-filters-title">
+        <h2 id="clients-more-filters-title" className="text-base font-semibold text-[var(--color-ink)]">
+          Mais filtros
+        </h2>
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Outras situações">
+          {VIEW_OPTIONS.filter((v) => !MOBILE_QUICK_VIEWS.includes(v.value)).map(({ value, label }) => {
+            const count = rows.filter((r) => matchesView(r, value)).length;
+            return (
+              <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
+                {label}
+                {count > 0 ? ` · ${count}` : ""}
+              </SegmentedToggle>
+            );
+          })}
+        </div>
+        <Button fullWidth className="mt-4" onClick={() => setFiltersOpen(false)}>
+          Aplicar
+        </Button>
+      </ActionSheet>
 
       {loading ? (
         <div className="space-y-2">
