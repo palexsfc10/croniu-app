@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { CopyableId } from "@/components/ui/copyable-id";
+import { Table, THead, Th, TBody, Tr, Td, TableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { IconBug } from "@/components/ui/icons";
 
 type ErrorItem = {
   key: string;
@@ -63,45 +67,37 @@ export default function ErrorsPage() {
       ) : null}
 
       {!data ? (
-        <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>
+        <TableSkeleton columns={6} />
       ) : data.items.length === 0 ? (
-        <p className="rounded border border-dashed border-[var(--color-border)] p-4 text-sm text-[var(--color-ink-muted)]">
-          Nenhum erro relevante nos últimos 14 dias.
-        </p>
+        <EmptyState icon={<IconBug className="h-8 w-8" />} title="Nenhum erro relevante nos últimos 14 dias" />
       ) : (
-        <div className="overflow-x-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-muted)]">
-              <tr>
-                <th className="px-3 py-2">Quando</th>
-                <th className="px-3 py-2">Serviço</th>
-                <th className="px-3 py-2">Operação</th>
-                <th className="px-3 py-2">Código</th>
-                <th className="px-3 py-2">Ocorrências</th>
-                <th className="px-3 py-2">Correlation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((row) => (
-                <tr key={row.key} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="px-3 py-3">
-                    {new Date(row.last_seen_at).toLocaleString("pt-BR")}
-                  </td>
-                  <td className="px-3 py-3">{row.service}</td>
-                  <td className="px-3 py-3">
-                    <div>{row.operation}</div>
-                    <div className="text-xs text-[var(--color-ink-muted)]">
-                      {row.message_sanitized || "—"}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3">{row.error_code || "—"}</td>
-                  <td className="px-3 py-3 tabular-nums">{row.occurrences}</td>
-                  <td className="px-3 py-3 break-all text-xs">{row.correlation_id || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <THead>
+            <Th>Quando</Th>
+            <Th>Serviço</Th>
+            <Th>Operação</Th>
+            <Th>Código</Th>
+            <Th>Ocorrências</Th>
+            <Th>Correlation</Th>
+          </THead>
+          <TBody>
+            {data.items.map((row) => (
+              <Tr key={row.key}>
+                <Td>{new Date(row.last_seen_at).toLocaleString("pt-BR")}</Td>
+                <Td>{row.service}</Td>
+                <Td>
+                  <div>{row.operation}</div>
+                  <div className="text-xs text-[var(--color-ink-muted)]">
+                    {row.message_sanitized || "—"}
+                  </div>
+                </Td>
+                <Td>{row.error_code || "—"}</Td>
+                <Td className="tabular-nums">{row.occurrences}</Td>
+                <Td>{row.correlation_id ? <CopyableId value={row.correlation_id} label="correlation id" /> : "—"}</Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
       )}
     </div>
   );

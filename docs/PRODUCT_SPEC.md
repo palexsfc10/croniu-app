@@ -1,6 +1,7 @@
 # Croniu — Especificação mestre do produto
 
 **Documento canônico.** Os demais docs aprofundam e devem apontar para aqui.  
+**Atualização da worktree (2026-09-04):** evolução de interface do admin autorizada pelo usuário em [SPRINT_ADMIN_CONTROL_PREMIUM.md](./sprints/SPRINT_ADMIN_CONTROL_PREMIUM.md). Não modifica regras de domínio nem o estado de implantação. As referências de autorização abaixo são históricas.
 **Auditoria de baseline:** Sprint 2A.1 (2026-07-24).  
 **Sprint autorizada para implementação de features:** *nenhuma* (após 2A entregue; 2B é rascunho).
 

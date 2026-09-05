@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
@@ -14,6 +13,15 @@ import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { EnvironmentBadge } from "@/components/environment-identity";
 import { useAdminAuth } from "@/components/auth/admin-auth-provider";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { ConfirmDialog } from "@/components/ui/modal";
+import { CopyableId } from "@/components/ui/copyable-id";
+import { Skeleton } from "@/components/ui/skeleton";
+import { statusTone } from "@/lib/status-tone";
+import { IconShieldAlert } from "@/components/ui/icons";
+import { statusLabel } from "@/lib/presentation";
 
 type TimelineEvent = {
   kind: string;
@@ -54,6 +62,15 @@ function formatLocal(iso: string | null | undefined, timezone: string | undefine
   }
 }
 
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">{label}</dt>
+      <dd className="mt-0.5 text-sm text-[var(--color-ink)]">{value}</dd>
+    </div>
+  );
+}
+
 export default function OrganizationDetailPage() {
   const params = useParams<{ organizationId: string }>();
   const { me } = useAdminAuth();
@@ -84,123 +101,141 @@ export default function OrganizationDetailPage() {
     void load();
   }, [load]);
 
-  if (loading) return <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p>;
   if (error) {
     return (
-      <p role="alert" className="text-sm text-[var(--color-danger)]">
-        {error}
-      </p>
+      <Card rail="danger">
+        <p role="alert" className="text-sm text-[var(--color-danger)]">
+          {error}
+        </p>
+      </Card>
     );
   }
-  if (!data) return null;
+
+  if (loading || !data) {
+    return (
+      <div className="space-y-5">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-9 w-72" />
+        <Card>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-5">
-      <Link href="/organizations" className="text-sm font-semibold text-[var(--color-primary)]">
-        ← Organizações
-      </Link>
+    <div className="space-y-6">
+      <Breadcrumb items={[{ label: "Organizações", href: "/organizations" }, { label: data.name }]} />
+
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="h-display text-3xl">{data.name}</h1>
         <EnvironmentBadge environment={me?.environment} />
-        {data.status === "disabled" ? (
-          <span className="rounded-full bg-[var(--color-danger)]/10 px-3 py-1 text-xs font-semibold text-[var(--color-danger)]">
-            Desativada
-          </span>
-        ) : null}
+        <Badge tone={statusTone(data.operational_status ?? data.status)}>
+          {statusLabel(data.operational_status ?? data.status)}
+        </Badge>
       </div>
-      <dl className="grid gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:grid-cols-2">
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Status operacional</dt>
-          <dd>{data.operational_status ?? data.status}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Assinatura / trial</dt>
-          <dd>{data.subscription_status ?? data.plan_code}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Profissional</dt>
-          <dd>{data.owner_name ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">E-mail (mascarado)</dt>
-          <dd>{data.owner_email_masked ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Cadastro</dt>
-          <dd>{new Date(data.created_at).toLocaleString("pt-BR")}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Último acesso</dt>
-          <dd>
-            {data.last_login_at
-              ? new Date(data.last_login_at).toLocaleString("pt-BR")
-              : data.last_activity_at
-                ? new Date(data.last_activity_at).toLocaleString("pt-BR")
-                : "—"}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Clientes / Ciclos / Agenda</dt>
-          <dd>
-            {data.clients_count} / {data.cycles_count} / {data.appointments_count ?? 0}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Profissão</dt>
-          <dd>{data.profession_label ?? "Não preenchida"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Especialidade</dt>
-          <dd>{data.profession_specialty ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Onboarding profissional</dt>
-          <dd>{data.profession_onboarding_done ? "Concluído" : "Pendente"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Formulário recomendado</dt>
-          <dd>{data.recommended_form_kind ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Planos / publicados / ocorrências atrasadas</dt>
-          <dd>
-            {data.plans_count ?? 0} / {data.published_plans_count ?? 0} / {data.overdue_occurrences_count ?? 0}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Uso do Assistente</dt>
-          <dd>{data.assistant_threads_count ?? 0} conversa(s)</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-[var(--color-ink-muted)]">Fim do período de teste</dt>
-          <dd>{formatLocal(data.trial_ends_at_local ?? data.trial_ends_at, data.timezone)}</dd>
-        </div>
-      </dl>
 
-      <TrialExtensionSection data={data} onUpdated={load} />
+      <nav aria-label="Seções da organização" className="flex flex-wrap gap-2 border-b border-[var(--color-border)] pb-3">
+        {[["resumo", "Resumo"], ["uso", "Uso do produto"], ["teste", "Período de teste"], ["historico", "Histórico"], ["acesso", "Controle de acesso"]].map(([id, label]) => <a key={id} href={`#${id}`} className="inline-flex min-h-11 items-center rounded-lg border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-subtle)]">{label}</a>)}
+      </nav>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Timeline administrativa</h2>
+      <section id="resumo" className="scroll-mt-6"><Card>
+        <CardHeader title="Resumo" />
+        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Profissional" value={data.owner_name ?? "—"} />
+          <Field label="E-mail (mascarado)" value={data.owner_email_masked ?? "—"} />
+          <Field label="Cadastro" value={new Date(data.created_at).toLocaleString("pt-BR")} />
+          <Field
+            label="Último acesso"
+            value={
+              data.last_login_at
+                ? `Login: ${new Date(data.last_login_at).toLocaleString("pt-BR")}`
+                : data.last_activity_at
+                  ? `Atividade: ${new Date(data.last_activity_at).toLocaleString("pt-BR")}`
+                  : "—"
+            }
+          />
+          <Field label="Profissão" value={data.profession_label ?? "Não preenchida"} />
+          <Field label="Especialidade" value={data.profession_specialty ?? "—"} />
+          <Field
+            label="Onboarding profissional"
+            value={
+              <Badge tone={data.profession_onboarding_done ? "success" : "warning"}>
+                {data.profession_onboarding_done ? "Concluído" : "Pendente"}
+              </Badge>
+            }
+          />
+          <Field label="Formulário recomendado" value={data.recommended_form_kind ?? "—"} />
+          <Field label="Assinatura" value={statusLabel(data.subscription_status)} />
+          <Field label="Fim do período de teste" value={formatLocal(data.trial_ends_at_local ?? data.trial_ends_at, data.timezone)} />
+          <Field label="Fuso da organização" value={data.timezone ?? "America/Sao_Paulo"} />
+        </dl>
+      </Card></section>
+
+      <section id="uso" className="scroll-mt-6"><Card>
+        <CardHeader title="Uso do produto" />
+        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field
+            label="Clientes / Ciclos / Agenda"
+            value={`${data.clients_count} / ${data.cycles_count} / ${data.appointments_count ?? 0}`}
+          />
+          <Field
+            label="Planos / publicados / ocorrências atrasadas"
+            value={`${data.plans_count ?? 0} / ${data.published_plans_count ?? 0} / ${data.overdue_occurrences_count ?? 0}`}
+          />
+          <Field label="Uso do Assistente" value={`${data.assistant_threads_count ?? 0} conversa(s)`} />
+        </dl>
+      </Card></section>
+
+      <section id="teste" className="scroll-mt-6">{me?.role === "platform_admin" ? <TrialExtensionSection data={data} onUpdated={load} /> : <Card><CardHeader title="Período de teste" /><p className="text-sm text-[var(--color-ink-muted)]">Seu perfil permite somente consulta. A extensão do teste exige um administrador.</p></Card>}</section>
+
+      <section id="historico" className="scroll-mt-6"><Card>
+        <CardHeader title="Timeline administrativa" />
         {!timeline || timeline.events.length === 0 ? (
           <p className="rounded border border-dashed border-[var(--color-border)] p-3 text-sm text-[var(--color-ink-muted)]">
             Sem eventos persistidos além do cadastro (ou dados ainda não existentes).
           </p>
         ) : (
-          <ol className="space-y-2 border-l border-[var(--color-border)] pl-4">
-            {timeline.events.map((ev) => (
-              <li key={`${ev.kind}-${ev.occurred_at}`} className="relative">
-                <span className="absolute -left-[1.15rem] top-1.5 h-2 w-2 rounded-full bg-[var(--color-primary)]" />
-                <p className="text-sm font-semibold">{ev.label}</p>
-                <p className="text-xs text-[var(--color-ink-muted)]">
-                  {new Date(ev.occurred_at).toLocaleString("pt-BR")} · {ev.kind}
-                </p>
-              </li>
-            ))}
+          <ol className="space-y-3 border-l border-[var(--color-border)] pl-4">
+            {timeline.events.map((ev) => {
+              const metaEntries = Object.entries(ev.metadata_safe ?? {});
+              return (
+                <li key={`${ev.kind}-${ev.occurred_at}`} className="relative">
+                  <span className="absolute -left-[1.15rem] top-1.5 h-2 w-2 rounded-full bg-[var(--color-primary)]" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-[var(--color-ink)]">{ev.label}</p>
+                    <CopyableId value={ev.kind} label="tipo de evento" />
+                  </div>
+                  <p className="text-xs text-[var(--color-ink-muted)]">
+                    {new Date(ev.occurred_at).toLocaleString("pt-BR")}
+                  </p>
+                  {metaEntries.length > 0 ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {metaEntries.map(([key, value]) => (
+                        <span
+                          key={key}
+                          className="rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-ink-muted)]"
+                        >
+                          {key}: {String(value)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ol>
         )}
-      </section>
+      </Card></section>
 
-      <DangerZoneSection data={data} onUpdated={load} />
+      <section id="acesso" className="scroll-mt-6">{me?.role === "platform_admin" ? <DangerZoneSection data={data} onUpdated={load} /> : <Card><CardHeader title="Controle de acesso" /><p className="text-sm text-[var(--color-ink-muted)]">Seu perfil permite somente consulta. Alterações de conta exigem um administrador.</p></Card>}</section>
     </div>
   );
 }
@@ -215,6 +250,7 @@ function TrialExtensionSection({
   const [selectedDays, setSelectedDays] = useState<number | null>(7);
   const [customDays, setCustomDays] = useState("");
   const [reason, setReason] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [result, setResult] = useState<TrialExtendOut | null>(null);
@@ -233,11 +269,17 @@ function TrialExtensionSection({
       ? new Date(Math.max(currentEnd.getTime(), now) + validDays * 24 * 60 * 60 * 1000)
       : null;
 
-  async function submit() {
+  function requestConfirm() {
     if (!validDays || reason.trim().length < 3) {
       setFormError("Informe uma quantidade de dias válida (1 a 90) e um motivo com pelo menos 3 caracteres.");
       return;
     }
+    setFormError(null);
+    setConfirmOpen(true);
+  }
+
+  async function submit() {
+    if (!validDays) return;
     setSubmitting(true);
     setFormError(null);
     const res = await apiFetch<TrialExtendOut>(`/api/v1/platform/organizations/${data.id}/trial/extend`, {
@@ -245,6 +287,7 @@ function TrialExtensionSection({
       body: JSON.stringify({ additional_days: validDays, reason: reason.trim() }),
     });
     setSubmitting(false);
+    setConfirmOpen(false);
     if (res.error) {
       setFormError(res.error.message);
       return;
@@ -256,83 +299,93 @@ function TrialExtensionSection({
   }
 
   return (
-    <section className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-      <div>
-        <h2 className="text-lg font-semibold">Gestão do trial</h2>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Estende o período de teste sem gerar cobrança nem checkout. Disponível apenas enquanto a
-          assinatura está em teste ou expirada sem conversão.
-        </p>
-      </div>
+    <Card>
+      <CardHeader
+        title="Período de teste"
+        description="Estende o período de teste sem gerar cobrança nem checkout. Disponível apenas enquanto a assinatura está em teste ou expirada sem conversão."
+      />
 
-      <div className="flex flex-wrap gap-2">
-        {TRIAL_QUICK_OPTIONS.map((days) => (
-          <Button
-            key={days}
-            type="button"
-            variant={selectedDays === days && !customDays.trim() ? "primary" : "secondary"}
-            onClick={() => {
-              setSelectedDays(days);
-              setCustomDays("");
-            }}
-          >
-            +{days} dias
-          </Button>
-        ))}
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <TextField
-          label="Quantidade personalizada (1 a 90 dias)"
-          type="number"
-          min={1}
-          max={TRIAL_MAX_DAYS}
-          value={customDays}
-          onChange={(e) => setCustomDays(e.target.value)}
-          placeholder="Ex.: 45"
-        />
-        <TextField
-          label="Motivo administrativo"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Ex.: cliente solicitou mais tempo para avaliar."
-        />
-      </div>
-
-      {validDays && previewEnd ? (
-        <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] p-3 text-sm">
-          <p>
-            Término atual:{" "}
-            <strong>{formatLocal(data.trial_ends_at_local ?? data.trial_ends_at, data.timezone)}</strong>
-          </p>
-          <p>
-            Dias adicionados: <strong>{validDays}</strong>
-          </p>
-          <p>
-            Nova data de término:{" "}
-            <strong>
-              {previewEnd.toLocaleString("pt-BR", { timeZone: data.timezone || "America/Sao_Paulo" })}
-            </strong>
-          </p>
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {TRIAL_QUICK_OPTIONS.map((days) => (
+            <Button
+              key={days}
+              type="button"
+              size="sm"
+              variant={selectedDays === days && !customDays.trim() ? "primary" : "secondary"}
+              onClick={() => {
+                setSelectedDays(days);
+                setCustomDays("");
+              }}
+            >
+              +{days} dias
+            </Button>
+          ))}
         </div>
-      ) : null}
 
-      {formError ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {formError}
-        </p>
-      ) : null}
-      {result ? (
-        <p className="text-sm text-[var(--color-success,theme(colors.green.600))]">
-          Teste estendido com sucesso — novo término:{" "}
-          {formatLocal(result.new_trial_ends_at_local, data.timezone)}.
-        </p>
-      ) : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextField
+            label="Quantidade personalizada (1 a 90 dias)"
+            type="number"
+            min={1}
+            max={TRIAL_MAX_DAYS}
+            value={customDays}
+            onChange={(e) => setCustomDays(e.target.value)}
+            placeholder="Ex.: 45"
+          />
+          <TextField
+            label="Motivo administrativo"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ex.: cliente solicitou mais tempo para avaliar."
+          />
+        </div>
 
-      <Button type="button" disabled={submitting || !validDays} onClick={() => void submit()}>
-        {submitting ? "Estendendo…" : "Estender teste"}
-      </Button>
-    </section>
+        {formError ? (
+          <p role="alert" className="text-sm text-[var(--color-danger)]">
+            {formError}
+          </p>
+        ) : null}
+        {result ? (
+          <p className="text-sm font-medium text-[var(--color-success)]">
+            Teste estendido com sucesso — novo término:{" "}
+            {formatLocal(result.new_trial_ends_at_local, data.timezone)}.
+          </p>
+        ) : null}
+
+        <Button type="button" disabled={!validDays} onClick={requestConfirm}>
+          Estender teste
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Confirmar extensão de teste"
+        confirmLabel={submitting ? "Estendendo…" : "Confirmar extensão"}
+        busy={submitting}
+        confirmVariant="primary"
+        onConfirm={() => void submit()}
+        onCancel={() => setConfirmOpen(false)}
+      >
+        {validDays && previewEnd ? (
+          <div className="space-y-1 rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] p-3 text-sm">
+            <p>
+              Término atual:{" "}
+              <strong>{formatLocal(data.trial_ends_at_local ?? data.trial_ends_at, data.timezone)}</strong>
+            </p>
+            <p>
+              Dias adicionados: <strong>{validDays}</strong>
+            </p>
+            <p>
+              Nova data de término:{" "}
+              <strong>
+                {previewEnd.toLocaleString("pt-BR", { timeZone: data.timezone || "America/Sao_Paulo" })}
+              </strong>
+            </p>
+          </div>
+        ) : null}
+      </ConfirmDialog>
+    </Card>
   );
 }
 
@@ -344,14 +397,15 @@ function DangerZoneSection({
   onUpdated: () => Promise<void>;
 }) {
   return (
-    <section className="space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-danger)]/40 bg-[var(--color-surface)] p-4">
-      <div>
+    <Card rail="danger" className="space-y-4">
+      <div className="flex items-center gap-2">
+        <IconShieldAlert className="h-5 w-5 text-[var(--color-danger)]" />
         <h2 className="text-lg font-semibold text-[var(--color-danger)]">Área de perigo</h2>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Ações abaixo afetam o acesso da organização. Nenhuma delas altera cobrança externa
-          silenciosamente.
-        </p>
       </div>
+      <p className="-mt-2 text-sm text-[var(--color-ink-muted)]">
+        Ações abaixo afetam o acesso da organização. Nenhuma delas altera cobrança externa
+        silenciosamente.
+      </p>
       {data.status === "disabled" ? (
         <ReactivateBlock data={data} onUpdated={onUpdated} />
       ) : (
@@ -359,7 +413,7 @@ function DangerZoneSection({
       )}
       <hr className="border-[var(--color-border)]" />
       <PermanentDeleteBlock data={data} onUpdated={onUpdated} />
-    </section>
+    </Card>
   );
 }
 
@@ -372,14 +426,11 @@ function DeactivateBlock({
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [reason, setReason] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   async function submit() {
-    if (reason.trim().length < 3) {
-      setFormError("Informe um motivo com pelo menos 3 caracteres.");
-      return;
-    }
     setSubmitting(true);
     setFormError(null);
     const res = await apiFetch<OrganizationDetail>(`/api/v1/platform/organizations/${data.id}/deactivate`, {
@@ -387,6 +438,7 @@ function DeactivateBlock({
       body: JSON.stringify({ confirmation_text: confirmationText, reason: reason.trim() }),
     });
     setSubmitting(false);
+    setConfirmOpen(false);
     if (res.error) {
       setFormError(res.error.message);
       return;
@@ -398,7 +450,7 @@ function DeactivateBlock({
 
   return (
     <div className="space-y-3">
-      <h3 className="font-semibold">Desativar conta</h3>
+      <h3 className="font-semibold text-[var(--color-ink)]">Desativar conta</h3>
       <p className="text-sm text-[var(--color-ink-muted)]">
         Encerra as sessões ativas e bloqueia novos logins. Dados, auditoria, cobrança e cupom de
         indicação são preservados. Pode ser revertido a qualquer momento.
@@ -421,11 +473,22 @@ function DeactivateBlock({
       <Button
         type="button"
         variant="secondary"
-        disabled={submitting || confirmationText.trim().length === 0}
-        onClick={() => void submit()}
+        disabled={confirmationText.trim().length === 0 || reason.trim().length < 3}
+        onClick={() => setConfirmOpen(true)}
       >
-        {submitting ? "Desativando…" : "Desativar conta"}
+        Desativar conta
       </Button>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Confirmar desativação"
+        description={`A organização "${data.name}" perderá acesso imediatamente. Sessões ativas serão encerradas e novos logins bloqueados. Nenhum dado será apagado e a ação pode ser revertida a qualquer momento.`}
+        confirmLabel={submitting ? "Desativando…" : "Confirmar desativação"}
+        confirmVariant="danger"
+        busy={submitting}
+        onConfirm={() => void submit()}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }
@@ -438,14 +501,11 @@ function ReactivateBlock({
   onUpdated: () => Promise<void>;
 }) {
   const [reason, setReason] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   async function submit() {
-    if (reason.trim().length < 3) {
-      setFormError("Informe um motivo com pelo menos 3 caracteres.");
-      return;
-    }
     setSubmitting(true);
     setFormError(null);
     const res = await apiFetch<OrganizationDetail>(`/api/v1/platform/organizations/${data.id}/reactivate`, {
@@ -453,6 +513,7 @@ function ReactivateBlock({
       body: JSON.stringify({ reason: reason.trim() }),
     });
     setSubmitting(false);
+    setConfirmOpen(false);
     if (res.error) {
       setFormError(res.error.message);
       return;
@@ -463,7 +524,7 @@ function ReactivateBlock({
 
   return (
     <div className="space-y-3">
-      <h3 className="font-semibold">Reativar conta</h3>
+      <h3 className="font-semibold text-[var(--color-ink)]">Reativar conta</h3>
       <p className="text-sm text-[var(--color-ink-muted)]">
         {data.disabled_reason ? (
           <>
@@ -484,9 +545,19 @@ function ReactivateBlock({
           {formError}
         </p>
       ) : null}
-      <Button type="button" disabled={submitting} onClick={() => void submit()}>
-        {submitting ? "Reativando…" : "Reativar conta"}
+      <Button type="button" disabled={reason.trim().length < 3} onClick={() => setConfirmOpen(true)}>
+        Reativar conta
       </Button>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Confirmar reativação"
+        description={`A organização "${data.name}" recuperará acesso imediatamente e o profissional poderá fazer login novamente.`}
+        confirmLabel={submitting ? "Reativando…" : "Confirmar reativação"}
+        busy={submitting}
+        onConfirm={() => void submit()}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }
@@ -504,6 +575,7 @@ function PermanentDeleteBlock({
   const [confirmationText, setConfirmationText] = useState("");
   const [understood, setUnderstood] = useState(false);
   const [reason, setReason] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [result, setResult] = useState<OrganizationPermanentDeleteResult | null>(null);
@@ -523,10 +595,6 @@ function PermanentDeleteBlock({
   }
 
   async function submit() {
-    if (!understood || reason.trim().length < 3) {
-      setFormError("Confirme que entende a irreversibilidade e informe um motivo.");
-      return;
-    }
     setSubmitting(true);
     setFormError(null);
     const res = await apiFetch<OrganizationPermanentDeleteResult>(
@@ -541,6 +609,7 @@ function PermanentDeleteBlock({
       },
     );
     setSubmitting(false);
+    setConfirmOpen(false);
     if (res.error) {
       setFormError(res.error.message);
       return;
@@ -552,7 +621,7 @@ function PermanentDeleteBlock({
   if (result) {
     return (
       <div className="space-y-2">
-        <h3 className="font-semibold">Excluir permanentemente</h3>
+        <h3 className="font-semibold text-[var(--color-ink)]">Excluir permanentemente</h3>
         <p className="text-sm">
           {result.mode === "hard_delete"
             ? "Organização excluída permanentemente."
@@ -564,7 +633,7 @@ function PermanentDeleteBlock({
 
   return (
     <div className="space-y-3">
-      <h3 className="font-semibold">Excluir permanentemente</h3>
+      <h3 className="font-semibold text-[var(--color-ink)]">Excluir permanentemente</h3>
       <p className="text-sm text-[var(--color-ink-muted)]">
         Ação irreversível. Quando há cobrança, assinatura ou indicação vinculada, os dados pessoais
         são anonimizados em vez de removidos, preservando o histórico financeiro.
@@ -626,15 +695,26 @@ function PermanentDeleteBlock({
             ) : null}
             <Button
               type="button"
-              disabled={submitting || !understood || confirmationText.trim().length === 0}
-              onClick={() => void submit()}
-              className="!bg-[var(--color-danger)] hover:!bg-[var(--color-danger)]"
+              variant="danger"
+              disabled={!understood || confirmationText.trim().length === 0 || reason.trim().length < 3}
+              onClick={() => setConfirmOpen(true)}
             >
-              {submitting ? "Excluindo…" : "Excluir permanentemente"}
+              Excluir permanentemente
             </Button>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Confirmar exclusão permanente"
+        description={`Esta é a última confirmação. "${data.name}" será ${preview?.eligible_for_hard_delete ? "excluída permanentemente" : "anonimizada, preservando registros financeiros"}. Esta ação não pode ser desfeita pelo Admin.`}
+        confirmLabel={submitting ? "Excluindo…" : "Excluir definitivamente"}
+        confirmVariant="danger"
+        busy={submitting}
+        onConfirm={() => void submit()}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }

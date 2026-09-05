@@ -108,4 +108,10 @@ HTML semântico; teclado; foco; labels; contraste; toques ≥ 44px; `prefers-red
 
 ## Dados
 
+### Admin — evolução local de controle (2026-09-04)
+
+Na branch `feature/admin-control-premium`, a navegação do admin é dividida em Gestão e Operação/suporte. Busca de organizações no topo (atalho `/` fora de campos), ambiente e perfil do operador visíveis. Visão geral prioriza contas, assinaturas e pendências; mantém os demais indicadores em seções compactas. Dados ausentes aparecem como indisponíveis.
+
+Organizações e usuários preservam pesquisa/paginação na URL, permitem 20/50 registros por página e usam listas de blocos no mobile. O detalhe da organização tem atalhos por seção e mantém confirmações explícitas das operações existentes; perfis de consulta não exibem formulários de mutação de conta. Wordmark preservado. Entrega local, sem homologação manual ou deploy.
+
 Mocks só em seed demo identificado (`[DEMO-CRONIU]`). Nunca mock disfarçado em HML/prod.

@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { IconInbox } from "@/components/ui/icons";
+import type { BadgeTone } from "@/components/ui/badge";
 
 type FeedbackItem = {
   id: string;
@@ -42,6 +48,13 @@ const STATUS_LABEL: Record<string, string> = {
   reviewing: "Em análise",
   resolved: "Resolvido",
   archived: "Descartado",
+};
+
+const STATUS_TONE: Record<string, BadgeTone> = {
+  new: "info",
+  reviewing: "warning",
+  resolved: "success",
+  archived: "neutral",
 };
 
 const STATUSES = ["new", "reviewing", "resolved", "archived"] as const;
@@ -89,7 +102,7 @@ export default function AdminFeedbacksPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold text-[var(--color-ink)]">Feedbacks</h1>
+        <h1 className="h-display text-3xl">Feedbacks</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Mensagens enviadas pelo app. Sem e-mail — persistência interna.
         </p>
@@ -137,75 +150,89 @@ export default function AdminFeedbacksPage() {
         </p>
       ) : null}
 
-      <p className="text-xs text-[var(--color-ink-muted)]">
-        {data ? `${data.total} feedback(s)` : "Carregando…"}
-      </p>
-
-      <ul className="space-y-3">
-        {(data?.items || []).map((item) => {
-          const open = expanded === item.id;
-          return (
-            <li
-              key={item.id}
-              className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0 space-y-0.5">
-                  <p className="text-sm font-semibold text-[var(--color-ink)]">
-                    {CATEGORY_LABEL[item.category] || item.category}
-                    {item.subject ? ` · ${item.subject}` : ""}
-                  </p>
-                  <p className="text-xs text-[var(--color-ink-muted)]">
-                    {item.user_name}
-                    {item.user_email_masked ? ` · ${item.user_email_masked}` : ""} ·{" "}
-                    {item.organization_name} ·{" "}
-                    {new Date(item.created_at).toLocaleString("pt-BR")}
-                  </p>
-                  <p className="text-xs font-medium text-[var(--color-ink-muted)]">
-                    {STATUS_LABEL[item.status] || item.status}
-                    {item.status_changed_by_name
-                      ? ` · alterado por ${item.status_changed_by_name}`
-                      : ""}
-                    {item.status_changed_at
-                      ? ` em ${new Date(item.status_changed_at).toLocaleString("pt-BR")}`
-                      : ""}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setExpanded(open ? null : item.id)}
-                >
-                  {open ? "Recolher" : "Ver"}
-                </Button>
-              </div>
-              {open ? (
-                <div className="mt-3 space-y-3 border-t border-[var(--color-border)] pt-3">
-                  <p className="whitespace-pre-wrap text-sm text-[var(--color-ink)]">{item.message}</p>
-                  {item.technical_context ? (
-                    <pre className="overflow-x-auto rounded bg-[var(--color-surface-subtle)] p-2 text-xs text-[var(--color-ink-muted)]">
-                      {JSON.stringify(item.technical_context, null, 2)}
-                    </pre>
-                  ) : null}
-                  <div className="flex flex-wrap gap-2">
-                    {STATUSES.map((next) => (
-                      <Button
-                        key={next}
-                        type="button"
-                        variant="secondary"
-                        disabled={busyId === item.id || item.status === next}
-                        onClick={() => void updateStatus(item.id, next)}
-                      >
-                        {STATUS_LABEL[next]}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+      {!data ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="mt-2 h-3 w-64" />
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <>
+          <p className="text-xs text-[var(--color-ink-muted)]">{data.total} feedback(s)</p>
+          {data.items.length === 0 ? (
+            <EmptyState icon={<IconInbox className="h-8 w-8" />} title="Nenhum feedback com os filtros atuais" />
+          ) : (
+            <ul className="space-y-3">
+              {data.items.map((item) => {
+                const open = expanded === item.id;
+                return (
+                  <li key={item.id}>
+                    <Card>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold text-[var(--color-ink)]">
+                            {CATEGORY_LABEL[item.category] || item.category}
+                            {item.subject ? ` · ${item.subject}` : ""}
+                          </p>
+                          <p className="text-xs text-[var(--color-ink-muted)]">
+                            {item.user_name}
+                            {item.user_email_masked ? ` · ${item.user_email_masked}` : ""} ·{" "}
+                            {item.organization_name} ·{" "}
+                            {new Date(item.created_at).toLocaleString("pt-BR")}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone={STATUS_TONE[item.status] ?? "neutral"}>
+                              {STATUS_LABEL[item.status] || item.status}
+                            </Badge>
+                            {item.status_changed_by_name ? (
+                              <span className="text-xs text-[var(--color-ink-muted)]">
+                                alterado por {item.status_changed_by_name}
+                                {item.status_changed_at
+                                  ? ` em ${new Date(item.status_changed_at).toLocaleString("pt-BR")}`
+                                  : ""}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setExpanded(open ? null : item.id)}>
+                          {open ? "Recolher" : "Ver"}
+                        </Button>
+                      </div>
+                      {open ? (
+                        <div className="mt-3 space-y-3 border-t border-[var(--color-border)] pt-3">
+                          <p className="whitespace-pre-wrap text-sm text-[var(--color-ink)]">{item.message}</p>
+                          {item.technical_context ? (
+                            <pre className="overflow-x-auto rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] p-2 text-xs text-[var(--color-ink-muted)]">
+                              {JSON.stringify(item.technical_context, null, 2)}
+                            </pre>
+                          ) : null}
+                          <div className="flex flex-wrap gap-2">
+                            {STATUSES.map((next) => (
+                              <Button
+                                key={next}
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                disabled={busyId === item.id || item.status === next}
+                                onClick={() => void updateStatus(item.id, next)}
+                              >
+                                {STATUS_LABEL[next]}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
     </div>
   );
 }

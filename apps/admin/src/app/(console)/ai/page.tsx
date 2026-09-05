@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Table, THead, Th, TBody, Tr, Td, TableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonMetricGrid } from "@/components/ui/skeleton";
+import { IconSparkles } from "@/components/ui/icons";
+import { statusTone } from "@/lib/status-tone";
 
 type AiOps = {
   configured: boolean;
@@ -112,16 +119,28 @@ export default function AiOpsPage() {
   }, []);
 
   if (error && !data) {
-    return <p className="text-sm text-[var(--color-danger)]">{error}</p>;
+    return (
+      <Card rail="danger">
+        <p role="alert" className="text-sm text-[var(--color-danger)]">
+          {error}
+        </p>
+      </Card>
+    );
   }
+
   if (!data) {
-    return <p className="text-sm text-[var(--color-ink-muted)]">Carregando métricas de IA…</p>;
+    return (
+      <div className="space-y-5">
+        <h1 className="h-display text-3xl">Assistente IA</h1>
+        <SkeletonMetricGrid count={8} />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-semibold text-[var(--color-ink)]">Assistente IA</h1>
+        <h1 className="h-display text-3xl">Assistente IA</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Metadados operacionais. Conversas privadas não são listadas por padrão.
         </p>
@@ -143,7 +162,7 @@ export default function AiOpsPage() {
           <h2 className="font-semibold text-[var(--color-ink)]">Execuções recentes</h2>
           <div className="flex flex-wrap gap-2">
             <select
-              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
             >
@@ -153,7 +172,7 @@ export default function AiOpsPage() {
               <option value="failed">falha</option>
             </select>
             <select
-              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
               value={proposalStatus}
               onChange={(e) => setProposalStatus(e.target.value)}
             >
@@ -163,7 +182,7 @@ export default function AiOpsPage() {
               <option value="cancelled">cancelado</option>
             </select>
             <select
-              className="min-h-10 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
               value={messageType}
               onChange={(e) => setMessageType(e.target.value)}
             >
@@ -172,12 +191,12 @@ export default function AiOpsPage() {
               <option value="voice">voz</option>
             </select>
             <input
-              className="min-h-10 min-w-[12rem] rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+              className="min-h-10 min-w-[12rem] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
               placeholder="organization_id"
               value={orgId}
               onChange={(e) => setOrgId(e.target.value)}
             />
-            <Button type="button" variant="secondary" onClick={() => void loadRuns()}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadRuns()}>
               Filtrar
             </Button>
           </div>
@@ -186,70 +205,62 @@ export default function AiOpsPage() {
         {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
 
         {!runs ? (
-          <p className="text-sm text-[var(--color-ink-muted)]">Carregando runs…</p>
+          <TableSkeleton columns={6} />
         ) : runs.items.length === 0 ? (
-          <p className="rounded border border-dashed border-[var(--color-border)] p-3 text-sm text-[var(--color-ink-muted)]">
-            Nenhuma execução com os filtros atuais.
-          </p>
+          <EmptyState icon={<IconSparkles className="h-8 w-8" />} title="Nenhuma execução com os filtros atuais" />
         ) : (
-          <div className="overflow-x-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-muted)]">
-                <tr>
-                  <th className="px-3 py-2">Quando</th>
-                  <th className="px-3 py-2">Org / profissional</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Modelo</th>
-                  <th className="px-3 py-2">Latência / tokens</th>
-                  <th className="px-3 py-2">Tools / proposta</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.items.map((run) => (
-                  <tr key={run.run_id} className="border-b border-[var(--color-border)] last:border-0 align-top">
-                    <td className="px-3 py-3">
-                      {run.started_at ? new Date(run.started_at).toLocaleString("pt-BR") : "—"}
-                      <div className="text-[11px] text-[var(--color-ink-muted)]">
-                        {run.provider_request_id || run.run_id.slice(0, 8)}
+          <Table>
+            <THead>
+              <Th>Quando</Th>
+              <Th>Org / profissional</Th>
+              <Th>Status</Th>
+              <Th>Modelo</Th>
+              <Th>Latência / tokens</Th>
+              <Th>Tools / proposta</Th>
+            </THead>
+            <TBody>
+              {runs.items.map((run) => (
+                <Tr key={run.run_id}>
+                  <Td>
+                    {run.started_at ? new Date(run.started_at).toLocaleString("pt-BR") : "—"}
+                    <div className="text-[11px] text-[var(--color-ink-muted)]">
+                      {run.provider_request_id || run.run_id.slice(0, 8)}
+                    </div>
+                  </Td>
+                  <Td>
+                    <div>{run.organization_name || run.organization_id.slice(0, 8)}</div>
+                    <div className="text-xs text-[var(--color-ink-muted)]">
+                      {run.professional_name || "—"}
+                    </div>
+                  </Td>
+                  <Td>
+                    <Badge tone={statusTone(run.status)}>{run.status}</Badge>
+                    {run.error_code ? (
+                      <div className="mt-1 text-xs text-[var(--color-danger)]">{run.error_code}</div>
+                    ) : null}
+                  </Td>
+                  <Td>
+                    {run.provider}/{run.model}
+                  </Td>
+                  <Td className="tabular-nums">
+                    {run.latency_ms ?? "—"} ms
+                    <div className="text-xs text-[var(--color-ink-muted)]">
+                      in {run.input_tokens} / out {run.output_tokens} · {run.estimated_cost_cents}¢
+                    </div>
+                  </Td>
+                  <Td>
+                    <div className="text-xs">{run.tools_requested.join(", ") || "—"}</div>
+                    {run.proposal ? (
+                      <div className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                        proposta {run.proposal.tool_name}: {run.proposal.status}
+                        {run.proposal.error_sanitized ? ` · ${run.proposal.error_sanitized}` : ""}
                       </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div>{run.organization_name || run.organization_id.slice(0, 8)}</div>
-                      <div className="text-xs text-[var(--color-ink-muted)]">
-                        {run.professional_name || "—"}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div>{run.status}</div>
-                      {run.error_code ? (
-                        <div className="text-xs text-[var(--color-danger)]">{run.error_code}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-3">
-                      {run.provider}/{run.model}
-                    </td>
-                    <td className="px-3 py-3 tabular-nums">
-                      {run.latency_ms ?? "—"} ms
-                      <div className="text-xs text-[var(--color-ink-muted)]">
-                        in {run.input_tokens} / out {run.output_tokens} · {run.estimated_cost_cents}¢
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="text-xs">{run.tools_requested.join(", ") || "—"}</div>
-                      {run.proposal ? (
-                        <div className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                          proposta {run.proposal.tool_name}: {run.proposal.status}
-                          {run.proposal.error_sanitized
-                            ? ` · ${run.proposal.error_sanitized}`
-                            : ""}
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    ) : null}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
         )}
         {runs?.note ? <p className="text-xs text-[var(--color-ink-muted)]">{runs.note}</p> : null}
       </section>

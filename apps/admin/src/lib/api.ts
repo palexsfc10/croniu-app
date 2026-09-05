@@ -161,7 +161,11 @@ export async function apiFetch<T>(
       Accept: "application/json",
       ...(init?.headers ?? {}),
     },
-  });
+  }).catch(() => null);
+
+  if (!response) {
+    return { error: { code: "network_error", message: "Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente." }, status: 0 };
+  }
 
   if (!response.ok) {
     return { error: await parseError(response), status: response.status };

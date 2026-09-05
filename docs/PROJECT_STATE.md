@@ -1,5 +1,12 @@
 # Croniu — Estado do projeto (auditoria)
 
+## Atualização local — Admin premium (2026-09-04)
+
+Nesta worktree, a base é `35ca1e6` (commit identificado na imagem do admin HML), branch `feature/admin-control-premium`.
+A interface reaproveita `391d2de` e acrescenta visão geral orientada a pendências, navegação agrupada, busca global de organizações, listagens responsivas e pesquisa/paginação na URL.
+Escopo e autorização: [SPRINT_ADMIN_CONTROL_PREMIUM.md](./sprints/SPRINT_ADMIN_CONTROL_PREMIUM.md).
+Esta entrega não altera a versão implantada no HML. O retrato abaixo é histórico e não representa o HEAD desta worktree.
+
 **Data da auditoria:** 2026-08-02 (avaliações + fundação do agente)  
 **Este documento descreve o que existe hoje**, não o ideal.
 

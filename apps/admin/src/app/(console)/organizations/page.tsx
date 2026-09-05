@@ -1,151 +1,57 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { apiFetch, type OrganizationListItem, type Paginated } from "@/lib/api";
+import type { OrganizationListItem } from "@/lib/api";
+import { useDirectory } from "@/lib/use-directory";
+import { formatAdminDate, formatCount, initials, statusLabel } from "@/lib/presentation";
+import { statusTone } from "@/lib/status-tone";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TextField } from "@/components/ui/text-field";
+import { Table, THead, Th, TBody, Tr, Td, TableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { ResourceError } from "@/components/ui/resource-error";
+import { DirectorySearch, DirectoryPagination } from "@/components/directory-controls";
+import { IconBuilding, IconChevronRight } from "@/components/ui/icons";
+
+function OrganizationStatus({ org }: { org: OrganizationListItem }) {
+  return <div className="flex flex-wrap gap-1.5"><Badge tone={statusTone(org.status)}>Conta: {statusLabel(org.status)}</Badge>{org.subscription_status ? <Badge tone={statusTone(org.subscription_status)}>Assinatura: {statusLabel(org.subscription_status)}</Badge> : org.plan_code ? <Badge>{org.plan_code}</Badge> : null}{org.operational_status && org.operational_status !== org.status && org.operational_status !== org.subscription_status ? <Badge tone={statusTone(org.operational_status)}>{statusLabel(org.operational_status)}</Badge> : null}</div>;
+}
+
+function LastAccess({ org }: { org: OrganizationListItem }) {
+  return <div className="text-xs"><p>{formatAdminDate(org.last_login_at ?? org.last_activity_at)}</p>{org.last_login_at || org.last_activity_at ? <p className="mt-1 text-[var(--color-ink-muted)]">{org.last_login_at ? "Login confirmado" : "Atividade registrada"}</p> : null}</div>;
+}
+
+function OrganizationsDirectory() {
+  const { data, error, loading, refresh, query, page, size, navigate } = useDirectory<OrganizationListItem>("/organizations");
+  return <div className="space-y-6">
+    <PageHeader title="Organizações" description="Encontre uma conta e consulte acesso, assinatura e uso. Abra os detalhes para gerenciar." eyebrow="Gestão de contas" actions={<Button variant="secondary" disabled={loading} onClick={refresh}>Atualizar</Button>} />
+    <DirectorySearch query={query} placeholder="Nome da organização ou titular (mín. 2 caracteres)" submit={(search) => navigate({ search })} />
+    {error ? <ResourceError message={error} retry={refresh} /> : null}
+    {loading ? <div role="status" aria-label="Carregando organizações"><TableSkeleton columns={5} /></div> : null}
+    {data ? <>
+      <div className="flex flex-wrap items-center justify-between gap-2"><p aria-live="polite" className="text-sm"><strong>{formatCount(data.total)}</strong> <span className="text-[var(--color-ink-muted)]">{query ? `resultados para “${query}”` : "organizações cadastradas"}</span></p><p className="text-xs text-[var(--color-ink-muted)]">Datas no horário de Brasília</p></div>
+      {data.items.length === 0 ? <EmptyState icon={<IconBuilding className="h-8 w-8" />} title="Nenhuma organização encontrada" description={query ? "Tente outro nome ou limpe a busca para ver todas as contas." : "As organizações aparecerão aqui após o cadastro."} /> : <>
+        <div className="hidden lg:block"><Table><THead><Th>Organização / titular</Th><Th>Situação da conta</Th><Th>Uso do produto</Th><Th>Último acesso</Th><Th><span className="sr-only">Ações</span></Th></THead><TBody>{data.items.map((org) => <Tr key={org.id}>
+          <Td><div className="flex items-start gap-3"><span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-subtle)] text-xs font-bold text-[var(--color-primary)]">{initials(org.name)}</span><div className="min-w-0"><Link href={`/organizations/${org.id}`} className="font-semibold text-[var(--color-ink)] hover:text-[var(--color-primary)] hover:underline">{org.name}</Link><p className="mt-1 text-xs text-[var(--color-ink-muted)]">{org.owner_name ?? "Titular não informado"}</p><p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">{org.owner_email_masked}</p></div></div></Td>
+          <Td><OrganizationStatus org={org} /></Td>
+          <Td><p className="text-xs"><strong className="tabular-nums">{formatCount(org.clients_count)}</strong> clientes · <strong className="tabular-nums">{formatCount(org.cycles_count)}</strong> ciclos</p><p className="mt-1.5 text-xs text-[var(--color-ink-muted)]">{formatCount(org.appointments_count)} na agenda · {formatCount(org.assistant_threads_count)} conversas IA</p></Td>
+          <Td><LastAccess org={org} /></Td>
+          <Td><Link aria-label={`Gerenciar ${org.name}`} href={`/organizations/${org.id}`} className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[var(--color-primary)]">Gerenciar<IconChevronRight className="h-4 w-4" /></Link></Td>
+        </Tr>)}</TBody></Table></div>
+        <ul className="space-y-3 lg:hidden">{data.items.map((org) => <li key={org.id} className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-4">
+          <div className="flex items-start justify-between gap-3"><div className="min-w-0"><Link href={`/organizations/${org.id}`} className="font-bold text-[var(--color-primary)]">{org.name}</Link><p className="mt-1 text-xs text-[var(--color-ink-muted)]">{org.owner_name ?? "Titular não informado"}</p><p className="mt-1 text-xs text-[var(--color-ink-muted)]">{org.owner_email_masked}</p></div><IconBuilding className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)]" /></div>
+          <div className="my-4"><OrganizationStatus org={org} /></div>
+          <dl className="grid grid-cols-2 gap-3 rounded-lg bg-[var(--color-surface-subtle)] p-3 text-xs">{[["Clientes", org.clients_count], ["Ciclos", org.cycles_count], ["Agenda", org.appointments_count], ["Conversas IA", org.assistant_threads_count]].map(([label, value]) => <div key={String(label)}><dt className="text-[var(--color-ink-muted)]">{label}</dt><dd className="mt-1 font-semibold">{formatCount(value as number | undefined)}</dd></div>)}</dl>
+          <div className="mt-3 flex items-center justify-between gap-2"><LastAccess org={org} /><Link href={`/organizations/${org.id}`} aria-label={`Gerenciar ${org.name}`} className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[var(--color-primary)]">Gerenciar<IconChevronRight className="h-4 w-4" /></Link></div>
+        </li>)}</ul>
+      </>}
+      <DirectoryPagination page={page} size={size} total={data.total} loading={loading} navigate={navigate} />
+    </> : null}
+  </div>;
+}
 
 export default function OrganizationsPage() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
-  const [data, setData] = useState<Paginated<OrganizationListItem> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      const params = new URLSearchParams({
-        page: String(page),
-        page_size: "20",
-      });
-      if (query.trim().length >= 2) params.set("search", query.trim());
-      const result = await apiFetch<Paginated<OrganizationListItem>>(
-        `/api/v1/platform/organizations?${params.toString()}`,
-      );
-      if (cancelled) return;
-      if (result.error) setError(result.error.message);
-      else {
-        setError(null);
-        setData(result.data ?? null);
-      }
-      setLoading(false);
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [page, query]);
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="h-display text-3xl">Organizações</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Listagem operacional paginada.</p>
-      </div>
-      <form
-        className="flex flex-col gap-2 sm:flex-row"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setPage(1);
-          setQuery(search);
-        }}
-      >
-        <div className="flex-1">
-          <TextField
-            label="Pesquisar"
-            name="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Nome ou proprietário (mín. 2 caracteres)"
-          />
-        </div>
-        <div className="flex items-end">
-          <Button type="submit">Buscar</Button>
-        </div>
-      </form>
-
-      {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
-      ) : null}
-      {!loading && !error && data && data.items.length === 0 ? (
-        <p className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] p-4 text-sm text-[var(--color-ink-muted)]">
-          Nenhuma organização encontrada.
-        </p>
-      ) : null}
-
-      {data && data.items.length > 0 ? (
-        <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-[var(--color-border)] text-xs uppercase text-[var(--color-ink-muted)]">
-              <tr>
-                <th className="px-3 py-2">Nome</th>
-                <th className="px-3 py-2">Profissional</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Clientes / Ciclos / Agenda</th>
-                <th className="px-3 py-2">IA</th>
-                <th className="px-3 py-2">Último acesso</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((org) => (
-                <tr key={org.id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="px-3 py-3">
-                    <Link className="font-semibold text-[var(--color-primary)] underline-offset-2 hover:underline" href={`/organizations/${org.id}`}>
-                      {org.name}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div>{org.owner_name ?? "—"}</div>
-                    <div className="text-xs text-[var(--color-ink-muted)]">{org.owner_email_masked}</div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div>{org.operational_status ?? org.status}</div>
-                    <div className="text-xs text-[var(--color-ink-muted)]">
-                      {org.subscription_status ?? org.plan_code}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">
-                    {org.clients_count} / {org.cycles_count} / {org.appointments_count ?? 0}
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">{org.assistant_threads_count ?? 0}</td>
-                  <td className="px-3 py-3">
-                    {org.last_login_at
-                      ? new Date(org.last_login_at).toLocaleString("pt-BR")
-                      : org.last_activity_at
-                        ? new Date(org.last_activity_at).toLocaleDateString("pt-BR")
-                        : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-
-      {data && data.total > data.page_size ? (
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            Anterior
-          </Button>
-          <p className="text-sm text-[var(--color-ink-muted)]">
-            Página {data.page} · {data.total} no total
-          </p>
-          <Button
-            variant="secondary"
-            disabled={page * data.page_size >= data.total}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Próxima
-          </Button>
-        </div>
-      ) : null}
-    </div>
-  );
+  return <Suspense fallback={<TableSkeleton columns={5} />}><OrganizationsDirectory /></Suspense>;
 }

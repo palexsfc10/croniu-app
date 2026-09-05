@@ -26,6 +26,12 @@ Instruções operacionais para agentes de IA. Detalhes: `docs/`.
 
 ## Sprint autorizada
 
+**Tarefa atual — Admin premium e controle operacional**, autorizada explicitamente pelo usuário em 2026-09-04, nesta worktree `feature/admin-control-premium`.
+Spec: `docs/sprints/SPRINT_ADMIN_CONTROL_PREMIUM.md`. Base do admin HML: `35ca1e69ae8bb9282e16eb45a7bc49e751e133ff`.
+Escopo local de interface; sem migration, mudança de regras de negócio, commit, push ou deploy nesta entrega.
+
+### Histórico anterior (não define a tarefa atual)
+
 **Sprint — Rotinas na operação, ciclos no cliente, adaptação profissional** autorizada na branch `feature/client-intake-journey`.  
 Spec: `docs/sprints/SPRINT_ROUTINES_NAV_CYCLES.md`. Diagnóstico: `docs/sprints/DIAGNOSIS_ROUTINES_AGENDA_CYCLES.md`.  
 A sprint de intake permanece entregue em HML. Sem Promote / merge / PRD implantada.  
