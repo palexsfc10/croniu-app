@@ -72,26 +72,24 @@ function EmptyAgenda({
     })();
   }, [day, timezone]);
   const dayLabel = day ? formatHumanDate(day) : "este dia";
+  // One contextual action, not three equivalent ones — the page around
+  // this empty state already has its own primary "Novo compromisso"/
+  // "Agendar" action (header on desktop, full-width button on mobile), so
+  // this only ever adds a *different* action: jumping to the next real
+  // appointment, when there is one.
   return (
     <EmptyState
       title={`Nenhum compromisso em ${dayLabel}`}
       description={nextLine ?? "Não há aula nesta data."}
       action={
-        <div className="flex w-full flex-col gap-2">
-          {nextDay ? (
-            <Link
-              href={`/app/agenda?day=${nextDay}`}
-              className="btn-primary inline-flex min-h-11 w-full items-center justify-center rounded-[var(--radius-md)] px-4 text-sm font-semibold"
-            >
-              Ver próxima aula
-            </Link>
-          ) : null}
-          <Link href={`/app/appointments/new?day=${day ?? ""}`}>
-            <Button fullWidth variant="secondary">
-              Criar compromisso
-            </Button>
+        nextDay ? (
+          <Link
+            href={`/app/agenda?day=${nextDay}`}
+            className="btn-primary inline-flex min-h-11 w-full items-center justify-center rounded-[var(--radius-md)] px-4 text-sm font-semibold"
+          >
+            Ver próxima aula
           </Link>
-        </div>
+        ) : undefined
       }
     />
   );
@@ -111,134 +109,41 @@ function shortDayMonth(isoDay: string): string {
 
 const WEEKDAY_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
-function AgendaRoutines({ day }: { day: string | null }) {
-  const [groups, setGroups] = useState<
-    Array<{
-      label: string;
-      count: number;
-      occurrence_count?: number;
-      occurrence_type: string;
-      items?: Array<{
-        id: string;
-        name?: string | null;
-        client_id?: string | null;
-        client_name?: string | null;
-        overdue?: boolean;
-        time?: string | null;
-        type_label?: string;
-        due_on?: string;
-      }>;
-    }>
-  >([]);
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  async function load() {
-    if (!day) return;
-    const result = await apiFetch<{
-      today: string;
-      groups: Array<{
-        label: string;
-        count: number;
-        occurrence_type: string;
-        items?: Array<{
-          id: string;
-          name?: string | null;
-          client_id?: string | null;
-          client_name?: string | null;
-          overdue?: boolean;
-          time?: string | null;
-          type_label?: string;
-          due_on?: string;
-        }>;
-      }>;
-    }>(`/api/v1/routines/board?on=${day}`);
-    setGroups(result.data?.groups ?? []);
-  }
+/** A one-line count + link, not the detailed action cards this used to
+ * render (Concluir/Adiar per item) — that duplicated the Rotinas screen's
+ * own job and, per the redesign, the Agenda's sidebar/mobile footer only
+ * ever shows "N rotinas pendentes · Ver rotinas". `count` is the board's
+ * own aggregate per group — some occurrence types don't populate
+ * `items`, so summing `items.length` would under-count. */
+function AgendaRoutinesSummary({ day }: { day: string | null }) {
+  const [total, setTotal] = useState<number | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- remote hydrate
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!day) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<{ groups: Array<{ count: number }> }>(
+        `/api/v1/routines/board?on=${day}`,
+      );
+      if (cancelled) return;
+      setTotal((result.data?.groups ?? []).reduce((sum, g) => sum + (g.count ?? 0), 0));
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [day]);
 
-  async function decide(id: string, status: "completed" | "deferred") {
-    setBusyId(id);
-    const body: { status: string; deferred_until?: string } = { status };
-    if (status === "deferred" && day) {
-      const next = shiftDay(day, 1);
-      body.deferred_until = next;
-    }
-    await apiFetch(`/api/v1/routines/occurrences/${id}/decide`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    setBusyId(null);
-    await load();
-  }
-
-  if (!groups.length) return null;
+  if (!total) return null;
   return (
-    <section className="space-y-2" aria-label="Ações da rotina">
-      <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-        Ações da rotina
-      </h2>
-      <ul className="space-y-2">
-        {groups.flatMap((g) =>
-          (g.items && g.items.length ? g.items : [{ id: g.occurrence_type, type_label: g.label }]).map(
-            (item) => (
-              <li
-                key={item.id}
-                className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
-              >
-                <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">
-                  Rotina
-                  {item.overdue ? <Badge tone="danger">Vencida</Badge> : null}
-                </p>
-                <p className="font-semibold">{item.name || item.type_label || g.label}</p>
-                <p className="text-sm text-[var(--color-ink-muted)]">
-                  {item.time ? `${item.time} · ` : "Ação do dia · "}
-                  {item.client_name || "Clientes ativos"}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {item.client_id ? (
-                    <Link
-                      href={`/app/clients/${item.client_id}`}
-                      className="text-sm text-[var(--color-link)]"
-                    >
-                      Abrir cliente
-                    </Link>
-                  ) : (
-                    <Link href="/app/routines" className="text-sm text-[var(--color-link)]">
-                      Abrir rotinas
-                    </Link>
-                  )}
-                  {item.id.includes("-") ? (
-                    <>
-                      <button
-                        type="button"
-                        className="text-sm font-medium text-[var(--color-primary)]"
-                        disabled={busyId === item.id}
-                        onClick={() => void decide(item.id, "completed")}
-                      >
-                        Concluir
-                      </button>
-                      <button
-                        type="button"
-                        className="text-sm font-medium text-[var(--color-ink-muted)]"
-                        disabled={busyId === item.id}
-                        onClick={() => void decide(item.id, "deferred")}
-                      >
-                        Adiar
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              </li>
-            ),
-          ),
-        )}
-      </ul>
-    </section>
+    <Link
+      href="/app/routines"
+      className="flex items-center justify-between gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 text-sm shadow-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+    >
+      <span className="font-medium text-[var(--color-ink)]">
+        {total} rotina{total === 1 ? "" : "s"} pendente{total === 1 ? "" : "s"}
+      </span>
+      <span className="font-semibold text-[var(--color-link)]">Ver rotinas</span>
+    </Link>
   );
 }
 
@@ -535,8 +440,18 @@ export default function AgendaPage() {
               />
             )}
           </div>
-          <div className="mt-4 lg:mt-0">
-            <AgendaRoutines day={day} />
+          <div className="mt-4 space-y-3 lg:mt-0">
+            {nextAppointment ? (
+              <div className="rounded-[var(--radius-lg)] border border-[var(--color-primary)]/30 bg-[var(--color-primary-subtle)] px-3.5 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+                  Próximo compromisso
+                </p>
+                <p className="font-semibold text-[var(--color-ink)]">
+                  {formatOrgDateTime(nextAppointment.starts_at, timezone)} · {nextAppointment.client_name}
+                </p>
+              </div>
+            ) : null}
+            <AgendaRoutinesSummary day={day} />
           </div>
         </div>
       </div>
@@ -660,7 +575,7 @@ export default function AgendaPage() {
           </div>
         </details>
 
-        <AgendaRoutines day={day} />
+        <AgendaRoutinesSummary day={day} />
       </div>
     </div>
   );

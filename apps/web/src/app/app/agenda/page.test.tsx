@@ -125,11 +125,16 @@ describe("Agenda page — desktop: professional calendar, never a stretched list
     await within(desktop).findByText("Falta do cliente");
   });
 
-  it("keeps the routines side panel reachable alongside the grid", async () => {
+  it("shows the sidebar's routine pendency as a one-line count + link, never the detailed action cards — those belong to /app/routines now", async () => {
     const { container } = render(<AgendaPage />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
-    await within(desktop).findByText("Revisar plano");
-    await within(desktop).findByText("Aluna Teste");
+    const link = await within(desktop).findByRole("link", { name: /Ver rotinas/ });
+    expect(link).toHaveAttribute("href", "/app/routines");
+    expect(link).toHaveTextContent(/1\s*rotina\s*pendente/);
+    // The old detailed card (name, client, Concluir/Adiar) is gone from
+    // the Agenda entirely — it duplicated what Rotinas already does.
+    expect(within(desktop).queryByText("Revisar plano")).not.toBeInTheDocument();
+    expect(within(desktop).queryByRole("button", { name: "Concluir" })).not.toBeInTheDocument();
   });
 
   it("offers a visible link to Disponibilidade config and a Novo compromisso action", async () => {
@@ -204,9 +209,12 @@ describe("Agenda page — mobile: daily timeline + assistant, never the desktop 
     expect(link).toHaveAttribute("href", "/app/appointments/new?day=2026-08-22");
   });
 
-  it("keeps routine actions reachable on mobile too — nothing existing disappears", async () => {
+  it("shows the routine pendency on mobile as a count + link too — per the redesign, never the full board here", async () => {
     const { container } = render(<AgendaPage />);
     const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
-    await within(mobile).findByText("Revisar plano");
+    const link = await within(mobile).findByRole("link", { name: /Ver rotinas/ });
+    expect(link).toHaveAttribute("href", "/app/routines");
+    expect(link).toHaveTextContent(/1\s*rotina\s*pendente/);
+    expect(within(mobile).queryByText("Revisar plano")).not.toBeInTheDocument();
   });
 });
