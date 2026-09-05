@@ -53,6 +53,8 @@ Não foi identificada perda de funcionalidade da PR #36 na revisão do código e
 - Verificação de secrets: Gitleaks 8.21.2 foi obtido, mas a varredura da árvore completa foi interrompida por pressão de memória após mais de um minuto. A verificação direcionada dos arquivos alterados será executada antes do commit; o job de CI permanece obrigatório.
 - `git diff --check`: passou.
 
+CI da PR #42 (run `33937730365`) terminou com 7 jobs aprovados e `backend-tests` reprovado. A falha ficou restrita a três testes preexistentes de agenda em `tests/test_cycle_agenda_integrity.py`: `test_past_day_agenda_still_lists_scheduled` recebeu HTTP 400 em `/api/v1/agenda/day`; `test_cancelled_hidden_unless_include_cancelled` e `test_org_isolation_agenda_day` receberam resposta sem `appointments`. O diff desta PR não toca backend, agenda ou contratos de API, portanto a falha foi registrada e não corrigida fora do escopo.
+
 O CI da PR deve ser consultado no head exato; este relatório não autoriza promoção.
 
 ## Limites e riscos
