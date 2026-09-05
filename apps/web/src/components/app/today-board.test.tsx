@@ -200,6 +200,19 @@ describe("TodayBoard — an overdue evaluation review routes straight to the eva
     // Consumed — a fresh render (e.g. next visit) must not show it again.
     expect(sessionStorage.getItem("croniu.evaluation-saved-celebrate")).toBeNull();
   });
+
+  it("never shows 'N itens urgentes' next to 'Nenhuma pendência crítica agora' — an accompaniment pendency with no backend attention_items used to trigger exactly that", async () => {
+    board.items = [];
+    accompaniment.items = [
+      { client_id: "c1", client_name: "Murilo Macedo", days_since_last_evaluation: 21 },
+    ];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    await screen.findByText(/item urgente/);
+    expect(screen.queryByText("Nenhuma pendência crítica agora.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Vale olhar:/)).toBeInTheDocument();
+    accompaniment.items = []; // leave shared mock state clean for later tests in this file
+  });
 });
 
 describe("TodayBoard — compact Financeiro (recebido/vencido/próximo, never the full dashboard)", () => {

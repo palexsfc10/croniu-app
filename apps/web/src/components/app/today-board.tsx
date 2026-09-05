@@ -278,16 +278,16 @@ function FinanceCompact({
 
 function ExecutiveBriefing({
   summary,
-  accompanimentCount,
-  priorityRoutinesCount,
+  extraItems,
 }: {
   summary: HomeSummary;
-  accompanimentCount: number;
-  priorityRoutinesCount: number;
+  /** Accompaniment (evaluation) + overdue-routine pendencies, already
+   * shaped as AttentionItem rows — merged into the same risk/opportunity
+   * search `urgentCount` draws from, so the two can never disagree (the
+   * "N itens urgentes" next to "Nenhuma pendência crítica agora" bug). */
+  extraItems: AttentionItem[];
 }) {
-  const briefing = buildBriefing(summary, {
-    accompanimentPendingCount: accompanimentCount + priorityRoutinesCount,
-  });
+  const briefing = buildBriefing(summary, { extraItems });
 
   return (
     <section
@@ -1121,9 +1121,9 @@ export function TodayBoard({ summary }: Props) {
   const showSetupCard = setupIncomplete && !setupCollapsed;
   const isNew = isNewProfessional(summary);
 
-  const briefingForNextAppointment = buildBriefing(summary, {
-    accompanimentPendingCount: accompanimentItems.length + priorityRoutineItems.length,
-  });
+  // Only `.nextAppointment` is read from this one — it never depends on
+  // accompaniment/routine counts, so there's nothing to pass in.
+  const briefingForNextAppointment = buildBriefing(summary);
 
   return (
     <div className="space-y-5 animate-fade-up md:space-y-6">
@@ -1167,8 +1167,7 @@ export function TodayBoard({ summary }: Props) {
         <>
           <ExecutiveBriefing
             summary={summary}
-            accompanimentCount={accompanimentItems.length}
-            priorityRoutinesCount={priorityRoutineItems.length}
+            extraItems={[...accompanimentItems, ...priorityRoutineItems]}
           />
 
           {/* Desktop: a real grid of unevenly-sized blocks, not one long

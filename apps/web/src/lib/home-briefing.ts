@@ -34,11 +34,19 @@ export type Briefing = {
  * invented ordering the fatia explicitly forbids.
  *
  * "urgentCount" counts attention_items whose tone is danger/warning —
- * both are real, backend-assigned tones, never inferred here.
+ * both are real, backend-assigned tones, never inferred here — plus
+ * `extraItems` (accompaniment/routine pendencies, built client-side as
+ * real AttentionItem-shaped rows by the Home). Those two pools are
+ * merged into one `allItems` list *before* picking mainRisk/opportunity,
+ * not just summed into the count — counting them in `urgentCount` while
+ * only ever searching backend `attention_items` for "principal risco"/
+ * "vale olhar" is exactly how the Home used to show "N itens urgentes"
+ * right next to "Nenhuma pendência crítica agora": urgentCount saw the
+ * accompaniment pendencies, the risk/opportunity search never did.
  */
 export function buildBriefing(
   summary: HomeSummary,
-  opts: { accompanimentPendingCount?: number } = {},
+  opts: { accompanimentPendingCount?: number; extraItems?: AttentionItem[] } = {},
 ): Briefing {
   const upcoming = summary.upcoming_appointments?.[0] ?? summary.today_appointments[0] ?? null;
   const nextAppointment: BriefingNextAppointment | null = upcoming
@@ -51,16 +59,18 @@ export function buildBriefing(
     : null;
 
   const items = summary.attention_items ?? [];
+  const allItems = [...items, ...(opts.extraItems ?? [])];
   const urgentCount =
-    items.filter((i) => i.tone === "danger" || i.tone === "warning").length +
+    allItems.filter((i) => i.tone === "danger" || i.tone === "warning").length +
     (opts.accompanimentPendingCount ?? 0);
 
   const mainRisk = summary.priority_action ?? null;
 
-  // Opportunity: the first attention item that ISN'T the one already shown
-  // as the main risk — real data, never invented. If nothing else is
-  // waiting, the day reads as genuinely clear.
-  const opportunityItem = items.find((i: AttentionItem) => i.entity_id !== mainRisk?.entity_id);
+  // Opportunity: the first item (backend attention_item OR accompaniment/
+  // routine pendency) that ISN'T the one already shown as the main risk —
+  // real data, never invented. If nothing else is waiting, the day reads
+  // as genuinely clear.
+  const opportunityItem = allItems.find((i: AttentionItem) => i.entity_id !== mainRisk?.entity_id);
   const opportunity: BriefingOpportunity | null = opportunityItem
     ? { title: opportunityItem.title, subtitle: opportunityItem.subtitle, href: opportunityItem.href }
     : null;

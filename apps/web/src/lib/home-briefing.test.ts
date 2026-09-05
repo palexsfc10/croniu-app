@@ -101,6 +101,31 @@ describe("buildBriefing", () => {
     expect(briefing.urgentCount).toBe(3);
   });
 
+  it("accompaniment/routine extraItems feed the same opportunity search urgentCount draws from — never 'N itens urgentes' next to 'dia livre'", () => {
+    const summary = baseSummary(); // no backend attention_items, no priority_action
+    const briefing = buildBriefing(summary, {
+      extraItems: [
+        {
+          kind: "evaluation_pending",
+          title: "Avaliação pendente · Murilo Macedo",
+          subtitle: "21 dias sem registro",
+          href: "/app/clients/c1?tab=prontuario",
+          entity_id: "c1",
+          tone: "warning",
+        },
+      ],
+    });
+    expect(briefing.urgentCount).toBe(1);
+    // The old bug: urgentCount saw this item but opportunity/mainRisk
+    // never did, so isClearDay stayed true and both messages rendered.
+    expect(briefing.isClearDay).toBe(false);
+    expect(briefing.opportunity).toEqual({
+      title: "Avaliação pendente · Murilo Macedo",
+      subtitle: "21 dias sem registro",
+      href: "/app/clients/c1?tab=prontuario",
+    });
+  });
+
   it("a genuinely empty summary reads as a clear day, never a fabricated risk", () => {
     const briefing = buildBriefing(baseSummary());
     expect(briefing.isClearDay).toBe(true);
