@@ -55,6 +55,7 @@ import { TextArea } from "@/components/ui/text-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
 import { MenuItem } from "@/components/ui/menu-item";
+import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   IconCalendarDays,
@@ -65,7 +66,6 @@ import {
   IconLayers,
   IconPlus,
   IconRefreshCw,
-  IconSparkles,
 } from "@/components/ui/icons";
 
 type Tab = "resumo" | "agenda" | "plano" | "prontuario" | "financeiro" | "historico";
@@ -650,6 +650,42 @@ export function ClientProfile({ clientId }: Props) {
                 Criar acesso do portal
               </MenuItem>
             )}
+            {item && item.status !== "archived" ? (
+              <>
+                <div className="my-1 border-t border-[var(--color-border)]" />
+                <MenuItem
+                  href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnResumo)}`}
+                  icon={<IconClipboardList className="h-4 w-4" aria-hidden />}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Registrar avaliação
+                </MenuItem>
+                <MenuItem
+                  href={`/app/routines?clientId=${clientId}`}
+                  icon={<IconRefreshCw className="h-4 w-4" aria-hidden />}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Criar rotina
+                </MenuItem>
+              </>
+            ) : null}
+            {item ? (
+              <MenuItem
+                icon={<IconPlus className="h-4 w-4" aria-hidden />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  openNoteSheet();
+                }}
+              >
+                Adicionar anotação
+              </MenuItem>
+            ) : null}
+            {item ? (
+              <MenuItem href={`/app/clients/${clientId}/edit`} onClick={() => setMenuOpen(false)}>
+                Editar
+              </MenuItem>
+            ) : null}
+            <div className="my-1 border-t border-[var(--color-border)]" />
             {item?.status === "archived" ? (
               <MenuItem disabled={busy} onClick={() => void reactivate()}>
                 Reativar
@@ -706,92 +742,51 @@ export function ClientProfile({ clientId }: Props) {
         </p>
       ) : null}
 
+      {/* One contextual primary action + Cronia — never competing for
+          attention. Registrar avaliação, Criar rotina, Adicionar anotação
+          and Editar moved into "Mais ações" above: they're real actions,
+          just not the one thing most people come to this ficha to do. */}
       {item && item.status === "archived" ? (
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Ações do cliente">
-          <Button
-            type="button"
-            disabled={busy}
-            onClick={() => void reactivate()}
-            className="min-h-10 shrink-0 whitespace-nowrap px-3 text-sm"
-          >
+        <div className="flex flex-wrap items-center gap-2" aria-label="Ações do cliente">
+          <Button type="button" disabled={busy} onClick={() => void reactivate()} className="min-h-10">
             <IconRefreshCw className="mr-1.5 h-4 w-4" aria-hidden />
             Reativar cliente
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            className="min-h-10 shrink-0 whitespace-nowrap px-3 text-sm"
-            onClick={openNoteSheet}
+          <AskAssistantLink
+            prompt={`Sobre ${item.full_name}: `}
+            context={`Cliente: ${item.full_name}`}
+            returnTo={returnResumo}
           >
-            <IconPlus className="mr-1.5 h-4 w-4" aria-hidden />
-            Adicionar anotação
-          </Button>
-          <Link
-            href={`/app/assistant?prompt=${encodeURIComponent(`Sobre ${item.full_name}: `)}&context=${encodeURIComponent(`Cliente: ${item.full_name}`)}&returnTo=${encodeURIComponent(returnResumo)}`}
-            className="shrink-0"
-          >
-            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
-              <IconSparkles className="mr-1.5 h-4 w-4" aria-hidden />
-              Perguntar sobre este cliente
-            </Button>
-          </Link>
-          <Link href={`/app/clients/${clientId}/edit`} className="shrink-0">
-            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
-              Editar
-            </Button>
-          </Link>
+            Perguntar sobre este cliente
+          </AskAssistantLink>
         </div>
       ) : item ? (
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Ações do cliente">
-          <Link
-            href={`/app/appointments/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnResumo)}`}
-            className="shrink-0"
-          >
-            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2" aria-label="Ações do cliente">
+          <Link href={`/app/appointments/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnResumo)}`}>
+            <Button type="button" className="min-h-10">
               <IconCalendarPlus className="mr-1.5 h-4 w-4" aria-hidden />
               Agendar
             </Button>
           </Link>
-          <Link
-            href={`/app/clients/${clientId}/evaluations/new?returnTo=${encodeURIComponent(returnResumo)}`}
-            className="shrink-0"
+          <AskAssistantLink
+            prompt={`Sobre ${item.full_name}: `}
+            context={`Cliente: ${item.full_name}`}
+            returnTo={returnResumo}
           >
-            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
-              <IconClipboardList className="mr-1.5 h-4 w-4" aria-hidden />
-              Registrar avaliação
-            </Button>
-          </Link>
-          <Button
-            type="button"
-            variant="secondary"
-            className="min-h-10 shrink-0 whitespace-nowrap px-3 text-sm"
-            onClick={openNoteSheet}
-          >
-            <IconPlus className="mr-1.5 h-4 w-4" aria-hidden />
-            Adicionar anotação
-          </Button>
-          <Link href={`/app/routines?clientId=${clientId}`} className="shrink-0">
-            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
-              <IconRefreshCw className="mr-1.5 h-4 w-4" aria-hidden />
-              Criar rotina
-            </Button>
-          </Link>
-          <Link
-            href={`/app/assistant?prompt=${encodeURIComponent(`Sobre ${item.full_name}: `)}&context=${encodeURIComponent(`Cliente: ${item.full_name}`)}&returnTo=${encodeURIComponent(returnResumo)}`}
-            className="shrink-0"
-          >
-            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
-              <IconSparkles className="mr-1.5 h-4 w-4" aria-hidden />
-              Perguntar sobre este cliente
-            </Button>
-          </Link>
-          <Link href={`/app/clients/${clientId}/edit`} className="shrink-0">
-            <Button variant="secondary" className="min-h-10 whitespace-nowrap px-3 text-sm">
-              Editar
-            </Button>
-          </Link>
+            Perguntar sobre este cliente
+          </AskAssistantLink>
         </div>
-      ) : null}
+      ) : (
+        // Same row shape as the loaded actions — the near-empty first
+        // second the redesign called out came from this whole row (and
+        // the tabs' content) vanishing until `item` arrived, not just the
+        // header. A matching skeleton keeps the page's shape stable
+        // instead of it visibly assembling itself.
+        <div className="flex items-center gap-2" aria-hidden>
+          <Skeleton className="h-10 w-28 rounded-[var(--radius-md)]" />
+          <Skeleton className="h-10 w-44 rounded-full" />
+        </div>
+      )}
 
       {/* Desktop: full tabbed CRM view — never compressed onto mobile.
           Mobile gets its own consolidated, progressively-disclosed layout
@@ -959,7 +954,12 @@ export function ClientProfile({ clientId }: Props) {
               </Link>
             ) : null}
           </div>
-          {appointments.length === 0 ? (
+          {loading && !item ? (
+            <div className="space-y-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : appointments.length === 0 ? (
             <EmptyStateGuide
               title="Nenhuma sessão agendada"
               body={
@@ -1206,7 +1206,9 @@ export function ClientProfile({ clientId }: Props) {
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
               Anamnese
             </h2>
-            {submissionId ? (
+            {loading && !item ? (
+              <Skeleton className="h-14 w-full" />
+            ) : submissionId ? (
               <Link
                 href={`/app/clients/intake/${submissionId}`}
                 className="flex min-h-11 items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
@@ -1243,7 +1245,9 @@ export function ClientProfile({ clientId }: Props) {
               ) : null}
             </div>
 
-            {!evaluations.length ? (
+            {loading && !item ? (
+              <Skeleton className="h-14 w-full" />
+            ) : !evaluations.length ? (
               <p className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-3 text-sm text-[var(--color-ink-muted)]">
                 Nenhuma avaliação registrada. Registre o ponto de partida quando fizer sentido.
               </p>
@@ -1349,7 +1353,12 @@ export function ClientProfile({ clientId }: Props) {
             </div>
           </div>
 
-          {receivables.length === 0 ? (
+          {loading && !item ? (
+            <div className="space-y-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : receivables.length === 0 ? (
             <EmptyStateGuide
               title="Nenhuma cobrança registrada"
               body="As cobranças deste cliente aparecerão aqui conforme os ciclos forem criados."
@@ -1404,6 +1413,15 @@ export function ClientProfile({ clientId }: Props) {
               // haveria uma sessão "completed" real para listar — melhor
               // omitir do que fingir uma categoria vazia.
             ].sort((a, b) => b.date.localeCompare(a.date));
+
+            if (loading && !item) {
+              return (
+                <div className="space-y-2">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              );
+            }
 
             if (!entries.length) {
               return (

@@ -26,6 +26,20 @@ type Props = {
   onFeedback?: (message: string | null, tone?: "info" | "error") => void;
 };
 
+/** The path segment after `/c/` is the access token itself — printing it in
+ * full on a screen that's often visible during a session (screen share,
+ * someone glancing at the monitor) hands over the exact secret "Copiar
+ * link" already copies silently. Masked by default; revealed only by an
+ * explicit "Mostrar" click, per the redesign's Portal card spec. */
+function maskPortalUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}/c/••••••••••••••••••••`;
+  } catch {
+    return "••••••••••••••••••••";
+  }
+}
+
 export function ClientPortalCard({
   clientId,
   firstName,
@@ -38,6 +52,7 @@ export function ClientPortalCard({
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState<"rotate" | "revoke" | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [linkRevealed, setLinkRevealed] = useState(false);
 
   useEffect(() => {
     if (!copied) return;
@@ -97,6 +112,7 @@ export function ClientPortalCard({
     }
     if (result.data) onAccessChange(result.data);
     setCopied(false);
+    setLinkRevealed(false);
   }
 
   async function revokeAccess() {
@@ -113,6 +129,7 @@ export function ClientPortalCard({
     }
     onAccessChange(result.data ?? { has_active_link: false });
     setCopied(false);
+    setLinkRevealed(false);
   }
 
   const waText =
@@ -173,12 +190,21 @@ export function ClientPortalCard({
           </dl>
 
           <div className="min-w-0">
-            <p className="mb-1 text-sm font-medium text-[var(--color-ink)]">Endereço</p>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-[var(--color-ink)]">Endereço</p>
+              <button
+                type="button"
+                className="text-xs font-semibold text-[var(--color-link)]"
+                onClick={() => setLinkRevealed((v) => !v)}
+              >
+                {linkRevealed ? "Ocultar" : "Mostrar"}
+              </button>
+            </div>
             <p
               className="truncate rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-sm text-[var(--color-ink-muted)]"
               data-testid="portal-url"
             >
-              {publicUrl}
+              {linkRevealed && publicUrl ? publicUrl : maskPortalUrl(publicUrl ?? "")}
             </p>
           </div>
 

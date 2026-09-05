@@ -54,7 +54,7 @@ describe("ClientPortalCard", () => {
     expect(screen.queryByRole("button", { name: /Copiar link/i })).not.toBeInTheDocument();
   });
 
-  it("shows active access, dates, truncated URL and actions", () => {
+  it("shows active access, dates, a masked URL by default and actions", () => {
     render(
       <ClientPortalCard
         clientId="c1"
@@ -68,9 +68,17 @@ describe("ClientPortalCard", () => {
     expect(screen.getByText(/O cliente pode acompanhar as informações publicadas/i)).toBeInTheDocument();
     expect(screen.getByText(/Criado em:/i)).toBeInTheDocument();
     expect(screen.getByText("Ainda não acessado")).toBeInTheDocument();
+    // The token itself never shows up on screen until an explicit
+    // "Mostrar" click — "Copiar link" already puts the real address on
+    // the clipboard without ever rendering it.
     const url = screen.getByTestId("portal-url");
-    expect(url).toHaveTextContent("https://app.example/c/v1.abc");
+    expect(url).not.toHaveTextContent("v1.abc");
+    expect(url).toHaveTextContent("https://app.example/c/");
     expect(url.className).toContain("truncate");
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar" }));
+    expect(screen.getByTestId("portal-url")).toHaveTextContent("https://app.example/c/v1.abc");
+    fireEvent.click(screen.getByRole("button", { name: "Ocultar" }));
+    expect(screen.getByTestId("portal-url")).not.toHaveTextContent("v1.abc");
     expect(screen.getByRole("button", { name: "Copiar link" })).toBeInTheDocument();
     const wa = screen.getByRole("link", { name: /Enviar pelo WhatsApp/i });
     expect(wa).toHaveAttribute("rel", expect.stringContaining("noopener"));

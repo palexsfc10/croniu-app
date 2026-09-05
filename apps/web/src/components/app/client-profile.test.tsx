@@ -208,7 +208,7 @@ describe("ClientProfile", () => {
     expect(screen.queryByText("continue_onboarding")).not.toBeInTheDocument();
   });
 
-  it("shows the quick-actions row with real, working links", async () => {
+  it("shows one contextual primary action (Agendar) plus Cronia — never a row of equal-weight buttons", async () => {
     nav.tab = "resumo";
     render(<ClientProfile clientId="c1" />);
     await screen.findByRole("heading", { level: 1 });
@@ -217,20 +217,34 @@ describe("ClientProfile", () => {
       "href",
       expect.stringContaining("/app/appointments/new?clientId=c1"),
     );
-    expect(actions.getByRole("link", { name: /Registrar avaliação/i })).toHaveAttribute(
-      "href",
-      expect.stringContaining("/app/clients/c1/evaluations/new"),
-    );
-    expect(actions.getByRole("button", { name: /Adicionar anotação/i })).toBeInTheDocument();
-    expect(actions.getByRole("link", { name: /Criar rotina/i })).toHaveAttribute(
-      "href",
-      "/app/routines?clientId=c1",
-    );
     expect(actions.getByRole("link", { name: /Perguntar sobre este cliente/i })).toHaveAttribute(
       "href",
       expect.stringContaining("/app/assistant?prompt="),
     );
-    expect(actions.getByRole("link", { name: "Editar" })).toHaveAttribute(
+    // Everything else that used to sit in this row at the same visual
+    // weight now lives one tap away, inside "Mais ações".
+    expect(actions.queryByRole("link", { name: /Registrar avaliação/i })).not.toBeInTheDocument();
+    expect(actions.queryByRole("button", { name: /Adicionar anotação/i })).not.toBeInTheDocument();
+    expect(actions.queryByRole("link", { name: /Criar rotina/i })).not.toBeInTheDocument();
+    expect(actions.queryByRole("link", { name: "Editar" })).not.toBeInTheDocument();
+  });
+
+  it("moves Registrar avaliação, Criar rotina, Adicionar anotação and Editar into 'Mais ações'", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("Mais ações"));
+    expect(screen.getByRole("link", { name: /Registrar avaliação/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/app/clients/c1/evaluations/new"),
+    );
+    expect(screen.getByRole("link", { name: /Criar rotina/i })).toHaveAttribute(
+      "href",
+      "/app/routines?clientId=c1",
+    );
+    expect(screen.getByRole("button", { name: /Adicionar anotação/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Editar" })).toHaveAttribute(
       "href",
       "/app/clients/c1/edit",
     );
