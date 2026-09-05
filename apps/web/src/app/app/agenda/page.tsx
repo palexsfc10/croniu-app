@@ -109,41 +109,230 @@ function shortDayMonth(isoDay: string): string {
 
 const WEEKDAY_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
-/** A one-line count + link, not the detailed action cards this used to
- * render (Concluir/Adiar per item) — that duplicated the Rotinas screen's
- * own job and, per the redesign, the Agenda's sidebar/mobile footer only
- * ever shows "N rotinas pendentes · Ver rotinas". `count` is the board's
- * own aggregate per group — some occurrence types don't populate
- * `items`, so summing `items.length` would under-count. */
-function AgendaRoutinesSummary({ day }: { day: string | null }) {
-  const [total, setTotal] = useState<number | null>(null);
+type RoutineBoardItem = {
+  id: string;
+  client_id: string | null;
+  client_name: string | null;
+  status: string;
+  status_label: string;
+  due_on: string;
+  operational_date: string;
+  overdue: boolean;
+  name: string | null;
+  type_label: string;
+};
+
+type RoutineBoardResponse = {
+  today: string;
+  groups: Array<{ items?: RoutineBoardItem[] }>;
+};
+
+function flattenRoutineItems(
+  groups: Array<{ items?: RoutineBoardItem[] }> | undefined,
+): RoutineBoardItem[] {
+  return (groups ?? []).flatMap((g) => g.items ?? []);
+}
+
+/** Rotinas são tarefas agendadas pelo profissional — precisam aparecer no
+ * dia correspondente, não só como uma contagem genérica. Reusa exatamente
+ * o fetch de dia único que a Agenda já fazia antes da reconstrução
+ * (`on=<dia>`) para itens abertos/adiados. Esse endpoint nunca devolve
+ * ocorrências concluídas quando `on` é passado (regra legada e proposital
+ * do dia-view) — por isso uma segunda chamada, já usada do mesmo jeito
+ * pelo hub de Rotinas (`include_completed=true`, sem `on`), supre as
+ * concluídas do dia via filtro no cliente. Nenhuma regra de negócio nova:
+ * o próprio `on=hoje` já mistura pendências atrasadas de outros dias na
+ * resposta (`overdue: true`) — aqui elas são separadas para um aviso
+ * compacto em vez de aparecerem como se fossem do dia selecionado. */
+function useAgendaRoutines(day: string | null) {
+  const [openItems, setOpenItems] = useState<RoutineBoardItem[]>([]);
+  const [completedItems, setCompletedItems] = useState<RoutineBoardItem[]>([]);
+  const [overdueCount, setOverdueCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function load(forDay: string) {
+    setLoading(true);
+    const [dayResult, fullResult] = await Promise.all([
+      apiFetch<RoutineBoardResponse>(`/api/v1/routines/board?on=${forDay}`),
+      apiFetch<RoutineBoardResponse>("/api/v1/routines/board?include_completed=true"),
+    ]);
+    const dayItems = flattenRoutineItems(dayResult.data?.groups);
+    setOpenItems(dayItems.filter((item) => !item.overdue));
+    setOverdueCount(dayItems.filter((item) => item.overdue).length);
+    const fullItems = flattenRoutineItems(fullResult.data?.groups);
+    setCompletedItems(
+      fullItems.filter((item) => item.status === "completed" && item.operational_date === forDay),
+    );
+    setLoading(false);
+  }
 
   useEffect(() => {
     if (!day) return;
-    let cancelled = false;
-    void (async () => {
-      const result = await apiFetch<{ groups: Array<{ count: number }> }>(
-        `/api/v1/routines/board?on=${day}`,
-      );
-      if (cancelled) return;
-      setTotal((result.data?.groups ?? []).reduce((sum, g) => sum + (g.count ?? 0), 0));
-    })();
-    return () => {
-      cancelled = true;
-    };
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- remote hydrate
+    void load(day);
   }, [day]);
 
-  if (!total) return null;
+  async function decide(id: string, status: "completed" | "deferred") {
+    setBusyId(id);
+    const body: { status: string; deferred_until?: string } = { status };
+    if (status === "deferred" && day) {
+      body.deferred_until = shiftDay(day, 1);
+    }
+    await apiFetch(`/api/v1/routines/occurrences/${id}/decide`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    setBusyId(null);
+    if (day) await load(day);
+  }
+
+  return { openItems, completedItems, overdueCount, loading, busyId, decide };
+}
+
+function routineStatusTone(status: string): "neutral" | "warning" | "success" {
+  if (status === "completed") return "success";
+  if (status === "deferred") return "warning";
+  return "neutral";
+}
+
+/** Compact row — compromisso e rotina nunca se misturam na mesma lista,
+ * então esta linha nunca aparece na timeline de compromissos, só na seção
+ * "Rotinas do dia". Concluída fica visualmente reduzida e sem ações. */
+function RoutineRow({
+  item,
+  todayIso,
+  busy,
+  actions,
+}: {
+  item: RoutineBoardItem;
+  todayIso: string | null;
+  busy: boolean;
+  actions: { onComplete: () => void; onDefer: () => void } | null;
+}) {
+  const dueLabel = item.due_on === todayIso ? "Hoje" : formatHumanDate(item.due_on);
   return (
-    <Link
-      href="/app/routines"
-      className="flex items-center justify-between gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 text-sm shadow-sm transition-colors hover:bg-[var(--color-surface-subtle)]"
+    <li
+      className={`rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-sm ${
+        actions ? "bg-[var(--color-surface)]" : "opacity-60"
+      }`}
     >
-      <span className="font-medium text-[var(--color-ink)]">
-        {total} rotina{total === 1 ? "" : "s"} pendente{total === 1 ? "" : "s"}
-      </span>
-      <span className="font-semibold text-[var(--color-link)]">Ver rotinas</span>
-    </Link>
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate font-medium text-[var(--color-ink)]">
+          {item.name || item.type_label}
+        </p>
+        <Badge tone={routineStatusTone(item.status)}>{item.status_label}</Badge>
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <p className="truncate text-xs text-[var(--color-ink-muted)]">
+          {item.client_name ? `${item.client_name} · ${dueLabel}` : dueLabel}
+        </p>
+        {actions ? (
+          <div className="flex shrink-0 items-center gap-2.5">
+            <button
+              type="button"
+              className="text-xs font-semibold text-[var(--color-link)] disabled:opacity-50"
+              disabled={busy}
+              onClick={actions.onComplete}
+            >
+              Concluir
+            </button>
+            <button
+              type="button"
+              className="text-xs font-medium text-[var(--color-ink-muted)] disabled:opacity-50"
+              disabled={busy}
+              onClick={actions.onDefer}
+            >
+              Adiar
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+const MOBILE_ROUTINE_CAP = 3;
+
+/** "Rotinas do dia" — sempre abaixo dos compromissos, nunca dentro da
+ * mesma lista. Desktop mostra a lista compacta inteira; mobile corta nas
+ * primeiras e empurra o resto para o hub via "Ver todas", nunca
+ * reproduzindo o hub completo aqui. */
+function AgendaRoutines({
+  day,
+  todayIso,
+  variant,
+}: {
+  day: string | null;
+  todayIso: string | null;
+  variant: "desktop" | "mobile";
+}) {
+  const { openItems, completedItems, overdueCount, loading, busyId, decide } =
+    useAgendaRoutines(day);
+
+  if (!day) return null;
+  if (loading && !openItems.length && !completedItems.length && !overdueCount) {
+    return <Skeleton className="h-16 w-full" />;
+  }
+  if (!openItems.length && !completedItems.length && !overdueCount) return null;
+
+  const visibleOpen = variant === "mobile" ? openItems.slice(0, MOBILE_ROUTINE_CAP) : openItems;
+  const hasMore =
+    variant === "mobile" &&
+    (openItems.length > visibleOpen.length || completedItems.length > 0);
+
+  return (
+    <section aria-label="Rotinas do dia" className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-ink-muted)]">
+          Rotinas do dia
+        </h2>
+        <Link href="/app/routines" className="text-xs font-semibold text-[var(--color-link)]">
+          Ver rotinas
+        </Link>
+      </div>
+
+      {overdueCount > 0 && day === todayIso ? (
+        <Link
+          href="/app/routines"
+          className="block rounded-[var(--radius-md)] border border-[var(--color-danger)]/30 bg-[var(--color-danger-subtle)] px-3 py-2 text-xs font-semibold text-[var(--color-danger)]"
+        >
+          {overdueCount} rotina{overdueCount === 1 ? "" : "s"} atrasada
+          {overdueCount === 1 ? "" : "s"}
+        </Link>
+      ) : null}
+
+      {visibleOpen.length || (variant === "desktop" && completedItems.length) ? (
+        <ul className="space-y-1.5">
+          {visibleOpen.map((item) => (
+            <RoutineRow
+              key={item.id}
+              item={item}
+              todayIso={todayIso}
+              busy={busyId === item.id}
+              actions={{
+                onComplete: () => void decide(item.id, "completed"),
+                onDefer: () => void decide(item.id, "deferred"),
+              }}
+            />
+          ))}
+          {variant === "desktop"
+            ? completedItems.map((item) => (
+                <RoutineRow key={item.id} item={item} todayIso={todayIso} busy={false} actions={null} />
+              ))
+            : null}
+        </ul>
+      ) : null}
+
+      {hasMore ? (
+        <Link
+          href="/app/routines"
+          className="block rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-1.5 text-center text-xs font-semibold text-[var(--color-link)]"
+        >
+          Ver todas
+        </Link>
+      ) : null}
+    </section>
   );
 }
 
@@ -451,7 +640,7 @@ export default function AgendaPage() {
                 </p>
               </div>
             ) : null}
-            <AgendaRoutinesSummary day={day} />
+            <AgendaRoutines day={day} todayIso={prefs?.local_today ?? null} variant="desktop" />
           </div>
         </div>
       </div>
@@ -575,7 +764,7 @@ export default function AgendaPage() {
           </div>
         </details>
 
-        <AgendaRoutinesSummary day={day} />
+        <AgendaRoutines day={day} todayIso={prefs?.local_today ?? null} variant="mobile" />
       </div>
     </div>
   );

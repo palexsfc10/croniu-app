@@ -1,4 +1,4 @@
-import { render, within } from "@testing-library/react";
+import { render, within, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
   Appointment,
@@ -8,9 +8,12 @@ import type {
   OrgPreferences,
 } from "@/lib/api";
 
+const replaceMock = vi.fn();
+let currentDay = "2026-08-22";
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(""),
+  useRouter: () => ({ replace: replaceMock, push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(`day=${currentDay}`),
 }));
 
 const PREFS: OrgPreferences = {
@@ -61,56 +64,213 @@ const AVAILABILITY_DAY: AvailabilityDay = {
   slots: [{ starts_at: "2026-08-22T14:00:00Z", ends_at: "2026-08-22T15:00:00Z", label: "11:00" }],
 };
 
+// Same occurrence-shape convention as the Rotinas hub board response.
+const OPEN_TODAY = {
+  id: "occ-open",
+  client_id: "c1",
+  client_name: "Aluna Teste",
+  status: "open",
+  status_label: "Aberta",
+  due_on: "2026-08-22",
+  operational_date: "2026-08-22",
+  overdue: false,
+  name: "Revisar plano",
+  type_label: "Revisão",
+};
+
+const OVERDUE_ELSEWHERE = {
+  id: "occ-overdue",
+  client_id: "c2",
+  client_name: "Outro Aluno",
+  status: "open",
+  status_label: "Aberta",
+  due_on: "2026-08-19",
+  operational_date: "2026-08-19",
+  overdue: true,
+  name: "Feedback pendente",
+  type_label: "Feedback",
+};
+
+const COMPLETED_TODAY = {
+  id: "occ-completed",
+  client_id: "c3",
+  client_name: "Cliente Concluído",
+  status: "completed",
+  status_label: "Concluída",
+  due_on: "2026-08-22",
+  operational_date: "2026-08-22",
+  overdue: false,
+  name: "Rotina já feita",
+  type_label: "Tarefa",
+};
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the vi.fn() call-signature type; the wrapper below always forwards it
+const apiFetchMock = vi.fn(async (path: string, init?: RequestInit) => {
+  if (path.includes("/organization/preferences")) return { data: PREFS };
+  if (path.includes("/availability/settings")) return { data: UNCONFIGURED_SETTINGS };
+  if (path.includes("/availability/day")) return { data: AVAILABILITY_DAY };
+  if (path.includes("/agenda/day")) return { data: AGENDA };
+  if (path.includes("/agenda/range")) {
+    return {
+      data: {
+        timezone: "America/Sao_Paulo",
+        days: [AGENDA, { ...AGENDA, date: "2026-08-23", appointments: [] }],
+      },
+    };
+  }
+  if (path.includes("/routines/occurrences/") && path.endsWith("/decide")) {
+    return { data: { ok: true } };
+  }
+  if (path.includes("/routines/board")) {
+    if (path.includes("include_completed=true")) {
+      // Full-board shape (no `on`) — same query the Rotinas hub already
+      // issues; cancelled is never requested, so it never comes back.
+      return {
+        data: {
+          today: "2026-08-22",
+          groups: [{ items: [OPEN_TODAY, OVERDUE_ELSEWHERE, COMPLETED_TODAY] }],
+        },
+      };
+    }
+    // `on=<day>` day-view shape — never returns completed occurrences by
+    // design; overdue-elsewhere is folded in only when `on` is today.
+    const dayParam = new URL(path, "http://x").searchParams.get("on");
+    const items =
+      dayParam === "2026-08-22" ? [OPEN_TODAY, OVERDUE_ELSEWHERE] : dayParam === "2026-08-23" ? [] : [];
+    return { data: { today: "2026-08-22", groups: [{ items }] } };
+  }
+  return { data: null };
+});
+
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {
     ...actual,
-    apiFetch: vi.fn(async (path: string) => {
-      if (path.includes("/organization/preferences")) return { data: PREFS };
-      if (path.includes("/availability/settings")) return { data: UNCONFIGURED_SETTINGS };
-      if (path.includes("/availability/day")) return { data: AVAILABILITY_DAY };
-      if (path.includes("/agenda/day")) return { data: AGENDA };
-      if (path.includes("/agenda/range")) {
-        return {
-          data: {
-            timezone: "America/Sao_Paulo",
-            days: [AGENDA, { ...AGENDA, date: "2026-08-23", appointments: [] }],
-          },
-        };
-      }
-      if (path.includes("/routines/board")) {
-        return {
-          data: {
-            today: "2026-08-22",
-            groups: [
-              {
-                label: "Revisão",
-                count: 1,
-                occurrence_type: "plan_review",
-                items: [
-                  {
-                    id: "occ-1",
-                    name: "Revisar plano",
-                    client_id: "c1",
-                    client_name: "Aluna Teste",
-                    overdue: true,
-                    type_label: "Revisão",
-                  },
-                ],
-              },
-            ],
-          },
-        };
-      }
-      return { data: null };
-    }),
+    apiFetch: (path: string, init?: RequestInit) => apiFetchMock(path, init),
   };
 });
 
 import AgendaPage from "@/app/app/agenda/page";
 
+describe("Agenda — Rotinas do dia (desktop)", () => {
+  it("scenario 1: shows an open routine scheduled for the selected day, with client and 'Hoje' as the due label", async () => {
+    currentDay = "2026-08-22";
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Revisar plano");
+    expect(within(desktop).getByText(/Aluna Teste.*Hoje/)).toBeInTheDocument();
+  });
+
+  it("scenario 2: shows a completed routine for the day, visually reduced, with no Concluir/Adiar actions", async () => {
+    currentDay = "2026-08-22";
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    const row = (await within(desktop).findByText("Rotina já feita")).closest("li") as HTMLElement;
+    expect(row.className).toContain("opacity-60");
+    expect(within(row).queryByRole("button", { name: "Concluir" })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Adiar" })).not.toBeInTheDocument();
+    expect(within(row).getByText("Concluída")).toBeInTheDocument();
+  });
+
+  it("scenario 3: never shows a cancelled routine by default", async () => {
+    currentDay = "2026-08-22";
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    const section = await within(desktop).findByLabelText("Rotinas do dia");
+    await within(section).findByText("Revisar plano");
+    expect(within(section).queryByText(/cancelad/i)).not.toBeInTheDocument();
+    // The board fetch never even requests cancelled items.
+    const boardCalls = apiFetchMock.mock.calls.filter((c) => String(c[0]).includes("/routines/board"));
+    expect(boardCalls.some((c) => String(c[0]).includes("include_cancelled"))).toBe(false);
+  });
+
+  it("scenario 4: overdue-from-other-days never mixes into the selected day's list — only a compact banner", async () => {
+    currentDay = "2026-08-22";
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Revisar plano");
+    expect(within(desktop).queryByText("Feedback pendente")).not.toBeInTheDocument();
+    const banner = within(desktop).getByRole("link", { name: /1 rotina atrasada/ });
+    expect(banner).toHaveAttribute("href", "/app/routines");
+  });
+
+  it("scenario 5: Concluir calls decide() and refreshes the Agenda's routine list", async () => {
+    currentDay = "2026-08-22";
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Revisar plano");
+    apiFetchMock.mockClear();
+    const completeBtn = within(desktop).getByRole("button", { name: "Concluir" });
+    fireEvent.click(completeBtn);
+    await waitFor(() => {
+      const decideCall = apiFetchMock.mock.calls.find((c) => String(c[0]).endsWith("/decide"));
+      expect(decideCall?.[0]).toBe("/api/v1/routines/occurrences/occ-open/decide");
+      expect(decideCall?.[1]).toEqual(expect.objectContaining({ method: "POST" }));
+    });
+    await waitFor(() => {
+      const reloadCall = apiFetchMock.mock.calls.find((c) => String(c[0]).includes("/routines/board?on="));
+      expect(reloadCall).toBeTruthy();
+    });
+  });
+
+  it("scenario 5b: Adiar sends deferred_until as the next day", async () => {
+    currentDay = "2026-08-22";
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Revisar plano");
+    const deferBtn = within(desktop).getByRole("button", { name: "Adiar" });
+    fireEvent.click(deferBtn);
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        "/api/v1/routines/occurrences/occ-open/decide",
+        expect.objectContaining({
+          body: JSON.stringify({ status: "deferred", deferred_until: "2026-08-23" }),
+        }),
+      );
+    });
+  });
+
+  it("scenario 6: changing the selected date refetches and reflects the new day (empty here)", async () => {
+    currentDay = "2026-08-23";
+    const { container } = render(<AgendaPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await waitFor(() => {
+      const call = apiFetchMock.mock.calls.find((c) => String(c[0]).includes("/routines/board?on=2026-08-23"));
+      expect(call).toBeTruthy();
+    });
+    expect(within(desktop).queryByLabelText("Rotinas do dia")).not.toBeInTheDocument();
+    expect(within(desktop).queryByText("Revisar plano")).not.toBeInTheDocument();
+  });
+});
+
+describe("Agenda — Rotinas do dia (mobile)", () => {
+  it("scenario 7: mobile shows the day's routines as compact rows, separate from appointments, never the full hub", async () => {
+    currentDay = "2026-08-22";
+    const { container } = render(<AgendaPage />);
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
+    const section = await within(mobile).findByLabelText("Rotinas do dia");
+    await within(section).findByText("Revisar plano");
+    // Appointments and routines never share one list.
+    const apptList = within(mobile).getByText("Aluna Teste", { selector: "p" }).closest("ul");
+    expect(within(apptList as HTMLElement).queryByText("Revisar plano")).not.toBeInTheDocument();
+  });
+
+  it("mobile caps the visible list and offers 'Ver todas' linking to the Rotinas hub", async () => {
+    currentDay = "2026-08-22";
+    const { container } = render(<AgendaPage />);
+    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
+    const section = await within(mobile).findByLabelText("Rotinas do dia");
+    // Only one open item + overdue banner in this fixture — completed is
+    // enough on its own to trigger "Ver todas" on mobile.
+    const seeAll = within(section).getByRole("link", { name: "Ver todas" });
+    expect(seeAll).toHaveAttribute("href", "/app/routines");
+    expect(within(section).queryByText("Rotina já feita")).not.toBeInTheDocument();
+  });
+});
+
 describe("Agenda page — desktop: professional calendar, never a stretched list", () => {
   it("renders inside the hidden lg:block tree with a Day/Week toggle and the appointment's real client name", async () => {
+    currentDay = "2026-08-22";
     const { container } = render(<AgendaPage />);
     const desktop = container.querySelector(".hidden.lg\\:block");
     expect(desktop).not.toBeNull();
@@ -123,18 +283,6 @@ describe("Agenda page — desktop: professional calendar, never a stretched list
     const { container } = render(<AgendaPage />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
     await within(desktop).findByText("Falta do cliente");
-  });
-
-  it("shows the sidebar's routine pendency as a one-line count + link, never the detailed action cards — those belong to /app/routines now", async () => {
-    const { container } = render(<AgendaPage />);
-    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
-    const link = await within(desktop).findByRole("link", { name: /Ver rotinas/ });
-    expect(link).toHaveAttribute("href", "/app/routines");
-    expect(link).toHaveTextContent(/1\s*rotina\s*pendente/);
-    // The old detailed card (name, client, Concluir/Adiar) is gone from
-    // the Agenda entirely — it duplicated what Rotinas already does.
-    expect(within(desktop).queryByText("Revisar plano")).not.toBeInTheDocument();
-    expect(within(desktop).queryByRole("button", { name: "Concluir" })).not.toBeInTheDocument();
   });
 
   it("offers a visible link to Disponibilidade config and a Novo compromisso action", async () => {
@@ -157,6 +305,7 @@ describe("Agenda page — desktop: professional calendar, never a stretched list
 
 describe("Agenda page — mobile: daily timeline + assistant, never the desktop grid compressed", () => {
   it("renders inside a lg:hidden tree, independent from the desktop grid", async () => {
+    currentDay = "2026-08-22";
     const { container } = render(<AgendaPage />);
     const mobile = container.querySelector('[aria-label="Agenda do dia"]');
     expect(mobile).not.toBeNull();
@@ -174,10 +323,7 @@ describe("Agenda page — mobile: daily timeline + assistant, never the desktop 
   it("offers a manual 'Abrir cliente' link per appointment — the AI is never the only path", async () => {
     const { container } = render(<AgendaPage />);
     const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
-    const clientNameEl = await within(mobile).findByText("Aluna Teste");
-    // Scoped to the appointment row itself — the routines panel below also
-    // links to the same client with an identically-labeled "Abrir cliente"
-    // link, so a page-wide query would be ambiguous.
+    const clientNameEl = await within(mobile).findByText("Aluna Teste", { selector: "p" });
     const row = clientNameEl.closest("li") as HTMLElement;
     const clientLink = within(row).getByRole("link", { name: "Abrir cliente" });
     expect(clientLink).toHaveAttribute("href", "/app/clients/c1");
@@ -204,17 +350,8 @@ describe("Agenda page — mobile: daily timeline + assistant, never the desktop 
   it("offers a manual Agendar action independent of the assistant", async () => {
     const { container } = render(<AgendaPage />);
     const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
-    await within(mobile).findByText("Aluna Teste"); // wait for org-local day to resolve
+    await within(mobile).findByText("Aluna Teste", { selector: "p" });
     const link = within(mobile).getByRole("link", { name: /^Agendar$/i });
     expect(link).toHaveAttribute("href", "/app/appointments/new?day=2026-08-22");
-  });
-
-  it("shows the routine pendency on mobile as a count + link too — per the redesign, never the full board here", async () => {
-    const { container } = render(<AgendaPage />);
-    const mobile = container.querySelector('[aria-label="Agenda do dia"]') as HTMLElement;
-    const link = await within(mobile).findByRole("link", { name: /Ver rotinas/ });
-    expect(link).toHaveAttribute("href", "/app/routines");
-    expect(link).toHaveTextContent(/1\s*rotina\s*pendente/);
-    expect(within(mobile).queryByText("Revisar plano")).not.toBeInTheDocument();
   });
 });
