@@ -209,7 +209,7 @@ describe("RoutinesPageInner desktop — central de trabalho densa", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders inside the hidden lg:block tree with real overdue/today/recurring items in the default (Todas) view", async () => {
+  it("Pendências groups open items visually as Atrasadas/Hoje/Próximas, never mixed with completed work", async () => {
     mockRichApi();
     const { container } = render(<RoutinesPageInner />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
@@ -217,43 +217,53 @@ describe("RoutinesPageInner desktop — central de trabalho densa", () => {
     await within(table).findByText("Ana Overdue");
     expect(within(table).getByText("Gabriel Hoje")).toBeInTheDocument();
     expect(within(table).getByText("Carla Recorrente")).toBeInTheDocument();
-    // Completed is excluded from "Todas" by default (matches board() semantics).
     expect(within(table).queryByText("Bia Concluida")).not.toBeInTheDocument();
+
+    // Each bucket has its own visible heading row, all shown at once —
+    // no tab to click through to see the rest.
+    expect(within(table).getByText(/Atrasadas · 1/)).toBeInTheDocument();
+    expect(within(table).getByText(/Hoje · 1/)).toBeInTheDocument();
+    expect(within(table).getByText(/Próximas · 1/)).toBeInTheDocument();
+
+    // The heading order in the DOM is Atrasadas, then Hoje, then Próximas.
+    const headings = within(table)
+      .getAllByText(/^(Atrasadas|Hoje|Próximas) · \d/)
+      .map((el) => el.textContent);
+    expect(headings).toEqual([
+      expect.stringContaining("Atrasadas"),
+      expect.stringContaining("Hoje"),
+      expect.stringContaining("Próximas"),
+    ]);
   });
 
-  it("Atrasadas view shows only the overdue item", async () => {
+  it("Histórico is a separate area — never the same table Pendências shows, and never floods it with old cancelled work", async () => {
     mockRichApi();
     const { container } = render(<RoutinesPageInner />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
-    const table = await within(desktop).findByRole("table");
-    await within(table).findByText("Ana Overdue");
-    fireEvent.click(within(desktop).getByRole("tab", { name: /Atrasadas/i }));
-    expect(within(table).getByText("Ana Overdue")).toBeInTheDocument();
-    expect(within(table).queryByText("Gabriel Hoje")).not.toBeInTheDocument();
-    expect(within(table).queryByText("Carla Recorrente")).not.toBeInTheDocument();
+    const pendingTable = await within(desktop).findByRole("table");
+    await within(pendingTable).findByText("Ana Overdue");
+
+    fireEvent.click(within(desktop).getByRole("tab", { name: /Histórico/i }));
+    const historyTable = await within(desktop).findByRole("table");
+    expect(await within(historyTable).findByText("Bia Concluida")).toBeInTheDocument();
+    expect(within(historyTable).queryByText("Ana Overdue")).not.toBeInTheDocument();
+    expect(within(historyTable).queryByText("Gabriel Hoje")).not.toBeInTheDocument();
+
+    // Back on Pendências, the completed item never shows up there either.
+    fireEvent.click(within(desktop).getByRole("tab", { name: /Pendências/i }));
+    const backToPending = await within(desktop).findByRole("table");
+    expect(within(backToPending).queryByText("Bia Concluida")).not.toBeInTheDocument();
   });
 
-  it("Recorrentes view shows only occurrences whose routine recurrence isn't 'once'", async () => {
+  it("Automações is its own area — Suas rotinas and sugestões, no occurrence table there", async () => {
     mockRichApi();
     const { container } = render(<RoutinesPageInner />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
-    const table = await within(desktop).findByRole("table");
-    await within(table).findByText("Ana Overdue");
-    fireEvent.click(within(desktop).getByRole("tab", { name: /Recorrentes/i }));
-    expect(within(table).getByText("Carla Recorrente")).toBeInTheDocument();
-    expect(within(table).queryByText("Ana Overdue")).not.toBeInTheDocument();
-    expect(within(table).queryByText("Gabriel Hoje")).not.toBeInTheDocument();
-  });
-
-  it("Concluídas view fetches and shows the completed item, never mixed into other views", async () => {
-    mockRichApi();
-    const { container } = render(<RoutinesPageInner />);
-    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
-    const table = await within(desktop).findByRole("table");
-    await within(table).findByText("Ana Overdue");
-    fireEvent.click(within(desktop).getByRole("tab", { name: /Concluídas/i }));
-    expect(await within(table).findByText("Bia Concluida")).toBeInTheDocument();
-    expect(within(table).queryByText("Ana Overdue")).not.toBeInTheDocument();
+    await within(desktop).findByRole("table");
+    fireEvent.click(within(desktop).getByRole("tab", { name: /Automações/i }));
+    expect(within(desktop).queryByRole("table")).not.toBeInTheDocument();
+    expect(within(desktop).getByText("Suas rotinas (definições)")).toBeInTheDocument();
+    expect(within(desktop).getByText("Cobrar Ana")).toBeInTheDocument();
   });
 
   it("search narrows the list by client name", async () => {
@@ -285,19 +295,34 @@ describe("RoutinesPageInner desktop — central de trabalho densa", () => {
     expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ status: "completed" });
   });
 
-  it("offers a real Cancelar action per row (backend already supports status=cancelled)", async () => {
+  it("offers Cancelar as a secondary action inside the row's menu, not at the same weight as Concluir", async () => {
     mockRichApi();
     const { container } = render(<RoutinesPageInner />);
     const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
     const table = await within(desktop).findByRole("table");
     await within(table).findByText("Ana Overdue");
     const row = within(table).getByText("Ana Overdue").closest("tr") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Cancelar" }));
+    expect(within(row).queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: /Mais ações/i }));
+    fireEvent.click(within(row).getByRole("menuitem", { name: "Cancelar" }));
     await new Promise((r) => setTimeout(r, 0));
     const call = vi
       .mocked(apiFetch)
       .mock.calls.find(([path]) => path === "/api/v1/routines/occurrences/occ-overdue/decide");
     expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ status: "cancelled" });
+  });
+
+  it("never offers Concluir/Adiar/Cancelar again on a cancelled or completed occurrence", async () => {
+    mockRichApi();
+    const { container } = render(<RoutinesPageInner />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByRole("table");
+    fireEvent.click(within(desktop).getByRole("tab", { name: /Histórico/i }));
+    const historyTable = await within(desktop).findByRole("table");
+    const row = (await within(historyTable).findByText("Bia Concluida")).closest("tr") as HTMLElement;
+    expect(within(row).queryByRole("button", { name: "Concluir" })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /Mais ações/i })).not.toBeInTheDocument();
+    expect(within(row).getByText("Concluída")).toBeInTheDocument();
   });
 
   it("offers an 'Abrir cliente' link per row", async () => {
@@ -311,6 +336,30 @@ describe("RoutinesPageInner desktop — central de trabalho densa", () => {
       "href",
       "/app/clients/c1",
     );
+  });
+
+  it("never shows the false 'Nada pendente' empty state while the board is still loading", async () => {
+    let resolveBoard: (value: { data: { today: string; groups: unknown[] }; status: number }) => void;
+    const pendingBoard = new Promise<{ data: { today: string; groups: unknown[] }; status: number }>(
+      (resolve) => {
+        resolveBoard = resolve;
+      },
+    );
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path === "/api/v1/routines" || path === "/api/v1/routines?status=paused" || path === "/api/v1/clients") {
+        return { data: [], error: undefined, status: 200 };
+      }
+      if (path.startsWith("/api/v1/routines/board")) return pendingBoard;
+      return { data: null, error: { code: "not_found", message: "unexpected path" }, status: 404 };
+    });
+    const { container } = render(<RoutinesPageInner />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    // Still loading: neither the real empty state nor a stray table shows.
+    expect(within(desktop).queryByText("Nada pendente")).not.toBeInTheDocument();
+    expect(within(desktop).queryByRole("table")).not.toBeInTheDocument();
+
+    resolveBoard!({ data: { today: TODAY, groups: [] }, status: 200 });
+    expect(await within(desktop).findByText("Nada pendente")).toBeInTheDocument();
   });
 });
 

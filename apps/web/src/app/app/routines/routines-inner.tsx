@@ -82,15 +82,33 @@ type BoardGroup = {
   items: BoardItem[];
 };
 
-type DeskView = "all" | "overdue" | "today" | "upcoming" | "recurring" | "completed";
+/** Pendências only ever shows open work — completed/cancelled occurrences
+ * moved to their own Histórico area entirely, so this predicate doesn't
+ * need a "view" parameter to exclude them: it always does. */
+function isOpenItem(item: BoardItem): boolean {
+  return item.status !== "completed" && item.status !== "cancelled";
+}
 
-const DESK_VIEWS: { value: DeskView; label: string }[] = [
+type Bucket = "overdue" | "today" | "upcoming";
+
+const BUCKET_LABEL: Record<Bucket, string> = {
+  overdue: "Atrasadas",
+  today: "Hoje",
+  upcoming: "Próximas",
+};
+
+function bucketOf(item: BoardItem, today: string): Bucket {
+  if (item.overdue) return "overdue";
+  if (item.operational_date === today) return "today";
+  return "upcoming";
+}
+
+type HistoryStatus = "all" | "completed" | "cancelled";
+
+const HISTORY_STATUSES: { value: HistoryStatus; label: string }[] = [
   { value: "all", label: "Todas" },
-  { value: "overdue", label: "Atrasadas" },
-  { value: "today", label: "Hoje" },
-  { value: "upcoming", label: "Próximas" },
-  { value: "recurring", label: "Recorrentes" },
   { value: "completed", label: "Concluídas" },
+  { value: "cancelled", label: "Canceladas" },
 ];
 
 function sourceLabel(source: string): string {
@@ -99,24 +117,10 @@ function sourceLabel(source: string): string {
   return source;
 }
 
-function matchesView(
-  item: BoardItem,
-  view: DeskView,
-  today: string,
-  recurrenceByRoutineId: Map<string, string>,
-): boolean {
-  if (view === "completed") return item.status === "completed";
-  if (item.status === "completed") return false;
-  if (view === "overdue") return item.overdue;
-  if (view === "today") return !item.overdue && item.operational_date === today;
-  if (view === "upcoming") return !item.overdue && item.operational_date > today;
-  if (view === "recurring") {
-    const rec = item.routine_id ? recurrenceByRoutineId.get(item.routine_id) : undefined;
-    return Boolean(rec && rec !== "once");
-  }
-  return true;
-}
-
+/** One primary action (Concluir) plus a small menu for the rest — a
+ * cancelled or completed occurrence never offers Concluir/Adiar/Cancelar
+ * again (it used to, regardless of status, which is exactly the "rotina
+ * cancelada oferecendo Concluir" bug the redesign called out). */
 function RoutineActions({
   item,
   busy,
@@ -130,9 +134,15 @@ function RoutineActions({
   onDefer: (id: string) => void;
   onCancel: (id: string) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   if (item.status === "completed") {
     return <span className="text-xs text-[var(--color-ink-subtle)]">Concluída</span>;
   }
+  if (item.status === "cancelled") {
+    return <span className="text-xs text-[var(--color-ink-subtle)]">Cancelada</span>;
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {item.client_id ? (
@@ -145,28 +155,56 @@ function RoutineActions({
       ) : null}
       <button
         type="button"
-        className="text-sm font-medium text-[var(--color-primary)] disabled:opacity-50"
+        className="text-sm font-semibold text-[var(--color-primary)] disabled:opacity-50"
         disabled={busy}
         onClick={() => onComplete(item.id)}
       >
         Concluir
       </button>
-      <button
-        type="button"
-        className="text-sm font-medium text-[var(--color-ink-muted)] disabled:opacity-50"
-        disabled={busy}
-        onClick={() => onDefer(item.id)}
-      >
-        Adiar
-      </button>
-      <button
-        type="button"
-        className="text-sm font-medium text-[var(--color-danger)] disabled:opacity-50"
-        disabled={busy}
-        onClick={() => onCancel(item.id)}
-      >
-        Cancelar
-      </button>
+      <div className="relative">
+        <button
+          type="button"
+          aria-label={`Mais ações de ${item.name || item.type_label}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)] disabled:opacity-50"
+          disabled={busy}
+          onClick={() => setMenuOpen((v) => !v)}
+        >
+          <IconMoreHorizontal className="h-4 w-4" aria-hidden />
+        </button>
+        {menuOpen ? (
+          <div
+            role="menu"
+            className="absolute right-0 z-10 mt-1 min-w-32 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-sm"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+              disabled={busy}
+              onClick={() => {
+                setMenuOpen(false);
+                onDefer(item.id);
+              }}
+            >
+              Adiar
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)]"
+              disabled={busy}
+              onClick={() => {
+                setMenuOpen(false);
+                onCancel(item.id);
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -199,8 +237,16 @@ export default function RoutinesPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [customOpen, setCustomOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+
+  // Three areas, never mixed: Pendências (open work), Automações
+  // (recurring definitions + sugestões) and Histórico (concluídas/
+  // canceladas) — replaces the old single "Todas" view that quietly
+  // included every cancelled occurrence ever created.
+  const [area, setArea] = useState<"pendencias" | "automacoes" | "historico">("pendencias");
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatus>("all");
 
   // Entry point for the topbar's "+ Criar → Nova rotina" — it links to
   // /app/routines?new=1 instead of duplicating this real dialog anywhere
@@ -212,7 +258,6 @@ export default function RoutinesPageInner() {
   }, []);
 
   // Desktop dense-list controls — independent from the mobile tree below.
-  const [deskView, setDeskView] = useState<DeskView>("all");
   const [deskQuery, setDeskQuery] = useState("");
   const [deskClientId, setDeskClientId] = useState("");
   const [deskSource, setDeskSource] = useState<"" | "routine" | "computed">("");
@@ -247,6 +292,7 @@ export default function RoutinesPageInner() {
       setBoardToday(full.data.today ?? "");
     }
     if (allClients.data) setClients(allClients.data);
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -376,12 +422,6 @@ export default function RoutinesPageInner() {
     return null;
   };
 
-  const recurrenceByRoutineId = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const r of items) map.set(r.id, r.recurrence);
-    return map;
-  }, [items]);
-
   const allDeskItems = useMemo(
     () => fullBoard.flatMap((g) => g.items),
     [fullBoard],
@@ -392,26 +432,51 @@ export default function RoutinesPageInner() {
     [allDeskItems],
   );
 
-  const filteredDeskItems = useMemo(() => {
+  function matchesDeskFilters(i: BoardItem, q: string): boolean {
+    if (deskClientId && i.client_id !== deskClientId) return false;
+    if (deskSource && i.source !== deskSource) return false;
+    if (!q) return true;
+    const hay = `${i.name || ""} ${i.client_name || ""} ${i.type_label}`.toLowerCase();
+    return hay.includes(q);
+  }
+
+  // Pendências: only open work, grouped Atrasadas/Hoje/Próximas — a
+  // cancelled or completed occurrence never shows up here again, so
+  // "Pendências" can't silently turn into an archive of old cancellations.
+  const openBuckets = useMemo(() => {
+    const q = deskQuery.trim().toLowerCase();
+    const groups: Record<Bucket, BoardItem[]> = { overdue: [], today: [], upcoming: [] };
+    for (const item of allDeskItems) {
+      if (!isOpenItem(item)) continue;
+      if (!matchesDeskFilters(item, q)) continue;
+      groups[bucketOf(item, boardToday)].push(item);
+    }
+    for (const bucket of Object.keys(groups) as Bucket[]) {
+      groups[bucket].sort((a, b) => a.due_on.localeCompare(b.due_on));
+    }
+    return groups;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDeskItems, deskQuery, deskClientId, deskSource, boardToday]);
+
+  const openItemsTotal = openBuckets.overdue.length + openBuckets.today.length + openBuckets.upcoming.length;
+
+  // Histórico: only concluídas/canceladas — the "arquivo enorme de
+  // canceladas" the old single "Todas" view produced now lives only here,
+  // behind its own explicit filter, never mixed into daily operational work.
+  const historyItems = useMemo(() => {
     const q = deskQuery.trim().toLowerCase();
     return allDeskItems
-      .filter((i) => matchesView(i, deskView, boardToday, recurrenceByRoutineId))
-      .filter((i) => (deskClientId ? i.client_id === deskClientId : true))
-      .filter((i) => (deskSource ? i.source === deskSource : true))
-      .filter((i) => {
-        if (!q) return true;
-        const hay = `${i.name || ""} ${i.client_name || ""} ${i.type_label}`.toLowerCase();
-        return hay.includes(q);
-      })
-      .sort((a, b) => (a.overdue === b.overdue ? a.due_on.localeCompare(b.due_on) : a.overdue ? -1 : 1));
-  }, [allDeskItems, deskView, deskClientId, deskSource, deskQuery, boardToday, recurrenceByRoutineId]);
+      .filter((i) => i.status === "completed" || i.status === "cancelled")
+      .filter((i) => historyStatus === "all" || i.status === historyStatus)
+      .filter((i) => matchesDeskFilters(i, q))
+      .sort((a, b) => b.due_on.localeCompare(a.due_on));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDeskItems, historyStatus, deskQuery, deskClientId, deskSource]);
 
-  const todayCount = allDeskItems.filter(
-    (i) => !i.overdue && i.status !== "completed" && i.operational_date === boardToday,
-  ).length;
-  const nextItem = [...allDeskItems]
-    .filter((i) => i.status === "open" && !i.overdue)
-    .sort((a, b) => a.due_on.localeCompare(b.due_on))[0];
+  // Mobile summary reuses the exact same open-items grouping as the
+  // desktop Pendências area — one source of truth for "what's open".
+  const todayCount = openBuckets.today.length;
+  const nextItem = [...openBuckets.today, ...openBuckets.upcoming][0];
 
   const createDialog = customOpen ? (
     <div
@@ -642,184 +707,272 @@ export default function RoutinesPageInner() {
           </p>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Agrupamento">
-          {DESK_VIEWS.map((v) => (
-            <button
-              key={v.value}
-              type="button"
-              role="tab"
-              aria-selected={deskView === v.value}
-              className={`min-h-9 rounded-full px-3 text-sm font-semibold ${
-                deskView === v.value
-                  ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
-                  : "border border-[var(--color-border)] text-[var(--color-ink-muted)]"
-              }`}
-              onClick={() => setDeskView(v.value)}
-            >
-              {v.label}
-              {v.value === "overdue" && overdueTodayCount > 0 ? ` · ${overdueTodayCount}` : ""}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Área">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={area === "pendencias"}
+            className={`min-h-9 rounded-full px-3 text-sm font-semibold ${
+              area === "pendencias"
+                ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+                : "border border-[var(--color-border)] text-[var(--color-ink-muted)]"
+            }`}
+            onClick={() => setArea("pendencias")}
+          >
+            Pendências{overdueTodayCount > 0 ? ` · ${overdueTodayCount}` : ""}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={area === "automacoes"}
+            className={`min-h-9 rounded-full px-3 text-sm font-semibold ${
+              area === "automacoes"
+                ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+                : "border border-[var(--color-border)] text-[var(--color-ink-muted)]"
+            }`}
+            onClick={() => setArea("automacoes")}
+          >
+            Automações
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={area === "historico"}
+            className={`min-h-9 rounded-full px-3 text-sm font-semibold ${
+              area === "historico"
+                ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+                : "border border-[var(--color-border)] text-[var(--color-ink-muted)]"
+            }`}
+            onClick={() => setArea("historico")}
+          >
+            Histórico
+          </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="search"
-            aria-label="Buscar rotina"
-            placeholder="Buscar por título, cliente ou tipo…"
-            value={deskQuery}
-            onChange={(e) => setDeskQuery(e.target.value)}
-            className="min-h-10 min-w-[16rem] flex-1 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
-          />
-          <select
-            aria-label="Filtrar por cliente"
-            value={deskClientId}
-            onChange={(e) => setDeskClientId(e.target.value)}
-            className="min-h-10 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
-          >
-            <option value="">Todos os clientes</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.full_name}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filtrar por origem"
-            value={deskSource}
-            onChange={(e) => setDeskSource(e.target.value as typeof deskSource)}
-            className="min-h-10 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
-          >
-            <option value="">Toda origem</option>
-            <option value="routine">Rotina</option>
-            <option value="computed">Automática (plano)</option>
-          </select>
-        </div>
-
-        {filteredDeskItems.length === 0 ? (
-          <EmptyState
-            title="Nada aqui"
-            description={
-              deskView === "completed"
-                ? "Nenhuma rotina concluída neste período."
-                : "Sem pendências para os filtros atuais."
-            }
-            action={
-              <Button variant="secondary" onClick={openCreateDialog}>
-                Nova rotina
-              </Button>
-            }
-          />
-        ) : (
-          <TableShell>
-          <table className="w-full text-sm">
-            <thead>
-              <Tr>
-                <Th>Rotina</Th>
-                <Th>Cliente</Th>
-                <Th>Tipo</Th>
-                <Th>Origem</Th>
-                <Th>Vencimento</Th>
-                <Th>Status</Th>
-                <Th>Ações</Th>
-              </Tr>
-            </thead>
-            <tbody>
-              {filteredDeskItems.map((item) => (
-                <Tr key={item.id} className="align-top hover:bg-[var(--color-surface-subtle)]">
-                  <Td className="font-medium text-[var(--color-ink)]">
-                    {item.name || item.type_label}
-                  </Td>
-                  <Td className="text-[var(--color-ink-muted)]">{item.client_name || "—"}</Td>
-                  <Td className="text-[var(--color-ink-muted)]">{item.type_label}</Td>
-                  <Td className="text-[var(--color-ink-muted)]">{sourceLabel(item.source)}</Td>
-                  <Td className="tabular-nums">
-                    <span className={item.overdue ? "font-semibold text-[var(--color-danger)]" : ""}>
-                      {formatDateBR(item.due_on)}
-                      {item.overdue ? " · Atrasada" : ""}
-                    </span>
-                  </Td>
-                  <Td>
-                    <Badge
-                      tone={
-                        item.status === "completed"
-                          ? "success"
-                          : item.status === "cancelled"
-                            ? "neutral"
-                            : item.overdue
-                              ? "danger"
-                              : "info"
-                      }
-                    >
-                      {item.status_label}
-                    </Badge>
-                  </Td>
-                  <Td>
-                    <RoutineActions
-                      item={item}
-                      busy={busy}
-                      onComplete={(id) => void decide(id, "completed")}
-                      onDefer={(id) => void decide(id, "deferred")}
-                      onCancel={(id) => void decide(id, "cancelled")}
-                    />
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </table>
-          </TableShell>
-        )}
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <section aria-label="Suas rotinas" className="space-y-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-              Suas rotinas (definições)
-            </h2>
-            {!yours.length ? (
-              <p className="text-sm text-[var(--color-ink-muted)]">
-                Nenhuma rotina ativa. Crie uma acima ou ative uma sugestão.
-              </p>
-            ) : (
-              <ul className="space-y-1.5">
-                {yours.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
+        {area === "pendencias" || area === "historico" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {area === "historico" ? (
+              <div className="flex items-center gap-1.5" role="group" aria-label="Filtrar histórico">
+                {HISTORY_STATUSES.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    aria-pressed={historyStatus === s.value}
+                    className={`min-h-9 rounded-full px-3 text-sm font-medium ${
+                      historyStatus === s.value
+                        ? "bg-[var(--color-surface-elevated)] text-[var(--color-ink)] ring-1 ring-[var(--color-border-strong)]"
+                        : "text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)]"
+                    }`}
+                    onClick={() => setHistoryStatus(s.value)}
                   >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{item.name}</p>
-                      <p className="text-xs text-[var(--color-ink-muted)]">
-                        {freqText(item)}
-                        {scopeText(item) ? ` · ${scopeText(item)}` : ""}
-                      </p>
-                    </div>
-                    <Badge tone={item.status === "active" ? "success" : "neutral"}>
-                      {item.status === "active" ? "Ativa" : "Pausada"}
-                    </Badge>
-                    {item.status === "active" ? (
-                      <button
-                        type="button"
-                        className="shrink-0 text-xs font-medium text-[var(--color-ink-muted)]"
-                        onClick={() => void setRoutineStatus(item.id, "paused")}
-                      >
-                        Pausar
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="shrink-0 text-xs font-medium text-[var(--color-primary)]"
-                        onClick={() => void setRoutineStatus(item.id, "active")}
-                      >
-                        Reativar
-                      </button>
-                    )}
-                  </li>
+                    {s.label}
+                  </button>
                 ))}
-              </ul>
-            )}
-          </section>
-          <RoutineTemplatesPanel enabled={items.filter((r) => r.status === "active")} onChanged={load} />
-        </div>
+              </div>
+            ) : null}
+            <input
+              type="search"
+              aria-label="Buscar rotina"
+              placeholder="Buscar por título, cliente ou tipo…"
+              value={deskQuery}
+              onChange={(e) => setDeskQuery(e.target.value)}
+              className="min-h-10 min-w-[16rem] flex-1 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+            />
+            <select
+              aria-label="Filtrar por cliente"
+              value={deskClientId}
+              onChange={(e) => setDeskClientId(e.target.value)}
+              className="min-h-10 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+            >
+              <option value="">Todos os clientes</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.full_name}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Filtrar por origem"
+              value={deskSource}
+              onChange={(e) => setDeskSource(e.target.value as typeof deskSource)}
+              className="min-h-10 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+            >
+              <option value="">Toda origem</option>
+              <option value="routine">Rotina</option>
+              <option value="computed">Automática (plano)</option>
+            </select>
+          </div>
+        ) : null}
+
+        {area === "pendencias" ? (
+          loading ? (
+            <div className="space-y-2">
+              <div className="h-8 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+              <div className="h-14 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+              <div className="h-14 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+            </div>
+          ) : openItemsTotal === 0 ? (
+            <EmptyState
+              title="Nada pendente"
+              description="Sem pendências para os filtros atuais."
+              action={
+                <Button variant="secondary" onClick={openCreateDialog}>
+                  Nova rotina
+                </Button>
+              }
+            />
+          ) : (
+            <TableShell>
+              <table className="w-full text-sm">
+                <thead>
+                  <Tr>
+                    <Th>Rotina</Th>
+                    <Th>Cliente</Th>
+                    <Th>Tipo</Th>
+                    <Th>Origem</Th>
+                    <Th>Vencimento</Th>
+                    <Th>Ações</Th>
+                  </Tr>
+                </thead>
+                <tbody>
+                  {(["overdue", "today", "upcoming"] as Bucket[]).flatMap((bucket) => {
+                    const bucketItems = openBuckets[bucket];
+                    if (!bucketItems.length) return [];
+                    return [
+                      <Tr key={`heading-${bucket}`} className="bg-[var(--color-surface-subtle)]">
+                        <Td colSpan={6} className="py-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                          {BUCKET_LABEL[bucket]} · {bucketItems.length}
+                        </Td>
+                      </Tr>,
+                      ...bucketItems.map((item) => (
+                        <Tr key={item.id} className="align-top hover:bg-[var(--color-surface-subtle)]">
+                          <Td className="font-medium text-[var(--color-ink)]">
+                            {item.name || item.type_label}
+                          </Td>
+                          <Td className="text-[var(--color-ink-muted)]">{item.client_name || "—"}</Td>
+                          <Td className="text-[var(--color-ink-muted)]">{item.type_label}</Td>
+                          <Td className="text-[var(--color-ink-muted)]">{sourceLabel(item.source)}</Td>
+                          <Td className="tabular-nums">
+                            <span className={item.overdue ? "font-semibold text-[var(--color-danger)]" : ""}>
+                              {formatDateBR(item.due_on)}
+                              {item.overdue ? " · Atrasada" : ""}
+                            </span>
+                          </Td>
+                          <Td>
+                            <RoutineActions
+                              item={item}
+                              busy={busy}
+                              onComplete={(id) => void decide(id, "completed")}
+                              onDefer={(id) => void decide(id, "deferred")}
+                              onCancel={(id) => void decide(id, "cancelled")}
+                            />
+                          </Td>
+                        </Tr>
+                      )),
+                    ];
+                  })}
+                </tbody>
+              </table>
+            </TableShell>
+          )
+        ) : null}
+
+        {area === "automacoes" ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section aria-label="Suas rotinas" className="space-y-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                Suas rotinas (definições)
+              </h2>
+              {!yours.length ? (
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  Nenhuma rotina ativa. Crie uma acima ou ative uma sugestão.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {yours.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{item.name}</p>
+                        <p className="text-xs text-[var(--color-ink-muted)]">
+                          {freqText(item)}
+                          {scopeText(item) ? ` · ${scopeText(item)}` : ""}
+                        </p>
+                      </div>
+                      <Badge tone={item.status === "active" ? "success" : "neutral"}>
+                        {item.status === "active" ? "Ativa" : "Pausada"}
+                      </Badge>
+                      {item.status === "active" ? (
+                        <button
+                          type="button"
+                          className="shrink-0 text-xs font-medium text-[var(--color-ink-muted)]"
+                          onClick={() => void setRoutineStatus(item.id, "paused")}
+                        >
+                          Pausar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="shrink-0 text-xs font-medium text-[var(--color-primary)]"
+                          onClick={() => void setRoutineStatus(item.id, "active")}
+                        >
+                          Reativar
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            <RoutineTemplatesPanel enabled={items.filter((r) => r.status === "active")} onChanged={load} />
+          </div>
+        ) : null}
+
+        {area === "historico" ? (
+          loading ? (
+            <div className="space-y-2">
+              <div className="h-14 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+              <div className="h-14 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+            </div>
+          ) : historyItems.length === 0 ? (
+            <EmptyState title="Nada no histórico ainda" description="Rotinas concluídas ou canceladas aparecerão aqui." />
+          ) : (
+            <TableShell>
+              <table className="w-full text-sm">
+                <thead>
+                  <Tr>
+                    <Th>Rotina</Th>
+                    <Th>Cliente</Th>
+                    <Th>Tipo</Th>
+                    <Th>Origem</Th>
+                    <Th>Data</Th>
+                    <Th>Status</Th>
+                  </Tr>
+                </thead>
+                <tbody>
+                  {historyItems.map((item) => (
+                    <Tr key={item.id} className="align-top">
+                      <Td className="font-medium text-[var(--color-ink)]">
+                        {item.name || item.type_label}
+                      </Td>
+                      <Td className="text-[var(--color-ink-muted)]">{item.client_name || "—"}</Td>
+                      <Td className="text-[var(--color-ink-muted)]">{item.type_label}</Td>
+                      <Td className="text-[var(--color-ink-muted)]">{sourceLabel(item.source)}</Td>
+                      <Td className="tabular-nums text-[var(--color-ink-muted)]">{formatDateBR(item.due_on)}</Td>
+                      <Td>
+                        <Badge tone={item.status === "completed" ? "success" : "neutral"}>
+                          {item.status_label}
+                        </Badge>
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableShell>
+          )
+        ) : null}
       </div>
 
       {/* Mobile: operational summary — never the dense desktop table/filters. */}

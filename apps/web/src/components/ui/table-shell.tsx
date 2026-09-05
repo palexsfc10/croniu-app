@@ -35,7 +35,21 @@ export function Tr({ children, className = "" }: { children: ReactNode; classNam
   );
 }
 
-/** A body cell with the shared padding. */
-export function Td({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <td className={`px-3.5 py-3 text-sm ${className}`}>{children}</td>;
+/** A body cell with the shared padding. `colSpan` is for a section-header
+ * row spanning the full table width (Rotinas' Atrasadas/Hoje/Próximas
+ * grouping) — everywhere else omits it and gets one real column. */
+export function Td({
+  children,
+  className = "",
+  colSpan,
+}: {
+  children: ReactNode;
+  className?: string;
+  colSpan?: number;
+}) {
+  return (
+    <td colSpan={colSpan} className={`px-3.5 py-3 text-sm ${className}`}>
+      {children}
+    </td>
+  );
 }
