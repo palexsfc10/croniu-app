@@ -14,6 +14,7 @@ import { apiFetch, type PlatformMe } from "@/lib/api";
 type AuthContextValue = {
   me: PlatformMe | null;
   loading: boolean;
+  logoutError: string | null;
   logout: () => Promise<void>;
 };
 
@@ -23,6 +24,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [me, setMe] = useState<PlatformMe | null>(null);
   const [loading, setLoading] = useState(true);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,12 +55,17 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const logout = useCallback(async () => {
-    await apiFetch("/api/v1/platform/auth/logout", { method: "POST" });
+    setLogoutError(null);
+    const result = await apiFetch("/api/v1/platform/auth/logout", { method: "POST" });
+    if (result.error) {
+      setLogoutError("Não foi possível encerrar a sessão. Tente sair novamente.");
+      return;
+    }
     setMe(null);
     router.replace("/login");
   }, [router]);
 
-  const value = useMemo(() => ({ me, loading, logout }), [me, loading, logout]);
+  const value = useMemo(() => ({ me, loading, logout, logoutError }), [me, loading, logout, logoutError]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

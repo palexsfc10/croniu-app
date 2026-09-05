@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/organizations",
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 vi.mock("next/link", () => ({
@@ -24,6 +25,7 @@ vi.mock("@/components/auth/admin-auth-provider", () => ({
 import { AdminShell } from "@/components/admin-shell";
 
 describe("AdminShell — mobile navigation drawer", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   afterEach(() => {
     cleanup();
   });

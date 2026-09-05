@@ -10,7 +10,7 @@ export function Table({ children }: { children: ReactNode }) {
 
 export function THead({ children }: { children: ReactNode }) {
   return (
-    <thead className="border-b border-[var(--color-border)] text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+    <thead className="border-b border-[var(--color-border)] bg-[var(--color-surface-subtle)] text-[10px] uppercase tracking-[0.1em] text-[var(--color-ink-muted)]">
       <tr>{children}</tr>
     </thead>
   );
@@ -18,7 +18,7 @@ export function THead({ children }: { children: ReactNode }) {
 
 export function Th({ children, className = "", ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <th className={["px-3 py-2.5 font-semibold", className].join(" ")} {...props}>
+    <th scope="col" className={["px-4 py-3.5 font-semibold", className].join(" ")} {...props}>
       {children}
     </th>
   );
@@ -38,7 +38,7 @@ export function Tr({ children, className = "" }: { children: ReactNode; classNam
 
 export function Td({ children, className = "", ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <td className={["px-3 py-3 align-top", className].join(" ")} {...props}>
+    <td className={["px-4 py-4 align-middle", className].join(" ")} {...props}>
       {children}
     </td>
   );

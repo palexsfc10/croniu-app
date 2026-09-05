@@ -13,7 +13,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/components/auth/admin-auth-provider", () => ({
-  useAdminAuth: () => ({ me: { environment: "hml" } }),
+  useAdminAuth: () => ({ me: { environment: "hml", role: "platform_admin" } }),
 }));
 
 const DETAIL: OrganizationDetail = {

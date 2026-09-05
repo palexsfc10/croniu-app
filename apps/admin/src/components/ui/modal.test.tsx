@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -44,6 +44,7 @@ describe("ConfirmDialog", () => {
   });
 
   it("disables confirm and cancel while busy", () => {
+    const onCancel = vi.fn();
     render(
       <ConfirmDialog
         open
@@ -51,10 +52,12 @@ describe("ConfirmDialog", () => {
         confirmLabel="Excluir"
         busy
         onConfirm={vi.fn()}
-        onCancel={vi.fn()}
+        onCancel={onCancel}
       />,
     );
     expect(screen.getByRole("button", { name: "Excluir" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });

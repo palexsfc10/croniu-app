@@ -7,6 +7,8 @@ const SUCCESS_HINTS = ["active", "confirmed", "resolved", "intact", "ok"];
 export function statusTone(status: string | null | undefined): BadgeTone {
   const value = (status ?? "").toLowerCase();
   if (!value) return "neutral";
+  if (value === "inactive" || value === "unknown") return "neutral";
+  if (value === "billing_attention" || value === "grace_period") return "warning";
   if (DANGER_HINTS.some((hint) => value.includes(hint))) return "danger";
   if (WARNING_HINTS.some((hint) => value.includes(hint))) return "warning";
   if (SUCCESS_HINTS.some((hint) => value.includes(hint))) return "success";

@@ -51,7 +51,7 @@ test.describe("Admin — controles de conta da organização (desktop)", () => {
     await page.getByLabel("E-mail").fill(adminEmail);
     await page.getByLabel("Senha").fill(adminPassword);
     await page.getByRole("button", { name: "Entrar no admin" }).click();
-    await expect(page.getByRole("heading", { name: "Visão operacional", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Visão geral", exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
@@ -60,7 +60,7 @@ test.describe("Admin — controles de conta da organização (desktop)", () => {
 
     // --- Estender teste ---
     const trialBefore = await page
-      .locator("dt", { hasText: "Fim do período de teste" })
+      .locator("#teste dt", { hasText: "Fim do período de teste" })
       .locator("xpath=following-sibling::dd")
       .innerText();
 
@@ -70,10 +70,11 @@ test.describe("Admin — controles de conta da organização (desktop)", () => {
       .first()
       .fill("Cliente pediu mais tempo — teste E2E.");
     await page.getByRole("button", { name: "Estender teste" }).click();
+    await page.getByRole("button", { name: "Confirmar extensão", exact: true }).click();
     await expect(page.getByText(/Teste estendido com sucesso/)).toBeVisible({ timeout: 15_000 });
 
     const trialAfter = await page
-      .locator("dt", { hasText: "Fim do período de teste" })
+      .locator("#teste dt", { hasText: "Fim do período de teste" })
       .locator("xpath=following-sibling::dd")
       .innerText();
     expect(trialAfter).not.toBe(trialBefore);
@@ -85,6 +86,7 @@ test.describe("Admin — controles de conta da organização (desktop)", () => {
       .locator("xpath=..");
     await deactivateSection.getByLabel("Motivo administrativo").fill("Desativação de teste E2E.");
     await page.getByRole("button", { name: "Desativar conta" }).click();
+    await page.getByRole("button", { name: "Confirmar desativação", exact: true }).click();
     await expect(page.getByText("Desativada", { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "Reativar conta" })).toBeVisible();
 
@@ -97,6 +99,7 @@ test.describe("Admin — controles de conta da organização (desktop)", () => {
     // --- Reativar ---
     await page.getByLabel("Motivo administrativo da reativação").fill("Reativação de teste E2E.");
     await page.getByRole("button", { name: "Reativar conta" }).click();
+    await page.getByRole("button", { name: "Confirmar reativação", exact: true }).click();
     await expect(page.getByText("Desativada", { exact: true })).not.toBeVisible({ timeout: 15_000 });
 
     const loginRestored = await request.post(`${apiURL}/api/v1/auth/login`, {
@@ -134,14 +137,14 @@ test.describe("Admin — controles de conta da organização (mobile)", () => {
     await page.getByLabel("E-mail").fill(adminEmail);
     await page.getByLabel("Senha").fill(adminPassword);
     await page.getByRole("button", { name: "Entrar no admin" }).click();
-    await expect(page.getByRole("heading", { name: "Visão operacional", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Visão geral", exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
     await page.goto(`/organizations/${orgId}`);
     await expect(page.getByRole("heading", { name: orgName })).toBeVisible();
 
-    await expect(page.getByRole("heading", { name: "Gestão do trial" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Período de teste" })).toBeVisible();
     await expect(page.getByRole("button", { name: "+7 dias" })).toBeVisible();
     await page.getByRole("heading", { name: "Área de perigo" }).scrollIntoViewIfNeeded();
     await expect(page.getByRole("heading", { name: "Área de perigo" })).toBeVisible();

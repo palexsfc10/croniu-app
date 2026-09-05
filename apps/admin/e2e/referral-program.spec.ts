@@ -54,7 +54,7 @@ test.describe("Admin — parceiros e indicações", () => {
     await page.getByLabel("E-mail").fill(adminEmail);
     await page.getByLabel("Senha").fill(adminPassword);
     await page.getByRole("button", { name: "Entrar no admin" }).click();
-    await expect(page.getByRole("heading", { name: "Visão operacional", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Visão geral", exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
@@ -119,7 +119,7 @@ test.describe("Admin — parceiros e indicações", () => {
     await page.getByLabel("E-mail").fill(adminEmail);
     await page.getByLabel("Senha").fill(adminPassword);
     await page.getByRole("button", { name: "Entrar no admin" }).click();
-    await expect(page.getByRole("heading", { name: "Visão operacional", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Visão geral", exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
