@@ -193,7 +193,7 @@ function EmptyState({
       ) : null}
 
       <SuggestionGrid
-        items={ASSISTANT_SUGGESTIONS}
+        items={showQuickAccess ? ASSISTANT_SUGGESTIONS : ASSISTANT_SUGGESTIONS.slice(0, 3)}
         disabled={disabled || busy}
         onPick={(prompt) => {
           setInput(prompt);

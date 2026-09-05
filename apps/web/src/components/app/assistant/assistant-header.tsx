@@ -79,21 +79,29 @@ export function AssistantHeader({
       >
         <IconPlus className="h-5 w-5" />
       </Button>
-      {layout !== "page" ? (
-        <>
+      {
+        // Panel (desktop) keeps both: it's a persistent docked layer, so
+        // "minimize" (collapse to the orb) is a real, distinct action from
+        // "close" (remove it). The mobile overlay has no docked mini-state
+        // to minimize into — offering both there just for symmetry was
+        // exactly the "minimizar e fechar simultaneamente" the redesign
+        // asked to remove; overlay gets only Fechar.
+        layout === "panel" ? (
           <IconButton
             icon={<IconMinus className="h-5 w-5" />}
             aria-label="Minimizar Cronia"
             variant="ghost"
             onClick={onMinimize}
           />
-          <IconButton
-            icon={<IconX className="h-5 w-5" />}
-            aria-label="Fechar Cronia"
-            variant="ghost"
-            onClick={onClose}
-          />
-        </>
+        ) : null
+      }
+      {layout !== "page" ? (
+        <IconButton
+          icon={<IconX className="h-5 w-5" />}
+          aria-label="Fechar Cronia"
+          variant="ghost"
+          onClick={onClose}
+        />
       ) : null}
 
       {threadsOpen ? (

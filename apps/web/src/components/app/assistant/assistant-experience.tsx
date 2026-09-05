@@ -65,7 +65,12 @@ export function AssistantExperience({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AssistantHeader layout={layout} conversation={conversation} onMinimize={onMinimize} onClose={onClose} />
-        <MessageList conversation={conversation} greeting={greeting} showQuickAccess={layout !== "panel"} />
+        {/* Only the full page has room for the "compromissos hoje" +
+            Agenda/Clientes/Rotinas shortcuts + Consultas recentes block —
+            both docked surfaces (desktop panel and the mobile overlay)
+            open lean, same as the panel already did; the mobile overlay
+            used to show the full block too, reading as a second Home. */}
+        <MessageList conversation={conversation} greeting={greeting} showQuickAccess={layout === "page"} />
         <Composer conversation={conversation} />
       </div>
 
