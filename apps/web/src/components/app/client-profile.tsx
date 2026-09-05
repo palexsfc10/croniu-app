@@ -50,6 +50,7 @@ import { Button } from "@/components/ui/button";
 import { AccompanimentCard } from "@/components/app/accompaniment-card";
 import { ClientIntakeInviteButton } from "@/components/app/client-intake-invite-button";
 import { ClientPortalCard } from "@/components/app/client-portal-card";
+import { ClientEditDrawer } from "@/components/app/client-edit-drawer";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { TextArea } from "@/components/ui/text-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -264,6 +265,25 @@ function RelationshipStateCard({
   );
 }
 
+/** Same matchMedia-tracking idiom used by the assistant panel's own
+ * layout hook — decides, in JS, whether "Editar" should open the desktop
+ * drawer in place or navigate to the standalone mobile page. `lg` (1024px)
+ * matches the breakpoint this same file already uses everywhere else to
+ * split its desktop tabs from its mobile consolidated view. */
+function useIsDesktop(): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia("(min-width: 1024px)");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount hydrate from matchMedia, same pattern used elsewhere for external-source hydration
+    setMatches(mql.matches);
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return matches;
+}
+
 export function ClientProfile({ clientId }: Props) {
   const router = useRouter();
   const search = useSearchParams();
@@ -272,6 +292,8 @@ export function ClientProfile({ clientId }: Props) {
   const rawTab = search.get("tab");
   const tab: Tab = TABS.some((entry) => entry.id === rawTab) ? (rawTab as Tab) : "resumo";
   const [item, setItem] = useState<Client | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const isDesktop = useIsDesktop();
   const [justCreatedCycle, setJustCreatedCycle] = useState(false);
   const [access, setAccess] = useState<ClientAccess | null>(null);
   const [journey, setJourney] = useState<ClientJourney | null>(null);
@@ -680,7 +702,16 @@ export function ClientProfile({ clientId }: Props) {
                 Adicionar anotação
               </MenuItem>
             ) : null}
-            {item ? (
+            {item && isDesktop ? (
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  setEditOpen(true);
+                }}
+              >
+                Editar
+              </MenuItem>
+            ) : item ? (
               <MenuItem href={`/app/clients/${clientId}/edit`} onClick={() => setMenuOpen(false)}>
                 Editar
               </MenuItem>
@@ -1740,6 +1771,18 @@ export function ClientProfile({ clientId }: Props) {
           {noteSaving ? "Salvando…" : "Salvar anotação"}
         </Button>
       </ActionSheet>
+
+      {item ? (
+        <ClientEditDrawer
+          open={editOpen}
+          client={item}
+          onClose={() => setEditOpen(false)}
+          onSaved={(updated) => {
+            setItem(updated);
+            setEditOpen(false);
+          }}
+        />
+      ) : null}
 
       <span className="hidden">{safeReturnTo(returnResumo)}</span>
     </div>

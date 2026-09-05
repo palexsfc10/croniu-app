@@ -250,6 +250,26 @@ describe("ClientProfile", () => {
     );
   });
 
+  it("on a desktop viewport, 'Editar' opens the inline drawer over the Cliente 360° instead of navigating away", async () => {
+    const matchMediaMock = vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal("matchMedia", matchMediaMock);
+    nav.tab = "resumo";
+    const user = userEvent.setup();
+    render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    await user.click(screen.getByLabelText("Mais ações"));
+    expect(screen.queryByRole("link", { name: "Editar" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    expect(screen.getByRole("dialog", { name: "Editar cliente" })).toBeInTheDocument();
+    // The 360° header is still there, mounted behind the drawer.
+    expect(screen.getByRole("heading", { level: 1, name: "Pedro Silva" })).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
   it("Resumo (desktop tab) shows contact, service, progress, next session, and financeiro from real data", async () => {
     nav.tab = "resumo";
     render(<ClientProfile clientId="c1" />);
