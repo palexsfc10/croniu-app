@@ -82,7 +82,12 @@ export default function MorePage() {
         <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--color-ink-muted)]">
           Ferramentas
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* 2 columns, not 3 — with exactly 4 real tools today, 3 columns
+            left the 4th card alone in its own row, flanked by two empty
+            slots. 2 columns divides evenly (2×2) with the tools that
+            exist now; the day a 5th/6th genuine tool shows up here,
+            revisit before defaulting back to 3. */}
+        <div className="grid gap-4 sm:grid-cols-2">
           <ToolCard
             href="/app/cycle-templates"
             title="Modelos de ciclo"

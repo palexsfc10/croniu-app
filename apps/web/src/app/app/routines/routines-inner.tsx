@@ -21,6 +21,7 @@ import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 import { IconChevronRight, IconMoreHorizontal, IconPlus } from "@/components/ui/icons";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BlockError } from "@/components/ui/block-error";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RoutineTemplatesPanel } from "@/app/app/routines/routine-templates-panel";
 
 type Routine = {
@@ -807,9 +808,9 @@ export default function RoutinesPageInner() {
         {area === "pendencias" ? (
           loading ? (
             <div className="space-y-2">
-              <div className="h-8 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
-              <div className="h-14 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
-              <div className="h-14 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
             </div>
           ) : openItemsTotal === 0 ? (
             <EmptyState
@@ -933,8 +934,8 @@ export default function RoutinesPageInner() {
         {area === "historico" ? (
           loading ? (
             <div className="space-y-2">
-              <div className="h-14 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
-              <div className="h-14 w-full animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-subtle)]" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
             </div>
           ) : historyItems.length === 0 ? (
             <EmptyState title="Nada no histórico ainda" description="Rotinas concluídas ou canceladas aparecerão aqui." />
