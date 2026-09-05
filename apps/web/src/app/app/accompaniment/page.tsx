@@ -33,6 +33,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableShell, Th, Tr, Td } from "@/components/ui/table-shell";
 import { BlockError } from "@/components/ui/block-error";
+import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 
 type PendingRow = {
   client_id: string;
@@ -115,6 +116,13 @@ export default function AccompanimentPage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"pending" | "history">("pending");
 
+  // "Avaliar agora" (never evaluated) vs "Sem avaliação recente" (has a
+  // real last date, just overdue) — same real rows the table already had,
+  // grouped so the more urgent case reads first instead of being buried
+  // in a flat, undifferentiated list.
+  const neverEvaluated = pending.filter((r) => r.days_since_last_evaluation == null);
+  const overdueEvaluated = pending.filter((r) => r.days_since_last_evaluation != null);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -144,12 +152,21 @@ export default function AccompanimentPage() {
 
       {/* Desktop: Pendentes vs Histórico, dense lists. */}
       <div className="hidden space-y-4 lg:block">
-        <div>
-          <PageTitle>Acompanhamentos</PageTitle>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            Avaliações registradas por cliente — distinto da Agenda e das Rotinas. Sem um registro
-            dedicado de acompanhamento contínuo ainda, o sinal usa a avaliação mais recente.
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <PageTitle>Acompanhamentos</PageTitle>
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              Avaliações registradas por cliente — distinto da Agenda e das Rotinas. Sem um registro
+              dedicado de acompanhamento contínuo ainda, o sinal usa a avaliação mais recente.
+            </p>
+          </div>
+          <AskAssistantLink
+            prompt="Sobre os acompanhamentos pendentes: "
+            context="Acompanhamentos"
+            returnTo="/app/accompaniment"
+          >
+            Perguntar à Cronia
+          </AskAssistantLink>
         </div>
 
         {error ? <BlockError message={error} /> : null}
@@ -229,11 +246,27 @@ export default function AccompanimentPage() {
                 </Tr>
               </thead>
               <tbody>
-                {pending.map((row) => (
-                  <Tr key={row.client_id} className="hover:bg-[var(--color-surface-subtle)]">
-                    <PendingRowView row={row} timeZone={timeZone} />
-                  </Tr>
-                ))}
+                {(
+                  [
+                    { key: "never", label: "Avaliar agora — nunca avaliados", rows: neverEvaluated },
+                    { key: "overdue", label: "Sem avaliação recente", rows: overdueEvaluated },
+                  ] as const
+                ).flatMap(({ key, label, rows }) =>
+                  rows.length
+                    ? [
+                        <Tr key={`heading-${key}`} className="bg-[var(--color-surface-subtle)]">
+                          <Td colSpan={6} className="py-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                            {label} · {rows.length}
+                          </Td>
+                        </Tr>,
+                        ...rows.map((row) => (
+                          <Tr key={row.client_id} className="hover:bg-[var(--color-surface-subtle)]">
+                            <PendingRowView row={row} timeZone={timeZone} />
+                          </Tr>
+                        )),
+                      ]
+                    : [],
+                )}
               </tbody>
             </table>
             </TableShell>

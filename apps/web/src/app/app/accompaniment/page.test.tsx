@@ -80,6 +80,26 @@ describe("AccompanimentPage desktop — Pendentes vs Histórico, listas densas",
     expect(within(desktop).getByText("44 dias")).toBeInTheDocument();
   });
 
+  it("groups pending rows into 'Avaliar agora' (never evaluated) and 'Sem avaliação recente' (overdue), most urgent first", async () => {
+    mockApi();
+    const { container } = render(<AccompanimentPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    await within(desktop).findByText("Ana Nunca Avaliada");
+    const headings = within(desktop)
+      .getAllByText(/Avaliar agora — nunca avaliados|Sem avaliação recente/)
+      .map((el) => el.textContent);
+    expect(headings[0]).toContain("Avaliar agora");
+    expect(headings[1]).toContain("Sem avaliação recente");
+  });
+
+  it("offers a Cronia entry point contextual to this screen", async () => {
+    mockApi();
+    const { container } = render(<AccompanimentPage />);
+    const desktop = container.querySelector(".hidden.lg\\:block") as HTMLElement;
+    const link = within(desktop).getByRole("link", { name: /Perguntar à Cronia/i });
+    expect(link).toHaveAttribute("href", expect.stringContaining("/app/assistant?"));
+  });
+
   it("shows real service/cycle name per row, not a placeholder", async () => {
     mockApi();
     const { container } = render(<AccompanimentPage />);
