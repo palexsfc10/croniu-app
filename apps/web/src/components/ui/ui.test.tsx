@@ -160,7 +160,11 @@ describe("UI fundamentals", () => {
     // priority_action feeds the deterministic briefing's "Principal risco"
     // line, not a duplicate heading/CTA of its own.
     expect(screen.getByText("Ciclo chegando ao fim")).toBeInTheDocument();
-    expect(screen.getByText(/Precisa de decisão/)).toBeInTheDocument();
+    // Ana's cycle is the same case already shown as "Principal risco" above
+    // — it must never also render as a one-item "Precisa de decisão" queue
+    // right below it (the queue is hidden entirely once it has nothing
+    // left after removing the case the briefing already promoted).
+    expect(screen.queryByText(/Precisa de decisão/)).not.toBeInTheDocument();
     // The Home is a business-decision center now — it never reproduces the
     // Agenda's own timeline (that section was removed entirely).
     expect(screen.queryByText("Agenda de hoje")).not.toBeInTheDocument();
@@ -187,12 +191,12 @@ describe("UI fundamentals", () => {
     );
     expect(screen.queryByText("Operação de hoje")).not.toBeInTheDocument();
     expect(screen.queryByText("Tudo em dia")).not.toBeInTheDocument();
-    // The same item legitimately surfaces more than once across the
-    // responsive dual-tree (desktop queue + mobile card) and the briefing's
-    // "Vale olhar" line — never as a duplicated section, just as one real
-    // signal echoed by design in different parts of the Home.
+    // The old dead "Operação de hoje" section is gone, and the case still
+    // surfaces — now exactly once, via the briefing's "Vale olhar" line,
+    // never also repeated as a one-item "Precisa de decisão" queue below it.
+    expect(screen.getByText(/Vale olhar:/)).toBeInTheDocument();
     expect(screen.getAllByText("Novos cadastros").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("1 cadastro aguardando análise").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Precisa de decisão/)).not.toBeInTheDocument();
   });
 
   it("shows a calm state when nothing needs a decision, without hiding the always-on business blocks", () => {
@@ -310,10 +314,11 @@ describe("UI fundamentals", () => {
     expect(screen.queryByText("Em andamento")).not.toBeInTheDocument();
     expect(screen.queryByText("Bruno")).not.toBeInTheDocument();
     // The real pending decision (PastClient's appointment awaiting outcome)
-    // still surfaces, labeled by its real origin — echoed across the
-    // responsive dual-tree, never a duplicated section.
+    // still surfaces — it's the only case here, so the briefing promotes
+    // it directly ("Vale olhar: PastClient") instead of also repeating it
+    // as a one-item "Precisa de decisão" queue right below.
     expect(screen.getAllByText(/PastClient/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Agenda").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Precisa de decisão/)).not.toBeInTheDocument();
     expect(screen.queryByText("OrganizadoCard")).not.toBeInTheDocument();
   });
 
@@ -346,7 +351,10 @@ describe("UI fundamentals", () => {
     expect(screen.getByText("Cliente quer continuar")).toBeInTheDocument();
     expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
     expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
-    expect(screen.getByText(/Precisa de decisão · 1/)).toBeInTheDocument();
+    // Pedro's renewal request is the same case as the "Principal risco"
+    // above (same entity_id) — it must never also render as a one-item
+    // "Precisa de decisão" queue right below it.
+    expect(screen.queryByText(/Precisa de decisão/)).not.toBeInTheDocument();
   });
 
   it("shows initial setup card instead of Tudo organizado when config is missing", () => {

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HomeSummary } from "@/lib/api";
 
 vi.mock("@/components/auth/auth-provider", () => ({
@@ -35,6 +35,25 @@ vi.mock("@/lib/api", async () => {
 });
 
 import { TodayBoard } from "@/components/app/today-board";
+
+afterEach(() => {
+  board.items = [];
+  accompaniment.items = [];
+});
+
+/** The briefing box above the queue promotes one case out of the same
+ * pool ("Vale olhar"/"Principal risco") and the queue never shows that
+ * exact case again. Tests that are about the QUEUE's own rendering (not
+ * about the briefing/queue overlap itself) add this unrelated filler so
+ * IT gets promoted instead of the item under test — same pool order as
+ * the component (accompaniment before routines), so a single filler here
+ * always wins the promotion, leaving every routine item asserted below
+ * untouched in the queue. */
+function addFillerPromotedToBriefing() {
+  accompaniment.items = [
+    { client_id: "filler", client_name: "Outra Pendência", days_since_last_evaluation: 5 },
+  ];
+}
 
 const BASE_SUMMARY: HomeSummary = {
   organization_id: "org1",
@@ -76,6 +95,7 @@ describe("TodayBoard — only overdue routine occurrences ever enter the priorit
         occurrence_type: "feedback",
       },
     ];
+    addFillerPromotedToBriefing();
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
     const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
@@ -93,6 +113,7 @@ describe("TodayBoard — only overdue routine occurrences ever enter the priorit
       { id: "b", type_label: "Rotina", client_name: "Cliente B", client_id: "c-b", overdue: true, due_on: "2026-08-16", occurrence_type: "occ-b" },
       { id: "c", type_label: "Rotina", client_name: "Cliente C", client_id: "c-c", overdue: true, due_on: "2026-08-17", occurrence_type: "occ-c" },
     ];
+    addFillerPromotedToBriefing();
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
     const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
@@ -109,15 +130,73 @@ describe("TodayBoard — only overdue routine occurrences ever enter the priorit
       { id: "c", type_label: "Rotina", client_name: "Cliente C", client_id: "c-c", overdue: true, due_on: "2026-08-17", occurrence_type: "occ-c" },
       { id: "d", type_label: "Rotina", client_name: "Cliente D", client_id: "c-d", overdue: true, due_on: "2026-08-18", occurrence_type: "occ-d" },
     ];
+    addFillerPromotedToBriefing();
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
     const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
-    expect(within(queue).getByText(/Precisa de decisão/)).toHaveTextContent("Precisa de decisão · 4");
+    // The filler above was promoted to the briefing box ("Vale olhar"),
+    // so the queue's own title reflects that it holds the rest — the real
+    // remaining total (4, all real routine items) still shows in full.
+    expect(within(queue).getByText(/Outras decisões/)).toHaveTextContent("Outras decisões · 4");
     expect(within(queue).getByText("Cliente A · venceu em 15/08/2026")).toBeInTheDocument();
     expect(within(queue).getByText("Cliente B · venceu em 16/08/2026")).toBeInTheDocument();
     expect(within(queue).getByText("Cliente C · venceu em 17/08/2026")).toBeInTheDocument();
     expect(within(queue).queryByText(/Cliente D/)).not.toBeInTheDocument();
     expect(within(queue).queryByText(/^4 /)).not.toBeInTheDocument();
+  });
+});
+
+describe("TodayBoard — the briefing box and the priority queue never show the same case twice", () => {
+  it("removes the promoted case from the queue and renames it to 'Outras decisões'", async () => {
+    accompaniment.items = [
+      { client_id: "c1", client_name: "João Neves", days_since_last_evaluation: null },
+    ];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    // The briefing box promotes the one and only case as "Vale olhar".
+    await screen.findByText(/Vale olhar:/);
+    expect(screen.getByText(/Avaliação pendente · João Neves/)).toBeInTheDocument();
+    // It never appears a second time, inside a "Precisa de decisão" queue.
+    expect(screen.queryByRole("region", { name: "Fila de prioridades" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the queue as 'Precisa de decisão' (unrenamed) when nothing was promoted out of it", async () => {
+    board.items = [
+      { id: "a", type_label: "Rotina", client_name: "Cliente A", client_id: "c-a", overdue: true, due_on: "2026-08-15", occurrence_type: "occ-a" },
+    ];
+    // priority_action absorbs "mainRisk" from an unrelated pool the queue
+    // never draws from, so nothing here gets excluded from the queue.
+    render(
+      <TodayBoard
+        summary={{
+          ...BASE_SUMMARY,
+          priority_action: {
+            kind: "pending_payment",
+            title: "Cobrança vencida",
+            subtitle: "Outro cliente",
+            href: "/app/receivables/r9",
+            entity_id: "r9",
+          },
+        }}
+      />,
+    );
+
+    const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
+    expect(within(queue).getByText(/^Precisa de decisão/)).toBeInTheDocument();
+    expect(within(queue).getByText("Cliente A · venceu em 15/08/2026")).toBeInTheDocument();
+  });
+
+  it("mobile: the single highlighted card also never repeats what the briefing already promoted", async () => {
+    accompaniment.items = [
+      { client_id: "c1", client_name: "João Neves", days_since_last_evaluation: null },
+    ];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    await screen.findByText(/Vale olhar:/);
+    // Only one occurrence of the case anywhere on the page — the briefing
+    // line — never a second mobile teaser card repeating it.
+    expect(screen.getAllByText(/Avaliação pendente · João Neves/)).toHaveLength(1);
+    expect(screen.getByText("Nenhuma decisão pendente agora.")).toBeInTheDocument();
   });
 });
 
@@ -135,6 +214,7 @@ describe("TodayBoard — an overdue evaluation review routes straight to the eva
         occurrence_type: "evaluation_review",
       },
     ];
+    addFillerPromotedToBriefing();
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
     const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
@@ -184,6 +264,7 @@ describe("TodayBoard — an overdue evaluation review routes straight to the eva
         occurrence_type: "plan_review",
       },
     ];
+    addFillerPromotedToBriefing();
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
     const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
@@ -211,7 +292,6 @@ describe("TodayBoard — an overdue evaluation review routes straight to the eva
     await screen.findByText(/item urgente/);
     expect(screen.queryByText("Nenhuma pendência crítica agora.")).not.toBeInTheDocument();
     expect(screen.getByText(/Vale olhar:/)).toBeInTheDocument();
-    accompaniment.items = []; // leave shared mock state clean for later tests in this file
   });
 });
 

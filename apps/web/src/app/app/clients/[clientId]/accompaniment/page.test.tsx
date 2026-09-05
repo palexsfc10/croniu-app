@@ -151,6 +151,7 @@ describe("accompaniment checklist row layout", () => {
           activate: "todo",
         },
         next_action: "register_evaluation",
+        next_step: "evaluation",
       },
       submissions: [],
     });

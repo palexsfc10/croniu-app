@@ -92,6 +92,8 @@ describe("buildBriefing", () => {
       title: "Renovação solicitada",
       subtitle: "Bruno",
       href: "/app/renewals",
+      kind: "renewal_requested",
+      entity_id: "rr1",
     });
   });
 
@@ -123,6 +125,8 @@ describe("buildBriefing", () => {
       title: "Avaliação pendente · Murilo Macedo",
       subtitle: "21 dias sem registro",
       href: "/app/clients/c1?tab=prontuario",
+      kind: "evaluation_pending",
+      entity_id: "c1",
     });
   });
 

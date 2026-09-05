@@ -523,6 +523,7 @@ export type ClientJourney = {
   attention_note?: string | null;
   next_action?: string | null;
   next_action_label?: string | null;
+  next_step?: string | null;
   preparation_status?: string | null;
   accompaniment_checklist?: Record<string, string> | null;
   accompaniment_summaries?: Record<string, string | null> | null;
@@ -656,6 +657,10 @@ export type PortalIntakeStatus = {
     content_json?: Record<string, unknown>;
     published_at?: string | null;
   } | null;
+  /** Profession-adaptive terms ("aluno"/"cliente"/"paciente"...), same
+   * mechanism the sidebar's nomenclatureFor() mirrors server-side — the
+   * Portal must never hardcode "cliente" for every profession. */
+  nomenclature?: Record<string, string>;
   correction_path?: string | null;
   correction_url?: string | null;
 };

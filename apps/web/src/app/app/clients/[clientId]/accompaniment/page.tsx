@@ -206,10 +206,11 @@ export default function AccompanimentPreparePage() {
   const defined = journey?.progress_defined ?? STEP_ORDER.filter((k) => k !== "activate" && checklist[k] && checklist[k] !== "todo").length;
   const total = journey?.progress_total ?? 6;
   const progressPercent = total > 0 ? Math.max(0, Math.min(100, Math.round((defined / total) * 100))) : 0;
-  const nextStepKey: StepKey | null =
-    STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "todo") ??
-    STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "later") ??
-    null;
+  // The backend (resolve_accompaniment) is the single source of truth for
+  // which step is "next" — it knows things this page can't derive from
+  // the checklist alone, like evaluation never being presentable as next
+  // before a cycle exists. No parallel STEP_ORDER-based re-derivation.
+  const nextStepKey = (journey?.next_step as StepKey | null | undefined) ?? null;
 
   function primary(step: StepKey, value: string) {
     if (value === "done") {

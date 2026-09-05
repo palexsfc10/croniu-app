@@ -11,6 +11,8 @@ export type BriefingOpportunity = {
   title: string;
   subtitle: string;
   href: string;
+  kind: string;
+  entity_id: string;
 };
 
 export type Briefing = {
@@ -72,7 +74,13 @@ export function buildBriefing(
   // as genuinely clear.
   const opportunityItem = allItems.find((i: AttentionItem) => i.entity_id !== mainRisk?.entity_id);
   const opportunity: BriefingOpportunity | null = opportunityItem
-    ? { title: opportunityItem.title, subtitle: opportunityItem.subtitle, href: opportunityItem.href }
+    ? {
+        title: opportunityItem.title,
+        subtitle: opportunityItem.subtitle,
+        href: opportunityItem.href,
+        kind: opportunityItem.kind,
+        entity_id: opportunityItem.entity_id,
+      }
     : null;
 
   const isClearDay = !mainRisk && !opportunity && urgentCount === 0 && !nextAppointment;

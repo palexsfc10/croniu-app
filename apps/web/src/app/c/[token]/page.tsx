@@ -161,7 +161,9 @@ export default function PublicMyCyclePage() {
       <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col px-4 py-6 sm:px-6 md:py-10">
         <header className="mb-9 flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-[var(--color-ink-muted)]">Área do cliente</p>
+            <p className="text-sm font-medium text-[var(--color-ink-muted)]">
+              Área do {intakeStatus?.nomenclature?.client ?? "cliente"}
+            </p>
             {data || intakeStatus?.client_first_name ? (
               <h1 className="mt-1 font-[family-name:var(--font-display)] text-[1.75rem] leading-tight text-[var(--color-ink)]">
                 Olá, {data?.client_first_name || intakeStatus?.client_first_name}

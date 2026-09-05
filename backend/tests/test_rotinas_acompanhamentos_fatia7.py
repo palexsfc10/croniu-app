@@ -11,7 +11,7 @@ migration, zero schema change:
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import uuid
 
@@ -22,6 +22,27 @@ def _register(client, payload):
     res = client.post("/api/v1/auth/register", json=payload)
     assert res.status_code == 201, res.text
     return res.json()
+
+
+def _backdate_client_created_at(client_id: str, *, days_ago: int) -> None:
+    """Real long-standing clients were registered well before "today" —
+    the public API always stamps `created_at` at request time, so tests
+    that need to simulate "this relationship has existed for N days"
+    (for the avaliação-pendente anchor: cycle start OR client creation,
+    whichever is later) must backdate it directly, same as the AI-tool
+    tests below already reach into a session for setup that has no REST
+    equivalent."""
+    from app.db import SessionLocal
+    from app.models.client import Client
+
+    db = SessionLocal()
+    try:
+        row = db.get(Client, uuid.UUID(client_id))
+        row.created_at = datetime.now(UTC) - timedelta(days=days_ago)
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
 
 
 def _create_client(client, name="Aluna Teste", phone="11999990000"):
@@ -41,7 +62,7 @@ def _today(client) -> date:
     return date(y, m, d)
 
 
-def _create_active_cycle(client, *, client_id, key, starts_time="09:00:00"):
+def _create_active_cycle(client, *, client_id, key, starts_time="09:00:00", days_ago=5):
     """An intelligent cycle that started a few days ago and hasn't ended —
     a real `status == "active"` cycle, not "upcoming"."""
     svc = client.post(
@@ -64,7 +85,7 @@ def _create_active_cycle(client, *, client_id, key, starts_time="09:00:00"):
         },
     )
     assert tpl.status_code == 201, tpl.text
-    starts_on = (_today(client) - timedelta(days=5)).isoformat()
+    starts_on = (_today(client) - timedelta(days=days_ago)).isoformat()
     cycle = client.post(
         "/api/v1/cycles/intelligent",
         json={
@@ -214,16 +235,63 @@ def test_recent_evaluations_isolated_by_tenant(client, register_payload):
 
 
 def test_accompaniment_pending_flags_active_client_never_evaluated(client, register_payload):
+    """Ciclo ativo iniciado bem antes do limiar, cliente cadastrado na
+    mesma época, nunca avaliado — deve virar pendência real."""
     _register(client, register_payload)
     person = _create_client(client, name="Nunca Avaliada")
-    _create_active_cycle(client, client_id=person["id"], key="acc-key-1")
+    _backdate_client_created_at(person["id"], days_ago=20)
+    _create_active_cycle(client, client_id=person["id"], key="acc-key-1", days_ago=20)
 
-    res = client.get("/api/v1/accompaniment/pending")
+    res = client.get("/api/v1/accompaniment/pending?days_threshold=15")
     assert res.status_code == 200, res.text
     body = res.json()
     row = next(r for r in body["items"] if r["client_id"] == person["id"])
     assert row["last_evaluation_at"] is None
     assert row["days_since_last_evaluation"] is None
+
+
+def test_accompaniment_pending_excludes_client_created_today_without_cycle(client, register_payload):
+    """Aluno criado hoje e sem ciclo: ausência de ciclo já basta para
+    nunca aparecer aqui, independente de avaliação."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Cadastrado Agora", phone="11955550000")
+
+    res = client.get("/api/v1/accompaniment/pending")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    assert person["id"] not in ids
+
+
+def test_accompaniment_pending_excludes_recent_cycle_never_evaluated_below_threshold(
+    client, register_payload
+):
+    """Ciclo iniciado há poucos dias (abaixo do limiar) e nunca avaliado
+    não pode virar pendência imediata — avaliação é acompanhamento de
+    evolução, não requisito instantâneo do cadastro."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Ciclo Recente", phone="11955551111")
+    _create_active_cycle(client, client_id=person["id"], key="acc-key-recent", days_ago=3)
+
+    res = client.get("/api/v1/accompaniment/pending?days_threshold=15")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    assert person["id"] not in ids
+
+
+def test_accompaniment_pending_anchors_on_client_creation_when_later_than_cycle_start(
+    client, register_payload
+):
+    """Ciclo com início nominal antigo, mas o cliente só existe desde
+    hoje (dado importado/retroativo) — a âncora usa a criação do
+    cliente, que é posterior, então ainda não passou do limiar."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Cliente Novo Ciclo Antigo", phone="11955552222")
+    _create_active_cycle(client, client_id=person["id"], key="acc-key-anchor", days_ago=20)
+
+    res = client.get("/api/v1/accompaniment/pending?days_threshold=15")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    assert person["id"] not in ids
 
 
 def test_accompaniment_pending_excludes_recently_evaluated_client(client, register_payload):
@@ -375,7 +443,8 @@ def test_list_clients_needing_accompaniment_matches_rest_signal(client, register
     _register(client, register_payload)
     org_id, user_id = _me(client)
     person = _create_client(client, name="Precisa Acompanhamento")
-    _create_active_cycle(client, client_id=person["id"], key="acc-ai-key")
+    _backdate_client_created_at(person["id"], days_ago=20)
+    _create_active_cycle(client, client_id=person["id"], key="acc-ai-key", days_ago=20)
 
     from app.db import SessionLocal
 

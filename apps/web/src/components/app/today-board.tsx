@@ -35,7 +35,7 @@ import {
   subscribeInitialSetupCollapse,
 } from "@/lib/setup-copy";
 import { EVALUATION_SAVED_KEY } from "@/lib/evaluation-flow";
-import { buildBriefing, isNewProfessional } from "@/lib/home-briefing";
+import { buildBriefing, isNewProfessional, type Briefing } from "@/lib/home-briefing";
 import { PageTitle } from "@/components/ui/page-title";
 import { AskAssistantLink } from "@/components/ui/ask-assistant-link";
 
@@ -278,19 +278,7 @@ function FinanceCompact({
 // not a restatement of the Agenda.
 // ---------------------------------------------------------------------------
 
-function ExecutiveBriefing({
-  summary,
-  extraItems,
-}: {
-  summary: HomeSummary;
-  /** Accompaniment (evaluation) + overdue-routine pendencies, already
-   * shaped as AttentionItem rows — merged into the same risk/opportunity
-   * search `urgentCount` draws from, so the two can never disagree (the
-   * "N itens urgentes" next to "Nenhuma pendência crítica agora" bug). */
-  extraItems: AttentionItem[];
-}) {
-  const briefing = buildBriefing(summary, { extraItems });
-
+function ExecutiveBriefing({ briefing }: { briefing: Briefing }) {
   return (
     <section
       aria-label="Briefing do negócio"
@@ -519,17 +507,22 @@ function PriorityQueue({
   items,
   failedSources,
   limit,
+  title = "Precisa de decisão",
 }: {
   items: AttentionItem[];
   failedSources: string[];
   limit?: number;
+  /** "Outras decisões" once the briefing above has already promoted one
+   * item out of this same pool — never the same case shown twice. */
+  title?: string;
 }) {
   const visible = limit ? items.slice(0, limit) : items;
+  if (!items.length && !failedSources.length) return null;
 
   return (
     <section aria-label="Fila de prioridades" className="space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-        Precisa de decisão{items.length ? ` · ${items.length}` : ""}
+        {title}{items.length ? ` · ${items.length}` : ""}
       </h2>
       {visible.length ? (
         <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]/80 bg-[var(--color-surface)] shadow-sm">
@@ -560,8 +553,6 @@ function PriorityQueue({
             );
           })}
         </ul>
-      ) : failedSources.length === 0 ? (
-        <p className="text-sm text-[var(--color-ink-muted)]">Nenhuma decisão pendente agora.</p>
       ) : null}
       {failedSources.map((label) => (
         <BlockError key={label} message={`Não foi possível carregar: ${label}.`} />
@@ -1156,14 +1147,28 @@ export function TodayBoard({ summary }: Props) {
     routinesFailed ? "rotinas atrasadas" : null,
   ].filter((v): v is string => Boolean(v));
 
+  // The briefing box above shows exactly one of "Principal risco"/"Vale
+  // olhar" (mainRisk wins when both exist — see the ternary below) — that
+  // exact same case must never also sit in the queue below it. Computed
+  // once here (not inside ExecutiveBriefing) so both the briefing text and
+  // the queue filter agree on what was promoted. `opportunity` alone,
+  // when mainRisk already won the slot, is never actually shown to the
+  // user — it must not silently remove an unrelated queue item either.
+  const briefing = buildBriefing(summary, {
+    extraItems: [...accompanimentItems, ...priorityRoutineItems],
+  });
+  const promoted = briefing.mainRisk ?? briefing.opportunity;
+  const promotedKey = promoted ? `${promoted.kind}:${promoted.entity_id}` : null;
+  const queueItems = combinedPriority.filter(
+    (item) => `${item.kind}:${item.entity_id}` !== promotedKey,
+  );
+  const queueTitle =
+    queueItems.length < combinedPriority.length ? "Outras decisões" : "Precisa de decisão";
+
   const setupIncomplete =
     summary.has_active_service === false || summary.has_active_cycle_template === false;
   const showSetupCard = setupIncomplete && !setupCollapsed;
   const isNew = isNewProfessional(summary);
-
-  // Only `.nextAppointment` is read from this one — it never depends on
-  // accompaniment/routine counts, so there's nothing to pass in.
-  const briefingForNextAppointment = buildBriefing(summary);
 
   return (
     <div className="space-y-5 animate-fade-up md:space-y-6">
@@ -1205,10 +1210,7 @@ export function TodayBoard({ summary }: Props) {
         <NewProfessionalJourney name={name} />
       ) : (
         <>
-          <ExecutiveBriefing
-            summary={summary}
-            extraItems={[...accompanimentItems, ...priorityRoutineItems]}
-          />
+          <ExecutiveBriefing briefing={briefing} />
 
           {/* Desktop: a real grid of unevenly-sized blocks, not one long
               vertical stack — the reconstruction's whole point. At most 3
@@ -1218,7 +1220,7 @@ export function TodayBoard({ summary }: Props) {
               Mobile gets a condensed companion instead — top priority +
               essential indicators + next appointment, never these tables. */}
           <div className="hidden space-y-5 lg:block">
-            <PriorityQueue items={combinedPriority} failedSources={failedSources} limit={3} />
+            <PriorityQueue items={queueItems} failedSources={failedSources} limit={3} title={queueTitle} />
             <div className="grid gap-5 xl:grid-cols-12">
               <div className="space-y-5 xl:col-span-7">
                 <FinanceCompact
@@ -1241,33 +1243,33 @@ export function TodayBoard({ summary }: Props) {
             <div className="grid gap-5 md:grid-cols-2">
               <RoutinesSummaryCard items={routinesToday} failed={routinesFailed} />
               <NextAppointmentCard
-                nextAppointment={briefingForNextAppointment.nextAppointment}
+                nextAppointment={briefing.nextAppointment}
                 timeZone={summary.timezone}
               />
             </div>
           </div>
 
           <div className="space-y-3 lg:hidden">
-            {combinedPriority[0] ? (
+            {queueItems[0] ? (
               <Link
-                href={combinedPriority[0].href}
+                href={queueItems[0].href}
                 className="card-rail card-rail-warning flex min-h-11 items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm"
               >
                 <span
-                  className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] ${priorityToneClasses(combinedPriority[0].kind)}`}
+                  className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] ${priorityToneClasses(queueItems[0].kind)}`}
                 >
-                  {priorityIcon(combinedPriority[0].kind)}
+                  {priorityIcon(queueItems[0].kind)}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
-                    {priorityOriginLabel(combinedPriority[0].kind)}
-                    {combinedPriority.length > 1 ? ` · +${combinedPriority.length - 1}` : ""}
+                    {priorityOriginLabel(queueItems[0].kind)}
+                    {queueItems.length > 1 ? ` · +${queueItems.length - 1}` : ""}
                   </span>
                   <span className="block font-semibold text-[var(--color-ink)]">
-                    {combinedPriority[0].title}
+                    {queueItems[0].title}
                   </span>
                   <span className="block text-sm text-[var(--color-ink-muted)]">
-                    {combinedPriority[0].subtitle}
+                    {queueItems[0].subtitle}
                   </span>
                 </span>
               </Link>
@@ -1281,7 +1283,7 @@ export function TodayBoard({ summary }: Props) {
               financeFailed={financeFailed}
             />
             <NextAppointmentCard
-              nextAppointment={briefingForNextAppointment.nextAppointment}
+              nextAppointment={briefing.nextAppointment}
               timeZone={summary.timezone}
             />
           </div>

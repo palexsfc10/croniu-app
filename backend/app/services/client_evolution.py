@@ -90,9 +90,22 @@ def list_pending(
             continue
         last = latest_eval.get(client.id)
         last_at = (last.published_at or last.created_at) if last else None
-        days_since = (today - last_at.date()).days if last_at else None
-        if last is not None and days_since is not None and days_since < days_threshold:
-            continue
+        if last_at is not None:
+            days_since = (today - last_at.date()).days
+            if days_since < days_threshold:
+                continue
+        else:
+            # Avaliação é acompanhamento de evolução, não requisito
+            # instantâneo do cadastro: sem nenhum registro ainda, a
+            # pendência só nasce depois do MESMO limiar acima, contado a
+            # partir do início do ciclo ativo — ou da criação do cliente,
+            # se for posterior (ex.: ciclo lançado retroativamente).
+            # `days_since_last_evaluation` continua None na saída: não há
+            # "avaliação há N dias" para mostrar quando nunca houve uma.
+            anchor = max(cycle.starts_on, client.created_at.date())
+            if (today - anchor).days < days_threshold:
+                continue
+            days_since = None
         appt = next_appt.get(client.id)
         rows.append(
             {
