@@ -387,38 +387,30 @@ function StatTile({
   );
 }
 
+/** "Saúde da carteira" — portfolio-level signal only (active clients,
+ * cycles nearing an end). The two financial numbers that used to live
+ * here (receita prevista, valor vencido) moved out: FinanceCompact right
+ * below already shows overdue/received/next-due, so repeating them as
+ * stat tiles was the exact kind of briefing/KPI/card duplication the
+ * redesign is meant to remove — this section now answers one question
+ * ("is the portfolio healthy?"), not two. */
 function IndicatorsRow({
   activeClients,
   activeClientsFailed,
   cyclesNearingEnd,
-  finance,
-  financeFailed,
 }: {
   activeClients: number | null;
   activeClientsFailed: boolean;
   cyclesNearingEnd: number;
-  finance: FinancialSummary | null;
-  financeFailed: boolean;
 }) {
   return (
-    <section aria-label="Indicadores do negócio" className="flex flex-wrap gap-3">
+    <section aria-label="Saúde da carteira" className="flex flex-wrap gap-3">
       <StatTile
         label="Clientes ativos"
         value={activeClientsFailed ? "—" : activeClients == null ? "…" : String(activeClients)}
         Icon={IconUsersRound}
       />
       <StatTile label="Ciclos perto do fim" value={String(cyclesNearingEnd)} Icon={IconRefreshCw} />
-      <StatTile
-        label="Receita prevista (mês)"
-        value={financeFailed ? "—" : finance ? formatBRL(finance.forecast_month_cents) : "…"}
-        Icon={IconBanknote}
-      />
-      <StatTile
-        label="Valor vencido"
-        value={financeFailed ? "—" : finance ? formatBRL(finance.overdue_cents) : "…"}
-        tone={finance && finance.overdue_cents > 0 ? "danger" : "neutral"}
-        Icon={IconAlertCircle}
-      />
     </section>
   );
 }
@@ -656,6 +648,143 @@ function RenewalsBlock() {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Acompanhamentos recentes — reuses GET /evaluations/recent, the same
+// org-wide published-evaluations feed the Acompanhamentos "Histórico" tab
+// already calls. No new endpoint; just a 3-line preview + a link to the
+// real screen.
+// ---------------------------------------------------------------------------
+
+type RecentEvaluationRow = {
+  id: string;
+  client_id: string;
+  client_name?: string | null;
+  title: string;
+  published_at: string | null;
+};
+
+function useRecentEvaluations() {
+  const [rows, setRows] = useState<RecentEvaluationRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await apiFetch<RecentEvaluationRow[]>("/api/v1/evaluations/recent?limit=5");
+      if (cancelled) return;
+      if (result.error) {
+        setFailed(true);
+        return;
+      }
+      setRows(result.data ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return { rows, failed };
+}
+
+function RecentEvaluationsCompact({ className = "" }: { className?: string }) {
+  const { rows, failed } = useRecentEvaluations();
+  const visible = (rows ?? []).slice(0, 3);
+  return (
+    <section
+      aria-label="Acompanhamentos recentes"
+      className={`space-y-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm ${className}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+          Acompanhamentos recentes
+        </h2>
+        <Link
+          href="/app/accompaniment"
+          className="text-sm font-medium text-[var(--color-link)] hover:underline"
+        >
+          Ver tudo
+        </Link>
+      </div>
+      {failed ? (
+        <BlockError message="Não foi possível carregar os acompanhamentos recentes." />
+      ) : !rows ? (
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-full" />
+          <Skeleton className="h-6 w-full" />
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="text-sm text-[var(--color-ink-muted)]">Nenhuma avaliação publicada ainda.</p>
+      ) : (
+        <ul className="divide-y divide-[var(--color-border)]">
+          {visible.map((row) => (
+            <li key={row.id} className="py-2">
+              <Link
+                href={`/app/clients/${row.client_id}/evaluations/${row.id}`}
+                className="flex items-center justify-between gap-3 text-sm hover:underline"
+              >
+                <span className="min-w-0 truncate text-[var(--color-ink)]">
+                  {row.client_name || "Cliente"} · {row.title}
+                </span>
+                <span className="shrink-0 text-[var(--color-ink-muted)]">
+                  {row.published_at ? formatDateBR(row.published_at.slice(0, 10)) : "—"}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rotinas resumidas — a one-line count (atrasadas/hoje), never the full
+// Rotinas board. Reuses the same `routinesToday` fetch the priority queue
+// already makes (routines/board?bucket=today); this is only a different
+// presentation of data already in memory, not a second fetch.
+// ---------------------------------------------------------------------------
+
+function RoutinesSummaryCard({
+  items,
+  failed,
+  className = "",
+}: {
+  items: RoutineOccurrence[] | null;
+  failed: boolean;
+  className?: string;
+}) {
+  const overdueCount = (items ?? []).filter((i) => i.overdue).length;
+  const todayCount = (items ?? []).filter((i) => !i.overdue).length;
+  return (
+    <section
+      aria-label="Rotinas"
+      className={`flex items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 shadow-sm ${className}`}
+    >
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+          Rotinas
+        </h2>
+        {failed ? (
+          <p className="text-sm text-[var(--color-ink-muted)]">Não foi possível carregar.</p>
+        ) : items === null ? (
+          <Skeleton className="mt-1 h-5 w-32" />
+        ) : overdueCount === 0 && todayCount === 0 ? (
+          <p className="text-sm text-[var(--color-ink-muted)]">Nada pendente hoje.</p>
+        ) : (
+          <p className="text-sm text-[var(--color-ink)]">
+            {overdueCount > 0 ? (
+              <span className="font-semibold text-[var(--color-danger)]">{overdueCount} atrasada{overdueCount === 1 ? "" : "s"}</span>
+            ) : null}
+            {overdueCount > 0 && todayCount > 0 ? " · " : ""}
+            {todayCount > 0 ? `${todayCount} hoje` : ""}
+          </p>
+        )}
+      </div>
+      <Link href="/app/routines" className="shrink-0 text-sm font-medium text-[var(--color-link)] hover:underline">
+        Ver rotinas
+      </Link>
     </section>
   );
 }
@@ -1042,29 +1171,41 @@ export function TodayBoard({ summary }: Props) {
             priorityRoutinesCount={priorityRoutineItems.length}
           />
 
-          {/* Desktop: full business-decision-center stack. Mobile gets a
-              condensed companion instead — top priority + essential
-              indicators + next appointment, never the desktop tables. */}
+          {/* Desktop: a real grid of unevenly-sized blocks, not one long
+              vertical stack — the reconstruction's whole point. At most 3
+              items ever surface in "Precisa de decisão"; the header count
+              still shows the true total, and the full lists live on their
+              own screens (Rotinas, Acompanhamentos, Ciclos e renovações).
+              Mobile gets a condensed companion instead — top priority +
+              essential indicators + next appointment, never these tables. */}
           <div className="hidden space-y-5 lg:block">
-            <IndicatorsRow
-              activeClients={activeClients}
-              activeClientsFailed={activeClientsFailed}
-              cyclesNearingEnd={summary.cycles_nearing_end.length}
-              finance={finance}
-              financeFailed={financeFailed}
-            />
-            <PriorityQueue items={combinedPriority} failedSources={failedSources} limit={8} />
-            <RenewalsBlock />
-            <FinanceCompact
-              pendingPayments={summary.pending_payments}
-              finance={finance}
-              financeFailed={financeFailed}
-            />
-            <RecentMovements />
-            <NextAppointmentCard
-              nextAppointment={briefingForNextAppointment.nextAppointment}
-              timeZone={summary.timezone}
-            />
+            <PriorityQueue items={combinedPriority} failedSources={failedSources} limit={3} />
+            <div className="grid gap-5 xl:grid-cols-12">
+              <div className="space-y-5 xl:col-span-7">
+                <FinanceCompact
+                  pendingPayments={summary.pending_payments}
+                  finance={finance}
+                  financeFailed={financeFailed}
+                />
+                <RecentMovements />
+              </div>
+              <div className="space-y-5 xl:col-span-5">
+                <IndicatorsRow
+                  activeClients={activeClients}
+                  activeClientsFailed={activeClientsFailed}
+                  cyclesNearingEnd={summary.cycles_nearing_end.length}
+                />
+                <RenewalsBlock />
+                <RecentEvaluationsCompact />
+              </div>
+            </div>
+            <div className="grid gap-5 md:grid-cols-2">
+              <RoutinesSummaryCard items={routinesToday} failed={routinesFailed} />
+              <NextAppointmentCard
+                nextAppointment={briefingForNextAppointment.nextAppointment}
+                timeZone={summary.timezone}
+              />
+            </div>
           </div>
 
           <div className="space-y-3 lg:hidden">

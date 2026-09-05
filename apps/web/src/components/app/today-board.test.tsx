@@ -92,7 +92,6 @@ describe("TodayBoard — only overdue routine occurrences ever enter the priorit
       { id: "a", type_label: "Rotina", client_name: "Cliente A", client_id: "c-a", overdue: true, due_on: "2026-08-15", occurrence_type: "occ-a" },
       { id: "b", type_label: "Rotina", client_name: "Cliente B", client_id: "c-b", overdue: true, due_on: "2026-08-16", occurrence_type: "occ-b" },
       { id: "c", type_label: "Rotina", client_name: "Cliente C", client_id: "c-c", overdue: true, due_on: "2026-08-17", occurrence_type: "occ-c" },
-      { id: "d", type_label: "Rotina", client_name: "Cliente D", client_id: "c-d", overdue: true, due_on: "2026-08-18", occurrence_type: "occ-d" },
     ];
     render(<TodayBoard summary={BASE_SUMMARY} />);
 
@@ -100,8 +99,25 @@ describe("TodayBoard — only overdue routine occurrences ever enter the priorit
     expect(within(queue).getByText("Cliente A · venceu em 15/08/2026")).toBeInTheDocument();
     expect(within(queue).getByText("Cliente B · venceu em 16/08/2026")).toBeInTheDocument();
     expect(within(queue).getByText("Cliente C · venceu em 17/08/2026")).toBeInTheDocument();
-    expect(within(queue).getByText("Cliente D · venceu em 18/08/2026")).toBeInTheDocument();
     expect(screen.queryByText("Atrasadas")).not.toBeInTheDocument();
+  });
+
+  it("caps the desktop queue at 3 items — the header still counts the real total, and the extras never collapse into a summary row", async () => {
+    board.items = [
+      { id: "a", type_label: "Rotina", client_name: "Cliente A", client_id: "c-a", overdue: true, due_on: "2026-08-15", occurrence_type: "occ-a" },
+      { id: "b", type_label: "Rotina", client_name: "Cliente B", client_id: "c-b", overdue: true, due_on: "2026-08-16", occurrence_type: "occ-b" },
+      { id: "c", type_label: "Rotina", client_name: "Cliente C", client_id: "c-c", overdue: true, due_on: "2026-08-17", occurrence_type: "occ-c" },
+      { id: "d", type_label: "Rotina", client_name: "Cliente D", client_id: "c-d", overdue: true, due_on: "2026-08-18", occurrence_type: "occ-d" },
+    ];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+
+    const queue = await screen.findByRole("region", { name: "Fila de prioridades" });
+    expect(within(queue).getByText(/Precisa de decisão/)).toHaveTextContent("Precisa de decisão · 4");
+    expect(within(queue).getByText("Cliente A · venceu em 15/08/2026")).toBeInTheDocument();
+    expect(within(queue).getByText("Cliente B · venceu em 16/08/2026")).toBeInTheDocument();
+    expect(within(queue).getByText("Cliente C · venceu em 17/08/2026")).toBeInTheDocument();
+    expect(within(queue).queryByText(/Cliente D/)).not.toBeInTheDocument();
+    expect(within(queue).queryByText(/^4 /)).not.toBeInTheDocument();
   });
 });
 
