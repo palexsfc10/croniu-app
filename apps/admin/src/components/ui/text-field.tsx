@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes } from "react";
+import { useId, type InputHTMLAttributes } from "react";
 
 type Props = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
@@ -6,7 +6,8 @@ type Props = InputHTMLAttributes<HTMLInputElement> & {
 };
 
 export function TextField({ label, error, id, className = "", ...props }: Props) {
-  const fieldId = id ?? props.name;
+  const generatedId = useId();
+  const fieldId = id ?? props.name ?? generatedId;
   return (
     <label className="block space-y-1.5" htmlFor={fieldId}>
       <span className="text-sm font-medium">{label}</span>

@@ -1,194 +1,131 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { BrandWordmark } from "@/components/brand";
 import { useAdminAuth } from "@/components/auth/admin-auth-provider";
 import { EnvironmentBadge, EnvironmentIdentity } from "@/components/environment-identity";
 import { Button } from "@/components/ui/button";
-import {
-  IconBuilding,
-  IconBug,
-  IconCalendarCheck,
-  IconDashboard,
-  IconGift,
-  IconLogOut,
-  IconMenu,
-  IconMessage,
-  IconSparkles,
-  IconUsers,
-  IconX,
-} from "@/components/ui/icons";
+import { Modal } from "@/components/ui/modal";
+import { initials, statusLabel } from "@/lib/presentation";
+import { IconBuilding, IconBug, IconCalendarCheck, IconDashboard, IconGift, IconLogOut, IconMenu, IconMessage, IconSearch, IconSparkles, IconUsers, IconX } from "@/components/ui/icons";
 
-const nav = [
-  { href: "/dashboard", label: "Visão geral", icon: IconDashboard },
-  { href: "/organizations", label: "Organizações", icon: IconBuilding },
-  { href: "/users", label: "Usuários", icon: IconUsers },
-  { href: "/referrals", label: "Parceiros e indicações", icon: IconGift },
-  { href: "/cycle-agenda", label: "Ciclo–agenda", icon: IconCalendarCheck },
-  { href: "/feedbacks", label: "Feedbacks", icon: IconMessage },
-  { href: "/ai", label: "Assistente IA", icon: IconSparkles },
-  { href: "/errors", label: "Erros", icon: IconBug },
-] as const;
+const groups = [
+  { label: "Gestão", items: [
+    { href: "/dashboard", label: "Visão geral", icon: IconDashboard },
+    { href: "/organizations", label: "Organizações", icon: IconBuilding },
+    { href: "/users", label: "Usuários", icon: IconUsers },
+    { href: "/referrals", label: "Parceiros e indicações", icon: IconGift },
+  ] },
+  { label: "Operação e suporte", items: [
+    { href: "/feedbacks", label: "Feedbacks", icon: IconMessage },
+    { href: "/cycle-agenda", label: "Ciclo–agenda", icon: IconCalendarCheck },
+    { href: "/ai", label: "Assistente IA", icon: IconSparkles },
+    { href: "/errors", label: "Erros", icon: IconBug },
+  ] },
+];
 
 function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
-  return (
-    <nav aria-label="Admin" className="flex flex-col gap-0.5">
-      {nav.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            className={[
-              "flex min-h-11 items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2 text-sm font-semibold transition-colors",
-              active
-                ? "bg-[var(--color-primary-subtle)] text-[var(--color-primary)]"
-                : "text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-ink)]",
-            ].join(" ")}
-            aria-current={active ? "page" : undefined}
-          >
-            <Icon className="h-[18px] w-[18px] shrink-0" />
-            <span className="truncate">{item.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return <nav aria-label="Admin" className="space-y-7">
+    {groups.map((group) => <div key={group.label}>
+      <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">{group.label}</p>
+      <div className="space-y-1">{group.items.map(({ href, label, icon: Icon }) => {
+        const active = pathname === href || pathname.startsWith(`${href}/`);
+        return <Link key={href} href={href} onClick={onNavigate} className={`admin-nav-link ${active ? "admin-nav-active" : ""}`} aria-current={active ? "page" : undefined}>
+          <Icon className="h-[18px] w-[18px] shrink-0" /><span>{label}</span>
+          {active ? <span aria-hidden="true" className="ml-auto h-1.5 w-1.5 rounded-full bg-current" /> : null}
+        </Link>;
+      })}</div>
+    </div>)}
+  </nav>;
 }
 
 function BrandBlock() {
-  return (
-    <div className="flex items-baseline gap-2">
-      <BrandWordmark size="sm" surface="light" compact />
-      <span className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
-        Admin
-      </span>
-    </div>
-  );
+  return <div className="flex items-baseline gap-2.5">
+    <BrandWordmark size="sm" surface="light" compact />
+    <span className="rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--color-ink-muted)]">Admin</span>
+  </div>;
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { me, loading, logout } = useAdminAuth();
+  const router = useRouter();
+  const { me, loading, logout, logoutError } = useAdminAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const section = groups.flatMap((group) => group.items).find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- close drawer on route change
-    setDrawerOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!drawerOpen) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setDrawerOpen(false);
+    function focusSearch(event: KeyboardEvent) {
+      const target = event.target;
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey || drawerOpen) return;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return;
+      event.preventDefault();
+      searchRef.current?.focus();
     }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
   }, [drawerOpen]);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4" role="status">
-        <BrandBlock />
-        <p className="text-sm text-[var(--color-ink-muted)]">Carregando sessão administrativa…</p>
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const closeOnDesktop = () => { if (media.matches) closeDrawer(); };
+    media.addEventListener("change", closeOnDesktop);
+    return () => media.removeEventListener("change", closeOnDesktop);
+  }, [closeDrawer]);
+
+  if (loading || !me) return <div className="flex min-h-dvh flex-col items-center justify-center gap-4" role="status">
+    <BrandBlock /><p className="text-sm text-[var(--color-ink-muted)]">{loading ? "Carregando sessão administrativa…" : "Acesso negado. Redirecionando…"}</p>
+  </div>;
+
+  const operator = <div><div className="flex items-center gap-3">
+    <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-subtle)] text-xs font-bold text-[var(--color-primary)]">{initials(me.full_name)}</span>
+    <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{me.full_name}</p><p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">{statusLabel(me.role)}</p></div>
+    <Button variant="ghost" size="sm" aria-label="Sair" onClick={() => void logout()}><IconLogOut className="h-4 w-4" /></Button>
+  </div>{logoutError ? <p role="alert" className="mt-2 text-xs text-[var(--color-danger)]">{logoutError}</p> : null}</div>;
+
+  return <div className="admin-workspace flex min-h-dvh">
+    <a href="#admin-content" className="skip-link">Pular para o conteúdo</a>
+    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] md:flex">
+      <div className="px-6 pb-7 pt-7"><BrandBlock /><p className="mt-3 text-xs text-[var(--color-ink-muted)]">Central de controle</p></div>
+      <div className="flex-1 overflow-y-auto px-3 py-2"><NavLinks pathname={pathname} /></div>
+      <div className="mx-4 mb-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-3"><EnvironmentIdentity environment={me.environment} /></div>
+      <div className="border-t border-[var(--color-border)] px-4 py-4">{operator}</div>
+    </aside>
+
+    <Modal open={drawerOpen} titleId="admin-navigation-title" onClose={closeDrawer} placement="drawer">
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-5 py-5">
+        <BrandBlock /><h2 id="admin-navigation-title" className="sr-only">Navegação</h2>
+        <Button variant="ghost" aria-label="Fechar navegação" onClick={closeDrawer}><IconX className="h-5 w-5" /></Button>
       </div>
-    );
-  }
+      <div className="flex-1 overflow-y-auto px-3 py-6"><NavLinks pathname={pathname} onNavigate={closeDrawer} /></div>
+      <EnvironmentIdentity environment={me.environment} className="px-5 pb-4" />
+      <div className="border-t border-[var(--color-border)] p-4">{operator}</div>
+    </Modal>
 
-  if (!me) {
-    return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4" role="status">
-        <BrandBlock />
-        <p className="text-sm text-[var(--color-ink-muted)]">Acesso negado. Redirecionando…</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex min-h-dvh">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] md:flex">
-        <div className="px-4 py-4">
-          <BrandBlock />
-          <EnvironmentIdentity environment={me.environment} className="mt-2" />
-        </div>
-        <div className="flex-1 overflow-y-auto px-2">
-          <NavLinks pathname={pathname} />
-        </div>
-        <div className="border-t border-[var(--color-border)] px-4 py-3">
-          <p className="truncate text-sm font-medium">{me.full_name}</p>
-          <p className="truncate text-xs text-[var(--color-ink-muted)]">{me.role}</p>
-          <Button variant="ghost" size="sm" className="mt-2 px-0" onClick={() => void logout()}>
-            <IconLogOut className="h-4 w-4" /> Sair
-          </Button>
-        </div>
-      </aside>
-
-      {drawerOpen ? (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div
-            className="absolute inset-0 bg-[var(--color-ink)]/45"
-            onClick={() => setDrawerOpen(false)}
-            aria-hidden="true"
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Navegação"
-            className="fade-up absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-[var(--color-surface)] shadow-md"
-          >
-            <div className="flex items-center justify-between px-4 py-4">
-              <BrandBlock />
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(false)}
-                aria-label="Fechar navegação"
-                className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-muted)]"
-              >
-                <IconX className="h-5 w-5" />
-              </button>
-            </div>
-            <EnvironmentIdentity environment={me.environment} className="px-4" />
-            <div className="mt-2 flex-1 overflow-y-auto px-2">
-              <NavLinks pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
-            </div>
-            <div className="border-t border-[var(--color-border)] px-4 py-3">
-              <p className="truncate text-sm font-medium">{me.full_name}</p>
-              <Button variant="ghost" size="sm" className="mt-2 px-0" onClick={() => void logout()}>
-                <IconLogOut className="h-4 w-4" /> Sair
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 md:hidden">
+    <div className="min-w-0 flex-1">
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 sm:px-6 lg:px-9">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(true)}
-              aria-label="Abrir navegação"
-              className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-muted)]"
-            >
-              <IconMenu className="h-5 w-5" />
-            </button>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{me.full_name}</p>
-              <EnvironmentBadge environment={me.environment} className="mt-0.5" />
-            </div>
+            <Button variant="ghost" className="md:hidden" aria-label="Abrir navegação" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><IconMenu className="h-5 w-5" /></Button>
+            <p className="text-xs text-[var(--color-ink-muted)]"><span className="hidden sm:inline">Plataforma <span className="px-2 text-[var(--color-border-strong)]">/</span></span><span className="font-semibold text-[var(--color-ink)]">{section?.label ?? "Admin"}</span></p>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => void logout()}>
-            Sair
-          </Button>
-        </header>
-        <main className="flex-1 px-4 py-5 md:px-8 md:py-6">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
-        </main>
-      </div>
+          <EnvironmentBadge environment={me.environment} className="md:hidden" />
+          <form role="search" aria-label="Busca global de organizações" className="flex w-full items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] pl-3 sm:w-80" onSubmit={(event) => {
+            event.preventDefault();
+            const query = searchRef.current?.value.trim() ?? "";
+            router.push(`/organizations${query ? `?search=${encodeURIComponent(query)}` : ""}`);
+          }}>
+            <IconSearch className="h-4 w-4 shrink-0 text-[var(--color-ink-muted)]" />
+            <input ref={searchRef} aria-label="Buscar organização" name="search" type="search" minLength={2} maxLength={100} placeholder="Organização ou titular" className="min-h-11 min-w-0 flex-1 bg-transparent text-sm outline-none" />
+            <kbd aria-hidden="true" className="hidden rounded border border-[var(--color-border)] bg-white px-1.5 text-xs text-[var(--color-ink-muted)] lg:block">/</kbd>
+            <button type="submit" className="min-h-11 px-3 text-xs font-semibold text-[var(--color-primary)]">Buscar</button>
+          </form>
+        </div>
+      </header>
+      <main id="admin-content" tabIndex={-1} className="px-4 py-6 outline-none sm:px-6 lg:px-9 lg:py-8"><div className="mx-auto w-full max-w-[1440px]">{children}</div></main>
     </div>
-  );
+  </div>;
 }

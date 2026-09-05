@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
 const FOCUSABLE_SELECTOR =
@@ -12,32 +12,38 @@ export function Modal({
   descriptionId,
   onClose,
   children,
+  placement = "center",
 }: {
   open: boolean;
   titleId: string;
   descriptionId?: string;
   onClose: () => void;
   children: ReactNode;
+  placement?: "center" | "drawer";
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  const closeRef = useRef(onClose);
+  useLayoutEffect(() => { closeRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const dialog = dialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const focusable = dialog?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-    focusable?.[0]?.focus();
+    (focusable?.[0] ?? dialog)?.focus();
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onClose();
+        closeRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialog) return;
       const items = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-      if (items.length === 0) return;
+      if (items.length === 0) { event.preventDefault(); dialog.focus(); return; }
       const first = items[0];
       const last = items[items.length - 1];
       if (event.shiftKey && document.activeElement === first) {
@@ -52,15 +58,16 @@ export function Modal({
     document.addEventListener("keydown", onKeyDown, true);
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
       previouslyFocused.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--color-ink)]/45 p-4 sm:items-center"
+      className={placement === "drawer" ? "fixed inset-0 z-50 flex bg-[var(--color-ink)]/45" : "fixed inset-0 z-50 flex items-end justify-center bg-[var(--color-ink)]/45 p-4 sm:items-center"}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -68,10 +75,11 @@ export function Modal({
       <div
         ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="fade-up w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-md"
+        className={placement === "drawer" ? "flex h-dvh w-80 max-w-[90vw] flex-col bg-[var(--color-surface)] shadow-xl" : "fade-up max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-md"}
       >
         {children}
       </div>
@@ -105,7 +113,7 @@ export function ConfirmDialog({
   children?: ReactNode;
 }) {
   return (
-    <Modal open={open} titleId="confirm-dialog-title" descriptionId="confirm-dialog-desc" onClose={onCancel}>
+    <Modal open={open} titleId="confirm-dialog-title" descriptionId={description ? "confirm-dialog-desc" : undefined} onClose={() => { if (!busy) onCancel(); }}>
       <h2 id="confirm-dialog-title" className="text-base font-semibold text-[var(--color-ink)]">
         {title}
       </h2>

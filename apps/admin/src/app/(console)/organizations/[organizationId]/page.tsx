@@ -21,6 +21,7 @@ import { CopyableId } from "@/components/ui/copyable-id";
 import { Skeleton } from "@/components/ui/skeleton";
 import { statusTone } from "@/lib/status-tone";
 import { IconShieldAlert } from "@/components/ui/icons";
+import { statusLabel } from "@/lib/presentation";
 
 type TimelineEvent = {
   kind: string;
@@ -137,11 +138,15 @@ export default function OrganizationDetailPage() {
         <h1 className="h-display text-3xl">{data.name}</h1>
         <EnvironmentBadge environment={me?.environment} />
         <Badge tone={statusTone(data.operational_status ?? data.status)}>
-          {data.operational_status ?? data.status}
+          {statusLabel(data.operational_status ?? data.status)}
         </Badge>
       </div>
 
-      <Card>
+      <nav aria-label="Seções da organização" className="flex flex-wrap gap-2 border-b border-[var(--color-border)] pb-3">
+        {[["resumo", "Resumo"], ["uso", "Uso do produto"], ["teste", "Período de teste"], ["historico", "Histórico"], ["acesso", "Controle de acesso"]].map(([id, label]) => <a key={id} href={`#${id}`} className="inline-flex min-h-11 items-center rounded-lg border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-subtle)]">{label}</a>)}
+      </nav>
+
+      <section id="resumo" className="scroll-mt-6"><Card>
         <CardHeader title="Resumo" />
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Profissional" value={data.owner_name ?? "—"} />
@@ -168,10 +173,13 @@ export default function OrganizationDetailPage() {
             }
           />
           <Field label="Formulário recomendado" value={data.recommended_form_kind ?? "—"} />
+          <Field label="Assinatura" value={statusLabel(data.subscription_status)} />
+          <Field label="Fim do período de teste" value={formatLocal(data.trial_ends_at_local ?? data.trial_ends_at, data.timezone)} />
+          <Field label="Fuso da organização" value={data.timezone ?? "America/Sao_Paulo"} />
         </dl>
-      </Card>
+      </Card></section>
 
-      <Card>
+      <section id="uso" className="scroll-mt-6"><Card>
         <CardHeader title="Uso do produto" />
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field
@@ -184,11 +192,11 @@ export default function OrganizationDetailPage() {
           />
           <Field label="Uso do Assistente" value={`${data.assistant_threads_count ?? 0} conversa(s)`} />
         </dl>
-      </Card>
+      </Card></section>
 
-      <TrialExtensionSection data={data} onUpdated={load} />
+      <section id="teste" className="scroll-mt-6">{me?.role === "platform_admin" ? <TrialExtensionSection data={data} onUpdated={load} /> : <Card><CardHeader title="Período de teste" /><p className="text-sm text-[var(--color-ink-muted)]">Seu perfil permite somente consulta. A extensão do teste exige um administrador.</p></Card>}</section>
 
-      <Card>
+      <section id="historico" className="scroll-mt-6"><Card>
         <CardHeader title="Timeline administrativa" />
         {!timeline || timeline.events.length === 0 ? (
           <p className="rounded border border-dashed border-[var(--color-border)] p-3 text-sm text-[var(--color-ink-muted)]">
@@ -225,9 +233,9 @@ export default function OrganizationDetailPage() {
             })}
           </ol>
         )}
-      </Card>
+      </Card></section>
 
-      <DangerZoneSection data={data} onUpdated={load} />
+      <section id="acesso" className="scroll-mt-6">{me?.role === "platform_admin" ? <DangerZoneSection data={data} onUpdated={load} /> : <Card><CardHeader title="Controle de acesso" /><p className="text-sm text-[var(--color-ink-muted)]">Seu perfil permite somente consulta. Alterações de conta exigem um administrador.</p></Card>}</section>
     </div>
   );
 }
@@ -293,7 +301,7 @@ function TrialExtensionSection({
   return (
     <Card>
       <CardHeader
-        title="Gestão do trial"
+        title="Período de teste"
         description="Estende o período de teste sem gerar cobrança nem checkout. Disponível apenas enquanto a assinatura está em teste ou expirada sem conversão."
       />
 

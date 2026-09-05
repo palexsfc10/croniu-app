@@ -33,3 +33,7 @@ Detalhes: [`CLIENT_EVALS_AND_AGENT.md`](./CLIENT_EVALS_AND_AGENT.md), ADR-032/03
 ## Débitos
 
 Ver roadmap e sprint docs.
+
+## Preparação Admin Control Premium para revisão
+
+Etapa autorizada: reconciliar `a38a6d5` com `main` em `9cfec30` na branch `feature/admin-control-premium-prd`, preservando a PR #36. Escopo: [`SPRINT_ADMIN_CONTROL_PREMIUM.md`](./sprints/SPRINT_ADMIN_CONTROL_PREMIUM.md). Sem merge, deploy ou workflows de release/promoção nesta etapa. As seções anteriores registram auditorias históricas.
