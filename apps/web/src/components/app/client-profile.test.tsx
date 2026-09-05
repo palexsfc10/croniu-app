@@ -42,6 +42,109 @@ const CLIENTS: Record<string, Record<string, unknown>> = {
     email: "",
     notes: "",
   },
+  c4: {
+    id: "c4",
+    full_name: "Bruno Costa",
+    status: "active",
+    phone: "11922223333",
+    email: "",
+    notes: "",
+  },
+  c5: {
+    id: "c5",
+    full_name: "Diana Alves",
+    status: "active",
+    phone: "11933334444",
+    email: "",
+    notes: "",
+  },
+  c7: {
+    id: "c7",
+    full_name: "Elias Rocha",
+    status: "active",
+    phone: "11944445555",
+    email: "",
+    notes: "",
+  },
+};
+
+// Same shape the backend's resolve_accompaniment/_journey_out actually
+// returns — next_action/next_action_label are the canonical, already
+// cycle-aware decision; the checklist is the raw per-step status (may
+// still say "todo" for a step that isn't presented as next).
+const JOURNEYS: Record<string, Record<string, unknown>> = {
+  c1: {
+    id: "j1",
+    client_id: "c1",
+    stage: "active",
+    stage_label: "Em acompanhamento",
+    next_action: "continue_onboarding",
+    next_action_label: "Preparar acompanhamento",
+    created_at: "",
+    updated_at: "",
+  },
+  // Sem ciclo, anamnese ainda pendente.
+  c4: {
+    id: "j4",
+    client_id: "c4",
+    stage: "approved",
+    stage_label: "Cadastro aprovado",
+    next_action: "review_anamnesis",
+    next_action_label: "Analisar formulário",
+    accompaniment_checklist: {
+      anamnesis: "todo",
+      evaluation: "todo",
+      plan: "todo",
+      cycle: "todo",
+      agenda: "todo",
+      routine: "todo",
+      activate: "todo",
+    },
+    created_at: "",
+    updated_at: "",
+  },
+  // Sem ciclo, anamnese concluída — avaliação seguiria seria a próxima pela
+  // ordem crua do checklist, mas o backend pula (sem ciclo ainda), então o
+  // próximo passo real é o plano.
+  c5: {
+    id: "j5",
+    client_id: "c5",
+    stage: "approved",
+    stage_label: "Cadastro aprovado",
+    next_action: "create_plan",
+    next_action_label: "Criar plano",
+    accompaniment_checklist: {
+      anamnesis: "done",
+      evaluation: "todo",
+      plan: "todo",
+      cycle: "todo",
+      agenda: "todo",
+      routine: "todo",
+      activate: "todo",
+    },
+    created_at: "",
+    updated_at: "",
+  },
+  // Ciclo real existe — avaliação volta a ser elegível e é o próximo passo.
+  c7: {
+    id: "j7",
+    client_id: "c7",
+    stage: "evaluation_pending",
+    stage_label: "Avaliação pendente",
+    next_action: "register_evaluation",
+    next_action_label: "Registrar avaliação",
+    accompaniment_checklist: {
+      anamnesis: "done",
+      evaluation: "todo",
+      plan: "done",
+      cycle: "done",
+      agenda: "done",
+      routine: "na",
+      activate: "todo",
+    },
+    created_at: "",
+    updated_at: "",
+  },
 };
 
 vi.mock("@/lib/api", async () => {
@@ -49,7 +152,8 @@ vi.mock("@/lib/api", async () => {
   return {
     ...actual,
     apiFetch: vi.fn(async (path: string, init?: RequestInit) => {
-      if (init?.method === "PATCH" && /\/clients\/(c1|c2|c3)$/.test(path)) {
+      const clientIdPattern = new RegExp(`/clients/(${Object.keys(CLIENTS).join("|")})$`);
+      if (init?.method === "PATCH" && clientIdPattern.test(path)) {
         const id = path.split("/").pop()!;
         const body = JSON.parse((init.body as string) || "{}");
         return { data: { ...CLIENTS[id], ...body } };
@@ -58,21 +162,11 @@ vi.mock("@/lib/api", async () => {
         return { data: { local_today: "2026-08-13" } };
       }
       if (path.includes("/journey")) {
-        return {
-          data: {
-            id: "j1",
-            client_id: "c1",
-            stage: "active",
-            stage_label: "Em acompanhamento",
-            next_action: "continue_onboarding",
-            next_action_label: "Preparar acompanhamento",
-            created_at: "",
-            updated_at: "",
-          },
-        };
+        const clientId = Object.keys(JOURNEYS).find((id) => path.includes(id)) ?? "c1";
+        return { data: JOURNEYS[clientId] };
       }
       if (path.includes("/protocols")) {
-        if (path.includes("c2")) return { data: [] };
+        if (!path.includes("c1")) return { data: [] };
         return {
           data: [
             {
@@ -143,7 +237,7 @@ vi.mock("@/lib/api", async () => {
         return { data: [] };
       }
       if (path.includes("/cycles")) {
-        if (path.includes("c2")) return { data: [] };
+        if (!path.includes("c1")) return { data: [] };
         return {
           data: [
             {
@@ -179,7 +273,7 @@ vi.mock("@/lib/api", async () => {
       }
       if (path.includes("/intake-submissions?client_id=")) return { data: [] };
       if (path.includes("/routines/board")) return { data: { groups: [] } };
-      if (/\/clients\/(c1|c2|c3)$/.test(path)) {
+      if (clientIdPattern.test(path)) {
         const id = path.split("/").pop()!;
         return { data: CLIENTS[id] };
       }
@@ -444,5 +538,65 @@ describe("ClientProfile", () => {
     await user.click(screen.getByRole("button", { name: "Salvar anotação" }));
 
     expect(await screen.findByText("Anotação salva")).toBeInTheDocument();
+  });
+});
+
+describe("ClientProfile — Próximo passo mirrors only the backend's canonical next step", () => {
+  beforeEach(() => {
+    nav.tab = "resumo";
+  });
+
+  it("client without a cycle, anamnese pendente: CTA names the backend's real next step (Analisar formulário), never a re-derived checklist", async () => {
+    render(<ClientProfile clientId="c4" />);
+    await screen.findByRole("heading", { level: 1 });
+    // The compact header indicator always names the one canonical step.
+    expect(screen.getByText("Próximo: Analisar formulário")).toBeInTheDocument();
+    const panel = within(await screen.findByRole("tabpanel", { name: "Resumo" }));
+    expect(panel.getByRole("link", { name: "Analisar formulário" })).toHaveAttribute(
+      "href",
+      "/app/clients/c4/accompaniment",
+    );
+    // No re-derived "Falta: ..." enumeration, and avaliação is never
+    // offered as a clickable next-step action here — only as the ordinary,
+    // always-present "Avaliação" summary fact (checked separately below).
+    expect(panel.queryByText(/Falta:/)).not.toBeInTheDocument();
+    expect(panel.queryByRole("link", { name: /avalia[cç][aã]o/i })).not.toBeInTheDocument();
+    expect(panel.getByText("Avaliação")).toBeInTheDocument();
+    expect(panel.getByText("Nenhuma registrada")).toBeInTheDocument();
+  });
+
+  it("client without a cycle, anamnese concluída: next step is the plan, avaliação is never listed as a pending requirement", async () => {
+    render(<ClientProfile clientId="c5" />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByText("Próximo: Criar plano")).toBeInTheDocument();
+    const panel = within(await screen.findByRole("tabpanel", { name: "Resumo" }));
+    expect(panel.getByRole("link", { name: "Criar plano" })).toHaveAttribute(
+      "href",
+      "/app/clients/c5/accompaniment",
+    );
+    expect(panel.queryByText(/Falta:/)).not.toBeInTheDocument();
+    expect(panel.queryByRole("link", { name: /avalia[cç][aã]o/i })).not.toBeInTheDocument();
+  });
+
+  it("avaliação stays reachable as a manual action even when it's not the canonical next step", async () => {
+    const user = userEvent.setup();
+    render(<ClientProfile clientId="c5" />);
+    await screen.findByRole("heading", { level: 1 });
+    await user.click(screen.getByLabelText("Mais ações"));
+    expect(screen.getByRole("link", { name: "Registrar avaliação" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/app/clients/c5/evaluations/new"),
+    );
+  });
+
+  it("a real, canonically-eligible avaliação pendente (active cycle) still surfaces as the next step", async () => {
+    render(<ClientProfile clientId="c7" />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByText("Próximo: Registrar avaliação")).toBeInTheDocument();
+    const panel = within(await screen.findByRole("tabpanel", { name: "Resumo" }));
+    expect(panel.getByRole("link", { name: "Registrar avaliação" })).toHaveAttribute(
+      "href",
+      "/app/clients/c7/accompaniment",
+    );
   });
 });

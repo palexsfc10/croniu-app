@@ -465,25 +465,16 @@ export function ClientProfile({ clientId }: Props) {
       action === "prepare_accompaniment" ||
       action === "continue_onboarding"
     ) {
-      const checklist = journey?.accompaniment_checklist ?? {};
-      const stepLabels: Record<string, string> = {
-        anamnesis: terms.intake_form,
-        evaluation: t(terms, "evaluation"),
-        plan: t(terms, "plan"),
-        cycle: "ciclo",
-        agenda: "agenda",
-        routine: "rotina",
-      };
-      const pending = ["anamnesis", "evaluation", "plan", "cycle", "agenda", "routine"].filter(
-        (key) => !checklist[key] || checklist[key] === "todo",
-      );
-      const pendingText = pending.length
-        ? ` Falta: ${pending.map((key) => stepLabels[key]).join(", ")}.`
-        : "";
+      // The backend (resolve_accompaniment) is the single source of truth
+      // for what's actually next — it knows things this page can't derive
+      // from the checklist alone, like evaluation never being presentable
+      // before a cycle exists. The CTA below already names that one
+      // canonical step (next_action_label) — never a locally re-enumerated
+      // "Falta: ..." list across all steps.
       return {
         title: "Próximo passo",
         isPending: true,
-        text: `Continue a preparação de ${name}.${pendingText}`,
+        text: `Continue a preparação de ${name}.`,
         cta: journey?.next_action_label || "Preparar acompanhamento",
         href: prepareHref,
       };
