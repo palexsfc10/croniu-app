@@ -1221,7 +1221,16 @@ export function TodayBoard({ summary }: Props) {
               essential indicators + next appointment, never these tables. */}
           <div className="hidden space-y-5 lg:block">
             <PriorityQueue items={queueItems} failedSources={failedSources} limit={3} title={queueTitle} />
-            <div className="grid gap-5 xl:grid-cols-12">
+            {/* One 12-column grid for every block below the queue — not two
+                separately-tracked grids with different column bases (the
+                previous xl:grid-cols-12 7/5 split above an unrelated
+                md:grid-cols-2 pair below it), which is exactly what left
+                Rotinas/Próximo compromisso's edges unaligned with
+                Financeiro/Indicadores above them. `items-start` keeps each
+                card at its own natural height (top-aligned with its row
+                neighbor) instead of the grid's default stretch forcing a
+                short card to fill a tall neighbor's height. */}
+            <div className="grid items-start gap-5 lg:grid-cols-2 xl:grid-cols-12">
               <div className="space-y-5 xl:col-span-7">
                 <FinanceCompact
                   pendingPayments={summary.pending_payments}
@@ -1239,13 +1248,15 @@ export function TodayBoard({ summary }: Props) {
                 <RenewalsBlock />
                 <RecentEvaluationsCompact />
               </div>
-            </div>
-            <div className="grid gap-5 md:grid-cols-2">
-              <RoutinesSummaryCard items={routinesToday} failed={routinesFailed} />
-              <NextAppointmentCard
-                nextAppointment={briefing.nextAppointment}
-                timeZone={summary.timezone}
-              />
+              <div className="xl:col-span-7">
+                <RoutinesSummaryCard items={routinesToday} failed={routinesFailed} />
+              </div>
+              <div className="xl:col-span-5">
+                <NextAppointmentCard
+                  nextAppointment={briefing.nextAppointment}
+                  timeZone={summary.timezone}
+                />
+              </div>
             </div>
           </div>
 

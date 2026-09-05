@@ -146,6 +146,25 @@ describe("TodayBoard — only overdue routine occurrences ever enter the priorit
   });
 });
 
+describe("TodayBoard — desktop grid uses one consistent 12-column track, not two disagreeing grids", () => {
+  it("Financeiro/Indicadores and Rotinas/Próximo compromisso share the same grid and the same 7/5 column spans", () => {
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+    const financeCol = screen.getByText("Financeiro").closest("section")!.parentElement!;
+    const indicatorsCol = screen.getByText("Clientes ativos").closest("section")!.parentElement!;
+    const routinesCol = screen.getByLabelText("Rotinas").parentElement!;
+
+    // Same grid container for all four blocks — not a second, separately
+    // tracked grid with a different column basis below it.
+    const grid = financeCol.parentElement!;
+    expect(grid.className).toMatch(/grid/);
+    expect(grid).toBe(indicatorsCol.parentElement);
+    expect(grid).toBe(routinesCol.parentElement);
+    expect(financeCol.className).toMatch(/xl:col-span-7/);
+    expect(routinesCol.className).toMatch(/xl:col-span-7/);
+    expect(indicatorsCol.className).toMatch(/xl:col-span-5/);
+  });
+});
+
 describe("TodayBoard — the briefing box and the priority queue never show the same case twice", () => {
   it("removes the promoted case from the queue and renames it to 'Outras decisões'", async () => {
     accompaniment.items = [
