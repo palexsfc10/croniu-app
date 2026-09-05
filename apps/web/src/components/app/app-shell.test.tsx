@@ -10,6 +10,7 @@ const routeState = vi.hoisted(() => ({ pathname: "/app" }));
 // it after every test so one test's toggle never leaks into the next.
 afterEach(() => {
   window.localStorage.clear();
+  authState.professionCode = undefined;
 });
 
 vi.mock("next/navigation", () => ({
@@ -46,12 +47,19 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+const authState = vi.hoisted(() => ({ professionCode: undefined as string | undefined }));
+
 vi.mock("@/components/auth/auth-provider", () => ({
   useAuth: () => ({
     loading: false,
     me: {
       user: { id: "1", email: "a@b.com", full_name: "Pro Silva", created_at: "" },
-      organization: { id: "1", name: "Studio Alpha", timezone: "America/Sao_Paulo" },
+      organization: {
+        id: "1",
+        name: "Studio Alpha",
+        timezone: "America/Sao_Paulo",
+        profession_code: authState.professionCode,
+      },
       role: "owner",
     },
     logout,
@@ -431,5 +439,19 @@ describe("AppShell desktop workspace structure", () => {
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
     expect(collapsedHrefs).toContain("/app/clients");
+  });
+
+  it("labels /app/clients with the same profession-adaptive word the Clientes page and bottom nav already use, not a hard-coded 'Clientes'", () => {
+    authState.professionCode = "personal_trainer";
+    const { container } = render(
+      <AppShell>
+        <p>content</p>
+      </AppShell>,
+    );
+    const sidebar = container.querySelector("aside.app-sidebar") as HTMLElement;
+    expect(within(sidebar).getByRole("link", { name: "Alunos" })).toHaveAttribute("href", "/app/clients");
+    expect(within(sidebar).queryByRole("link", { name: "Clientes" })).not.toBeInTheDocument();
+    const bottomNav = container.querySelector("nav.app-bottom-nav") as HTMLElement;
+    expect(within(bottomNav).getByRole("link", { name: "Alunos" })).toHaveAttribute("href", "/app/clients");
   });
 });

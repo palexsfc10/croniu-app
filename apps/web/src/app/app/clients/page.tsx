@@ -487,6 +487,10 @@ export default function ClientsPage() {
     );
   }, [items, cycles, receivables, nextAppointments, pendingIntakeClientIds, renewalCaseIndex, today]);
 
+  // "Saúde da carteira" at a glance — reuses the same `reasons` the
+  // Atenção filter and each row's badges already compute; no new logic.
+  const attentionCount = useMemo(() => rows.filter((r) => r.reasons.length > 0).length, [rows]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const byView = rows.filter((row) => matchesView(row, view));
@@ -500,7 +504,19 @@ export default function ClientsPage() {
     <div className="space-y-5 animate-fade-up pb-4 md:space-y-6">
       <header className="space-y-3">
         <div>
-          <PageTitle>{title}</PageTitle>
+          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+            <PageTitle>{title}</PageTitle>
+            {!loading ? (
+              <span className="text-sm font-medium text-[var(--color-ink-muted)]">
+                {rows.length}
+                {attentionCount > 0
+                  ? ` · ${attentionCount} ${attentionCount === 1 ? "precisa" : "precisam"} de atenção`
+                  : statusFilter === "active" && rows.length > 0
+                    ? " · carteira em dia"
+                    : ""}
+              </span>
+            ) : null}
+          </div>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             Pessoas que você atende, com o próximo passo à vista.
           </p>

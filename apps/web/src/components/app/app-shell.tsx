@@ -50,6 +50,7 @@ import {
   IconUsersRound,
 } from "@/components/ui/icons";
 import { MenuItem } from "@/components/ui/menu-item";
+import { displayTerm, nomenclatureFor } from "@/lib/nomenclature";
 import { BillingGate } from "@/components/billing/billing-gate";
 import { PwaInstallBanner } from "@/components/pwa/pwa-install-banner";
 import {
@@ -731,6 +732,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     void logout();
   };
 
+  // The Clientes page itself, the manual and onboarding already adapt this
+  // word by profession (e.g. "alunos" for a personal trainer) — the shell's
+  // own nav used to hard-code "Clientes" regardless, which is exactly the
+  // sidebar-vs-título mismatch flagged in the evidence review. One
+  // resolved label, reused everywhere the shell prints this item.
+  const clientsLabel = displayTerm(nomenclatureFor(me.organization.profession_code).clients);
+  function resolveLabel(item: NavItem): string {
+    return item.href === "/app/clients" ? clientsLabel : item.label;
+  }
+
   return (
     <AssistantLayerProvider>
     <div
@@ -780,11 +791,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {group.items.map((item) => {
                     const active = isNavActive(pathname, item.href);
                     const { Icon } = item;
+                    const label = resolveLabel(item);
                     return (
                       <Link
                         key={item.href}
                         href={item.href}
-                        title={sidebarCollapsed ? item.label : undefined}
+                        title={sidebarCollapsed ? label : undefined}
                         className={[
                           sidebarCollapsed ? "justify-center" : "inline-flex items-center gap-2.5",
                           "group/navitem relative",
@@ -793,13 +805,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         aria-current={active ? "page" : undefined}
                       >
                         <Icon aria-hidden className={active ? "opacity-100" : "opacity-90"} />
-                        {!sidebarCollapsed ? item.label : null}
+                        {!sidebarCollapsed ? label : null}
                         {sidebarCollapsed ? (
                           <span
                             role="tooltip"
                             className="pointer-events-none absolute left-full top-1/2 z-30 ml-2 -translate-y-1/2 whitespace-nowrap rounded-[var(--radius-sm)] bg-[var(--color-ink)] px-2 py-1 text-xs font-medium text-white opacity-0 shadow-md transition-opacity duration-[var(--duration-fast)] group-hover/navitem:opacity-100"
                           >
-                            {item.label}
+                            {label}
                           </span>
                         ) : null}
                       </Link>
@@ -908,16 +920,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {mobileNavItems.map((item) => {
               const active = isNavActive(pathname, item.href);
               const { Icon } = item;
+              const label = resolveLabel(item);
 
               if (item.href === "/app/assistant") {
-                return <AssistantOrbTab key={item.href} label={item.label} Icon={Icon} active={active} />;
+                return <AssistantOrbTab key={item.href} label={label} Icon={Icon} active={active} />;
               }
 
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  aria-label={item.label}
+                  aria-label={label}
                   aria-current={active ? "page" : undefined}
                   className={[
                     "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-1 py-1.5 text-[0.65rem] font-semibold transition-[background-color,color] duration-[var(--duration-fast)] sm:text-xs",
@@ -932,7 +945,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     }
                     aria-hidden
                   />
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate">{label}</span>
                 </Link>
               );
             })}
