@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { HomeSummary } from "@/lib/api";
 
@@ -296,5 +296,28 @@ describe("TodayBoard — quick actions always point to real, existing routes", (
       "href",
       expect.stringContaining("/app/assistant?"),
     );
+  });
+
+  it("mobile collapses the 3 creation actions into a single 'Adicionar' sheet, without Perguntar à Cronia (the bottom-nav orb already covers that)", async () => {
+    board.items = [];
+    render(<TodayBoard summary={BASE_SUMMARY} />);
+    await screen.findByText("Financeiro");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByRole("link", { name: /Novo cliente/i })).toHaveAttribute(
+      "href",
+      "/app/clients/new",
+    );
+    expect(within(sheet).getByRole("link", { name: /Novo compromisso/i })).toHaveAttribute(
+      "href",
+      "/app/appointments/new",
+    );
+    expect(within(sheet).getByRole("link", { name: /Nova rotina/i })).toHaveAttribute(
+      "href",
+      "/app/routines",
+    );
+    expect(within(sheet).queryByRole("link", { name: /Perguntar à Cronia/i })).not.toBeInTheDocument();
   });
 });

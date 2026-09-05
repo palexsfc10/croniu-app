@@ -11,12 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
+import { ActionSheet } from "@/components/ui/action-sheet";
 import {
   IconAlertCircle,
   IconBanknote,
   IconCalendarDays,
   IconClipboardList,
   IconLayers,
+  IconPlus,
   IconRefreshCw,
   IconSparkles,
   IconTarget,
@@ -318,7 +320,10 @@ function ExecutiveBriefing({
             </p>
           )}
         </div>
-        <Link href={assistantHref("Analise meu dia: ")} className="shrink-0">
+        {/* Desktop only — mobile already has the Cronia orb one tap away in
+            the bottom nav; a second, separate "Analisar meu dia" button
+            here duplicated that entry point, per the redesign. */}
+        <Link href={assistantHref("Analise meu dia: ")} className="hidden shrink-0 lg:inline-block">
           <Button variant="secondary" className="hover-lift min-h-9 gap-2 px-3 text-sm">
             <span className="icon-tile icon-tile-hero -ml-1 h-6 w-6" aria-hidden>
               <IconSparkles className="h-3.5 w-3.5" />
@@ -916,27 +921,62 @@ const QUICK_ACTIONS = [
   { label: "Nova rotina", href: "/app/routines", Icon: IconLayers },
 ] as const;
 
+/** Desktop keeps the full chip row (it's the complete workspace). Mobile
+ * collapses the 3 creation actions into a single "+" that opens a sheet —
+ * "Perguntar à Cronia" isn't in it: the orb is already one tap away in
+ * the bottom nav, so repeating it here was a second entry point to the
+ * same thing. */
 function QuickActions() {
+  const [mobileOpen, setMobileOpen] = useState(false);
   return (
-    <nav aria-label="Ações rápidas" className="flex flex-wrap gap-2">
-      {QUICK_ACTIONS.map(({ label, href, Icon }) => (
-        <Link
-          key={href}
-          href={href}
-          className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-subtle)]"
+    <>
+      <nav aria-label="Ações rápidas" className="hidden flex-wrap gap-2 lg:flex">
+        {QUICK_ACTIONS.map(({ label, href, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-subtle)]"
+          >
+            <Icon className="h-4 w-4 text-[var(--color-primary)]" aria-hidden />
+            {label}
+          </Link>
+        ))}
+        <AskAssistantLink
+          prompt=""
+          context={ASSISTANT_HOME_CONTEXT.context}
+          returnTo={ASSISTANT_HOME_CONTEXT.returnTo}
         >
-          <Icon className="h-4 w-4 text-[var(--color-primary)]" aria-hidden />
-          {label}
-        </Link>
-      ))}
-      <AskAssistantLink
-        prompt=""
-        context={ASSISTANT_HOME_CONTEXT.context}
-        returnTo={ASSISTANT_HOME_CONTEXT.returnTo}
+          Perguntar à Cronia
+        </AskAssistantLink>
+      </nav>
+
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="inline-flex min-h-11 items-center gap-1.5 self-start rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-[var(--color-ink)] shadow-sm lg:hidden"
       >
-        Perguntar à Cronia
-      </AskAssistantLink>
-    </nav>
+        <IconPlus className="h-4 w-4 text-[var(--color-primary)]" aria-hidden />
+        Adicionar
+      </button>
+      <ActionSheet open={mobileOpen} onClose={() => setMobileOpen(false)} labelledBy="home-quick-add-title">
+        <h2 id="home-quick-add-title" className="text-base font-semibold text-[var(--color-ink)]">
+          Adicionar
+        </h2>
+        <div className="mt-3 flex flex-col gap-2">
+          {QUICK_ACTIONS.map(({ label, href, Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex min-h-12 items-center gap-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3.5 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-surface-subtle)]"
+              onClick={() => setMobileOpen(false)}
+            >
+              <Icon className="h-4 w-4 text-[var(--color-primary)]" aria-hidden />
+              {label}
+            </Link>
+          ))}
+        </div>
+      </ActionSheet>
+    </>
   );
 }
 
