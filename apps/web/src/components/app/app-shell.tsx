@@ -22,6 +22,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch, type MyReferral } from "@/lib/api";
 import { useIsHmlEnvironment } from "@/lib/environment";
+import { useDropdown, dropdownPanelClass } from "@/lib/use-dropdown";
 import {
   IconActivity,
   IconBanknote,
@@ -203,7 +204,7 @@ function AssistantSidebarButton({ active, collapsed = false }: { active: boolean
       type="button"
       title={collapsed ? "Cronia" : undefined}
       className={[
-        collapsed ? "group/navitem relative flex w-full justify-center" : "w-full",
+        collapsed ? "flex w-full justify-center" : "w-full",
         assistantLinkClass(active, collapsed),
       ].join(" ")}
       aria-label="Abrir a Cronia"
@@ -220,14 +221,7 @@ function AssistantSidebarButton({ active, collapsed = false }: { active: boolean
           Cronia
           <Badge tone="ai">IA</Badge>
         </>
-      ) : (
-        <span
-          role="tooltip"
-          className="pointer-events-none absolute left-full top-1/2 z-30 ml-2 -translate-y-1/2 whitespace-nowrap rounded-[var(--radius-sm)] bg-[var(--color-ink)] px-2 py-1 text-xs font-medium text-white opacity-0 shadow-md transition-opacity duration-[var(--duration-fast)] group-hover/navitem:opacity-100"
-        >
-          Cronia
-        </span>
-      )}
+      ) : null}
     </button>
   );
 }
@@ -498,42 +492,6 @@ function ProfileMenu({
   );
 }
 
-/** Shared open/close-on-outside-click/Escape shell for the topbar's small
- * dropdowns (Criar, Ajuda) — same interaction contract as ProfileMenu,
- * factored out once both needed it instead of copy-pasting a third time. */
-function useDropdown() {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  return { open, setOpen, rootRef, triggerRef, close: () => setOpen(false) };
-}
-
-function dropdownPanelClass() {
-  return "absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-md";
-}
-
 /** Topbar "+ Criar" — the one place to start any of the three things a
  * professional creates day to day. Reuses the real creation destinations
  * (client intake, appointment form, the routines page's own create
@@ -776,7 +734,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <nav
             aria-label="Navegação principal"
-            className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3"
+            className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-2 pb-3"
           >
             {navGroups.map((group) => (
               <div key={group.label} className="mb-1">
@@ -799,21 +757,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         title={sidebarCollapsed ? label : undefined}
                         className={[
                           sidebarCollapsed ? "justify-center" : "inline-flex items-center gap-2.5",
-                          "group/navitem relative",
                           navLinkClass(active, sidebarCollapsed),
                         ].join(" ")}
                         aria-current={active ? "page" : undefined}
                       >
                         <Icon aria-hidden className={active ? "opacity-100" : "opacity-90"} />
                         {!sidebarCollapsed ? label : null}
-                        {sidebarCollapsed ? (
-                          <span
-                            role="tooltip"
-                            className="pointer-events-none absolute left-full top-1/2 z-30 ml-2 -translate-y-1/2 whitespace-nowrap rounded-[var(--radius-sm)] bg-[var(--color-ink)] px-2 py-1 text-xs font-medium text-white opacity-0 shadow-md transition-opacity duration-[var(--duration-fast)] group-hover/navitem:opacity-100"
-                          >
-                            {label}
-                          </span>
-                        ) : null}
                       </Link>
                     );
                   })}

@@ -809,7 +809,7 @@ export function ClientProfile({ clientId }: Props) {
         role="tablist"
         aria-label="Ficha"
         onKeyDown={onTabKey}
-        className="flex h-12 w-full items-stretch gap-0.5 overflow-x-auto rounded-[var(--radius-md)] border border-[var(--color-border)]/60 bg-[var(--color-surface-subtle)] p-0.5 shadow-[inset_0_1px_2px_rgba(15,15,20,0.04)] lg:grid lg:grid-cols-6"
+        className="flex h-[3.25rem] w-full items-stretch gap-0.5 rounded-[var(--radius-md)] border border-[var(--color-border)]/60 bg-[var(--color-surface-subtle)] p-0.5 shadow-[inset_0_1px_2px_rgba(15,15,20,0.04)] lg:grid lg:grid-cols-6"
       >
         {TABS.map((entry) => (
           <button
@@ -894,6 +894,14 @@ export function ClientProfile({ clientId }: Props) {
                   <dd className="mt-1 text-sm text-[var(--color-ink)]">
                     {anamnesisDone ? "Revisada" : submissionId ? "Aguardando revisão" : "Não enviada"}
                   </dd>
+                  {submissionId ? (
+                    <Link
+                      href={`/app/clients/intake/${submissionId}?returnTo=${encodeURIComponent(returnResumo)}`}
+                      className="mt-0.5 inline-block text-sm font-medium text-[var(--color-link)]"
+                    >
+                      Ver anamnese
+                    </Link>
+                  ) : null}
                 </div>
                 <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
@@ -1223,7 +1231,7 @@ export function ClientProfile({ clientId }: Props) {
               <Skeleton className="h-14 w-full" />
             ) : submissionId ? (
               <Link
-                href={`/app/clients/intake/${submissionId}`}
+                href={`/app/clients/intake/${submissionId}?returnTo=${encodeURIComponent(`${returnResumo}?tab=prontuario`)}`}
                 className="flex min-h-11 items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3"
               >
                 <span className="min-w-0">
@@ -1588,7 +1596,10 @@ export function ClientProfile({ clientId }: Props) {
                 {submissionId ? (
                   <>
                     {" · "}
-                    <Link href={`/app/clients/intake/${submissionId}`} className="text-[var(--color-link)]">
+                    <Link
+                      href={`/app/clients/intake/${submissionId}?returnTo=${encodeURIComponent(returnResumo)}`}
+                      className="text-[var(--color-link)]"
+                    >
                       Ver
                     </Link>
                   </>

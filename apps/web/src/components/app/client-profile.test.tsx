@@ -354,6 +354,16 @@ describe("ClientProfile", () => {
     expect(screen.getByRole("button", { name: "Criar plano" })).toBeInTheDocument();
   });
 
+  it("Resumo's Anamnese card offers a direct 'Ver anamnese' action when a submission exists", async () => {
+    nav.tab = "resumo";
+    render(<ClientProfile clientId="c2" />);
+    const panel = within(await screen.findByRole("tabpanel", { name: "Resumo" }));
+    expect(panel.getByRole("link", { name: "Ver anamnese" })).toHaveAttribute(
+      "href",
+      "/app/clients/intake/sub-c2?returnTo=%2Fapp%2Fclients%2Fc2",
+    );
+  });
+
   it("Prontuário groups anamnese and avaliações without losing the intake-review link", async () => {
     nav.tab = "prontuario";
     render(<ClientProfile clientId="c2" />);
@@ -361,7 +371,7 @@ describe("ClientProfile", () => {
     expect(within(panel).getByText(/Nenhuma avaliação registrada/)).toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: /Anamnese/ })).toHaveAttribute(
       "href",
-      "/app/clients/intake/sub-c2",
+      "/app/clients/intake/sub-c2?returnTo=%2Fapp%2Fclients%2Fc2%3Ftab%3Dprontuario",
     );
   });
 
