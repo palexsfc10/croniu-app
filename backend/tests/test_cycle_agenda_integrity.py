@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -14,14 +14,6 @@ from app.services import cycle_schedule as sched
 from app.services.auth import AuthError
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-
-
-def _recent_past_monday() -> date:
-    local_today = datetime.now(UTC).astimezone(
-        ZoneInfo("America/Sao_Paulo")
-    ).date()
-    days_since_monday = local_today.weekday()
-    return local_today - timedelta(days=days_since_monday or 7)
 
 
 def _auth(client: TestClient, payload: dict) -> None:
@@ -38,6 +30,28 @@ def _auth(client: TestClient, payload: dict) -> None:
 def _me(client: TestClient) -> tuple[UUID, UUID]:
     me = client.get("/api/v1/auth/me").json()
     return UUID(me["organization"]["id"]), UUID(me["user"]["id"])
+
+
+def _today(client: TestClient) -> date:
+    local_today = client.get("/api/v1/organization/preferences").json()["local_today"]
+    y, m, d = (int(part) for part in local_today.split("-"))
+    return date(y, m, d)
+
+
+def _next_weekday_on_or_after(start: date, weekday: int) -> date:
+    """`weekday` uses Python's convention (Monday=0) — the same one the
+    cycle-intelligence API's `weekdays` payload uses. Relative to whatever
+    "today" actually is when the test runs, instead of a fixed calendar
+    date that ages out of the agenda's real ±31-day window."""
+    return start + timedelta(days=(weekday - start.weekday()) % 7)
+
+
+def _previous_weekday_before(start: date, weekday: int) -> date:
+    """Most recent date strictly before `start` matching `weekday` — used
+    where the test's own intent is a genuinely *past* day, not merely a
+    day distinct from today."""
+    delta = (start.weekday() - weekday) % 7
+    return start - timedelta(days=delta or 7)
 
 
 def _seed(client: TestClient, *, weekly_frequency: int = 3) -> dict:
@@ -233,14 +247,14 @@ def test_start_on_programmed_weekday_includes_first_day(client, register_payload
 def test_past_day_agenda_still_lists_scheduled(client, register_payload):
     _auth(client, register_payload)
     ids = _seed(client, weekly_frequency=2)
-    start_day = _recent_past_monday()
+    past_monday = _previous_weekday_before(_today(client), 0).isoformat()
     created = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": start_day.isoformat(),
+            "starts_on": past_monday,
             "weekdays": [0, 2],
             "starts_time": "09:00:00",
             "idempotency_key": "past-day-agenda",
@@ -248,7 +262,7 @@ def test_past_day_agenda_still_lists_scheduled(client, register_payload):
     )
     assert created.status_code == 201, created.text
     cycle_id = created.json()["id"]
-    day = client.get("/api/v1/agenda/day", params={"day": start_day.isoformat()})
+    day = client.get("/api/v1/agenda/day", params={"day": past_monday})
     assert day.status_code == 200
     rows = day.json()["appointments"]
     assert len(rows) == 1
@@ -259,21 +273,21 @@ def test_past_day_agenda_still_lists_scheduled(client, register_payload):
 def test_cancelled_hidden_unless_include_cancelled(client, register_payload):
     _auth(client, register_payload)
     ids = _seed(client, weekly_frequency=2)
-    start_day = _recent_past_monday()
+    monday = _next_weekday_on_or_after(_today(client), 0).isoformat()
     created = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": start_day.isoformat(),
+            "starts_on": monday,
             "weekdays": [0, 2],
             "starts_time": "10:00:00",
             "idempotency_key": "cancel-filter",
         },
     )
     assert created.status_code == 201, created.text
-    appt_id = client.get("/api/v1/agenda/day", params={"day": start_day.isoformat()}).json()[
+    appt_id = client.get("/api/v1/agenda/day", params={"day": monday}).json()[
         "appointments"
     ][0]["id"]
     cancel = client.patch(
@@ -281,11 +295,11 @@ def test_cancelled_hidden_unless_include_cancelled(client, register_payload):
         json={"status": "cancelled"},
     )
     assert cancel.status_code == 200, cancel.text
-    hidden = client.get("/api/v1/agenda/day", params={"day": start_day.isoformat()})
+    hidden = client.get("/api/v1/agenda/day", params={"day": monday})
     assert hidden.json()["appointments"] == []
     shown = client.get(
         "/api/v1/agenda/day",
-        params={"day": start_day.isoformat(), "include_cancelled": "true"},
+        params={"day": monday, "include_cancelled": "true"},
     )
     assert len(shown.json()["appointments"]) == 1
     assert shown.json()["appointments"][0]["status"] == "cancelled"
@@ -411,14 +425,14 @@ def test_conflict_leaves_no_active_cycle(client, register_payload):
 def test_org_isolation_agenda_day(client, register_payload):
     _auth(client, register_payload)
     ids = _seed(client, weekly_frequency=2)
-    start_day = _recent_past_monday()
+    monday = _next_weekday_on_or_after(_today(client), 0).isoformat()
     created = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": start_day.isoformat(),
+            "starts_on": monday,
             "weekdays": [0, 2],
             "starts_time": "11:00:00",
             "idempotency_key": "iso-a",
@@ -433,7 +447,7 @@ def test_org_isolation_agenda_day(client, register_payload):
         "organization_name": "Outro Studio",
     }
     _auth(client, other)
-    day = client.get("/api/v1/agenda/day", params={"day": start_day.isoformat()})
+    day = client.get("/api/v1/agenda/day", params={"day": monday})
     assert day.json()["appointments"] == []
 
 

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   apiFetch,
   type ClientIntakeLink,
@@ -10,6 +10,7 @@ import {
   type IntakeSubmissionDetail,
 } from "@/lib/api";
 import { CONSENT_LABELS_PT, submissionStatusLabel } from "@/lib/intake";
+import { safeReturnTo } from "@/lib/nomenclature";
 import {
   AnamnesisReader,
   formatAnamnesisAnswer,
@@ -34,9 +35,11 @@ import { formatSubmittedAt, maskContact } from "@/lib/date-format";
 
 type Sheet = null | "menu" | "approve" | "changes" | "reject";
 
-export default function IntakeSubmissionDetailPage() {
+function IntakeSubmissionDetailPageInner() {
   const params = useParams<{ submissionId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = safeReturnTo(searchParams.get("returnTo"));
   const [item, setItem] = useState<IntakeSubmissionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -177,7 +180,7 @@ export default function IntakeSubmissionDetailPage() {
 
   return (
     <div className="space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-up">
-      <BackLink href="/app/clients/intake" label="Novos alunos" />
+      <BackLink href={returnTo || "/app/clients/intake"} label={returnTo ? "Voltar" : "Onboarding de clientes"} />
       {error && !item ? (
         <section className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <p role="alert" className="text-sm text-[var(--color-ink)]">
@@ -621,6 +624,14 @@ export default function IntakeSubmissionDetailPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function IntakeSubmissionDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <IntakeSubmissionDetailPageInner />
+    </Suspense>
   );
 }
 

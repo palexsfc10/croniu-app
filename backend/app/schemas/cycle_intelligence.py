@@ -110,6 +110,12 @@ class IntelligentCycleCreate(BaseModel):
     starts_time: time | None = None
     idempotency_key: str | None = Field(default=None, min_length=4, max_length=64)
     renewal_request_id: UUID | None = None
+    # Generic renewal link — used when the professional starts this cycle
+    # from "Preparar renovação" (Central de Ciclos, Cliente 360°, ou a
+    # Central de Renovações) WITHOUT a portal-submitted renewal_request_id.
+    # Ends the source cycle and marks its renewal case "renovada" the same
+    # way the renewal_request_id path already does.
+    renewed_from_cycle_id: UUID | None = None
 
     @field_validator("weekdays")
     @classmethod

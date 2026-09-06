@@ -166,3 +166,8 @@ class DayAgendaOut(BaseModel):
     timezone: str
     appointments: list[AppointmentOut]
     conflict_count: int = 0
+
+
+class AgendaRangeOut(BaseModel):
+    timezone: str
+    days: list[DayAgendaOut]

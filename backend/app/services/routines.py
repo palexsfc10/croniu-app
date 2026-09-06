@@ -11,10 +11,39 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.models.client import Client
 from app.models.intake import RecurringClientTask
 from app.services import recurrence as rec_svc
 from app.services import routine_occurrences as occ_svc
 from app.services.auth import AuthError
+
+
+def _validate_client_scope(db: Session, *, organization_id: uuid.UUID, spec: dict[str, Any]) -> None:
+    """Defense in depth, matching `agenda_svc.create_appointment`'s
+    `_validate_relations`: a routine's `filter_json.client_id`/`client_ids`
+    must belong to the organization creating it — caller-supplied UUIDs
+    (including from the AI tool) are never trusted as-is."""
+    candidate_ids: set[str] = set()
+    raw_client = spec.get("client_id")
+    if raw_client:
+        candidate_ids.add(str(raw_client))
+    for cid in spec.get("client_ids") or []:
+        candidate_ids.add(str(cid))
+    if not candidate_ids:
+        return
+    try:
+        wanted = {uuid.UUID(cid) for cid in candidate_ids}
+    except ValueError:
+        raise AuthError("client_not_found", "Cliente não encontrado.", 404) from None
+    found = set(
+        db.scalars(
+            select(Client.id).where(
+                Client.organization_id == organization_id, Client.id.in_(wanted)
+            )
+        ).all()
+    )
+    if found != wanted:
+        raise AuthError("client_not_found", "Cliente não encontrado.", 404)
 
 VALID_TASK_TYPES = {
     "review_protocol",
@@ -128,6 +157,7 @@ def create_routine(
         raise AuthError("invalid_name", "Informe o nome da rotina.", 422)
     _validate(task_type, recurrence, weekday)
     spec = occ_svc.validate_trigger(filter_json)
+    _validate_client_scope(db, organization_id=organization_id, spec=spec)
     day = today or date.today()
     nxt = next_run_on or compute_next(
         recurrence=recurrence, filter_json=spec, weekday=weekday, today=day
@@ -185,7 +215,9 @@ def update_routine(
     if "lead_days" in fields and fields["lead_days"] is not None:
         row.lead_days = int(fields["lead_days"])
     if "filter_json" in fields:
-        row.filter_json = occ_svc.validate_trigger(fields["filter_json"])
+        spec = occ_svc.validate_trigger(fields["filter_json"])
+        _validate_client_scope(db, organization_id=organization_id, spec=spec)
+        row.filter_json = spec
     if "next_run_on" in fields:
         row.next_run_on = fields["next_run_on"]
     if "status" in fields and fields["status"] is not None:

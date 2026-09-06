@@ -70,6 +70,13 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       API_PROXY_TARGET: http://api:8000
+      # Explicit server-side signal for dev/HML-only routes (e.g.
+      # /app/dev/design-system) — checked alongside the request Host
+      # header, never alone. PRD's compose.prd.yaml deliberately does not
+      # set this; its absence there (not a value check) is what keeps the
+      # gate closed in PRD even if the Host check were ever bypassed
+      # (a proxy rewrite, a misconfigured domain, etc).
+      CRONIU_ENV: hml
     ports:
       - "${WEB_HOST_PORT}:3000"
     depends_on:

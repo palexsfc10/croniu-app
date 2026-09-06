@@ -235,14 +235,23 @@ def resolve_accompaniment(
     if steps["routine"] == "na":
         summaries["routine"] = "Não será utilizada neste acompanhamento"
 
+    # Avaliação é acompanhamento de evolução, não um requisito do
+    # onboarding inicial — nunca é apresentada como o próximo passo (nem
+    # conta como "a" pendência corrente) antes de existir um ciclo ativo
+    # de fato. O passo continua disponível na lista (ação manual sempre
+    # possível) e nada aqui muda o valor persistido de `steps["evaluation"]`
+    # — só a escolha de qual etapa é *apresentada* como próxima.
+    def _presentable(key: str) -> bool:
+        return not (key == "evaluation" and cycle is None)
+
     next_key = None
     for key in STEP_KEYS:
-        if steps[key] == "todo":
+        if _presentable(key) and steps[key] == "todo":
             next_key = key
             break
     if next_key is None:
         for key in STEP_KEYS:
-            if steps[key] == "later":
+            if _presentable(key) and steps[key] == "later":
                 next_key = key
                 break
 

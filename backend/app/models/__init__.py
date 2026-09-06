@@ -48,6 +48,7 @@ from app.models.platform_membership import PlatformMembership
 from app.models.platform_session import PlatformSession
 from app.models.receivable import Receivable
 from app.models.referral import ReferralAttribution, ReferralCampaign, ReferralPartner
+from app.models.renewal_case import RenewalCase
 from app.models.renewal_request import RenewalRequest
 from app.models.service import Service
 from app.models.session import Session
@@ -87,6 +88,7 @@ __all__ = [
     "AvailabilitySchedule",
     "OrganizationPaymentSettings",
     "RenewalRequest",
+    "RenewalCase",
     "ReferralPartner",
     "ReferralCampaign",
     "ReferralAttribution",

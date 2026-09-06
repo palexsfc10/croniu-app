@@ -1,13 +1,17 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client, IntakeLink, IntakeSubmissionListItem } from "@/lib/api";
 
 const copyTextToClipboard = vi.fn();
 const authState = vi.hoisted(() => ({ professionCode: "personal_trainer" as string | null }));
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: vi.fn(),
-}));
+vi.mock("@/lib/api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/clipboard", () => ({
   copyTextToClipboard: (...args: unknown[]) => copyTextToClipboard(...args),
@@ -67,6 +71,8 @@ function mockApi({
   vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
     if (path.startsWith("/api/v1/clients?")) return { data: clients, error: undefined, status: 200 };
     if (path === "/api/v1/cycles") return { data: [], error: undefined, status: 200 };
+    if (path === "/api/v1/receivables") return { data: [], error: undefined, status: 200 };
+    if (path === "/api/v1/agenda/next-appointments") return { data: {}, error: undefined, status: 200 };
     if (path === "/api/v1/home/summary")
       return {
         data: { local_today: "2026-08-21", new_submissions_count: pending.length },
@@ -87,8 +93,12 @@ function mockApi({
   });
 }
 
+// Desktop and mobile each render their own independent InviteButton
+// instance now (one hidden per breakpoint via CSS, both present in
+// jsdom) — any one of them drives the identical flow, so tests just pick
+// the first match rather than assuming a single trigger exists.
 async function openInviteSheetAndWaitReady() {
-  fireEvent.click(await screen.findByRole("button", { name: "Convidar aluno" }));
+  fireEvent.click((await screen.findAllByRole("button", { name: "Convidar aluno" }))[0]!);
   await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
 }
 
@@ -105,13 +115,17 @@ describe("ClientsPage — invite flow", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows a single invite action, no duplicates, when the list is empty", async () => {
+  it("shows exactly one invite action per breakpoint (desktop + mobile each have their own, never duplicated within either)", async () => {
     mockApi({ clients: [] });
-    render(<ClientsPage />);
+    const { container } = render(<ClientsPage />);
 
     await screen.findByText("Nenhum aluno cadastrado");
-    expect(screen.getAllByRole("button", { name: "Convidar aluno" })).toHaveLength(1);
-    expect(screen.getAllByRole("link", { name: /Adicionar aluno/i })).toHaveLength(1);
+    const desktopHeader = container.querySelector(".hidden.items-center.gap-2.lg\\:flex") as HTMLElement;
+    const mobileHeader = container.querySelector(".flex.items-center.gap-2.lg\\:hidden") as HTMLElement;
+    expect(within(desktopHeader).getAllByRole("button", { name: "Convidar aluno" })).toHaveLength(1);
+    expect(within(mobileHeader).getAllByRole("button", { name: "Convidar aluno" })).toHaveLength(1);
+    expect(within(desktopHeader).getAllByRole("link", { name: /Adicionar aluno/i })).toHaveLength(1);
+    expect(within(mobileHeader).getAllByRole("link", { name: /Adicionar aluno/i })).toHaveLength(1);
     expect(screen.queryByText(/Crie o link/i)).not.toBeInTheDocument();
     expect(
       screen.getByText(/Cadastre um aluno manualmente ou envie um convite/i),
@@ -125,8 +139,8 @@ describe("ClientsPage — invite flow", () => {
       ],
     });
     render(<ClientsPage />);
-    await screen.findByText("Ana Aluna");
-    expect(screen.getByRole("button", { name: "Convidar aluno" })).toBeInTheDocument();
+    await screen.findAllByText("Ana Aluna");
+    expect(screen.getAllByRole("button", { name: "Convidar aluno" }).length).toBeGreaterThan(0);
   });
 
   it("reuses an existing link without ever asking to create one, and never shows the raw URL", async () => {
@@ -144,9 +158,9 @@ describe("ClientsPage — invite flow", () => {
   it("creates the link automatically when none exists yet, with no 'create link' wording and no visible URL", async () => {
     mockApi({ link: noActiveLink, createResult: activeLink });
     render(<ClientsPage />);
-    await screen.findByRole("button", { name: "Convidar aluno" });
+    await screen.findAllByRole("button", { name: "Convidar aluno" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Convidar aluno" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Convidar aluno" })[0]!);
     expect(await screen.findByText("Preparando convite…")).toBeInTheDocument();
 
     await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
@@ -158,7 +172,7 @@ describe("ClientsPage — invite flow", () => {
   it("does not fire a second create request on rapid repeated taps", async () => {
     mockApi({ link: noActiveLink, createResult: activeLink });
     render(<ClientsPage />);
-    const trigger = await screen.findByRole("button", { name: "Convidar aluno" });
+    const trigger = (await screen.findAllByRole("button", { name: "Convidar aluno" }))[0]!;
 
     fireEvent.click(trigger);
     fireEvent.click(trigger);
@@ -223,7 +237,7 @@ describe("ClientsPage — invite flow", () => {
       return { data: null, error: { code: "not_found", message: "unexpected" }, status: 404 };
     });
     render(<ClientsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Convidar aluno" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Convidar aluno" }))[0]!);
 
     expect(
       await screen.findByText("Não foi possível preparar o convite. Tente novamente."),
@@ -236,7 +250,7 @@ describe("ClientsPage — invite flow", () => {
   it("exposes the invite trigger and panel with accessible roles", async () => {
     mockApi({ link: activeLink });
     render(<ClientsPage />);
-    const trigger = await screen.findByRole("button", { name: "Convidar aluno" });
+    const trigger = (await screen.findAllByRole("button", { name: "Convidar aluno" }))[0]!;
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -342,7 +356,32 @@ describe("ClientsPage — nomenclature has no flash", () => {
     expect(screen.getByRole("heading", { name: "Clientes" })).toBeInTheDocument();
   });
 
-  it("lays the list out as a responsive grid from lg upward, single column below that", async () => {
+  it("shows only Todos/Atenção/Renovação as quick pills (same compact toolbar for desktop and mobile), with the rest behind 'Mais filtros'", async () => {
+    authState.professionCode = "personal_trainer";
+    mockApi({ clients: [] });
+    render(<ClientsPage />);
+    await screen.findByText("Nenhum aluno cadastrado");
+
+    const toolbar = screen.getByRole("group", { name: "Filtrar e ordenar" });
+    expect(within(toolbar).getByRole("button", { name: "Todos" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "Atenção" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "Renovação" })).toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "Onboarding" })).not.toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "Financeiro" })).not.toBeInTheDocument();
+    // Ordenar por is always in the compact toolbar itself now — never
+    // hidden behind "Mais filtros" nor duplicated inside it.
+    expect(within(toolbar).getByText("Ordenar por")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(within(toolbar).getByRole("button", { name: /Mais filtros/i }));
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByRole("button", { name: "Onboarding" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Financeiro" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Sem acompanhamento" })).toBeInTheDocument();
+    expect(within(sheet).queryByText("Ordenar por")).not.toBeInTheDocument();
+  });
+
+  it("renders a dense table for desktop (hidden below lg) and a card list for mobile (hidden from lg up)", async () => {
     mockApi({
       clients: [
         { id: "c1", full_name: "Ana Aluna", phone: null, email: null, notes: null, status: "active", created_at: "" } as Client,
@@ -350,12 +389,106 @@ describe("ClientsPage — nomenclature has no flash", () => {
       ],
     });
     const { container } = render(<ClientsPage />);
-    await screen.findByText("Ana Aluna");
-    const list = container.querySelector("ul");
-    expect(list).not.toBeNull();
-    expect(list!.className).toContain("space-y-2.5");
-    expect(list!.className).toContain("lg:grid");
-    expect(list!.className).toContain("lg:grid-cols-2");
-    expect(list!.className).toContain("xl:grid-cols-3");
+    await screen.findAllByText("Ana Aluna");
+
+    const desktopTable = container.querySelector(".hidden.lg\\:block");
+    expect(desktopTable).not.toBeNull();
+    const mobileList = container.querySelector("ul.lg\\:hidden");
+    expect(mobileList).not.toBeNull();
+    expect(mobileList!.className).toContain("space-y-2.5");
+  });
+
+  it("shows a currently-active cycle as 'Ativo', never 'Aguardando início' (regression: today must reach the status computation)", async () => {
+    const activeCycle = {
+      id: "cy1",
+      client_id: "c1",
+      service_id: "s1",
+      cycle_type: "intelligent",
+      status: "active",
+      starts_on: "2026-08-01",
+      ends_on: "2026-09-01",
+      value_cents: 1000,
+      notes: null,
+      last_contacted_at: null,
+      contact_confirmed_at: null,
+      created_at: "",
+      updated_at: "",
+      client_name: "Ana Aluna",
+      service_name: "Aula",
+      days_remaining: 11,
+      is_nearing_end: false,
+      weekdays: [1],
+      default_starts_time: "08:00",
+    };
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/clients?"))
+        return {
+          data: [
+            { id: "c1", full_name: "Ana Aluna", phone: null, email: null, notes: null, status: "active", created_at: "" } as Client,
+          ],
+          error: undefined,
+          status: 200,
+        };
+      if (path === "/api/v1/cycles") return { data: [activeCycle], error: undefined, status: 200 };
+      if (path === "/api/v1/receivables") return { data: [], error: undefined, status: 200 };
+      if (path === "/api/v1/agenda/next-appointments") return { data: {}, error: undefined, status: 200 };
+      if (path === "/api/v1/home/summary")
+        return { data: { local_today: "2026-08-21" }, error: undefined, status: 200 };
+      if (path === "/api/v1/intake-submissions?status=pending_review")
+        return { data: [], error: undefined, status: 200 };
+      return { data: null, error: { code: "not_found", message: "unexpected" }, status: 404 };
+    });
+
+    render(<ClientsPage />);
+    await screen.findAllByText("Ativo");
+    expect(screen.queryByText("Aguardando início")).not.toBeInTheDocument();
+  });
+
+  it("shows the next appointment's date and time exactly once, never doubled (regression)", async () => {
+    const appt = {
+      id: "a1",
+      client_id: "c1",
+      cycle_id: null,
+      service_id: null,
+      location_id: null,
+      title: null,
+      starts_at: "2026-09-04T17:00:00Z",
+      ends_at: "2026-09-04T18:00:00Z",
+      status: "scheduled",
+      notes: null,
+      created_at: "",
+      updated_at: "",
+      client_name: "Ana Aluna",
+      service_name: null,
+      location_name: null,
+      cycle_service_name: null,
+    };
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/clients?"))
+        return {
+          data: [
+            { id: "c1", full_name: "Ana Aluna", phone: null, email: null, notes: null, status: "active", created_at: "" } as Client,
+          ],
+          error: undefined,
+          status: 200,
+        };
+      if (path === "/api/v1/cycles") return { data: [], error: undefined, status: 200 };
+      if (path === "/api/v1/receivables") return { data: [], error: undefined, status: 200 };
+      if (path === "/api/v1/agenda/next-appointments")
+        return { data: { c1: appt }, error: undefined, status: 200 };
+      if (path === "/api/v1/home/summary")
+        return { data: { local_today: "2026-09-02" }, error: undefined, status: 200 };
+      if (path === "/api/v1/intake-submissions?status=pending_review")
+        return { data: [], error: undefined, status: 200 };
+      return { data: null, error: { code: "not_found", message: "unexpected" }, status: 404 };
+    });
+
+    render(<ClientsPage />);
+    const times = await screen.findAllByText(/14:00/);
+    // Once in the desktop table cell, once in the mobile card — never twice
+    // inside the same cell/card (the historical bug: "04/09, 14:00 · 14:00").
+    for (const el of times) {
+      expect(el.textContent?.match(/14:00/g)?.length).toBe(1);
+    }
   });
 });

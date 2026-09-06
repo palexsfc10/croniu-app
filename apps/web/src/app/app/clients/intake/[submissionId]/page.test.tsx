@@ -7,6 +7,7 @@ const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({
   useParams: () => ({ submissionId: "sub-1" }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(""),
 }));
 
 vi.mock("@/lib/api", async () => {

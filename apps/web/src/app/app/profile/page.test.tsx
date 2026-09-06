@@ -11,12 +11,14 @@ vi.mock("next/link", () => ({
 describe("Mais page", () => {
   afterEach(() => cleanup());
 
-  it("shows compact settings groups without profile card or owner", () => {
+  it("links to the unified Settings area and keeps operational rows, without duplicating account/workspace/billing forms here", () => {
     render(<MorePage />);
     expect(screen.getByRole("heading", { name: "Mais" })).toBeInTheDocument();
     expect(screen.getByText(/Configure como o Croniu funciona/i)).toBeInTheDocument();
-    expect(screen.getByText("Configurações do trabalho")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Serviços/i })).toHaveAttribute("href", "/app/services");
+    expect(screen.getAllByRole("link", { name: /Conta e configurações/i })[0]).toHaveAttribute(
+      "href",
+      "/app/settings",
+    );
     expect(screen.getByRole("link", { name: /Modelos de ciclo/i })).toHaveAttribute(
       "href",
       "/app/cycle-templates",
@@ -27,18 +29,19 @@ describe("Mais page", () => {
     );
     expect(screen.getByRole("link", { name: /^Manual/i })).toHaveAttribute("href", "/app/manual");
     expect(screen.getByRole("link", { name: /Locais/i })).toHaveAttribute("href", "/app/locations");
-    expect(screen.getByRole("link", { name: /Horários de atendimento/i })).toHaveAttribute(
-      "href",
-      "/app/availability",
-    );
-    expect(screen.getByRole("link", { name: /Preferências gerais/i })).toHaveAttribute(
-      "href",
-      "/app/preferences",
-    );
-    expect(screen.getByRole("link", { name: /Ajuda e feedback/i })).toHaveAttribute(
-      "href",
-      "/app/help",
-    );
+    // These 4 screens moved into /app/settings — no longer duplicated here.
+    expect(screen.queryByRole("link", { name: /Perfil profissional/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Horários de atendimento/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Preferências gerais/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Ajuda e feedback/i })).not.toBeInTheDocument();
+    // Rebuild: daily-use modules (Serviços, Ciclos e renovações, Rotinas,
+    // Acompanhamentos) moved to the sidebar itself — a duplicate entry
+    // here would be exactly the kind of no-distinct-purpose repetition
+    // the redesign removes.
+    expect(screen.queryByRole("link", { name: /^Serviços/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Ciclos e renovações/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Rotinas/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Acompanhamentos/i })).not.toBeInTheDocument();
     expect(screen.queryByText("Assinatura")).not.toBeInTheDocument();
     expect(screen.queryByText("owner")).not.toBeInTheDocument();
     expect(screen.queryByText(/E-mail/i)).not.toBeInTheDocument();

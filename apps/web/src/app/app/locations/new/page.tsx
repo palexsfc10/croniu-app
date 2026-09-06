@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiFetch, type Location } from "@/lib/api";
@@ -44,7 +45,7 @@ export default function NewLocationPage() {
   return (
     <form onSubmit={submit} className="space-y-4 animate-fade-up">
       <BackLink href="/app/locations" label="Locais" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo local</h1>
+      <PageTitle>Novo local</PageTitle>
       <TextField label="Nome" value={name} onChange={(e) => setName(e.target.value)} required />
       <TextField label="Endereço" value={address} onChange={(e) => setAddress(e.target.value)} />
       <TextField

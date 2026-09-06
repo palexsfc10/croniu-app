@@ -21,7 +21,7 @@ test.describe("Sprint 2D Meu Ciclo", () => {
     expect(client.ok()).toBeTruthy();
     const clientId = (await client.json()).id;
 
-    await page.goto(`/app/clients/${clientId}?tab=dados`);
+    await page.goto(`/app/clients/${clientId}?tab=resumo`);
     await page.getByRole("button", { name: "Criar acesso" }).click();
     await expect(page.getByText(/Acesso ativo/i)).toBeVisible();
     const rotated = await page.request.post(`/api/v1/clients/${clientId}/public-access/rotate`);

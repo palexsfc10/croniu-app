@@ -579,7 +579,9 @@ def create_cycle_with_schedule(
     db.add(cycle)
     db.flush()
 
-    if create_receivable and money.final_cents is not None:
+    # A cycle worth R$0,00 (free) never creates a receivable — there is
+    # nothing to charge, so no pendency should ever exist for it.
+    if create_receivable and money.final_cents:
         due = receivable_due_on or starts_on
         db.add(
             Receivable(

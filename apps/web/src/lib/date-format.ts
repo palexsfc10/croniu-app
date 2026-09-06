@@ -65,6 +65,31 @@ export function formatNextLessonLine(
   return `Próxima aula: ${who} · ${day}${clock ? `, ${clock}` : ""}`;
 }
 
+export function formatInstantDayMonth(isoInstant: string, timeZone: string): string {
+  try {
+    const local = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(isoInstant));
+    return formatHumanDate(local);
+  } catch {
+    return formatHumanDate(isoInstant.slice(0, 10));
+  }
+}
+
+export function formatInstantWeekday(isoInstant: string, timeZone: string): string {
+  try {
+    const name = new Intl.DateTimeFormat("pt-BR", { timeZone, weekday: "long" }).format(
+      new Date(isoInstant),
+    );
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  } catch {
+    return "";
+  }
+}
+
 export function formatIsoDayMonth(iso: string): string {
   const p = parseIsoDate(iso);
   if (!p) return iso;

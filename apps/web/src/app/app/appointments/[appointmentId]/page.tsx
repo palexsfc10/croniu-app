@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -130,7 +131,7 @@ export default function AppointmentDetailPage() {
         }
       />
       <BackLink href="/app/agenda" label="Agenda" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Compromisso</h1>
+      <PageTitle>Compromisso</PageTitle>
       {item ? (
         <p className="text-sm text-[var(--color-ink-muted)]">
           Status: {appointmentStatusLabel(item.status)}

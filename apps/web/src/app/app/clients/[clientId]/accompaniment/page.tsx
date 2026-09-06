@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   apiFetch,
   type Client,
@@ -10,9 +10,13 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor, t } from "@/lib/nomenclature";
+import { useMediaQuery } from "@/lib/use-media-query";
+import { dropdownPanelClass } from "@/lib/use-dropdown";
 import { BackLink } from "@/components/app/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MenuItem } from "@/components/ui/menu-item";
+import { ActionSheet } from "@/components/ui/action-sheet";
 
 type StepKey =
   | "anamnesis"
@@ -35,6 +39,98 @@ const STEP_ORDER: StepKey[] = [
 
 type Status = "todo" | "done" | "later" | "na";
 
+/** Desktop: a small popover anchored to whatever trigger opened it — never
+ * the full-width sheet this used to always render, regardless of screen
+ * size. Mobile: the same options, still a bottom sheet. Both share one
+ * open/close state and the same option list; only the shell differs. */
+function StepOptionsMenu({
+  step,
+  status,
+  busy,
+  onDecide,
+  trigger,
+}: {
+  step: StepKey;
+  status: Status;
+  busy: boolean;
+  onDecide: (status: Status) => void;
+  trigger: (props: { onClick: () => void; ariaExpanded?: boolean }) => ReactNode;
+}) {
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || !isDesktop) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, isDesktop]);
+
+  function choose(next: Status) {
+    onDecide(next);
+    setOpen(false);
+  }
+
+  const canReconsider = status === "na" || status === "later";
+  const titleId = `options-${step}-title`;
+  const options = (
+    <>
+      <MenuItem role={isDesktop ? "menuitem" : undefined} disabled={busy} onClick={() => choose("later")}>
+        Fazer depois
+      </MenuItem>
+      <MenuItem role={isDesktop ? "menuitem" : undefined} disabled={busy} onClick={() => choose("na")}>
+        Não se aplica
+      </MenuItem>
+      <MenuItem role={isDesktop ? "menuitem" : undefined} disabled={busy} onClick={() => choose("done")}>
+        Marcar concluído
+      </MenuItem>
+      {canReconsider ? (
+        <MenuItem role={isDesktop ? "menuitem" : undefined} disabled={busy} onClick={() => choose("todo")}>
+          Reconsiderar
+        </MenuItem>
+      ) : null}
+    </>
+  );
+
+  if (isDesktop) {
+    return (
+      <div className="relative inline-block" ref={rootRef}>
+        {trigger({ onClick: () => setOpen((v) => !v), ariaExpanded: open })}
+        {open ? (
+          <div role="menu" aria-label="Outras opções" className={dropdownPanelClass("left")}>
+            {options}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {trigger({ onClick: () => setOpen(true) })}
+      <ActionSheet open={open} onClose={() => setOpen(false)} labelledBy={titleId}>
+        <h2 id={titleId} className="text-base font-semibold text-[var(--color-ink)]">
+          Como deseja continuar?
+        </h2>
+        <div className="mt-3 flex flex-col gap-1">
+          {options}
+          <MenuItem onClick={() => setOpen(false)}>Cancelar</MenuItem>
+        </div>
+      </ActionSheet>
+    </>
+  );
+}
+
 export default function AccompanimentPreparePage() {
   const params = useParams<{ clientId: string }>();
   const { me } = useAuth();
@@ -42,7 +138,6 @@ export default function AccompanimentPreparePage() {
   const [journey, setJourney] = useState<ClientJourney | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<StepKey | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const returnBase = `/app/clients/${params.clientId}/accompaniment`;
   const terms = nomenclatureFor(me?.organization.profession_code);
@@ -75,7 +170,6 @@ export default function AccompanimentPreparePage() {
       { method: "PATCH", body: JSON.stringify({ step, status }) },
     );
     setBusy(null);
-    setSheet(null);
     if (result.error) {
       setError(result.error.message);
       await load();
@@ -112,31 +206,34 @@ export default function AccompanimentPreparePage() {
   const defined = journey?.progress_defined ?? STEP_ORDER.filter((k) => k !== "activate" && checklist[k] && checklist[k] !== "todo").length;
   const total = journey?.progress_total ?? 6;
   const progressPercent = total > 0 ? Math.max(0, Math.min(100, Math.round((defined / total) * 100))) : 0;
-  const nextStepKey: StepKey | null =
-    STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "todo") ??
-    STEP_ORDER.find((s) => (checklist[s] ?? "todo") === "later") ??
-    null;
+  // The backend (resolve_accompaniment) is the single source of truth for
+  // which step is "next" — it knows things this page can't derive from
+  // the checklist alone, like evaluation never being presentable as next
+  // before a cycle exists. No parallel STEP_ORDER-based re-derivation.
+  const nextStepKey = (journey?.next_step as StepKey | null | undefined) ?? null;
 
   function primary(step: StepKey, value: string) {
     if (value === "done") {
       if (step === "anamnesis") {
         return submissionId
-          ? { href: `/app/clients/intake/${submissionId}`, label: "Ver respostas" }
+          ? { href: `/app/clients/intake/${submissionId}?returnTo=${ret}`, label: "Ver respostas" }
           : null;
       }
       if (step === "cycle") {
-        return { href: `/app/clients/${params.clientId}?tab=acompanhamento`, label: "Ver ciclo" };
+        return { href: `/app/clients/${params.clientId}?tab=plano`, label: "Ver ciclo" };
       }
       if (step === "agenda") {
         return { href: `/app/agenda?clientId=${params.clientId}`, label: "Ver agenda" };
       }
       if (step === "plan") {
-        return { href: `/app/clients/${params.clientId}?tab=acompanhamento`, label: "Ver plano" };
+        return { href: `/app/clients/${params.clientId}?tab=plano`, label: "Ver plano" };
       }
       return null;
     }
     if (value === "na" || value === "later") {
-      return { action: () => setSheet(step), label: value === "later" ? "Continuar agora" : "Alterar decisão" };
+      // Rendered via StepOptionsMenu directly (its trigger IS this
+      // primary button) — no plain action/href to return here.
+      return null;
     }
     if (step === "anamnesis") {
       // A real submission exists and is waiting for review — that's the
@@ -277,28 +374,62 @@ export default function AccompanimentPreparePage() {
                   <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">{summaries[step]}</p>
                 ) : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {action?.href ? (
-                    <Link href={action.href}>
-                      <Button variant={isNext ? "primary" : "secondary"}>{action.label}</Button>
+                  {step === "anamnesis" && value === "todo" && submissionId ? (
+                    // The professional must be able to open and read the
+                    // anamnesis before deciding it's analisada — never just
+                    // a button that marks it reviewed sight unseen.
+                    <Link href={`/app/clients/intake/${submissionId}?returnTo=${ret}`}>
+                      <Button variant="secondary">Abrir anamnese</Button>
                     </Link>
                   ) : null}
-                  {action?.action ? (
-                    <Button
-                      variant={isNext ? "primary" : "secondary"}
-                      disabled={busy !== null}
-                      onClick={action.action}
-                    >
-                      {action.label}
-                    </Button>
-                  ) : null}
+                  {value === "na" || value === "later" ? (
+                    <StepOptionsMenu
+                      step={step}
+                      status={value}
+                      busy={busy !== null}
+                      onDecide={(next) => void persist(step, next)}
+                      trigger={({ onClick }) => (
+                        <Button variant={isNext ? "primary" : "secondary"} disabled={busy !== null} onClick={onClick}>
+                          {value === "later" ? "Continuar agora" : "Alterar decisão"}
+                        </Button>
+                      )}
+                    />
+                  ) : (
+                    <>
+                      {action?.href ? (
+                        <Link href={action.href}>
+                          <Button variant={isNext ? "primary" : "secondary"}>{action.label}</Button>
+                        </Link>
+                      ) : null}
+                      {action?.action ? (
+                        <Button
+                          variant={isNext ? "primary" : "secondary"}
+                          disabled={busy !== null}
+                          onClick={action.action}
+                        >
+                          {action.label}
+                        </Button>
+                      ) : null}
+                    </>
+                  )}
                   {value === "todo" && step !== "activate" ? (
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
-                      onClick={() => setSheet(step)}
-                    >
-                      Outras opções
-                    </button>
+                    <StepOptionsMenu
+                      step={step}
+                      status={value}
+                      busy={busy !== null}
+                      onDecide={(next) => void persist(step, next)}
+                      trigger={({ onClick, ariaExpanded }) => (
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-[var(--color-ink-muted)] underline-offset-2 hover:underline"
+                          aria-haspopup="menu"
+                          aria-expanded={ariaExpanded}
+                          onClick={onClick}
+                        >
+                          Outras opções
+                        </button>
+                      )}
+                    />
                   ) : null}
                 </div>
               </div>
@@ -306,45 +437,6 @@ export default function AccompanimentPreparePage() {
           );
         })}
       </ol>
-
-      {sheet ? (
-        <div
-          className="fixed inset-0 z-30 bg-black/40"
-          role="presentation"
-          onClick={() => setSheet(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="sheet-title"
-            className="absolute inset-x-0 bottom-0 rounded-t-[var(--radius-lg)] bg-[var(--color-surface)] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="sheet-title" className="text-base font-semibold">
-              Como deseja continuar?
-            </h2>
-            <div className="mt-3 grid gap-2">
-              <Button variant="secondary" disabled={busy !== null} onClick={() => void persist(sheet, "later")}>
-                Fazer depois
-              </Button>
-              <Button variant="secondary" disabled={busy !== null} onClick={() => void persist(sheet, "na")}>
-                Não se aplica
-              </Button>
-              <Button variant="ghost" disabled={busy !== null} onClick={() => void persist(sheet, "done")}>
-                Marcar concluído
-              </Button>
-              {(checklist[sheet] === "na" || checklist[sheet] === "later") ? (
-                <Button variant="ghost" disabled={busy !== null} onClick={() => void persist(sheet, "todo")}>
-                  Reconsiderar
-                </Button>
-              ) : null}
-              <Button variant="ghost" onClick={() => setSheet(null)}>
-                Cancelar
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

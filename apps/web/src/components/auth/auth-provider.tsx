@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, type MeResponse } from "@/lib/api";
+import { clearAllClientProfileSnapshots } from "@/lib/client-profile-cache";
 
 type AuthContextValue = {
   me: MeResponse | null;
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setMe(result.data);
     } else {
       setMe(null);
+      clearAllClientProfileSnapshots();
     }
   }, []);
 
@@ -45,11 +47,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setMe(result.data);
         } else {
           setMe(null);
+          clearAllClientProfileSnapshots();
           router.replace("/login");
         }
       } catch {
         if (cancelled) return;
         setMe(null);
+        clearAllClientProfileSnapshots();
         router.replace("/login");
       } finally {
         if (!cancelled) setLoading(false);
@@ -64,6 +68,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await apiFetch("/api/v1/auth/logout", { method: "POST" });
     setMe(null);
+    // Explicit and immediate, not left to the next scoped cache access to
+    // notice the identity is gone — a plain in-memory Map otherwise
+    // outlives logout entirely (it's not sessionStorage/localStorage).
+    clearAllClientProfileSnapshots();
     try {
       sessionStorage.clear();
       localStorage.removeItem("croniu-ui-cache");

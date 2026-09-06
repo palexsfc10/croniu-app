@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -36,7 +37,7 @@ import { safeReturnTo } from "@/lib/nomenclature";
 
 /**
  * Appends `done=cycle` to a path, joining with `&` when the path already
- * carries a query string (e.g. `?tab=acompanhamento`). A naive
+ * carries a query string (e.g. `?tab=plano`). A naive
  * `${path}?done=cycle` produced a second `?`, which corrupts the value of
  * whatever query param came before it once the browser/router re-parses it.
  */
@@ -53,6 +54,11 @@ function NewIntelligentCycleForm() {
   const { me } = useAuth();
   const orgTz = me?.organization.timezone || "America/Sao_Paulo";
   const renewalRequestId = search.get("renewalRequestId");
+  // Generic renewal link (Central de Ciclos, Cliente 360°, Central de
+  // Renovações "Preparar renovação") — used when there is no portal-
+  // submitted renewalRequestId. Ends the source cycle and links the
+  // renewal case the same way the renewalRequestId path already does.
+  const renewedFromCycleId = search.get("renewedFrom");
   const [step, setStep] = useState(1);
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -106,6 +112,7 @@ function NewIntelligentCycleForm() {
     if (startsOn) params.set("startsOn", startsOn);
     if (weekdays.length) params.set("weekdays", weekdays.join(","));
     if (renewalRequestId) params.set("renewalRequestId", renewalRequestId);
+    if (renewedFromCycleId) params.set("renewedFrom", renewedFromCycleId);
     const existingReturn = safeReturnTo(search.get("returnTo"));
     if (existingReturn) params.set("returnTo", existingReturn);
     const q = params.toString();
@@ -222,6 +229,8 @@ function NewIntelligentCycleForm() {
     }
     if (renewalRequestId) {
       body.renewal_request_id = renewalRequestId;
+    } else if (renewedFromCycleId) {
+      body.renewed_from_cycle_id = renewedFromCycleId;
     }
     const result = await apiFetch<Cycle>("/api/v1/cycles/intelligent", {
       method: "POST",
@@ -264,7 +273,7 @@ function NewIntelligentCycleForm() {
     const target = isSafeReturnTo
       ? (returnTo as string)
       : clientId
-        ? `/app/clients/${clientId}?tab=acompanhamento`
+        ? `/app/clients/${clientId}?tab=plano`
         : `/app/cycles/${result.data!.id}`;
     router.replace(withCycleCreatedMarker(target));
   }
@@ -287,7 +296,7 @@ function NewIntelligentCycleForm() {
           Ciclo para <strong className="text-[var(--color-ink)]">{client.full_name}</strong>
         </p>
       ) : null}
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo ciclo</h1>
+      <PageTitle>Novo ciclo</PageTitle>
       <p className="text-sm text-[var(--color-ink-muted)]">Passo {step} de 4</p>
 
       {step === 1 ? (
@@ -596,7 +605,9 @@ function NewIntelligentCycleForm() {
                 ? "Salvando…"
                 : renewalRequestId
                   ? "Confirmar pagamento e aprovar renovação"
-                  : "Confirmar ciclo"}
+                  : renewedFromCycleId
+                    ? "Confirmar renovação"
+                    : "Confirmar ciclo"}
             </Button>
           </div>
         </div>

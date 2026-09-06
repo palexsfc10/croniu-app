@@ -779,10 +779,11 @@ def run_turn(
                 _finish_run(status="awaiting_confirmation")
                 _record_metrics(started, ok=True, tools=len(tool_trace), usage=usage_total)
                 return AgentTurnResult(
-                    reply=(
-                        "Preciso da sua confirmação antes de continuar.\n\n"
-                        f"{pending_action['summary']}"
-                    ),
+                    # The proposal card rendered from `pending_action` already
+                    # shows the summary as its own title — repeating it here
+                    # duplicated the same sentence in both the chat bubble and
+                    # the card immediately below it.
+                    reply="Preciso da sua confirmação antes de continuar.",
                     pending_action=pending_action,
                     tool_trace=tool_trace,
                     usage=_usage_with_cost(settings, usage_total),

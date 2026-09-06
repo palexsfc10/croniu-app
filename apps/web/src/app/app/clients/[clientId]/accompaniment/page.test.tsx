@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const apiFetch = vi.hoisted(() => vi.fn());
@@ -151,6 +151,7 @@ describe("accompaniment checklist row layout", () => {
           activate: "todo",
         },
         next_action: "register_evaluation",
+        next_step: "evaluation",
       },
       submissions: [],
     });
@@ -164,5 +165,107 @@ describe("accompaniment checklist row layout", () => {
     // "Próximo passo" is the current step's label, not a competing action
     // rendered before a badge — no ordering contradiction to check here.
     expect(screen.getByText("Próximo passo")).toBeInTheDocument();
+  });
+});
+
+function setDesktop(isDesktop: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches: isDesktop,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
+  );
+}
+
+describe("Preparar acompanhamento — anamnese access + Outras opções", () => {
+  afterEach(() => {
+    cleanup();
+    apiFetch.mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  it("offers 'Abrir anamnese' alongside 'Marcar como analisada' when a real submission exists", async () => {
+    setDesktop(true);
+    mockApi({
+      journey: { accompaniment_checklist: { anamnesis: "todo" } },
+      submissions: [{ id: "sub-1" }],
+    });
+    render(<AccompanimentPreparePage />);
+    const row = (await screen.findByTestId("checklist-row-anamnesis")) as HTMLElement;
+    const openLink = within(row).getByRole("link", { name: "Abrir anamnese" });
+    expect(openLink).toHaveAttribute(
+      "href",
+      "/app/clients/intake/sub-1?returnTo=%2Fapp%2Fclients%2Fclient-1%2Faccompaniment",
+    );
+    expect(within(row).getByRole("button", { name: "Marcar como analisada" })).toBeInTheDocument();
+  });
+
+  it("desktop: 'Outras opções' opens a menu-role popover anchored to the row, not a full-width sheet", async () => {
+    setDesktop(true);
+    mockApi({
+      journey: { accompaniment_checklist: { anamnesis: "todo" } },
+      submissions: [{ id: "sub-1" }],
+    });
+    render(<AccompanimentPreparePage />);
+    const row = (await screen.findByTestId("checklist-row-anamnesis")) as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Outras opções" }));
+    const menu = await within(row).findByRole("menu", { name: "Outras opções" });
+    expect(within(menu).getByRole("menuitem", { name: "Fazer depois" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Não se aplica" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Marcar concluído" })).toBeInTheDocument();
+    // No full-screen backdrop/dialog on desktop.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("mobile: 'Outras opções' opens the bottom sheet (dialog role), same options", async () => {
+    setDesktop(false);
+    mockApi({
+      journey: { accompaniment_checklist: { anamnesis: "todo" } },
+      submissions: [{ id: "sub-1" }],
+    });
+    render(<AccompanimentPreparePage />);
+    const row = (await screen.findByTestId("checklist-row-anamnesis")) as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Outras opções" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Como deseja continuar?")).toBeInTheDocument();
+    expect(within(dialog).getByText("Fazer depois")).toBeInTheDocument();
+    expect(within(dialog).getByText("Cancelar")).toBeInTheDocument();
+  });
+
+  it("choosing 'Fazer depois' persists the step and swaps the trigger to 'Continuar agora'", async () => {
+    setDesktop(true);
+    let checklist: Record<string, string> = { anamnesis: "todo" };
+    apiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/journey/accompaniment-step")) {
+        const body = JSON.parse((init?.body as string) ?? "{}");
+        checklist = { ...checklist, [body.step]: body.status };
+        return Promise.resolve({ data: journey({ accompaniment_checklist: checklist }) });
+      }
+      if (url.includes("/journey")) {
+        return Promise.resolve({ data: journey({ accompaniment_checklist: checklist }) });
+      }
+      if (url.includes("/intake-submissions")) return Promise.resolve({ data: [{ id: "sub-1" }] });
+      if (url.includes("/api/v1/clients/")) {
+        return Promise.resolve({ data: { id: "client-1", full_name: "Murilo Macedo" } });
+      }
+      return Promise.resolve({ data: null });
+    });
+    render(<AccompanimentPreparePage />);
+    const row = (await screen.findByTestId("checklist-row-anamnesis")) as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Outras opções" }));
+    const menu = await within(row).findByRole("menu", { name: "Outras opções" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Fazer depois" }));
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/api/v1/clients/client-1/journey/accompaniment-step",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ step: "anamnesis", status: "later" }),
+        }),
+      );
+    });
+    await screen.findByRole("button", { name: "Continuar agora" });
   });
 });

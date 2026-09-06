@@ -252,12 +252,17 @@ def cancel_future_open(
     task_id: uuid.UUID,
     today: date,
 ) -> None:
+    # >= today, not > today: an open occurrence due *today* follows the same
+    # rule as future ones — it must not survive as an open pendency once the
+    # parent routine is cancelled/updated. Already-completed or already-
+    # cancelled occurrences are untouched (status == "open" filter above),
+    # and only this routine's own occurrences are touched (meta check below).
     rows = db.scalars(
         select(OperationalOccurrence).where(
             OperationalOccurrence.organization_id == organization_id,
             OperationalOccurrence.source == "routine",
             OperationalOccurrence.status == "open",
-            OperationalOccurrence.due_on > today,
+            OperationalOccurrence.due_on >= today,
         )
     ).all()
     for row in rows:

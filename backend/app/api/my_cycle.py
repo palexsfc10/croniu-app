@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.schemas.my_cycle import (
     PaymentReportRejectIn,
     PaymentSettingsIn,
     PaymentSettingsOut,
+    PublicMyCycleOut,
     RenewalPrepareOut,
     RenewalRequestOut,
 )
@@ -32,9 +33,11 @@ def _http(exc: AuthError) -> HTTPException:
 @router.get("/clients/{client_id}/public-access", response_model=ClientAccessOut)
 def get_client_access(
     client_id: UUID,
+    response: Response,
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> ClientAccessOut:
+    response.headers["Cache-Control"] = "no-store"
     try:
         return my_cycle_svc.get_access_status(
             db, organization_id=auth.organization.id, client_id=client_id
@@ -46,9 +49,11 @@ def get_client_access(
 @router.post("/clients/{client_id}/public-access", response_model=ClientAccessOut)
 def create_client_access(
     client_id: UUID,
+    response: Response,
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> ClientAccessOut:
+    response.headers["Cache-Control"] = "no-store"
     try:
         return my_cycle_svc.create_access(
             db,
@@ -63,9 +68,11 @@ def create_client_access(
 @router.post("/clients/{client_id}/public-access/rotate", response_model=ClientAccessOut)
 def rotate_client_access(
     client_id: UUID,
+    response: Response,
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> ClientAccessOut:
+    response.headers["Cache-Control"] = "no-store"
     try:
         return my_cycle_svc.rotate_access(
             db,
@@ -80,11 +87,31 @@ def rotate_client_access(
 @router.delete("/clients/{client_id}/public-access", response_model=ClientAccessOut)
 def revoke_client_access(
     client_id: UUID,
+    response: Response,
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> ClientAccessOut:
+    response.headers["Cache-Control"] = "no-store"
     try:
         return my_cycle_svc.revoke_access(
+            db, organization_id=auth.organization.id, client_id=client_id
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+
+
+@router.get("/clients/{client_id}/portal-preview", response_model=PublicMyCycleOut)
+def get_portal_preview(
+    client_id: UUID,
+    response: Response,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> PublicMyCycleOut:
+    """Professional-facing preview — renders the exact same data/order/states
+    the client sees on the real Portal. Never exposes the secret token."""
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return my_cycle_svc.build_preview_view(
             db, organization_id=auth.organization.id, client_id=client_id
         )
     except AuthError as exc:

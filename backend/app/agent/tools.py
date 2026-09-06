@@ -18,12 +18,13 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agent import cycle_prepare as cycle_prep
 from app.agent.providers.base import ToolSpec
 from app.agent.temporal import format_human_datetime_range, resolve_org_timezone
+from app.models.appointment import Appointment
 from app.models.client import Client
 from app.models.client_evaluation import ClientEvaluation
 from app.models.cycle import Cycle
@@ -36,8 +37,10 @@ from app.services import cycle_schedule as schedule_svc
 from app.services import domain as domain_svc
 from app.services import evaluations as eval_svc
 from app.services import my_cycle as my_cycle_svc
+from app.services import renewal_case as renewal_case_svc
 from app.services import status_labels
 from app.services.auth import AuthError
+from app.utils.formatting import format_brl_cents
 
 
 class ToolContext(BaseModel):
@@ -183,6 +186,11 @@ class ListRecentEvaluationsArgs(BaseModel):
     limit: int = Field(default=5, ge=1, le=20)
 
 
+class ListClientsNeedingAccompanimentArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    days_threshold: int = Field(default=15, ge=0, le=365)
+
+
 class ListUpcomingAppointmentsArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     within_days: int = Field(default=3, ge=1, le=14)
@@ -205,6 +213,11 @@ class ListRenewalRequestsArgs(BaseModel):
         default=None,
         pattern="^(requested|acknowledged|payment_reported|resolved|dismissed)$",
     )
+
+
+class ListRenewalCasesArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: str = Field(default="needs_decision", pattern="^(needs_decision|all)$")
 
 
 # --------------------------------------------------------------------------
@@ -697,7 +710,9 @@ def _get_payment_status(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
     rows = domain_svc.list_receivables_for_client(
         ctx.db, organization_id=ctx.organization_id, client_id=parsed.client_id
     )
-    pending = [r for r in rows if r.status in {"pending", "expected"}]
+    # A R$0,00 receivable (free cycle) is never a real pendency — never
+    # counted as pending here, same rule as Home/Financeiro/attention items.
+    pending = [r for r in rows if r.status == "pending" and r.amount_cents > 0]
     return {
         "count": len(rows),
         "pending_count": len(pending),
@@ -1075,17 +1090,8 @@ def _get_client_overview(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
 
 def _list_recent_evaluations(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ListRecentEvaluationsArgs.model_validate(args)
-    rows = list(
-        ctx.db.scalars(
-            select(ClientEvaluation)
-            .where(
-                ClientEvaluation.organization_id == ctx.organization_id,
-                ClientEvaluation.status == "published",
-            )
-            .options(selectinload(ClientEvaluation.criteria))
-            .order_by(ClientEvaluation.published_at.desc())
-            .limit(parsed.limit)
-        ).all()
+    rows = eval_svc.list_recent_published(
+        ctx.db, organization_id=ctx.organization_id, limit=parsed.limit
     )
     client_ids = {r.client_id for r in rows}
     names: dict[uuid.UUID, str] = {}
@@ -1131,6 +1137,18 @@ def _list_client_evaluations(ctx: ToolContext, args: dict[str, Any]) -> dict[str
     }
 
 
+def _list_clients_needing_accompaniment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from app.services import client_evolution as evolution_svc
+
+    parsed = ListClientsNeedingAccompanimentArgs.model_validate(args)
+    rows = evolution_svc.list_pending(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        days_threshold=parsed.days_threshold,
+    )
+    return {"days_threshold": parsed.days_threshold, "count": len(rows), "clients": rows}
+
+
 def _list_renewal_requests(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ListRenewalRequestsArgs.model_validate(args)
     rows = my_cycle_svc.list_renewal_requests(
@@ -1151,6 +1169,34 @@ def _list_renewal_requests(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
     }
 
 
+def _list_renewal_cases(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Real renewal *cases* (próxima/pendente/aguardando cliente/atrasada/
+    renovada/encerrada) — distinct from `list_renewal_requests`, which only
+    lists portal-submitted client signals."""
+    parsed = ListRenewalCasesArgs.model_validate(args)
+    today = _tool_today(ctx)
+    rows = renewal_case_svc.list_renewal_cases(
+        ctx.db, organization_id=ctx.organization_id, today=today, scope=parsed.scope
+    )
+    return {
+        "count": len(rows),
+        "renewal_cases": [
+            {
+                "cycle_id": str(r.source_cycle_id),
+                "client_name": r.client_name,
+                "service_name": r.service_name,
+                "ends_on": r.ends_on.isoformat(),
+                "status": r.display_status,
+                "portal_requested": r.portal_requested,
+                "next_contact_date": r.next_contact_date.isoformat()
+                if r.next_contact_date
+                else None,
+            }
+            for r in rows
+        ],
+    }
+
+
 # --------------------------------------------------------------------------
 # Write tools (propose_*) — argument schemas
 # --------------------------------------------------------------------------
@@ -1162,6 +1208,34 @@ class ProposeCreateClientArgs(BaseModel):
     phone: str | None = Field(default=None, max_length=32)
     email: str | None = Field(default=None, max_length=320)
     notes: str | None = Field(default=None, max_length=2000)
+
+
+class ProposeCreateRoutineArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=2, max_length=200)
+    task_type: Literal[
+        "review_protocol",
+        "swap_training",
+        "request_feedback",
+        "send_feedback",
+        "review_evaluation",
+        "review_cycle",
+        "prepare_renewal",
+        "contact_client",
+        "check_payment",
+        "free",
+    ]
+    due_on: date
+    client_id: uuid.UUID | None = None
+    recurrence: Literal[
+        "once", "weekly", "biweekly", "monthly", "bimonthly", "quarterly", "every_n_months"
+    ] = "once"
+    weekday: int | None = Field(default=None, ge=0, le=6)
+
+
+class ProposeCancelRoutineArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    routine_id: uuid.UUID
 
 
 class ProposeCreateAppointmentArgs(BaseModel):
@@ -1193,6 +1267,11 @@ class ProposeRescheduleAppointmentArgs(BaseModel):
         if self.ends_at <= self.starts_at:
             raise ValueError("O fim deve ser posterior ao início.")
         return self
+
+
+class ProposeCancelAppointmentArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    appointment_id: uuid.UUID
 
 
 class ProposeCreateCycleArgs(BaseModel):
@@ -1242,6 +1321,24 @@ class ProposeCreateCycleArgs(BaseModel):
         return self
 
 
+class ProposeCancelCycleArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cycle_id: uuid.UUID
+
+
+class ProposeMarkAwaitingClientArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cycle_id: uuid.UUID
+    next_contact_date: date
+
+
+class ProposeEndRenewalWithoutRenewalArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cycle_id: uuid.UUID
+    resolution_reason: Literal["client_declined", "no_response", "service_ended", "other"]
+    resolution_note: str | None = Field(default=None, max_length=2000)
+
+
 class ProposeRecordPaymentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     receivable_id: uuid.UUID
@@ -1261,6 +1358,11 @@ class ProposeCreateEvaluationDraftArgs(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     summary: str | None = Field(default=None, max_length=5000)
     client_message: str | None = Field(default=None, max_length=5000)
+
+
+class ProposePublishEvaluationArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evaluation_id: uuid.UUID
 
 
 class ProposeAddMilestoneArgs(BaseModel):
@@ -1322,6 +1424,126 @@ def execute_create_client(ctx: ToolContext, arguments: dict[str, Any]) -> dict[s
         notes=parsed.notes,
     )
     return {"id": str(row.id), "kind": "client", "full_name": row.full_name, "status": row.status}
+
+
+def _propose_create_routine(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCreateRoutineArgs.model_validate(args)
+    client_name: str | None = None
+    if parsed.client_id is not None:
+        client = domain_svc.get_client(
+            ctx.db, organization_id=ctx.organization_id, client_id=parsed.client_id
+        )
+        client_name = client.full_name
+    when = parsed.due_on.isoformat()
+    summary = f'Criar rotina "{parsed.name}"' + (f" para {client_name}" if client_name else "")
+    summary += f", prevista para {when}."
+    fields: dict[str, Any] = {"Rotina": parsed.name, "Quando": when}
+    if client_name:
+        fields["Cliente"] = client_name
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_create_routine",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": summary,
+        "summary_fields": fields,
+        "risk_class": "write_common",
+    }
+
+
+def execute_create_routine(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    from app.services import routines as routine_svc
+
+    parsed = ProposeCreateRoutineArgs.model_validate(arguments)
+    filter_json = None
+    if parsed.client_id is not None:
+        filter_json = {
+            "trigger_type": "calendar",
+            "audience": "this_client",
+            "client_id": str(parsed.client_id),
+        }
+    row = routine_svc.create_routine(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        name=parsed.name,
+        task_type=parsed.task_type,
+        recurrence=parsed.recurrence,
+        weekday=parsed.weekday,
+        filter_json=filter_json,
+        next_run_on=parsed.due_on,
+    )
+    return {"id": str(row.id), "kind": "routine", "status": row.status}
+
+
+def _list_routines(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from app.services import routines as routine_svc
+
+    rows = routine_svc.list_routines(ctx.db, organization_id=ctx.organization_id, status="active")
+    items = []
+    for row in rows:
+        client_name = None
+        client_id = (row.filter_json or {}).get("client_id") if row.filter_json else None
+        if client_id:
+            try:
+                client = domain_svc.get_client(
+                    ctx.db, organization_id=ctx.organization_id, client_id=uuid.UUID(client_id)
+                )
+                client_name = client.full_name
+            except (AuthError, ValueError):
+                client_name = None
+        items.append(
+            {
+                "routine_id": str(row.id),
+                "name": row.name,
+                "task_type": row.task_type,
+                "recurrence": row.recurrence,
+                "next_run_on": row.next_run_on.isoformat() if row.next_run_on else None,
+                "client_name": client_name,
+            }
+        )
+    return {"routines": items}
+
+
+def _propose_cancel_routine(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from app.services import routines as routine_svc
+
+    parsed = ProposeCancelRoutineArgs.model_validate(args)
+    routine = routine_svc.get_routine(
+        ctx.db, organization_id=ctx.organization_id, task_id=parsed.routine_id
+    )
+    if routine.status == "archived":
+        return {
+            "error": "Esta rotina já está cancelada.",
+            "code": "already_archived",
+        }
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_cancel_routine",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f'Cancelar a rotina "{routine.name}". Nenhuma nova ocorrência será gerada — '
+            "uma pendência já aberta para hoje, se existir, continua até ser concluída ou "
+            "adiada manualmente em Rotinas."
+        ),
+        "summary_fields": {"Rotina": routine.name},
+        "risk_class": "write_common",
+    }
+
+
+def execute_cancel_routine(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    from app.services import routines as routine_svc
+
+    parsed = ProposeCancelRoutineArgs.model_validate(arguments)
+    # Same service the manual PATCH /routines/{id} endpoint uses, with the
+    # same org-local "today" boundary — keeps IA and manual cancellation
+    # behaviorally identical (see api/routines.py's own update_routine call).
+    row = routine_svc.update_routine(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        task_id=parsed.routine_id,
+        today=_tool_today(ctx),
+        status="archived",
+    )
+    return {"id": str(row.id), "kind": "routine", "status": row.status}
 
 
 def _propose_create_appointment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -1406,6 +1628,42 @@ def execute_reschedule_appointment(ctx: ToolContext, arguments: dict[str, Any]) 
         organization_id=ctx.organization_id,
         appointment_id=parsed.appointment_id,
         fields={"starts_at": parsed.starts_at, "ends_at": parsed.ends_at},
+    )
+    return {"id": str(row.id), "kind": "appointment", "status": row.status}
+
+
+def _propose_cancel_appointment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCancelAppointmentArgs.model_validate(args)
+    appointment = agenda_svc.get_appointment(
+        ctx.db, organization_id=ctx.organization_id, appointment_id=parsed.appointment_id
+    )
+    if appointment.status == "cancelled":
+        raise AuthError(
+            "already_cancelled", "Este compromisso já está cancelado.", 422
+        )
+    client_name = appointment.client.full_name if appointment.client else "cliente"
+    tz_name = resolve_org_timezone(ctx.timezone)
+    when = format_human_datetime_range(appointment.starts_at, appointment.ends_at, timezone=tz_name)
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_cancel_appointment",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": f"Cancelar compromisso de {client_name}: {when}.",
+        "summary_fields": {
+            "Cliente": client_name,
+            "Quando": when,
+        },
+        "risk_class": "write_common",
+    }
+
+
+def execute_cancel_appointment(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCancelAppointmentArgs.model_validate(arguments)
+    row = agenda_svc.update_appointment(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        appointment_id=parsed.appointment_id,
+        fields={"status": "cancelled"},
     )
     return {"id": str(row.id), "kind": "appointment", "status": row.status}
 
@@ -1623,6 +1881,157 @@ def execute_create_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[st
     }
 
 
+def _propose_cancel_cycle(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCancelCycleArgs.model_validate(args)
+    cycle = domain_svc.get_cycle(
+        ctx.db, organization_id=ctx.organization_id, cycle_id=parsed.cycle_id
+    )
+    if cycle.status == "cancelled":
+        return {
+            "error": "Este ciclo já está cancelado.",
+            "code": "already_cancelled",
+        }
+    if cycle.status not in {"active", "ended"}:
+        return {
+            "error": "Só é possível cancelar ciclos ativos ou encerrados.",
+            "code": "invalid_status",
+        }
+    client_name = cycle.client.full_name if cycle.client else "cliente"
+    service_name = cycle.service.name if cycle.service else "serviço"
+    scheduled_count = ctx.db.scalar(
+        select(func.count())
+        .select_from(Appointment)
+        .where(
+            Appointment.organization_id == ctx.organization_id,
+            Appointment.cycle_id == cycle.id,
+            Appointment.status == "scheduled",
+        )
+    ) or 0
+    pending_receivables = [r for r in cycle.receivables if r.status in {"pending", "expected"}]
+    pending_total_cents = sum(r.amount_cents or 0 for r in pending_receivables)
+    consequences = []
+    if scheduled_count:
+        consequences.append(
+            f"{scheduled_count} compromisso(s) agendado(s) serão cancelados"
+        )
+    if pending_receivables:
+        consequences.append(
+            f"{len(pending_receivables)} recebimento(s) pendente(s) "
+            f"(R$ {pending_total_cents / 100:.2f}) serão cancelados"
+        )
+    consequence_text = "; ".join(consequences) if consequences else "nenhum compromisso ou recebimento pendente vinculado"
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_cancel_cycle",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f"Cancelar o ciclo de {service_name} de {client_name}. {consequence_text}."
+        ),
+        "summary_fields": {
+            "Cliente": client_name,
+            "Serviço": service_name,
+            "Compromissos agendados a cancelar": scheduled_count,
+            "Recebimentos pendentes a cancelar": len(pending_receivables),
+        },
+        "risk_class": "write_sensitive",
+    }
+
+
+def execute_cancel_cycle(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeCancelCycleArgs.model_validate(arguments)
+    cycle = domain_svc.cancel_cycle(
+        ctx.db, organization_id=ctx.organization_id, cycle_id=parsed.cycle_id
+    )
+    return {"id": str(cycle.id), "kind": "cycle", "status": cycle.status}
+
+
+_RESOLUTION_REASON_LABEL = {
+    "client_declined": "cliente recusou",
+    "no_response": "sem resposta",
+    "service_ended": "serviço encerrado",
+    "other": "outro motivo",
+}
+
+
+def _propose_mark_awaiting_client(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeMarkAwaitingClientArgs.model_validate(args)
+    cycle = domain_svc.get_cycle(
+        ctx.db, organization_id=ctx.organization_id, cycle_id=parsed.cycle_id
+    )
+    client_name = cycle.client.full_name if cycle.client else "cliente"
+    when = parsed.next_contact_date.strftime("%d/%m/%Y")
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_mark_awaiting_client",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f"Marcar a renovação de {client_name} como “aguardando cliente”, "
+            f"com retorno previsto para {when}."
+        ),
+        "summary_fields": {
+            "Cliente": client_name,
+            "Próximo contato": when,
+        },
+        "risk_class": "write_common",
+    }
+
+
+def execute_mark_awaiting_client(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeMarkAwaitingClientArgs.model_validate(arguments)
+    case = renewal_case_svc.mark_awaiting_client(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        cycle_id=parsed.cycle_id,
+        next_contact_date=parsed.next_contact_date,
+    )
+    return {
+        "id": str(case.id),
+        "kind": "renewal_case",
+        "status": case.status,
+        "next_contact_date": case.next_contact_date.isoformat()
+        if case.next_contact_date
+        else None,
+    }
+
+
+def _propose_end_renewal_without_renewal(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposeEndRenewalWithoutRenewalArgs.model_validate(args)
+    cycle = domain_svc.get_cycle(
+        ctx.db, organization_id=ctx.organization_id, cycle_id=parsed.cycle_id
+    )
+    client_name = cycle.client.full_name if cycle.client else "cliente"
+    reason_label = _RESOLUTION_REASON_LABEL[parsed.resolution_reason]
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_end_renewal_without_renewal",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f"Encerrar a renovação de {client_name} sem criar um novo ciclo "
+            f"(motivo: {reason_label}). Nenhum ciclo é alterado — apenas o "
+            f"processo de renovação é fechado."
+        ),
+        "summary_fields": {
+            "Cliente": client_name,
+            "Motivo": reason_label,
+        },
+        "risk_class": "write_common",
+    }
+
+
+def execute_end_renewal_without_renewal(
+    ctx: ToolContext, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    parsed = ProposeEndRenewalWithoutRenewalArgs.model_validate(arguments)
+    case = renewal_case_svc.end_without_renewal(
+        ctx.db,
+        organization_id=ctx.organization_id,
+        cycle_id=parsed.cycle_id,
+        resolution_reason=parsed.resolution_reason,
+        resolution_note=parsed.resolution_note,
+    )
+    return {"id": str(case.id), "kind": "renewal_case", "status": case.status}
+
+
 def _propose_record_payment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ProposeRecordPaymentArgs.model_validate(args)
     receivable = domain_svc.get_receivable(
@@ -1634,15 +2043,15 @@ def _propose_record_payment(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
             "code": "already_paid",
         }
     client_name = receivable.client.full_name if receivable.client else "cliente"
-    amount = (receivable.amount_cents or 0) / 100
+    amount_label = format_brl_cents(receivable.amount_cents)
     return {
         "needs_confirmation": True,
         "tool_name": "propose_record_payment",
         "arguments": parsed.model_dump(mode="json"),
-        "summary": f"Marcar recebimento de {client_name} (R$ {amount:.2f}) como pago.",
+        "summary": f"Marcar recebimento de {client_name} ({amount_label}) como pago.",
         "summary_fields": {
-            "client_name": client_name,
-            "amount_cents": receivable.amount_cents,
+            "Cliente": client_name,
+            "Valor": amount_label,
         },
         "risk_class": "write_sensitive",
     }
@@ -1672,7 +2081,7 @@ def _propose_mark_appointment_outcome(ctx: ToolContext, args: dict[str, Any]) ->
         "tool_name": "propose_mark_appointment_outcome",
         "arguments": parsed.model_dump(mode="json"),
         "summary": f"Marcar compromisso de {client_name} como {label}.",
-        "summary_fields": {"client_name": client_name, "outcome": parsed.outcome},
+        "summary_fields": {"Cliente": client_name, "Resultado": label.capitalize()},
         "risk_class": "write_common",
     }
 
@@ -1700,7 +2109,7 @@ def _propose_create_evaluation_draft(ctx: ToolContext, args: dict[str, Any]) -> 
         "summary": (
             f"Criar rascunho de avaliação “{parsed.title}” para o cliente {client.full_name}."
         ),
-        "summary_fields": {"client_name": client.full_name, "title": parsed.title},
+        "summary_fields": {"Cliente": client.full_name, "Título": parsed.title},
         "risk_class": "write_common",
     }
 
@@ -1728,6 +2137,47 @@ def execute_create_evaluation_draft(ctx: ToolContext, arguments: dict[str, Any])
     }
 
 
+def _propose_publish_evaluation(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposePublishEvaluationArgs.model_validate(args)
+    evaluation = eval_svc.get_evaluation(
+        ctx.db, organization_id=ctx.organization_id, evaluation_id=parsed.evaluation_id
+    )
+    if evaluation.status == "published":
+        return {
+            "error": "Esta avaliação já está publicada.",
+            "code": "already_published",
+        }
+    client = domain_svc.get_client(
+        ctx.db, organization_id=ctx.organization_id, client_id=evaluation.client_id
+    )
+    return {
+        "needs_confirmation": True,
+        "tool_name": "propose_publish_evaluation",
+        "arguments": parsed.model_dump(mode="json"),
+        "summary": (
+            f"Publicar a avaliação “{evaluation.title}” de {client.full_name}. "
+            "O cliente passará a ver este registro no Portal."
+        ),
+        "summary_fields": {"Cliente": client.full_name, "Título": evaluation.title},
+        "risk_class": "write_common",
+    }
+
+
+def execute_publish_evaluation(ctx: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+    parsed = ProposePublishEvaluationArgs.model_validate(arguments)
+    row = eval_svc.publish_evaluation(
+        ctx.db, organization_id=ctx.organization_id, evaluation_id=parsed.evaluation_id
+    )
+    return {
+        "id": str(row.id),
+        "evaluation_id": str(row.id),
+        "kind": "evaluation",
+        "status": row.status,
+        "title": row.title,
+        "client_id": str(row.client_id),
+    }
+
+
 def _propose_add_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     parsed = ProposeAddMilestoneArgs.model_validate(args)
     client = domain_svc.get_client(
@@ -1738,7 +2188,7 @@ def _propose_add_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
         "tool_name": "propose_add_milestone",
         "arguments": parsed.model_dump(mode="json"),
         "summary": f"Registrar marco “{parsed.title}” para {client.full_name}.",
-        "summary_fields": {"client_name": client.full_name, "title": parsed.title},
+        "summary_fields": {"Cliente": client.full_name, "Título": parsed.title},
         "risk_class": "write_common",
     }
 
@@ -1840,6 +2290,19 @@ TOOLS: dict[str, ToolDefinition] = {
         requires_confirmation=False,
         handler=_list_plan_pendencies,
     ),
+    "list_routines": ToolDefinition(
+        name="list_routines",
+        description=(
+            "Lista as rotinas (definições recorrentes ou pontuais) ativas, com id, nome, "
+            "recorrência, próxima data e cliente vinculado (se houver). Use antes de "
+            "propose_cancel_routine para resolver o nome dito pelo usuário em um routine_id "
+            "real — nunca invente ou reaproveite um id de outra entidade."
+        ),
+        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+        kind="read",
+        requires_confirmation=False,
+        handler=_list_routines,
+    ),
     "get_cycle_details": ToolDefinition(
         name="get_cycle_details",
         description="Detalha um ciclo específico (aulas, valores, datas, renovação).",
@@ -1897,6 +2360,27 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="read",
         requires_confirmation=False,
         handler=_list_renewal_requests,
+    ),
+    "list_renewal_cases": ToolDefinition(
+        name="list_renewal_cases",
+        description=(
+            "Lista os processos reais de renovação (próxima, decisão pendente, "
+            "aguardando cliente, atrasada, renovada, encerrada sem renovação) — "
+            "diferente de list_renewal_requests, que só lista pedidos enviados "
+            "pelo cliente no Portal. scope=needs_decision (padrão) traz só o "
+            "que exige uma decisão agora; scope=all inclui também o histórico "
+            "resolvido (renovada/encerrada)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "enum": ["needs_decision", "all"]},
+            },
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_list_renewal_cases,
     ),
     # --- Read: clientes ----------------------------------------------------
     "find_client": ToolDefinition(
@@ -2158,6 +2642,27 @@ TOOLS: dict[str, ToolDefinition] = {
         requires_confirmation=False,
         handler=_list_client_evaluations,
     ),
+    "list_clients_needing_accompaniment": ToolDefinition(
+        name="list_clients_needing_accompaniment",
+        description=(
+            "Lista clientes com ciclo ativo cuja ÚLTIMA AVALIAÇÃO registrada é mais antiga "
+            "que N dias, ou que nunca tiveram uma. Isto é um sinal de avaliação pendente, "
+            "não de acompanhamento contínuo — o Croniu ainda não tem um registro dedicado "
+            "de acompanhamento (contato/percepção) separado da avaliação. Nunca descreva "
+            "isto ao usuário como 'sem acompanhamento'; diga 'sem avaliação recente' ou "
+            "'avaliação pendente'. Ordenado do mais urgente."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "days_threshold": {"type": "integer", "minimum": 0, "maximum": 365},
+            },
+            "additionalProperties": False,
+        },
+        kind="read",
+        requires_confirmation=False,
+        handler=_list_clients_needing_accompaniment,
+    ),
     # --- Write: clientes -----------------------------------------------------
     "propose_create_client": ToolDefinition(
         name="propose_create_client",
@@ -2176,6 +2681,75 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="write",
         requires_confirmation=True,
         handler=_propose_create_client,
+        risk_class="write_common",
+    ),
+    # --- Write: rotinas --------------------------------------------------------
+    "propose_create_routine": ToolDefinition(
+        name="propose_create_routine",
+        description=(
+            "Propõe criar uma rotina (tarefa a realizar) — pontual (once) ou "
+            "recorrente, opcionalmente vinculada a um cliente. Exige confirmação."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 2, "maxLength": 200},
+                "task_type": {
+                    "type": "string",
+                    "enum": [
+                        "review_protocol",
+                        "swap_training",
+                        "request_feedback",
+                        "send_feedback",
+                        "review_evaluation",
+                        "review_cycle",
+                        "prepare_renewal",
+                        "contact_client",
+                        "check_payment",
+                        "free",
+                    ],
+                },
+                "due_on": {"type": "string", "format": "date"},
+                "client_id": {"type": "string", "format": "uuid"},
+                "recurrence": {
+                    "type": "string",
+                    "enum": [
+                        "once",
+                        "weekly",
+                        "biweekly",
+                        "monthly",
+                        "bimonthly",
+                        "quarterly",
+                        "every_n_months",
+                    ],
+                },
+                "weekday": {"type": "integer", "minimum": 0, "maximum": 6},
+            },
+            "required": ["name", "task_type", "due_on"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_create_routine,
+        risk_class="write_common",
+    ),
+    "propose_cancel_routine": ToolDefinition(
+        name="propose_cancel_routine",
+        description=(
+            "Propõe cancelar (arquivar) uma rotina — nenhuma ocorrência futura será "
+            "gerada. Não apaga o histórico já realizado. Exige confirmação."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "routine_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["routine_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_cancel_routine,
         risk_class="write_common",
     ),
     # --- Write: agenda -------------------------------------------------------
@@ -2218,6 +2792,22 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="write",
         requires_confirmation=True,
         handler=_propose_reschedule_appointment,
+        risk_class="write_common",
+    ),
+    "propose_cancel_appointment": ToolDefinition(
+        name="propose_cancel_appointment",
+        description="Propõe cancelar um compromisso existente. Exige confirmação do usuário.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "appointment_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["appointment_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_cancel_appointment,
         risk_class="write_common",
     ),
     "propose_mark_appointment_outcome": ToolDefinition(
@@ -2318,6 +2908,75 @@ TOOLS: dict[str, ToolDefinition] = {
         handler=_propose_create_cycle,
         risk_class="write_common",
     ),
+    "propose_cancel_cycle": ToolDefinition(
+        name="propose_cancel_cycle",
+        description=(
+            "Propõe cancelar um ciclo ativo ou encerrado. Cancela também os "
+            "compromissos agendados e os recebimentos pendentes vinculados — nunca "
+            "os apaga, apenas marca como cancelados. Não existe 'pausar' ciclo "
+            "(não é um estado suportado) — só cancelamento definitivo. Exige "
+            "confirmação do usuário."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "cycle_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["cycle_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_cancel_cycle,
+        risk_class="write_sensitive",
+    ),
+    "propose_mark_awaiting_client": ToolDefinition(
+        name="propose_mark_awaiting_client",
+        description=(
+            "Propõe marcar a renovação de um ciclo como 'aguardando cliente', com "
+            "uma próxima data de contato obrigatória — para o caso não ficar "
+            "esquecido. Não cria nem altera nenhum ciclo. Exige confirmação."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "cycle_id": {"type": "string", "format": "uuid"},
+                "next_contact_date": {"type": "string", "format": "date"},
+            },
+            "required": ["cycle_id", "next_contact_date"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_mark_awaiting_client,
+        risk_class="write_common",
+    ),
+    "propose_end_renewal_without_renewal": ToolDefinition(
+        name="propose_end_renewal_without_renewal",
+        description=(
+            "Propõe encerrar o processo de renovação de um ciclo sem criar um "
+            "novo ciclo, com um motivo controlado (cliente recusou, sem "
+            "resposta, serviço encerrado, outro). Não cria nem altera nenhum "
+            "ciclo — apenas fecha o processo de renovação. Exige confirmação."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "cycle_id": {"type": "string", "format": "uuid"},
+                "resolution_reason": {
+                    "type": "string",
+                    "enum": ["client_declined", "no_response", "service_ended", "other"],
+                },
+                "resolution_note": {"type": "string", "maxLength": 2000},
+            },
+            "required": ["cycle_id", "resolution_reason"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_end_renewal_without_renewal,
+        risk_class="write_common",
+    ),
     "propose_record_payment": ToolDefinition(
         name="propose_record_payment",
         description="Propõe marcar um recebimento como pago. Exige confirmação do usuário.",
@@ -2357,6 +3016,25 @@ TOOLS: dict[str, ToolDefinition] = {
         kind="write",
         requires_confirmation=True,
         handler=_propose_create_evaluation_draft,
+        risk_class="write_common",
+    ),
+    "propose_publish_evaluation": ToolDefinition(
+        name="propose_publish_evaluation",
+        description=(
+            "Propõe publicar uma avaliação em rascunho — o cliente passa a "
+            "ver este registro no Portal. Exige confirmação do usuário."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "evaluation_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["evaluation_id"],
+            "additionalProperties": False,
+        },
+        kind="write",
+        requires_confirmation=True,
+        handler=_propose_publish_evaluation,
         risk_class="write_common",
     ),
     "propose_add_milestone": ToolDefinition(
@@ -2447,12 +3125,19 @@ TOOLS: dict[str, ToolDefinition] = {
 
 WRITE_EXECUTORS: dict[str, Callable[[ToolContext, dict[str, Any]], dict[str, Any]]] = {
     "create_client": execute_create_client,
+    "create_routine": execute_create_routine,
+    "cancel_routine": execute_cancel_routine,
     "create_appointment": execute_create_appointment,
     "reschedule_appointment": execute_reschedule_appointment,
+    "cancel_appointment": execute_cancel_appointment,
     "mark_appointment_outcome": execute_mark_appointment_outcome,
     "create_cycle": execute_create_cycle,
+    "cancel_cycle": execute_cancel_cycle,
+    "mark_awaiting_client": execute_mark_awaiting_client,
+    "end_renewal_without_renewal": execute_end_renewal_without_renewal,
     "record_payment": execute_record_payment,
     "create_evaluation_draft": execute_create_evaluation_draft,
+    "publish_evaluation": execute_publish_evaluation,
     "add_milestone": execute_add_milestone,
     "complete_occurrence": execute_complete_occurrence,
     "complete_occurrences": execute_complete_occurrences,

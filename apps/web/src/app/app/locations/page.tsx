@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch, type Location } from "@/lib/api";
@@ -48,7 +49,7 @@ export default function LocationsPage() {
       <BackLink href="/app/profile" label="Mais" />
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">Locais</h1>
+          <PageTitle>Locais</PageTitle>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Onde você atende.</p>
         </div>
         <Link href="/app/locations/new">

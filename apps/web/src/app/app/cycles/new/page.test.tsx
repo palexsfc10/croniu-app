@@ -120,7 +120,7 @@ describe("Novo ciclo — redirect after success", () => {
     intelligentResult = {};
     nav.replace.mockClear();
     nav.query =
-      "clientId=c1&serviceId=s1&templateId=t1&returnTo=%2Fapp%2Fclients%2Fc1%3Ftab%3Dacompanhamento";
+      "clientId=c1&serviceId=s1&templateId=t1&returnTo=%2Fapp%2Fclients%2Fc1%3Ftab%3Dplano";
   });
 
   it("does not corrupt a returnTo that already carries a query string", () => {
@@ -138,7 +138,7 @@ describe("Novo ciclo — redirect after success", () => {
 
     await waitFor(() => expect(nav.replace).toHaveBeenCalled());
     const target = nav.replace.mock.calls[0][0] as string;
-    expect(target).toBe("/app/clients/c1?tab=acompanhamento&done=cycle");
+    expect(target).toBe("/app/clients/c1?tab=plano&done=cycle");
     expect(intelligentCalls).toHaveLength(1);
     expect(intelligentCalls[0].client_id).toBe("c1");
   });
@@ -149,7 +149,7 @@ describe("Novo ciclo — redirect after success", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmar ciclo" }));
 
     await waitFor(() => expect(nav.replace).toHaveBeenCalled());
-    expect(nav.replace.mock.calls[0][0]).toBe("/app/clients/c1?tab=acompanhamento&done=cycle");
+    expect(nav.replace.mock.calls[0][0]).toBe("/app/clients/c1?tab=plano&done=cycle");
   });
 
   it("does not navigate on failure and preserves the typed message/date", async () => {

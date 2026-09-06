@@ -1865,6 +1865,7 @@ def get_portal_intake_status(db: Session, *, portal_token: str) -> dict[str, Any
         if (journey and journey.requires_professional_attention)
         else None,
         "protocol": published_protocol,
+        "nomenclature": profession_svc.nomenclature_for(org.profession_code if org else None),
         "correction_path": correction_path,
         "correction_url": correction_url,
     }

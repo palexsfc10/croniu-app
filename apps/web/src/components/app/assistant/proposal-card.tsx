@@ -28,18 +28,47 @@ function statusTone(status: ActionUiStatus) {
   return "bg-[var(--color-ai-subtle)] text-[var(--color-ai-hover)]";
 }
 
-function FieldValue({ label, value }: { label: string; value: string }) {
-  const isConflict = label.toLowerCase() === "conflitos" && value.toLowerCase() !== "nenhum";
+// Every tool this session's backend fix touched already sends a human,
+// Portuguese label as the summary_fields key (e.g. "Cliente", "Valor"). This
+// only fires for a tool nobody has written a proper label for yet — turning
+// a raw snake_case key into readable text instead of showing it verbatim, so
+// a future tool's confirmation card never regresses to a technical dump.
+function humanizeLabel(label: string): string {
+  if (!/^[a-z0-9_]+$/.test(label)) return label;
+  const words = label.split("_").filter(Boolean);
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+// A future tool might send a nested value in summary_fields; stringifying it
+// safely (instead of letting `[object Object]` slip through, or omitting the
+// field entirely) keeps the "no hidden material information" guarantee even
+// for shapes nobody anticipated here.
+function humanizeValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function FieldValue({ label, value }: { label: string; value: unknown }) {
+  const displayLabel = humanizeLabel(label);
+  const displayValue = humanizeValue(value);
+  const isConflict = displayLabel.toLowerCase() === "conflitos" && displayValue.toLowerCase() !== "nenhum";
   return (
     <div className="grid grid-cols-[minmax(0,34%)_1fr] gap-x-2 gap-y-0.5">
-      <dt className="text-xs font-medium text-[var(--color-ink-muted)]">{label}</dt>
+      <dt className="text-xs font-medium text-[var(--color-ink-muted)]">{displayLabel}</dt>
       <dd
         className={[
           "text-sm font-medium",
           isConflict ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]",
         ].join(" ")}
       >
-        {value}
+        {displayValue}
       </dd>
     </div>
   );
@@ -112,7 +141,7 @@ export function ProposalCard({
       {hasStructured ? (
         <dl className="space-y-2.5 px-3.5 py-3">
           {fields.map(([key, value]) => (
-            <FieldValue key={key} label={key} value={String(value)} />
+            <FieldValue key={key} label={key} value={value} />
           ))}
         </dl>
       ) : null}

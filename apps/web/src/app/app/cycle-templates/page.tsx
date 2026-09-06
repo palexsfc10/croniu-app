@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -38,7 +39,7 @@ export default function CycleTemplatesPage() {
 
   async function removeTemplate(id: string) {
     const ok = window.confirm(
-      "Excluir este modelo? Ele some da lista; ciclos já criados não mudam.",
+      "Arquivar este modelo? Ele sai da lista de modelos disponíveis; ciclos já criados com ele não mudam.",
     );
     if (!ok) return;
     setBusyId(id);
@@ -59,14 +60,22 @@ export default function CycleTemplatesPage() {
     <div className="space-y-4 animate-fade-up">
       <BackLink href="/app/profile" label="Mais" />
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)]">Modelos de ciclo</h1>
+        <div className="min-w-0">
+          <PageTitle>Modelos de ciclo</PageTitle>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            Padrões reutilizáveis. Os dias da semana você escolhe no ciclo do cliente.
+            Estrutura reutilizável: com que frequência e por quanto tempo. O valor vem do{" "}
+            <Link href="/app/services" className="font-medium text-[var(--color-link)] hover:underline">
+              serviço
+            </Link>{" "}
+            e os dias da semana você escolhe no{" "}
+            <Link href="/app/cycles" className="font-medium text-[var(--color-link)] hover:underline">
+              ciclo do cliente
+            </Link>
+            .
           </p>
         </div>
-        <Link href="/app/cycle-templates/new">
-          <Button>Novo</Button>
+        <Link href="/app/cycle-templates/new" className="shrink-0">
+          <Button className="whitespace-nowrap">Novo modelo</Button>
         </Link>
       </div>
       {error ? (
@@ -96,19 +105,20 @@ export default function CycleTemplatesPage() {
                 {item.weekly_frequency}x / semana · {item.duration_label}
               </p>
             </button>
-            <div className="mt-3 flex gap-2">
-              <Link href={`/app/cycle-templates/${item.id}`} className="min-w-0 flex-1">
-                <Button fullWidth className="min-h-10">
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <Link href={`/app/cycle-templates/${item.id}`}>
+                <Button variant="secondary" size="sm">
                   Editar
                 </Button>
               </Link>
               <Button
-                fullWidth
-                className="min-h-10 flex-1"
+                variant="ghost"
+                size="sm"
+                className="text-[var(--color-ink-muted)]"
                 disabled={busyId === item.id}
                 onClick={() => void removeTemplate(item.id)}
               >
-                {busyId === item.id ? "…" : "Excluir"}
+                {busyId === item.id ? "…" : "Arquivar"}
               </Button>
             </div>
           </li>

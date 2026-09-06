@@ -38,4 +38,25 @@ describe("SafeChatMarkdown", () => {
     expect(anchors).toHaveLength(1);
     expect(anchors[0].getAttribute("href")).toBe("https://croniu.example");
   });
+
+  it("allows root-relative in-app links, opened in the same tab", () => {
+    const { container } = render(
+      <SafeChatMarkdown text={"[Abrir Plano e assinatura](/app/settings/billing)"} />,
+    );
+    const anchor = container.querySelector("a")!;
+    expect(anchor.getAttribute("href")).toBe("/app/settings/billing");
+    expect(anchor.getAttribute("target")).toBeNull();
+    expect(anchor.getAttribute("rel")).toBeNull();
+  });
+
+  it("rejects protocol-relative and backslash link tricks", () => {
+    const { container } = render(
+      <SafeChatMarkdown
+        text={"[a](//evil.example/x) [b](/\\evil.example) [c](https://ok.example)"}
+      />,
+    );
+    const anchors = container.querySelectorAll("a");
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].getAttribute("href")).toBe("https://ok.example");
+  });
 });

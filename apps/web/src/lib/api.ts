@@ -10,6 +10,11 @@ export type MeResponse = {
     email: string;
     full_name: string;
     created_at: string;
+    // Contact WhatsApp of this login's owner + explicit marketing/support
+    // consent, collected in the post-login onboarding wizard — never at
+    // registration, never required, never used for auth.
+    contact_whatsapp_e164?: string | null;
+    whatsapp_marketing_consent_at?: string | null;
   };
   organization: {
     id: string;
@@ -69,6 +74,16 @@ export type Service = {
   status: string;
   created_at: string;
   updated_at: string;
+};
+
+/** GET /services/usage — real, recomputed counters per service. A service with
+ * no cycle at all is simply absent from the list (render zero for it).
+ * `running_cycles` counts only contracts inside their own period right now. */
+export type ServiceUsage = {
+  service_id: string;
+  running_cycles: number;
+  total_cycles: number;
+  distinct_clients: number;
 };
 
 export type CycleTemplate = {
@@ -138,6 +153,57 @@ export type Cycle = {
   is_nearing_end: boolean;
 };
 
+/** GET /renewal-cases — the professional-side renewal process, one row per
+ * cycle that ever needed a renewal decision. `display_status` is always
+ * derived server-side (never trust a stale client-side computation of it):
+ * "upcoming" | "pending" | "requested" | "awaiting_client" | "overdue" |
+ * "renewed" | "ended_without_renewal". Distinct from `RenewalRequest`, which
+ * is only the portal-submitted client signal (`portal_requested` here echoes
+ * whether one exists, but is never itself a resolution). */
+export type RenewalCaseView = {
+  case_id: string | null;
+  client_id: string;
+  client_name: string | null;
+  source_cycle_id: string;
+  service_name: string | null;
+  ends_on: string;
+  display_status:
+    | "upcoming"
+    | "pending"
+    | "requested"
+    | "awaiting_client"
+    | "overdue"
+    | "renewed"
+    | "ended_without_renewal";
+  portal_requested: boolean;
+  next_contact_date: string | null;
+  resolution_reason: "client_declined" | "no_response" | "service_ended" | "other" | null;
+  resolution_note: string | null;
+  resolved_at: string | null;
+  successor_cycle_id: string | null;
+};
+
+/** GET /receivables/overview — real aggregates over the professional's own
+ * client receivables. Never Croniu's own subscription (that stays in
+ * Conta/Assinatura, unrelated to this endpoint). */
+export type FinancialSummary = {
+  received_month_cents: number;
+  forecast_month_cents: number;
+  overdue_cents: number;
+  overdue_count: number;
+  pending_count: number;
+};
+
+export type MonthlyReceived = {
+  month: string; // "YYYY-MM"
+  received_cents: number;
+};
+
+export type FinancialOverview = {
+  summary: FinancialSummary;
+  monthly_trend: MonthlyReceived[];
+};
+
 export type Receivable = {
   id: string;
   cycle_id: string;
@@ -171,6 +237,11 @@ export type AttentionItem = {
   entity_id: string;
   client_name?: string | null;
   tone?: string;
+  /** Deterministic cross-kind urgency tier from the backend (lower = more
+   * urgent) — see ATTENTION_PRIORITY_RANK in lib/attention-priority.ts for
+   * the shared tier numbers used to rank items that don't come from Home's
+   * own endpoint (accompaniment, routines). */
+  priority_rank?: number;
 };
 
 export type Location = {
@@ -206,11 +277,20 @@ export type Appointment = {
   cycle_service_name: string | null;
 };
 
+/** GET /agenda/next-appointments — keyed by client_id; a client with no
+ * upcoming visible appointment simply has no entry. */
+export type NextAppointmentsByClient = Record<string, Appointment>;
+
 export type DayAgenda = {
   date: string;
   timezone: string;
   appointments: Appointment[];
   conflict_count: number;
+};
+
+export type AgendaRange = {
+  timezone: string;
+  days: DayAgenda[];
 };
 
 export type OrgPreferences = {
@@ -401,6 +481,37 @@ export type IntakeSubmissionListItem = {
   primary_goal: string;
 };
 
+export type OnboardingBoardItem = {
+  client_id: string;
+  client_name: string;
+  entry_type: "manual" | "convite";
+  stage: string;
+  stage_label: string;
+  requires_professional_attention: boolean;
+  attention_note: string | null;
+  days_since_update: number | null;
+  next_action: string | null;
+  next_action_label: string | null;
+  submission_id: string | null;
+  submission_status: string | null;
+};
+
+export type DraftEvaluation = {
+  evaluation_id: string;
+  client_id: string;
+  client_name: string;
+  title: string;
+  updated_at: string;
+};
+
+export type OnboardingBoard = {
+  attention: OnboardingBoardItem[];
+  invite_pending: OnboardingBoardItem[];
+  in_progress: OnboardingBoardItem[];
+  completed: OnboardingBoardItem[];
+  draft_evaluations: DraftEvaluation[];
+};
+
 export type ClientJourney = {
   id: string;
   client_id: string;
@@ -412,6 +523,7 @@ export type ClientJourney = {
   attention_note?: string | null;
   next_action?: string | null;
   next_action_label?: string | null;
+  next_step?: string | null;
   preparation_status?: string | null;
   accompaniment_checklist?: Record<string, string> | null;
   accompaniment_summaries?: Record<string, string | null> | null;
@@ -439,6 +551,11 @@ export type ProfessionProfile = {
   queue_analyze?: string;
   intake_template_code?: string | null;
   collects_health?: boolean;
+};
+
+export type WhatsAppConsent = {
+  contact_whatsapp_e164: string | null;
+  whatsapp_marketing_consent_at: string | null;
 };
 
 export type IntakeConsent = {
@@ -540,6 +657,10 @@ export type PortalIntakeStatus = {
     content_json?: Record<string, unknown>;
     published_at?: string | null;
   } | null;
+  /** Profession-adaptive terms ("aluno"/"cliente"/"paciente"...), same
+   * mechanism the sidebar's nomenclatureFor() mirrors server-side — the
+   * Portal must never hardcode "cliente" for every profession. */
+  nomenclature?: Record<string, string>;
   correction_path?: string | null;
   correction_url?: string | null;
 };
@@ -603,9 +724,17 @@ export type PaymentSettings = {
   whatsapp_enabled?: boolean;
 };
 
+export type PublicNextAppointment = {
+  starts_at: string;
+  service_name?: string | null;
+  status: string;
+};
+
 export type PublicMyCycle = {
   professional_display_name: string;
   client_first_name: string;
+  org_timezone: string;
+  next_appointment?: PublicNextAppointment | null;
   cycle: {
     service_name: string;
     status_summary: string;
@@ -867,6 +996,19 @@ export function formatOrgDateTime(iso: string, timeZone: string, opts?: Intl.Dat
   } catch {
     return new Date(iso).toLocaleString("pt-BR");
   }
+}
+
+/** Day/month only, in the org timezone — unlike `formatOrgDateTime`, this
+ * never carries the hour/minute default through, so it's safe to combine
+ * with a separately formatted time (e.g. "04/09 · 14:00") without the time
+ * appearing twice. */
+export function formatOrgDate(iso: string, timeZone: string) {
+  return formatOrgDateTime(iso, timeZone, {
+    day: "2-digit",
+    month: "2-digit",
+    hour: undefined,
+    minute: undefined,
+  });
 }
 
 /** Human conflict line in the professional's org timezone (never raw ISO UTC). */
