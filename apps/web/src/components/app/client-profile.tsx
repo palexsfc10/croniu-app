@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   apiFetch,
   formatBRL,
@@ -53,6 +53,11 @@ import { ClientPortalCard } from "@/components/app/client-portal-card";
 import { ClientEditDrawer } from "@/components/app/client-edit-drawer";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { ActionSheet } from "@/components/ui/action-sheet";
+import {
+  getClientProfileSnapshot,
+  invalidateClientProfileSnapshot,
+  setClientProfileSnapshot,
+} from "@/lib/client-profile-cache";
 import { TextArea } from "@/components/ui/text-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BlockError } from "@/components/ui/block-error";
@@ -266,34 +271,7 @@ function RelationshipStateCard({
   );
 }
 
-type ClientProfileSnapshot = {
-  item: Client;
-  access: ClientAccess | null;
-  journey: ClientJourney | null;
-  protocols: Protocol[];
-  cycles: Cycle[];
-  todayIso: string;
-  evaluations: ClientEvaluation[];
-  routinePendingCount: number | null;
-  routineOverdueCount: number;
-  submissionId: string | null;
-  appointments: Appointment[];
-  receivables: Receivable[];
-  renewalCases: RenewalCaseView[];
-};
-
-// Session-only (cleared on a real page reload), in-memory — deliberately
-// not localStorage/sessionStorage, since this is a same-tab render
-// optimization, not data that needs to survive a reload or be read
-// anywhere else.
-const clientProfileCache = new Map<string, ClientProfileSnapshot>();
-
-/** Test-only escape hatch — the cache is a module singleton, so it
- * otherwise leaks snapshots across unrelated test cases in the same
- * file/run. Not used by any production code path. */
-export function __resetClientProfileCacheForTests() {
-  clientProfileCache.clear();
-}
+export { __resetClientProfileCacheForTests } from "@/lib/client-profile-cache";
 
 export function ClientProfile({ clientId }: Props) {
   const router = useRouter();
@@ -302,16 +280,25 @@ export function ClientProfile({ clientId }: Props) {
   const timeZone = me?.organization.timezone || "America/Sao_Paulo";
   const rawTab = search.get("tab");
   const tab: Tab = TABS.some((entry) => entry.id === rawTab) ? (rawTab as Tab) : "resumo";
+  // The cache is scoped by authenticated identity (org + user), never by
+  // clientId alone — see client-profile-cache.ts for why a bare
+  // clientId-keyed Map is a security gap, not just a staleness one.
+  // `me` is guaranteed non-null here: AppShell never renders this page
+  // while `!me` (see app-shell.tsx), so there is no "not yet known
+  // identity" render of this component to guard against — but the
+  // `null` fallback is kept anyway so a future change to that gate fails
+  // safe (no scope → no cache read/write, not a guessed one).
+  const scopeKey = me ? `${me.organization.id}:${me.user.id}` : null;
   // The route renders this component with `key={clientId}` (see
   // app/clients/[clientId]/page.tsx), so it fully remounts — fresh state,
   // fresh skeleton — every time, including a plain back-navigation from
   // Rotinas to the SAME student a moment later. Seeding state from the
-  // last good snapshot for THIS id (session-only, module-level cache
-  // below) lets the real content render immediately on that remount
-  // instead of flashing the full skeleton again; `load()` still runs to
-  // refresh it silently. A genuinely new client id has nothing cached and
-  // still gets the real first-load skeleton.
-  const cached = clientProfileCache.get(clientId);
+  // last good snapshot for THIS id+identity lets the real content render
+  // immediately on that remount instead of flashing the full skeleton
+  // again; `load()` still runs to refresh it silently. A genuinely new
+  // client id (or a first render after login/org switch) has nothing
+  // cached and still gets the real first-load skeleton.
+  const cached = scopeKey ? getClientProfileSnapshot(scopeKey, clientId) : undefined;
   const [item, setItem] = useState<Client | null>(cached?.item ?? null);
   const [editOpen, setEditOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -341,11 +328,18 @@ export function ClientProfile({ clientId }: Props) {
   );
   const [submissionId, setSubmissionId] = useState<string | null>(cached?.submissionId ?? null);
   const [renewalCases, setRenewalCases] = useState<RenewalCaseView[]>(cached?.renewalCases ?? []);
+  // Guards against an older, slower `load()` call resolving AFTER a
+  // newer one (e.g. the retry button in the error state fires a second
+  // request before the first settles) — only the response matching the
+  // most recently started request is allowed to touch state or the
+  // cache; an out-of-order one is silently discarded.
+  const requestSeq = useRef(0);
 
   const terms = nomenclatureFor(me?.organization.profession_code);
   const returnResumo = `/app/clients/${clientId}`;
 
   const load = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     const [c, a, j, p, cy, pref, ev, rb, sub, appts, recv, ren] = await Promise.all([
@@ -366,8 +360,24 @@ export function ClientProfile({ clientId }: Props) {
       apiFetch<Receivable[]>(`/api/v1/clients/${clientId}/receivables`),
       apiFetch<RenewalCaseView[]>("/api/v1/renewal-cases?scope=all"),
     ]);
-    if (c.error) setError(c.error.message);
-    else setItem(c.data ?? null);
+    // An older request that resolves after a newer one started must
+    // never win — neither for the live state below nor for the cache.
+    if (seq !== requestSeq.current) return;
+
+    const isAuthOrNotFound = c.status === 401 || c.status === 403 || c.status === 404;
+    if (c.error) {
+      setError(c.error.message);
+      if (isAuthOrNotFound) {
+        // A confirmed auth failure or a client that no longer exists
+        // means whatever was showing (live or hydrated from cache) is no
+        // longer trustworthy — never leave stale content up under a
+        // definitive negative answer from the server.
+        setItem(null);
+        if (scopeKey) invalidateClientProfileSnapshot(scopeKey, clientId);
+      }
+    } else {
+      setItem(c.data ?? null);
+    }
     if (a.data) setAccess(a.data);
     if (j.error && !c.error) setError(j.error.message);
     if (j.data) setJourney(j.data);
@@ -392,9 +402,9 @@ export function ClientProfile({ clientId }: Props) {
     // for that field failed" rule used above for the live state — a
     // background refetch that partially fails must not make a future
     // remount regress a field that was fine a moment ago.
-    if (c.data) {
-      const prevCache = clientProfileCache.get(clientId);
-      clientProfileCache.set(clientId, {
+    if (c.data && scopeKey) {
+      const prevCache = getClientProfileSnapshot(scopeKey, clientId);
+      setClientProfileSnapshot(scopeKey, clientId, {
         item: c.data,
         access: a.data ?? prevCache?.access ?? null,
         journey: j.data ?? prevCache?.journey ?? null,
@@ -416,7 +426,7 @@ export function ClientProfile({ clientId }: Props) {
           : (prevCache?.renewalCases ?? []),
       });
     }
-  }, [clientId]);
+  }, [clientId, scopeKey]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- remote hydrate

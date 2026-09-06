@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,12 +9,19 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(`tab=${nav.tab}${nav.extraQuery}`),
 }));
 
+const DEFAULT_ME = {
+  organization: {
+    id: "org-1",
+    timezone: "America/Sao_Paulo",
+    profession_code: "personal_trainer",
+  },
+  user: { id: "user-1" },
+};
+
+const auth = vi.hoisted(() => ({ me: null as unknown }));
+
 vi.mock("@/components/auth/auth-provider", () => ({
-  useAuth: () => ({
-    me: {
-      organization: { timezone: "America/Sao_Paulo", profession_code: "personal_trainer" },
-    },
-  }),
+  useAuth: () => ({ me: auth.me }),
 }));
 
 const CLIENTS: Record<string, Record<string, unknown>> = {
@@ -336,12 +343,14 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
+import { apiFetch } from "@/lib/api";
 import { ClientProfile, __resetClientProfileCacheForTests } from "@/components/app/client-profile";
 
 describe("ClientProfile", () => {
   beforeEach(() => {
     nav.extraQuery = "";
     nav.replace.mockClear();
+    auth.me = DEFAULT_ME;
     __resetClientProfileCacheForTests();
   });
 
@@ -599,6 +608,7 @@ describe("ClientProfile", () => {
 describe("ClientProfile — no full-skeleton flicker on a same-client remount", () => {
   beforeEach(() => {
     nav.tab = "resumo";
+    auth.me = DEFAULT_ME;
     __resetClientProfileCacheForTests();
   });
 
@@ -638,9 +648,121 @@ describe("ClientProfile — no full-skeleton flicker on a same-client remount", 
   });
 });
 
+describe("ClientProfile — cache is scoped to the authenticated identity, not just clientId", () => {
+  const USER_2 = {
+    organization: DEFAULT_ME.organization,
+    user: { id: "user-2" },
+  };
+  const ORG_2 = {
+    organization: { ...DEFAULT_ME.organization, id: "org-2" },
+    user: DEFAULT_ME.user,
+  };
+
+  beforeEach(() => {
+    nav.tab = "resumo";
+    auth.me = DEFAULT_ME;
+    __resetClientProfileCacheForTests();
+  });
+
+  it("logout then login as a different user never shows the previous user's cached snapshot", async () => {
+    const first = render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    first.unmount();
+
+    // Same org, different authenticated user — same clientId string.
+    auth.me = USER_2;
+    render(<ClientProfile clientId="c1" />);
+    // No stale content leaks through synchronously from the old scope.
+    expect(screen.queryByText("Pedro Silva")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Pedro Silva");
+  });
+
+  it("switching organization never shows the previous organization's cached snapshot", async () => {
+    const first = render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    first.unmount();
+
+    auth.me = ORG_2;
+    render(<ClientProfile clientId="c1" />);
+    expect(screen.queryByText("Pedro Silva")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Pedro Silva");
+  });
+
+  it("re-opening the same client URL after a logout (cache cleared) shows the skeleton again, not the old session's data", async () => {
+    const first = render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    first.unmount();
+
+    // What AuthProvider.logout() does to this cache — see auth-provider.tsx.
+    __resetClientProfileCacheForTests();
+
+    render(<ClientProfile clientId="c1" />);
+    // Nothing hydrated synchronously from the wiped cache.
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Pedro Silva");
+  });
+
+  it("a confirmed 404 on the primary client fetch clears any stale content instead of leaving it up", async () => {
+    const first = render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    first.unmount();
+
+    vi.mocked(apiFetch).mockImplementationOnce(async () => ({
+      error: { code: "client_not_found", message: "Cliente não encontrado." },
+      status: 404,
+    }));
+    render(<ClientProfile clientId="c1" />);
+    // The remount still hydrates from cache first (correct — nothing
+    // wrong with the cache itself yet)...
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Pedro Silva");
+    // ...but once the 404 comes back, the stale content must not stay up.
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+
+    // And the invalidated snapshot must not resurrect Pedro Silva on a
+    // later, ordinary remount.
+    render(<ClientProfile clientId="c1" />);
+    expect(screen.queryByText("Pedro Silva")).not.toBeInTheDocument();
+  });
+
+  it("an older, slower load() resolving after a newer one must not overwrite the current state", async () => {
+    // A same-instance re-request that starts while a previous one is
+    // still in flight has no reachable trigger in the shipped UI today
+    // (the retry action only appears once the prior load has already
+    // settled) — the sequence guard in `load()` exists for robustness
+    // regardless. Exercised here the way it would actually fire: the
+    // `clientId` prop changing on an already-mounted instance (`load`'s
+    // dependency changes, so the effect re-runs) is exactly the
+    // condition the guard checks for, independent of what UI event ever
+    // causes it in production.
+    let resolveSlowClient!: (value: { data: unknown; status: number }) => void;
+    const slowClient = new Promise<{ data: unknown; status: number }>((resolve) => {
+      resolveSlowClient = resolve;
+    });
+    vi.mocked(apiFetch).mockImplementationOnce(() => slowClient as never);
+
+    const { rerender } = render(<ClientProfile clientId="c1" />);
+    // The first (slow) load() for c1 is now in flight.
+    rerender(<ClientProfile clientId="c2" />);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Ana Souza");
+
+    // The OLD, slower request for c1 finally resolves — it must be
+    // discarded, never overwriting the now-current c2 state. Give the
+    // whole async chain (Promise.all → state updates → re-render) real
+    // time to run before asserting it did NOT happen.
+    resolveSlowClient({ data: { ...CLIENTS.c1, full_name: "Nome Desatualizado" }, status: 200 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Ana Souza");
+    });
+    expect(screen.queryByText("Nome Desatualizado")).not.toBeInTheDocument();
+  });
+});
+
 describe("ClientProfile — routines alert strip only fires on real overdue occurrences", () => {
   beforeEach(() => {
     nav.tab = "resumo";
+    auth.me = DEFAULT_ME;
     __resetClientProfileCacheForTests();
   });
 
@@ -678,6 +800,7 @@ describe("ClientProfile — routines alert strip only fires on real overdue occu
 describe("ClientProfile — Próximo passo mirrors only the backend's canonical next step", () => {
   beforeEach(() => {
     nav.tab = "resumo";
+    auth.me = DEFAULT_ME;
   });
 
   it("client without a cycle, anamnese pendente: CTA names the backend's real next step (Analisar formulário), never a re-derived checklist", async () => {
