@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import { apiFetch, type ClientIntakeLink } from "@/lib/api";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { Button } from "@/components/ui/button";
-import { IconLink, IconWhatsApp } from "@/components/ui/icons";
+import { IconCheck, IconCopy, IconLink, IconWhatsApp } from "@/components/ui/icons";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 type InviteState = "idle" | "loading" | "ready" | "error";
 
@@ -17,6 +18,7 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<InviteState>("idle");
   const [link, setLink] = useState<ClientIntakeLink | null>(null);
+  const [copied, setCopied] = useState(false);
   const inFlight = useRef<Promise<void> | null>(null);
 
   async function ensureLink() {
@@ -44,6 +46,7 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
 
   function openSheet() {
     setOpen(true);
+    setCopied(false);
     void ensureLink();
   }
 
@@ -53,6 +56,15 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
       return;
     }
     window.open(link.wa_message_url, "_blank", "noopener,noreferrer");
+  }
+
+  async function copyLink() {
+    if (!link?.public_url) {
+      setState("error");
+      return;
+    }
+    const result = await copyTextToClipboard(link.public_url);
+    setCopied(result.ok);
   }
 
   return (
@@ -67,7 +79,38 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
         <IconLink className="mr-1.5 h-4 w-4" />
         {label}
       </Button>
-      <ActionSheet open={open} onClose={() => setOpen(false)} labelledBy="client-invite-title">
+      <ActionSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        labelledBy="client-invite-title"
+        footer={
+          state === "ready" && link ? (
+            <div className="flex flex-col gap-2">
+              <Button
+                fullWidth
+                variant="secondary"
+                onClick={() => void copyLink()}
+                className="inline-flex items-center justify-center gap-2"
+              >
+                {copied ? (
+                  <IconCheck className="h-4 w-4" aria-hidden />
+                ) : (
+                  <IconCopy className="h-4 w-4" aria-hidden />
+                )}
+                {copied ? "Link copiado" : "Copiar link"}
+              </Button>
+              <Button
+                fullWidth
+                onClick={sendWhatsApp}
+                className="inline-flex items-center justify-center gap-2"
+              >
+                <IconWhatsApp className="h-5 w-5" aria-hidden />
+                Enviar pelo WhatsApp
+              </Button>
+            </div>
+          ) : undefined
+        }
+      >
         <h2 id="client-invite-title" className="text-base font-semibold text-[var(--color-ink)]">
           Envie o formulário para este aluno completar o cadastro
         </h2>
@@ -86,19 +129,6 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
             </p>
             <Button fullWidth variant="secondary" onClick={() => void ensureLink()}>
               Tentar novamente
-            </Button>
-          </div>
-        ) : null}
-
-        {state === "ready" && link ? (
-          <div className="mt-3">
-            <Button
-              fullWidth
-              onClick={sendWhatsApp}
-              className="inline-flex items-center justify-center gap-2"
-            >
-              <IconWhatsApp className="h-5 w-5" aria-hidden />
-              Enviar pelo WhatsApp
             </Button>
           </div>
         ) : null}

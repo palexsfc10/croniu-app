@@ -1,8 +1,14 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const copyTextToClipboard = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   apiFetch: vi.fn(),
+}));
+
+vi.mock("@/lib/clipboard", () => ({
+  copyTextToClipboard: (...args: unknown[]) => copyTextToClipboard(...args),
 }));
 
 import { apiFetch } from "@/lib/api";
@@ -53,12 +59,23 @@ describe("ClientIntakeInviteButton", () => {
     expect(screen.queryByText(LINK.token)).not.toBeInTheDocument();
   });
 
-  it("offers only the WhatsApp action — no separate copy button", async () => {
+  it("offers both Copiar link and Enviar pelo WhatsApp once the invite is ready", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
     render(<ClientIntakeInviteButton clientId="c1" />);
     fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
     await screen.findByRole("button", { name: "Enviar pelo WhatsApp" });
-    expect(screen.queryByRole("button", { name: /copiar/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar link" })).toBeInTheDocument();
+  });
+
+  it("copies the public intake link to the clipboard", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
+    copyTextToClipboard.mockResolvedValue({ ok: true });
+    render(<ClientIntakeInviteButton clientId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
+    const copyButton = await screen.findByRole("button", { name: "Copiar link" });
+    fireEvent.click(copyButton);
+    await screen.findByRole("button", { name: "Link copiado" });
+    expect(copyTextToClipboard).toHaveBeenCalledWith(LINK.public_url);
   });
 
   it("closes when clicking outside the sheet", async () => {
