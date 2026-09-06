@@ -19,6 +19,7 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
   const [state, setState] = useState<InviteState>("idle");
   const [link, setLink] = useState<ClientIntakeLink | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const inFlight = useRef<Promise<void> | null>(null);
 
   async function ensureLink() {
@@ -47,6 +48,7 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
   function openSheet() {
     setOpen(true);
     setCopied(false);
+    setCopyError(null);
     void ensureLink();
   }
 
@@ -63,8 +65,29 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
       setState("error");
       return;
     }
-    const result = await copyTextToClipboard(link.public_url);
-    setCopied(result.ok);
+    // `copyTextToClipboard` never rejects in its real implementation
+    // (every path resolves with `{ ok: false, ... }`), but a permission
+    // prompt dismissed by the user or an unexpected browser quirk is
+    // exactly the kind of thing worth not trusting blindly — never let a
+    // rejected Promise here read as an unhandled crash instead of the
+    // same "couldn't copy" feedback as an ordinary `ok: false`.
+    let ok = false;
+    try {
+      ok = (await copyTextToClipboard(link.public_url)).ok;
+    } catch {
+      ok = false;
+    }
+    if (ok) {
+      setCopied(true);
+      setCopyError(null);
+    } else {
+      // Never silently declare success — an unavailable Clipboard API or
+      // a rejected permission is exactly the case where the professional
+      // most needs the link kept visible, so they can select/copy it by
+      // hand instead of assuming it's already on their clipboard.
+      setCopied(false);
+      setCopyError("Não foi possível copiar o link. Selecione o endereço abaixo para copiar manualmente.");
+    }
   }
 
   return (
@@ -86,6 +109,21 @@ export function ClientIntakeInviteButton({ clientId, label = "Enviar cadastro" }
         footer={
           state === "ready" && link ? (
             <div className="flex flex-col gap-2">
+              {copyError ? (
+                <div className="space-y-1.5">
+                  <p role="alert" className="text-sm text-[var(--color-danger)]">
+                    {copyError}
+                  </p>
+                  <input
+                    readOnly
+                    aria-label="Endereço do link de cadastro"
+                    value={link.public_url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onClick={(e) => e.currentTarget.select()}
+                    className="w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-sm text-[var(--color-ink-muted)]"
+                  />
+                </div>
+              ) : null}
               <Button
                 fullWidth
                 variant="secondary"

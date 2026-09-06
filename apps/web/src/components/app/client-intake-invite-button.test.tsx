@@ -78,6 +78,51 @@ describe("ClientIntakeInviteButton", () => {
     expect(copyTextToClipboard).toHaveBeenCalledWith(LINK.public_url);
   });
 
+  it("shows an inline error and keeps the link selectable when the clipboard reports failure", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
+    copyTextToClipboard.mockResolvedValue({ ok: false, error: "clipboard_unavailable" });
+    render(<ClientIntakeInviteButton clientId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
+    const copyButton = await screen.findByRole("button", { name: "Copiar link" });
+    fireEvent.click(copyButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível copiar o link");
+    // Never silently declares success.
+    expect(screen.queryByRole("button", { name: "Link copiado" })).not.toBeInTheDocument();
+    // The link stays available as a manual fallback.
+    const fallback = screen.getByRole("textbox", { name: "Endereço do link de cadastro" });
+    expect(fallback).toHaveValue(LINK.public_url);
+  });
+
+  it("shows the same failure feedback when the clipboard Promise rejects instead of resolving with ok:false", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
+    copyTextToClipboard.mockRejectedValue(new Error("permission denied"));
+    render(<ClientIntakeInviteButton clientId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
+    const copyButton = await screen.findByRole("button", { name: "Copiar link" });
+    fireEvent.click(copyButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível copiar o link");
+    expect(screen.getByRole("textbox", { name: "Endereço do link de cadastro" })).toHaveValue(
+      LINK.public_url,
+    );
+  });
+
+  it("clears the previous failure once a retry actually copies successfully", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
+    copyTextToClipboard.mockResolvedValueOnce({ ok: false, error: "clipboard_unavailable" });
+    copyTextToClipboard.mockResolvedValueOnce({ ok: true });
+    render(<ClientIntakeInviteButton clientId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar cadastro" }));
+    const copyButton = await screen.findByRole("button", { name: "Copiar link" });
+    fireEvent.click(copyButton);
+    await screen.findByRole("alert");
+
+    fireEvent.click(screen.getByRole("button", { name: "Copiar link" }));
+    await screen.findByRole("button", { name: "Link copiado" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("closes when clicking outside the sheet", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ data: LINK, error: undefined, status: 200 });
     render(<ClientIntakeInviteButton clientId="c1" />);
