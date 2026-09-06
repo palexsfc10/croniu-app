@@ -563,6 +563,98 @@ def test_accompaniment_pending_uses_organization_civil_day_not_utc(client, regis
     assert not any(r["client_id"] == person["id"] for r in rows_local_correct)
 
 
+def test_evaluations_recent_draft_wins_over_older_published(client, register_payload):
+    """D4: a published evaluation from weeks ago must never outrank a
+    genuinely more recent draft — the contract is "most recent
+    non-archived record", not "most recent published record"."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Rascunho Recente", phone="11955558888")
+    old_published = client.post(
+        f"/api/v1/clients/{person['id']}/evaluations", json={"title": "Publicada antiga"}
+    )
+    assert old_published.status_code == 201, old_published.text
+    pub = client.post(f"/api/v1/evaluations/{old_published.json()['id']}/publish")
+    assert pub.status_code == 200, pub.text
+    _backdate_evaluation(
+        old_published.json()["id"], published_at=datetime.now(UTC) - timedelta(days=30)
+    )
+
+    recent_draft = client.post(
+        f"/api/v1/clients/{person['id']}/evaluations", json={"title": "Rascunho de hoje"}
+    )
+    assert recent_draft.status_code == 201, recent_draft.text
+
+    _backdate_client_created_at(person["id"], days_ago=60)
+    _create_active_cycle(client, client_id=person["id"], key="d4-draft-wins", days_ago=30)
+
+    res = client.get("/api/v1/accompaniment/pending?days_threshold=15")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    # The recent draft is the effective "last registered" record, so the
+    # 30-day-old published evaluation must not keep this client pending.
+    assert person["id"] not in ids
+
+
+def test_evaluations_recent_published_wins_over_older_draft(client, register_payload):
+    """D4, the mirrored case: an old, never-published draft must not
+    keep a client pending once a real, recent publication exists."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Publicacao Recente", phone="11955559999")
+    old_draft = client.post(
+        f"/api/v1/clients/{person['id']}/evaluations", json={"title": "Rascunho antigo"}
+    )
+    assert old_draft.status_code == 201, old_draft.text
+    _backdate_evaluation(old_draft.json()["id"], created_at=datetime.now(UTC) - timedelta(days=30))
+
+    recent_published = client.post(
+        f"/api/v1/clients/{person['id']}/evaluations", json={"title": "Publicada agora"}
+    )
+    assert recent_published.status_code == 201, recent_published.text
+    pub = client.post(f"/api/v1/evaluations/{recent_published.json()['id']}/publish")
+    assert pub.status_code == 200, pub.text
+
+    _backdate_client_created_at(person["id"], days_ago=60)
+    _create_active_cycle(client, client_id=person["id"], key="d4-published-wins", days_ago=30)
+
+    res = client.get("/api/v1/accompaniment/pending?days_threshold=15")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    assert person["id"] not in ids
+
+
+def test_evaluations_archived_most_recent_is_ignored(client, register_payload):
+    """D4: an archived record, however recent, must never count as "the
+    last registered evaluation" — the older, valid published one still
+    applies."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Arquivada Recente", phone="11955550001")
+    valid_old = client.post(
+        f"/api/v1/clients/{person['id']}/evaluations", json={"title": "Válida, mais antiga"}
+    )
+    assert valid_old.status_code == 201, valid_old.text
+    pub = client.post(f"/api/v1/evaluations/{valid_old.json()['id']}/publish")
+    assert pub.status_code == 200, pub.text
+    _backdate_evaluation(valid_old.json()["id"], published_at=datetime.now(UTC) - timedelta(days=30))
+
+    archived_recent = client.post(
+        f"/api/v1/clients/{person['id']}/evaluations", json={"title": "Arquivada, mais recente"}
+    )
+    assert archived_recent.status_code == 201, archived_recent.text
+    arch = client.post(f"/api/v1/evaluations/{archived_recent.json()['id']}/archive")
+    assert arch.status_code == 200, arch.text
+
+    _backdate_client_created_at(person["id"], days_ago=60)
+    _create_active_cycle(client, client_id=person["id"], key="d4-archived-ignored", days_ago=30)
+
+    res = client.get("/api/v1/accompaniment/pending?days_threshold=15")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    # The valid (non-archived) evaluation is 30 days old — at/over the
+    # 15-day threshold — so the client IS legitimately pending; the more
+    # recent archived one must not have hidden that by looking "recent".
+    assert person["id"] in ids
+
+
 # --- AI: propose_create_routine / execute_create_routine ---------------
 
 

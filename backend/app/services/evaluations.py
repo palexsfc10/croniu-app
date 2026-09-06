@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.client_evaluation import ClientEvaluation, ClientEvaluationCriterion
@@ -168,7 +168,16 @@ def latest_by_client(
 ) -> dict[uuid.UUID, ClientEvaluation]:
     """Most recent non-archived evaluation per client, reduced in Python —
     same portable pattern as `agenda_svc.next_appointment_by_client` — used
-    to compute "clientes que precisam de acompanhamento" without N+1."""
+    to compute "clientes que precisam de acompanhamento" without N+1.
+
+    Ordered by the *effective* timestamp (published_at when the row is
+    published, created_at otherwise) — never `published_at DESC NULLS
+    LAST` followed by `created_at DESC` as two separate sort keys, which
+    always ranks every published row (however old) ahead of every draft
+    (however recent): NULLS LAST only breaks ties among equal
+    `published_at` values, it does not compare across the two columns.
+    """
+    effective_at = func.coalesce(ClientEvaluation.published_at, ClientEvaluation.created_at)
     rows = list(
         db.scalars(
             select(ClientEvaluation)
@@ -176,10 +185,7 @@ def latest_by_client(
                 ClientEvaluation.organization_id == organization_id,
                 ClientEvaluation.status != "archived",
             )
-            .order_by(
-                ClientEvaluation.published_at.desc().nulls_last(),
-                ClientEvaluation.created_at.desc(),
-            )
+            .order_by(effective_at.desc())
         ).all()
     )
     latest: dict[uuid.UUID, ClientEvaluation] = {}
