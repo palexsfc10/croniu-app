@@ -276,10 +276,14 @@ function AgendaRoutines({
   }
   if (!openItems.length && !completedItems.length && !overdueCount) return null;
 
-  const visibleOpen = variant === "mobile" ? openItems.slice(0, MOBILE_ROUTINE_CAP) : openItems;
-  const hasMore =
-    variant === "mobile" &&
-    (openItems.length > visibleOpen.length || completedItems.length > 0);
+  // One shared, normalized list for both platforms — open/deferred first,
+  // completed (reduced, no actions) last, exactly the same order and
+  // content on desktop and mobile. Only the mobile cap is applied after
+  // this derivation, so a completed item that lands within the first
+  // three is never filtered out just for being completed.
+  const combined = [...openItems, ...completedItems];
+  const visible = variant === "mobile" ? combined.slice(0, MOBILE_ROUTINE_CAP) : combined;
+  const hasMore = variant === "mobile" && combined.length > visible.length;
 
   return (
     <section aria-label="Rotinas do dia" className="space-y-2">
@@ -302,25 +306,27 @@ function AgendaRoutines({
         </Link>
       ) : null}
 
-      {visibleOpen.length || (variant === "desktop" && completedItems.length) ? (
+      {visible.length ? (
         <ul className="space-y-1.5">
-          {visibleOpen.map((item) => (
-            <RoutineRow
-              key={item.id}
-              item={item}
-              todayIso={todayIso}
-              busy={busyId === item.id}
-              actions={{
-                onComplete: () => void decide(item.id, "completed"),
-                onDefer: () => void decide(item.id, "deferred"),
-              }}
-            />
-          ))}
-          {variant === "desktop"
-            ? completedItems.map((item) => (
-                <RoutineRow key={item.id} item={item} todayIso={todayIso} busy={false} actions={null} />
-              ))
-            : null}
+          {visible.map((item) => {
+            const isCompleted = item.status === "completed";
+            return (
+              <RoutineRow
+                key={item.id}
+                item={item}
+                todayIso={todayIso}
+                busy={busyId === item.id}
+                actions={
+                  isCompleted
+                    ? null
+                    : {
+                        onComplete: () => void decide(item.id, "completed"),
+                        onDefer: () => void decide(item.id, "deferred"),
+                      }
+                }
+              />
+            );
+          })}
         </ul>
       ) : null}
 
