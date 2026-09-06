@@ -45,6 +45,41 @@ def _backdate_client_created_at(client_id: str, *, days_ago: int) -> None:
         db.close()
 
 
+def _set_client_created_at(client_id: str, dt: datetime) -> None:
+    """Like `_backdate_client_created_at`, but for tests that need an
+    EXACT timestamp (e.g. a specific UTC hour near local midnight) rather
+    than a relative day count."""
+    from app.db import SessionLocal
+    from app.models.client import Client
+
+    db = SessionLocal()
+    try:
+        row = db.get(Client, uuid.UUID(client_id))
+        row.created_at = dt
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _set_org_timezone(client, tz_name: str) -> None:
+    """No REST endpoint edits `Organization.timezone` directly — same
+    reach-into-a-session pattern already used above for other fields the
+    public API never lets a test control."""
+    from app.db import SessionLocal
+    from app.models.organization import Organization
+
+    org_id, _ = _me(client)
+    db = SessionLocal()
+    try:
+        row = db.get(Organization, org_id)
+        row.timezone = tz_name
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+
+
 def _create_client(client, name="Aluna Teste", phone="11999990000"):
     res = client.post("/api/v1/clients", json={"full_name": name, "phone": phone})
     assert res.status_code == 201, res.text
@@ -653,6 +688,215 @@ def test_evaluations_archived_most_recent_is_ignored(client, register_payload):
     # 15-day threshold — so the client IS legitimately pending; the more
     # recent archived one must not have hidden that by looking "recent".
     assert person["id"] in ids
+
+
+# --- Codex double-check (SHA 9491f11): the two vigency/eligibility -----
+# --- anchors (client.created_at, evaluation effective timestamp) still -
+# --- extracted `.date()` from a UTC timestamp directly, instead of -----
+# --- converting to the organization's local date first (org_local_date)-
+
+
+def test_client_created_at_anchor_uses_org_local_date_not_utc_date(client, register_payload):
+    """A client created at 01:30 UTC actually belongs to the PREVIOUS
+    civil day in America/Sao_Paulo (UTC-3: 01:30 UTC = 22:30 the day
+    before, locally). Constructed to land exactly at the 15-day
+    threshold in local terms, one day short of it in naive UTC terms —
+    the naive version would wrongly say "not pending yet"."""
+    _register(client, register_payload)
+    real_today = _today(client)
+    person = _create_client(client, name="Criado Perto da Meia-Noite UTC", phone="11955550010")
+
+    target_local_date = real_today - timedelta(days=15)
+    # UTC calendar date is target_local_date + 1 (a moment early enough in
+    # that UTC day — 01:30 — that subtracting 3h still lands on
+    # target_local_date locally).
+    created_at_utc = datetime.combine(
+        target_local_date + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+    ) + timedelta(hours=1, minutes=30)
+    _set_client_created_at(person["id"], created_at_utc)
+    # Cycle starts well before the anchor under test, so `max(starts_on,
+    # local(created_at))` picks the created_at-derived date, not the cycle.
+    _create_active_cycle(client, client_id=person["id"], key="tz-created-anchor", days_ago=20)
+
+    from app.db import SessionLocal
+    from app.services import client_evolution
+
+    org_id, _ = _me(client)
+    frozen_now = datetime.combine(real_today, datetime.min.time(), tzinfo=UTC) + timedelta(hours=15)
+    db = SessionLocal()
+    try:
+        rows = client_evolution.list_pending(
+            db, organization_id=org_id, days_threshold=15, now=frozen_now
+        )
+    finally:
+        db.close()
+
+    assert any(r["client_id"] == person["id"] for r in rows)
+
+
+def test_evaluation_timestamp_anchor_uses_org_local_date_not_utc_date(client, register_payload):
+    """Same bug, the other anchor: an evaluation published at 01:30 UTC
+    belongs to the previous civil day in São Paulo. Constructed at
+    exactly the 15-day threshold in local terms (pending), one day short
+    in naive UTC terms (would wrongly read as not-yet-pending)."""
+    _register(client, register_payload)
+    real_today = _today(client)
+    person = _create_client(client, name="Avaliação Perto da Meia-Noite UTC", phone="11955550011")
+    _backdate_client_created_at(person["id"], days_ago=90)
+    _create_active_cycle(client, client_id=person["id"], key="tz-eval-anchor", days_ago=30)
+
+    eval_res = client.post(
+        f"/api/v1/clients/{person['id']}/evaluations", json={"title": "Avaliação de fronteira"}
+    )
+    assert eval_res.status_code == 201, eval_res.text
+    pub = client.post(f"/api/v1/evaluations/{eval_res.json()['id']}/publish")
+    assert pub.status_code == 200, pub.text
+
+    target_local_date = real_today - timedelta(days=15)
+    published_at_utc = datetime.combine(
+        target_local_date + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+    ) + timedelta(hours=1, minutes=30)
+    _backdate_evaluation(eval_res.json()["id"], published_at=published_at_utc)
+
+    from app.db import SessionLocal
+    from app.services import client_evolution
+
+    org_id, _ = _me(client)
+    frozen_now = datetime.combine(real_today, datetime.min.time(), tzinfo=UTC) + timedelta(hours=15)
+    db = SessionLocal()
+    try:
+        rows = client_evolution.list_pending(
+            db, organization_id=org_id, days_threshold=15, now=frozen_now
+        )
+    finally:
+        db.close()
+
+    assert any(r["client_id"] == person["id"] for r in rows)
+
+
+def test_created_at_anchor_positive_offset_timezone_does_not_anticipate_pendency(
+    client, register_payload
+):
+    """The opposite direction, for a positive-offset zone (Asia/Tokyo,
+    UTC+9, no DST): naively taking `.date()` on a late-UTC timestamp can
+    read as ONE DAY EARLIER than the true local date, which would
+    wrongly ANTICIPATE the pendency (14 real days read as 15, crossing
+    the threshold a day early). Cycle/client are set up BEFORE switching
+    the org timezone so the setup calls (which read `local_today` for
+    their own purposes) still see the default, valid timezone."""
+    _register(client, register_payload)
+    real_today = _today(client)
+    person = _create_client(client, name="Fuso Positivo", phone="11955550012")
+    _create_active_cycle(client, client_id=person["id"], key="tz-positive-anchor", days_ago=20)
+    _set_org_timezone(client, "Asia/Tokyo")
+
+    target_local_date = real_today - timedelta(days=14)  # one short of the 15-day threshold
+    # 20:00 UTC the day before + 9h = 05:00 local on target_local_date.
+    created_at_utc = datetime.combine(
+        target_local_date - timedelta(days=1), datetime.min.time(), tzinfo=UTC
+    ) + timedelta(hours=20)
+    _set_client_created_at(person["id"], created_at_utc)
+
+    from app.db import SessionLocal
+    from app.services import client_evolution
+
+    org_id, _ = _me(client)
+    # 10:00 UTC is still the same calendar day locally for BOTH a
+    # negative offset (América/São Paulo, UTC-3 → 07:00) and this
+    # positive one (Asia/Tokyo, UTC+9 → 19:00) — unlike a UTC hour chosen
+    # only to be safe for São Paulo, which can already roll over into the
+    # next Tokyo day.
+    frozen_now = datetime.combine(real_today, datetime.min.time(), tzinfo=UTC) + timedelta(hours=10)
+    db = SessionLocal()
+    try:
+        rows = client_evolution.list_pending(
+            db, organization_id=org_id, days_threshold=15, now=frozen_now
+        )
+    finally:
+        db.close()
+
+    # Correctly only 14 local days have passed — must not be pending yet.
+    assert not any(r["client_id"] == person["id"] for r in rows)
+
+
+def test_created_at_anchor_invalid_timezone_falls_back_to_sao_paulo(client, register_payload):
+    """An invalid/garbage stored organization timezone must fall back to
+    America/Sao_Paulo — same contract `org_today` already has — never the
+    server's own timezone. Setup (client/cycle) happens BEFORE the
+    timezone is corrupted: `/organization/preferences` (used internally
+    by `_today`/`_create_active_cycle`) has no such fallback and would
+    itself crash on the invalid value — a separate, pre-existing gap
+    outside this fatia's two named anchors, not something to paper over
+    here by avoiding the call, but also not something to fix as a side
+    effect of this test."""
+    _register(client, register_payload)
+    real_today = _today(client)
+    person = _create_client(client, name="Fuso Invalido", phone="11955550013")
+    _create_active_cycle(client, client_id=person["id"], key="tz-invalid-anchor", days_ago=20)
+    _set_org_timezone(client, "Not/ARealZone")
+
+    target_local_date = real_today - timedelta(days=15)
+    created_at_utc = datetime.combine(
+        target_local_date + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+    ) + timedelta(hours=1, minutes=30)
+    _set_client_created_at(person["id"], created_at_utc)
+
+    from app.db import SessionLocal
+    from app.services import client_evolution
+
+    org_id, _ = _me(client)
+    frozen_now = datetime.combine(real_today, datetime.min.time(), tzinfo=UTC) + timedelta(hours=10)
+    db = SessionLocal()
+    try:
+        rows = client_evolution.list_pending(
+            db, organization_id=org_id, days_threshold=15, now=frozen_now
+        )
+    finally:
+        db.close()
+
+    # Same expectation as the valid-São Paulo case above: falls back to
+    # America/Sao_Paulo, so the local (not naive UTC) date still applies.
+    assert any(r["client_id"] == person["id"] for r in rows)
+
+
+def test_multiple_cycles_still_correct_with_local_date_anchor(client, register_payload):
+    """D2 (múltiplos ciclos) re-checked together with the local-date
+    anchor fix: an old cycle whose eligibility depends on the corrected
+    `client.created_at` anchor must not be hidden by a second, recently
+    started cycle for another service."""
+    _register(client, register_payload)
+    real_today = _today(client)
+    person = _create_client(client, name="Multiplos Ciclos Fronteira UTC", phone="11955550014")
+
+    target_local_date = real_today - timedelta(days=15)
+    created_at_utc = datetime.combine(
+        target_local_date + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+    ) + timedelta(hours=1, minutes=30)
+    _set_client_created_at(person["id"], created_at_utc)
+    # Old cycle starts before the client even existed by REST timestamps
+    # (backdated far enough that created_at remains the binding anchor).
+    _create_active_cycle(client, client_id=person["id"], key="tz-multi-old", days_ago=20)
+    # A second, very recent cycle for another service must not erase the
+    # pendency legitimately derived from the client's own creation date.
+    _create_active_cycle(
+        client, client_id=person["id"], key="tz-multi-recent", days_ago=1, starts_time="18:00:00"
+    )
+
+    from app.db import SessionLocal
+    from app.services import client_evolution
+
+    org_id, _ = _me(client)
+    frozen_now = datetime.combine(real_today, datetime.min.time(), tzinfo=UTC) + timedelta(hours=15)
+    db = SessionLocal()
+    try:
+        rows = client_evolution.list_pending(
+            db, organization_id=org_id, days_threshold=15, now=frozen_now
+        )
+    finally:
+        db.close()
+
+    matches = [r for r in rows if r["client_id"] == person["id"]]
+    assert len(matches) == 1
 
 
 # --- AI: propose_create_routine / execute_create_routine ---------------

@@ -35,7 +35,7 @@ from app.models.organization import Organization
 from app.services import agenda as agenda_svc
 from app.services import cycle_period
 from app.services import evaluations as eval_svc
-from app.services.pendencies import org_today
+from app.services.pendencies import org_local_date, org_today
 
 DEFAULT_DAYS_THRESHOLD = 15
 MAX_RESULTS = 200
@@ -53,7 +53,8 @@ def list_pending(
     limit = max(1, min(limit, MAX_RESULTS))
 
     org = db.get(Organization, organization_id)
-    today = org_today(org.timezone if org else None, now=now)
+    tz_name = org.timezone if org else None
+    today = org_today(tz_name, now=now)
 
     clients = list(
         db.scalars(
@@ -112,7 +113,7 @@ def list_pending(
         last = latest_eval.get(client.id)
         last_at = (last.published_at or last.created_at) if last else None
         if last_at is not None:
-            days_since = (today - last_at.date()).days
+            days_since = (today - org_local_date(last_at, tz_name)).days
             if days_since < days_threshold:
                 continue
             # Eligibility doesn't depend on which cycle here — any vigent
@@ -129,7 +130,7 @@ def list_pending(
             # deles já passou do limiar — o ciclo recém-iniciado do outro
             # serviço nunca apaga essa pendência.
             eligible = [
-                (c, max(c.starts_on, client.created_at.date()))
+                (c, max(c.starts_on, org_local_date(client.created_at, tz_name)))
                 for c in cycles
             ]
             eligible = [(c, a) for c, a in eligible if (today - a).days >= days_threshold]

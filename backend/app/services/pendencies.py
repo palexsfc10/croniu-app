@@ -43,13 +43,32 @@ OCCURRENCE_TYPES = {
 DECISION_STATUSES = {"completed", "deferred", "dismissed", "cancelled"}
 
 
+def _org_zoneinfo(tz_name: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(tz_name or "America/Sao_Paulo")
+    except Exception:
+        return ZoneInfo("America/Sao_Paulo")
+
+
 def org_today(tz_name: str, now: datetime | None = None) -> date:
     now = now or datetime.now(UTC)
-    try:
-        tz = ZoneInfo(tz_name or "America/Sao_Paulo")
-    except Exception:
-        tz = ZoneInfo("America/Sao_Paulo")
-    return now.astimezone(tz).date()
+    return now.astimezone(_org_zoneinfo(tz_name)).date()
+
+
+def org_local_date(dt: datetime, tz_name: str | None) -> date:
+    """Convert an ORM timestamp to the organization's local calendar date —
+    never call `.date()` directly on a stored timestamp: columns are
+    `DateTime(timezone=True)` and normally come back tz-aware (UTC) from
+    psycopg, but a naive value (e.g. built by hand in a test or a legacy
+    row) is treated as UTC too, matching how the rest of the codebase
+    already stamps "now" (`datetime.now(UTC)`) — never the server's local
+    timezone. Extracting `.date()` before converting silently uses the
+    UTC calendar day, which can be a day off from the organization's own
+    civil day near local midnight. Same invalid-timezone fallback as
+    `org_today`."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(_org_zoneinfo(tz_name)).date()
 
 
 def routine_defaults(org: Organization) -> dict[str, Any]:
