@@ -339,6 +339,230 @@ def test_accompaniment_pending_isolated_by_tenant(client, register_payload):
     assert res.json()["items"] == []
 
 
+# --- D1/D2/D3/D4: double-check findings on cycle vigency, multiple ------
+# --- cycles, org timezone, and "most recent non-archived evaluation" ---
+
+
+def _create_cycle_exact_window(
+    client, *, client_id, key, starts_on: date, duration_days: int, starts_time="09:00:00"
+):
+    """Like `_create_active_cycle`, but with `fixed_days` duration for
+    exact, predictable control over `ends_on` (= starts_on + duration_days,
+    the service's own documented "exclusive renewal date" — see
+    `cycle_calc.add_fixed_days`) — needed to hit the exact exclusive
+    vigency boundary (`ends_on == today`) instead of an approximate
+    calendar-months window."""
+    svc = client.post(
+        "/api/v1/services",
+        json={
+            "name": "Aula",
+            "default_duration_minutes": 60,
+            "default_duration_days": duration_days,
+            "default_price_cents": 9000,
+        },
+    )
+    assert svc.status_code == 201, svc.text
+    tpl = client.post(
+        "/api/v1/cycle-templates",
+        json={
+            "name": "Janela exata",
+            "weekly_frequency": 1,
+            "duration_type": "fixed_days",
+            "duration_value": duration_days,
+        },
+    )
+    assert tpl.status_code == 201, tpl.text
+    weekday = starts_on.weekday()
+    cycle = client.post(
+        "/api/v1/cycles/intelligent",
+        json={
+            "client_id": client_id,
+            "service_id": svc.json()["id"],
+            "cycle_template_id": tpl.json()["id"],
+            "starts_on": starts_on.isoformat(),
+            "weekdays": [weekday],
+            "starts_time": starts_time,
+            "generate_appointments": True,
+            "create_receivable": False,
+            "idempotency_key": key,
+        },
+    )
+    assert cycle.status_code == 201, cycle.text
+    return cycle.json()
+
+
+def _backdate_evaluation(
+    evaluation_id: str, *, created_at: datetime | None = None, published_at: datetime | None = None
+) -> None:
+    """The evaluations API always stamps `created_at`/`published_at` at
+    request time — tests proving the *ordering* between an old and a
+    recent record need to control these directly, same rationale as
+    `_backdate_client_created_at` above."""
+    from app.db import SessionLocal
+    from app.models.client_evaluation import ClientEvaluation
+
+    db = SessionLocal()
+    try:
+        row = db.get(ClientEvaluation, uuid.UUID(evaluation_id))
+        if created_at is not None:
+            row.created_at = created_at
+        if published_at is not None:
+            row.published_at = published_at
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_accompaniment_pending_excludes_expired_cycle_still_marked_active(
+    client, register_payload
+):
+    """D1: a cycle persisted as `active` whose exclusive vigency already
+    ended (`ends_on == today`) must not generate a pendency — status
+    alone is not vigency. The cycle's status is never touched by this
+    fix, only whether it counts as currently vigent."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Ciclo Vencido Ainda Ativo", phone="11955553333")
+    today = _today(client)
+    _backdate_client_created_at(person["id"], days_ago=60)
+    cycle = _create_cycle_exact_window(
+        client,
+        client_id=person["id"],
+        key="d1-expired",
+        starts_on=today - timedelta(days=30),
+        duration_days=30,
+    )
+    assert cycle["ends_on"] == today.isoformat()
+    cycles = client.get("/api/v1/cycles", params={"client_id": person["id"]}).json()
+    assert cycles[0]["status"] == "active"
+
+    res = client.get("/api/v1/accompaniment/pending")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    assert person["id"] not in ids
+
+
+def test_accompaniment_pending_excludes_future_cycle_even_with_old_evaluation(
+    client, register_payload
+):
+    """D1: a cycle that hasn't started yet never generates a pendency,
+    even when the client already has an old evaluation on record — there
+    is no vigent accompaniment to be behind on yet."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Ciclo Futuro", phone="11955554444")
+    today = _today(client)
+    _backdate_client_created_at(person["id"], days_ago=60)
+    old_eval = client.post(
+        f"/api/v1/clients/{person['id']}/evaluations", json={"title": "Avaliação antiga"}
+    )
+    assert old_eval.status_code == 201, old_eval.text
+    pub = client.post(f"/api/v1/evaluations/{old_eval.json()['id']}/publish")
+    assert pub.status_code == 200, pub.text
+    _backdate_evaluation(old_eval.json()["id"], published_at=datetime.now(UTC) - timedelta(days=30))
+    _create_cycle_exact_window(
+        client,
+        client_id=person["id"],
+        key="d1-future",
+        starts_on=today + timedelta(days=5),
+        duration_days=30,
+    )
+
+    res = client.get("/api/v1/accompaniment/pending")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    assert person["id"] not in ids
+
+
+def test_accompaniment_pending_excludes_cancelled_cycle(client, register_payload):
+    """D1 (explicit coverage per the audit's checklist): a cancelled
+    cycle, however old and however "vigent" its dates would otherwise
+    read, never counts — only `status == 'active'` is eligible."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Ciclo Cancelado", phone="11955555555")
+    today = _today(client)
+    _backdate_client_created_at(person["id"], days_ago=60)
+    cycle = _create_cycle_exact_window(
+        client,
+        client_id=person["id"],
+        key="d1-cancelled",
+        starts_on=today - timedelta(days=30),
+        duration_days=60,
+    )
+    cancel = client.post(f"/api/v1/cycles/{cycle['id']}/cancel")
+    assert cancel.status_code == 200, cancel.text
+
+    res = client.get("/api/v1/accompaniment/pending")
+    assert res.status_code == 200
+    ids = [r["client_id"] for r in res.json()["items"]]
+    assert person["id"] not in ids
+
+
+def test_accompaniment_pending_survives_a_second_recent_cycle_for_another_service(
+    client, register_payload
+):
+    """D2: a client with two currently-vigent cycles (two different
+    services) — one old enough to already owe an avaliação, one started
+    yesterday — must still surface as pending exactly once. The recent
+    cycle must never silently erase the older, legitimate signal."""
+    _register(client, register_payload)
+    person = _create_client(client, name="Dois Servicos", phone="11955556666")
+    today = _today(client)
+    _backdate_client_created_at(person["id"], days_ago=60)
+    _create_active_cycle(client, client_id=person["id"], key="d2-old-service", days_ago=30)
+    _create_active_cycle(
+        client, client_id=person["id"], key="d2-recent-service", days_ago=1, starts_time="18:00:00"
+    )
+
+    res = client.get("/api/v1/accompaniment/pending?days_threshold=15")
+    assert res.status_code == 200
+    items = res.json()["items"]
+    matches = [r for r in items if r["client_id"] == person["id"]]
+    assert len(matches) == 1
+    assert matches[0]["days_since_last_evaluation"] is None
+
+
+def test_accompaniment_pending_uses_organization_civil_day_not_utc(client, register_payload):
+    """D3: near-midnight UTC, a São Paulo org (UTC-3) is still on the
+    previous civil day — the threshold must be computed against that
+    local day, never `datetime.now(UTC).date()`."""
+    from app.db import SessionLocal
+    from app.services import client_evolution
+
+    _register(client, register_payload)
+    me = client.get("/api/v1/auth/me").json()
+    org_id = uuid.UUID(me["organization"]["id"])
+    today = _today(client)
+    person = _create_client(client, name="Fronteira UTC", phone="11955557777")
+    _backdate_client_created_at(person["id"], days_ago=60)
+    # Cycle anchored 14 days before local "today" — one day short of the
+    # 15-day threshold when measured locally.
+    _create_active_cycle(client, client_id=person["id"], key="d3-utc", days_ago=14)
+
+    # 01:00 UTC the *next* calendar day is still 22:00 local the day
+    # before in America/Sao_Paulo (UTC-3) — still `today` locally.
+    frozen_utc_now = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=UTC) + timedelta(hours=1)
+
+    db = SessionLocal()
+    try:
+        rows_utc_bug = client_evolution.list_pending(
+            db, organization_id=org_id, days_threshold=15, now=frozen_utc_now
+        )
+        rows_local_correct = client_evolution.list_pending(
+            db,
+            organization_id=org_id,
+            days_threshold=15,
+            now=datetime.combine(today, datetime.min.time(), tzinfo=UTC) + timedelta(hours=12),
+        )
+    finally:
+        db.close()
+
+    # If `now` were taken as UTC's own calendar date, 14 days since the
+    # cycle start would already read as 15 days (the UTC date rolled
+    # over) and wrongly emit a pendency a day early.
+    assert not any(r["client_id"] == person["id"] for r in rows_utc_bug)
+    assert not any(r["client_id"] == person["id"] for r in rows_local_correct)
+
+
 # --- AI: propose_create_routine / execute_create_routine ---------------
 
 

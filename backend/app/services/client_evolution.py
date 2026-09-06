@@ -23,7 +23,7 @@ is deliberately named differently to avoid colliding with that file.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -31,8 +31,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.client import Client
 from app.models.cycle import Cycle
+from app.models.organization import Organization
 from app.services import agenda as agenda_svc
+from app.services import cycle_period
 from app.services import evaluations as eval_svc
+from app.services.pendencies import org_today
 
 DEFAULT_DAYS_THRESHOLD = 15
 MAX_RESULTS = 200
@@ -44,9 +47,13 @@ def list_pending(
     organization_id: uuid.UUID,
     days_threshold: int = DEFAULT_DAYS_THRESHOLD,
     limit: int = MAX_RESULTS,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     days_threshold = max(0, days_threshold)
     limit = max(1, min(limit, MAX_RESULTS))
+
+    org = db.get(Organization, organization_id)
+    today = org_today(org.timezone if org else None, now=now)
 
     clients = list(
         db.scalars(
@@ -60,7 +67,17 @@ def list_pending(
         return []
     client_ids = [c.id for c in clients]
 
-    active_cycles = list(
+    # Every cycle with a compatible status is fetched in one bulk query
+    # (no N+1); vigency (starts_on <= today < ends_on, the same exclusive
+    # contract as cycle_period.is_current — never `pick_operational_cycle`,
+    # which falls back to the next upcoming cycle in other contexts where
+    # that fallback is wanted, but not here: a future cycle must never
+    # generate a pendency) is applied in Python per row, and ALL of a
+    # client's currently-vigent cycles are kept — never collapsed into a
+    # single "last one wins" dict before eligibility is decided, or a
+    # second, recently-started cycle for another service could silently
+    # erase a pendency legitimately owed by an older, still-vigent one.
+    all_cycles = list(
         db.scalars(
             select(Cycle)
             .where(
@@ -71,22 +88,26 @@ def list_pending(
             .options(selectinload(Cycle.service))
         ).all()
     )
-    active_cycle_by_client: dict[uuid.UUID, Cycle] = {c.client_id: c for c in active_cycles}
+    current_cycles_by_client: dict[uuid.UUID, list[Cycle]] = {}
+    for c in all_cycles:
+        if cycle_period.is_current(starts_on=c.starts_on, ends_on=c.ends_on, today=today):
+            current_cycles_by_client.setdefault(c.client_id, []).append(c)
 
     latest_eval = eval_svc.latest_by_client(db, organization_id=organization_id)
     next_appt = agenda_svc.next_appointment_by_client(
         db, organization_id=organization_id, client_ids=client_ids
     )
 
-    today = datetime.now(UTC).date()
     rows: list[dict[str, Any]] = []
     for client in clients:
         # "Precisa de acompanhamento" só se aplica a quem está em
-        # acompanhamento ativo de fato (ciclo ativo real) — um cliente sem
-        # ciclo já é sinalizado por outro motivo (onboarding/sem
-        # acompanhamento) na lista de Clientes, não aqui.
-        cycle = active_cycle_by_client.get(client.id)
-        if cycle is None:
+        # acompanhamento ativo de fato (ciclo vigente real) — um cliente
+        # sem ciclo vigente já é sinalizado por outro motivo (onboarding/
+        # sem acompanhamento) na lista de Clientes, não aqui. Um ciclo
+        # persistido como "active" mas já encerrado ou ainda futuro não
+        # conta como vigente.
+        cycles = current_cycles_by_client.get(client.id)
+        if not cycles:
             continue
         last = latest_eval.get(client.id)
         last_at = (last.published_at or last.created_at) if last else None
@@ -94,17 +115,30 @@ def list_pending(
             days_since = (today - last_at.date()).days
             if days_since < days_threshold:
                 continue
+            # Eligibility doesn't depend on which cycle here — any vigent
+            # cycle qualifies once the evaluation itself is old enough.
+            # Deterministic representative for display purposes only.
+            cycle = min(cycles, key=lambda c: (c.starts_on, str(c.id)))
         else:
             # Avaliação é acompanhamento de evolução, não requisito
             # instantâneo do cadastro: sem nenhum registro ainda, a
             # pendência só nasce depois do MESMO limiar acima, contado a
-            # partir do início do ciclo ativo — ou da criação do cliente,
-            # se for posterior (ex.: ciclo lançado retroativamente).
+            # partir do início de CADA ciclo vigente — ou da criação do
+            # cliente, se for posterior. Um cliente com dois ciclos
+            # vigentes (ex.: dois serviços) já é elegível se QUALQUER um
+            # deles já passou do limiar — o ciclo recém-iniciado do outro
+            # serviço nunca apaga essa pendência.
+            eligible = [
+                (c, max(c.starts_on, client.created_at.date()))
+                for c in cycles
+            ]
+            eligible = [(c, a) for c, a in eligible if (today - a).days >= days_threshold]
+            if not eligible:
+                continue
+            # Most overdue (earliest anchor) is the representative shown.
+            cycle, _anchor = min(eligible, key=lambda pair: (pair[1], str(pair[0].id)))
             # `days_since_last_evaluation` continua None na saída: não há
             # "avaliação há N dias" para mostrar quando nunca houve uma.
-            anchor = max(cycle.starts_on, client.created_at.date())
-            if (today - anchor).days < days_threshold:
-                continue
             days_since = None
         appt = next_appt.get(client.id)
         rows.append(
