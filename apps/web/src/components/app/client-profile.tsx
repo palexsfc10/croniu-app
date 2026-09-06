@@ -266,6 +266,35 @@ function RelationshipStateCard({
   );
 }
 
+type ClientProfileSnapshot = {
+  item: Client;
+  access: ClientAccess | null;
+  journey: ClientJourney | null;
+  protocols: Protocol[];
+  cycles: Cycle[];
+  todayIso: string;
+  evaluations: ClientEvaluation[];
+  routinePendingCount: number | null;
+  routineOverdueCount: number;
+  submissionId: string | null;
+  appointments: Appointment[];
+  receivables: Receivable[];
+  renewalCases: RenewalCaseView[];
+};
+
+// Session-only (cleared on a real page reload), in-memory — deliberately
+// not localStorage/sessionStorage, since this is a same-tab render
+// optimization, not data that needs to survive a reload or be read
+// anywhere else.
+const clientProfileCache = new Map<string, ClientProfileSnapshot>();
+
+/** Test-only escape hatch — the cache is a module singleton, so it
+ * otherwise leaks snapshots across unrelated test cases in the same
+ * file/run. Not used by any production code path. */
+export function __resetClientProfileCacheForTests() {
+  clientProfileCache.clear();
+}
+
 export function ClientProfile({ clientId }: Props) {
   const router = useRouter();
   const search = useSearchParams();
@@ -273,14 +302,24 @@ export function ClientProfile({ clientId }: Props) {
   const timeZone = me?.organization.timezone || "America/Sao_Paulo";
   const rawTab = search.get("tab");
   const tab: Tab = TABS.some((entry) => entry.id === rawTab) ? (rawTab as Tab) : "resumo";
-  const [item, setItem] = useState<Client | null>(null);
+  // The route renders this component with `key={clientId}` (see
+  // app/clients/[clientId]/page.tsx), so it fully remounts — fresh state,
+  // fresh skeleton — every time, including a plain back-navigation from
+  // Rotinas to the SAME student a moment later. Seeding state from the
+  // last good snapshot for THIS id (session-only, module-level cache
+  // below) lets the real content render immediately on that remount
+  // instead of flashing the full skeleton again; `load()` still runs to
+  // refresh it silently. A genuinely new client id has nothing cached and
+  // still gets the real first-load skeleton.
+  const cached = clientProfileCache.get(clientId);
+  const [item, setItem] = useState<Client | null>(cached?.item ?? null);
   const [editOpen, setEditOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [justCreatedCycle, setJustCreatedCycle] = useState(false);
-  const [access, setAccess] = useState<ClientAccess | null>(null);
-  const [journey, setJourney] = useState<ClientJourney | null>(null);
-  const [protocols, setProtocols] = useState<Protocol[]>([]);
-  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [access, setAccess] = useState<ClientAccess | null>(cached?.access ?? null);
+  const [journey, setJourney] = useState<ClientJourney | null>(cached?.journey ?? null);
+  const [protocols, setProtocols] = useState<Protocol[]>(cached?.protocols ?? []);
+  const [cycles, setCycles] = useState<Cycle[]>(cached?.cycles ?? []);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [noteSheetOpen, setNoteSheetOpen] = useState(false);
@@ -289,14 +328,19 @@ export function ClientProfile({ clientId }: Props) {
   const [noteError, setNoteError] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [evaluations, setEvaluations] = useState<ClientEvaluation[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [receivables, setReceivables] = useState<Receivable[]>([]);
-  const [todayIso, setTodayIso] = useState("2026-01-01");
-  const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(null);
-  const [submissionId, setSubmissionId] = useState<string | null>(null);
-  const [renewalCases, setRenewalCases] = useState<RenewalCaseView[]>([]);
+  const [loading, setLoading] = useState(!cached);
+  const [evaluations, setEvaluations] = useState<ClientEvaluation[]>(cached?.evaluations ?? []);
+  const [appointments, setAppointments] = useState<Appointment[]>(cached?.appointments ?? []);
+  const [receivables, setReceivables] = useState<Receivable[]>(cached?.receivables ?? []);
+  const [todayIso, setTodayIso] = useState(cached?.todayIso ?? "2026-01-01");
+  const [routinePendingCount, setRoutinePendingCount] = useState<number | null>(
+    cached?.routinePendingCount ?? null,
+  );
+  const [routineOverdueCount, setRoutineOverdueCount] = useState(
+    cached?.routineOverdueCount ?? 0,
+  );
+  const [submissionId, setSubmissionId] = useState<string | null>(cached?.submissionId ?? null);
+  const [renewalCases, setRenewalCases] = useState<RenewalCaseView[]>(cached?.renewalCases ?? []);
 
   const terms = nomenclatureFor(me?.organization.profession_code);
   const returnResumo = `/app/clients/${clientId}`;
@@ -312,9 +356,9 @@ export function ClientProfile({ clientId }: Props) {
       apiFetch<Cycle[]>(`/api/v1/cycles?client_id=${clientId}`),
       apiFetch<{ local_today: string }>("/api/v1/organization/preferences"),
       apiFetch<ClientEvaluation[]>(`/api/v1/clients/${clientId}/evaluations`),
-      apiFetch<{ groups: Array<{ occurrence_count?: number; count: number }> }>(
-        `/api/v1/routines/board?client_id=${clientId}`,
-      ),
+      apiFetch<{
+        groups: Array<{ occurrence_count?: number; count: number; overdue_count?: number }>;
+      }>(`/api/v1/routines/board?client_id=${clientId}`),
       apiFetch<Array<{ id: string; submitted_at: string | null }>>(
         `/api/v1/intake-submissions?client_id=${clientId}`,
       ),
@@ -336,12 +380,42 @@ export function ClientProfile({ clientId }: Props) {
       setRoutinePendingCount(
         rb.data.groups.reduce((sum, g) => sum + (g.occurrence_count ?? g.count), 0),
       );
+      setRoutineOverdueCount(rb.data.groups.reduce((sum, g) => sum + (g.overdue_count ?? 0), 0));
     }
     if (sub.data?.length) setSubmissionId(sub.data[0].id);
     if (appts.data) setAppointments(appts.data);
     if (recv.data) setReceivables(recv.data);
     if (ren.data) setRenewalCases(ren.data.filter((r) => r.client_id === clientId));
     setLoading(false);
+
+    // Mirror the same "keep the last good value when this round's fetch
+    // for that field failed" rule used above for the live state — a
+    // background refetch that partially fails must not make a future
+    // remount regress a field that was fine a moment ago.
+    if (c.data) {
+      const prevCache = clientProfileCache.get(clientId);
+      clientProfileCache.set(clientId, {
+        item: c.data,
+        access: a.data ?? prevCache?.access ?? null,
+        journey: j.data ?? prevCache?.journey ?? null,
+        protocols: p.data ?? prevCache?.protocols ?? [],
+        cycles: cy.data ?? prevCache?.cycles ?? [],
+        todayIso: pref.data?.local_today ?? prevCache?.todayIso ?? "2026-01-01",
+        evaluations: ev.data ?? prevCache?.evaluations ?? [],
+        routinePendingCount: rb.data
+          ? rb.data.groups.reduce((sum, g) => sum + (g.occurrence_count ?? g.count), 0)
+          : (prevCache?.routinePendingCount ?? null),
+        routineOverdueCount: rb.data
+          ? rb.data.groups.reduce((sum, g) => sum + (g.overdue_count ?? 0), 0)
+          : (prevCache?.routineOverdueCount ?? 0),
+        submissionId: sub.data?.length ? sub.data[0].id : (prevCache?.submissionId ?? null),
+        appointments: appts.data ?? prevCache?.appointments ?? [],
+        receivables: recv.data ?? prevCache?.receivables ?? [],
+        renewalCases: ren.data
+          ? ren.data.filter((r) => r.client_id === clientId)
+          : (prevCache?.renewalCases ?? []),
+      });
+    }
   }, [clientId]);
 
   useEffect(() => {
@@ -456,11 +530,31 @@ export function ClientProfile({ clientId }: Props) {
         href: `/app/cycles/new?clientId=${clientId}&returnTo=${encodeURIComponent(returnResumo)}`,
       };
     }
+    if (action === "configure_routine") {
+      // This checklist step tracks a deliberate recurring-cadence setup
+      // for this client — a different, narrower thing than "this client
+      // already has routine tasks on the board" (routinePendingCount):
+      // an org-wide routine can generate tasks for many clients at once
+      // without anyone having reviewed THIS one specifically, so the two
+      // numbers can legitimately disagree. Naming both here (instead of
+      // only the checklist's generic CTA) avoids reading as a
+      // contradiction when a student already has pending routines.
+      return {
+        title: "Próximo passo",
+        isPending: true,
+        text: routinePendingCount
+          ? `${name} já tem ${routinePendingCount} ${
+              routinePendingCount === 1 ? "rotina" : "rotinas"
+            } na agenda — isso é diferente de revisar a configuração recorrente deste checklist.`
+          : `Configure a rotina de acompanhamento de ${name}.`,
+        cta: journey?.next_action_label || "Configurar rotina",
+        href: prepareHref,
+      };
+    }
     if (
       action === "review_anamnesis" ||
       action === "register_evaluation" ||
       action === "create_plan" ||
-      action === "configure_routine" ||
       action === "activate_accompaniment" ||
       action === "prepare_accompaniment" ||
       action === "continue_onboarding"
@@ -596,9 +690,14 @@ export function ClientProfile({ clientId }: Props) {
   if (journey?.requires_professional_attention) {
     alerts.push(journey.attention_note || "Há pendências de cadastro para revisar.");
   }
-  if (routinePendingCount && routinePendingCount > 0) {
+  // The "ROTINAS" card below already shows the permanent pending count —
+  // this yellow alert strip is for what's actually urgent (the backend's
+  // own `overdue_count`, due_on < hoje e ainda aberta), not a second copy
+  // of the same pending total. A cycle-ending-soon or today's routine
+  // isn't overdue and must not trigger this banner.
+  if (routineOverdueCount > 0) {
     alerts.push(
-      `${routinePendingCount} ${routinePendingCount === 1 ? "rotina pendente" : "rotinas pendentes"}.`,
+      `${routineOverdueCount} ${routineOverdueCount === 1 ? "rotina atrasada" : "rotinas atrasadas"}.`,
     );
   }
   if (overdueReceivables.length > 0) {

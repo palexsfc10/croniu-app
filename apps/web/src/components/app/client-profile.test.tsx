@@ -66,6 +66,22 @@ const CLIENTS: Record<string, Record<string, unknown>> = {
     email: "",
     notes: "",
   },
+  c8: {
+    id: "c8",
+    full_name: "Fabio Prado",
+    status: "active",
+    phone: "11955556666",
+    email: "",
+    notes: "",
+  },
+  c9: {
+    id: "c9",
+    full_name: "Gabriela Reis",
+    status: "active",
+    phone: "11966667777",
+    email: "",
+    notes: "",
+  },
 };
 
 // Same shape the backend's resolve_accompaniment/_journey_out actually
@@ -141,6 +157,28 @@ const JOURNEYS: Record<string, Record<string, unknown>> = {
       agenda: "done",
       routine: "na",
       activate: "todo",
+    },
+    created_at: "",
+    updated_at: "",
+  },
+  // Ciclo, avaliação e plano prontos — checklist aponta "Configurar
+  // rotina" como próximo passo, mas o cliente já tem rotinas na agenda
+  // (routines/board mock for c8 below returns occurrence_count: 6).
+  c8: {
+    id: "j8",
+    client_id: "c8",
+    stage: "active",
+    stage_label: "Em acompanhamento",
+    next_action: "configure_routine",
+    next_action_label: "Configurar rotina",
+    accompaniment_checklist: {
+      anamnesis: "done",
+      evaluation: "done",
+      plan: "done",
+      cycle: "done",
+      agenda: "done",
+      routine: "todo",
+      activate: "done",
     },
     created_at: "",
     updated_at: "",
@@ -272,7 +310,23 @@ vi.mock("@/lib/api", async () => {
         return { data: [{ id: "sub-c2", submitted_at: "2026-08-13T10:00:00Z" }] };
       }
       if (path.includes("/intake-submissions?client_id=")) return { data: [] };
-      if (path.includes("/routines/board")) return { data: { groups: [] } };
+      if (path.includes("/routines/board")) {
+        if (path.includes("client_id=c8")) {
+          return {
+            data: {
+              groups: [{ occurrence_type: "custom_task", count: 6, occurrence_count: 6, overdue_count: 2 }],
+            },
+          };
+        }
+        if (path.includes("client_id=c9")) {
+          return {
+            data: {
+              groups: [{ occurrence_type: "custom_task", count: 3, occurrence_count: 3, overdue_count: 0 }],
+            },
+          };
+        }
+        return { data: { groups: [] } };
+      }
       if (clientIdPattern.test(path)) {
         const id = path.split("/").pop()!;
         return { data: CLIENTS[id] };
@@ -282,12 +336,13 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import { ClientProfile } from "@/components/app/client-profile";
+import { ClientProfile, __resetClientProfileCacheForTests } from "@/components/app/client-profile";
 
 describe("ClientProfile", () => {
   beforeEach(() => {
     nav.extraQuery = "";
     nav.replace.mockClear();
+    __resetClientProfileCacheForTests();
   });
 
   it("renders six tabs and a readable status, without technical enums leaking through", async () => {
@@ -538,6 +593,85 @@ describe("ClientProfile", () => {
     await user.click(screen.getByRole("button", { name: "Salvar anotação" }));
 
     expect(await screen.findByText("Anotação salva")).toBeInTheDocument();
+  });
+});
+
+describe("ClientProfile — no full-skeleton flicker on a same-client remount", () => {
+  beforeEach(() => {
+    nav.tab = "resumo";
+    __resetClientProfileCacheForTests();
+  });
+
+  it("shows the real skeleton (no heading yet) on a genuinely first visit to a client", () => {
+    render(<ClientProfile clientId="c1" />);
+    // Synchronous assertion, no await: this is what the DOM looks like on
+    // the very first paint, before the mocked fetch's promise resolves.
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it("hydrates instantly from the last good snapshot on a remount for the SAME client — the Cliente 360° → Rotinas → voltar case", async () => {
+    const first = render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    first.unmount();
+
+    // A real remount (route page uses key={clientId}), simulating the
+    // back-navigation from Rotinas landing on the same student a moment
+    // later — must not blank the page back to a skeleton.
+    render(<ClientProfile clientId="c1" />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Pedro Silva");
+
+    // The silent background refetch still runs and completes cleanly.
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Pedro Silva");
+  });
+
+  it("never shows a previous client's data when switching to a different, not-yet-cached client", async () => {
+    const first = render(<ClientProfile clientId="c1" />);
+    await screen.findByRole("heading", { level: 1 });
+    first.unmount();
+
+    // c2 has never been visited in this session — must render its own
+    // skeleton, never Pedro Silva's (c1) cached content.
+    render(<ClientProfile clientId="c2" />);
+    expect(screen.queryByText("Pedro Silva")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Ana Souza");
+  });
+});
+
+describe("ClientProfile — routines alert strip only fires on real overdue occurrences", () => {
+  beforeEach(() => {
+    nav.tab = "resumo";
+    __resetClientProfileCacheForTests();
+  });
+
+  it("shows the yellow alert with the backend's own overdue_count, not the total pending count", async () => {
+    render(<ClientProfile clientId="c8" />);
+    await screen.findByRole("heading", { level: 1 });
+    expect((await screen.findAllByText("2 rotinas atrasadas.")).length).toBeGreaterThan(0);
+    // The permanent summary card keeps showing the total, untouched.
+    expect(screen.getAllByText("6 pendentes").length).toBeGreaterThan(0);
+  });
+
+  it("distinguishes 'Configurar rotina' (checklist) from already having routine tasks on the board — no silent auto-completion", async () => {
+    render(<ClientProfile clientId="c8" />);
+    await screen.findByRole("heading", { level: 1 });
+    // The checklist's CTA still names the pending checklist step exactly —
+    // this is deliberately NOT auto-completed just because tasks exist.
+    expect(screen.getAllByText("Configurar rotina").length).toBeGreaterThan(0);
+    // But the panel text now explains the two concepts are different,
+    // instead of silently contradicting the "6 rotinas" already visible.
+    expect(
+      screen.getAllByText(/já tem 6 rotinas na agenda.*configuração recorrente/).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("does not show the alert when routines are pending but none are overdue (today/future)", async () => {
+    render(<ClientProfile clientId="c9" />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByText(/rotinas? (pendente|atrasada)/i)).not.toBeInTheDocument();
+    // The summary card still reports the 3 pending routines — only the
+    // redundant yellow duplicate is gone.
+    expect(screen.getAllByText("3 pendentes").length).toBeGreaterThan(0);
   });
 });
 
