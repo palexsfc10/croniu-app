@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.appointment import Appointment
@@ -393,6 +394,60 @@ def _raise_conflict(conflicts: list[Appointment]) -> None:
     )
 
 
+def commit_or_raise_conflict(
+    db: Session,
+    *,
+    organization_id: uuid.UUID | None = None,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    exclude_appointment_id: uuid.UUID | None = None,
+) -> None:
+    """Commit the current transaction, translating a database-level
+    `ck_appointments_no_overlap` exclusion violation (Postgres 23P01) into
+    the same 409 `appointment_conflict` shape as `_raise_conflict` above.
+
+    This is the backstop for the race the app-level pre-check can never
+    fully close on its own: `find_conflicts` runs a SELECT before any
+    INSERT, but two concurrent requests can both pass that check for the
+    same free slot (nothing exists yet to lock) and both attempt to
+    commit — only one can win once the database constraint exists, and
+    the loser lands here instead of raising a raw `IntegrityError`
+    (never a bare 500). Every write path that creates or reschedules an
+    Appointment (`create_appointment`, `update_appointment`, cycle/agenda
+    generation in `cycle_intelligence.py` and `cycle_schedule.py`) commits
+    through this function rather than calling `db.commit()` directly.
+
+    When the caller's own slot is known, the conflicting row(s) are
+    reloaded and reported the same way a normal pre-insert conflict is
+    (`AppointmentConflictItem` list) — safe because the failed transaction
+    was already rolled back, so this is a fresh read. When it isn't (e.g.
+    a bulk cycle-generation commit spanning many slots at once), a plain
+    409 with no `details` is raised instead of guessing which slot lost.
+    """
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        orig = getattr(exc, "orig", None)
+        if getattr(orig, "sqlstate", None) != "23P01":
+            raise
+        if organization_id is not None and starts_at is not None and ends_at is not None:
+            conflicts = find_conflicts(
+                db,
+                organization_id=organization_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                exclude_appointment_id=exclude_appointment_id,
+            )
+            if conflicts:
+                _raise_conflict(conflicts)
+        raise AuthError(
+            "appointment_conflict",
+            "Este horário acabou de ser ocupado por outra reserva. Atualize e tente novamente.",
+            status_code=409,
+        ) from exc
+
+
 def create_appointment(
     db: Session,
     *,
@@ -438,7 +493,9 @@ def create_appointment(
         status="scheduled",
     )
     db.add(row)
-    db.commit()
+    commit_or_raise_conflict(
+        db, organization_id=organization_id, starts_at=starts_at, ends_at=ends_at
+    )
     return _load_appointment(db, organization_id=organization_id, appointment_id=row.id)
 
 
@@ -524,7 +581,13 @@ def update_appointment(
                 row.cycle_id = linked.id
 
     db.add(row)
-    db.commit()
+    commit_or_raise_conflict(
+        db,
+        organization_id=organization_id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        exclude_appointment_id=row.id,
+    )
     return _load_appointment(db, organization_id=organization_id, appointment_id=row.id)
 
 

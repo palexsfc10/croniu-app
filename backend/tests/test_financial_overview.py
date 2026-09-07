@@ -142,8 +142,13 @@ def test_editing_a_cycle_to_zero_cancels_the_pending_receivable(client, register
     assert after[0]["status"] == "cancelled"
     # The original amount is kept as the historical record of what it would
     # have been — cancellation, not erasure. Being "cancelled" alone already
-    # excludes it from every pending/overdue/forecast metric.
-    assert after[0]["amount_cents"] == 72000
+    # excludes it from every pending/overdue/forecast metric. Compared
+    # against the value captured before the edit (not a hardcoded total):
+    # with `duration_type="calendar_months"` and `starts_on=date.today()`,
+    # the exact lesson count — and so the total — depends on which real
+    # weekday "today" is when the suite runs, same class of issue as the
+    # relative-dates fixes elsewhere in this suite.
+    assert after[0]["amount_cents"] == before[0]["amount_cents"]
     overview = client.get("/api/v1/receivables/overview").json()["summary"]
     assert overview["pending_count"] == 0
     assert overview["overdue_cents"] == 0

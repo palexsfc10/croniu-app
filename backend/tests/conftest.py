@@ -117,6 +117,13 @@ def _seed_billing_catalog() -> None:
 @pytest.fixture(scope="session", autouse=True)
 def prepare_database():
     _ensure_test_database()
+    with engine.begin() as conn:
+        # Required by Appointment's ck_appointments_no_overlap GiST
+        # exclusion constraint (uuid `=` alongside a range `&&` operator in
+        # one index) — real databases get this via migration
+        # 0030_appointment_overlap_guard; the test DB is built straight
+        # from the models via create_all(), which never runs migrations.
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gist"))
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     _seed_billing_catalog()

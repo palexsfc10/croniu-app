@@ -661,7 +661,12 @@ def create_intelligent_cycle(
             occurrence_count=len(occurrences),
         )
 
-    db.commit()
+    # Bulk commit spanning every lesson of the cycle — no single
+    # starts_at/ends_at to reload a conflict for, so a database-level
+    # exclusion-constraint hit (the backstop for a concurrent booking
+    # racing this same generation) surfaces as a plain 409
+    # appointment_conflict instead of a raw IntegrityError/500.
+    agenda_svc.commit_or_raise_conflict(db)
     return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
 
 

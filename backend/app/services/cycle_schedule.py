@@ -643,7 +643,12 @@ def create_cycle_with_schedule(
             occurrence_count=len(occurrences),
         )
 
-    db.commit()
+    # Bulk commit spanning every lesson of the cycle — see the identical
+    # comment in cycle_intelligence.py: no single starts_at/ends_at to
+    # reload a conflict for here, so a database-level exclusion-constraint
+    # hit (the backstop for a concurrent booking racing this generation)
+    # surfaces as a plain 409 appointment_conflict, never a raw 500.
+    agenda_svc.commit_or_raise_conflict(db)
     cycle_out = domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
     appt_ids = [a.id for a in planned_appts]
     planned_appts = list(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -475,5 +476,84 @@ def test_schedule_service_rejects_generate_false(client, register_payload):
             raise AssertionError("expected agenda_required")
         except AuthError as exc:
             assert exc.code == "agenda_required"
+    finally:
+        db.close()
+
+
+def test_concurrent_cycle_creation_for_colliding_schedules_never_double_books(
+    client, register_payload
+):
+    """Two intelligent cycles for two different clients, same org, same
+    schedule (so their generated lessons collide) — created concurrently
+    through the real cycle/agenda path (`cycle_schedule.create_cycle_with_
+    schedule`, the same function `POST /api/v1/cycles/intelligent` calls).
+    The existing pre-check (`find_occurrence_conflicts`) already catches
+    this sequentially; concurrently, the database-level
+    `ck_appointments_no_overlap` guard is the actual backstop — either way,
+    exactly one cycle's appointments may exist afterward, and the loser
+    gets a clean, known error code, never an unhandled 500."""
+    _auth(client, register_payload)
+    ids = _seed(client, weekly_frequency=2)
+    org_id, _ = _me(client)
+    monday = _next_weekday_on_or_after(_today(client), 0)
+
+    other_client = client.post(
+        "/api/v1/clients", json={"full_name": "Segundo Aluno", "phone": "11988880000"}
+    )
+    assert other_client.status_code == 201, other_client.text
+    other_client_id = UUID(other_client.json()["id"])
+
+    def worker(client_id: UUID, key: str):
+        db = SessionLocal()
+        try:
+            return sched.create_cycle_with_schedule(
+                db,
+                organization_id=org_id,
+                client_id=client_id,
+                service_id=UUID(ids["service_id"]),
+                starts_on=monday,
+                weekdays=[0, 2],
+                starts_time="09:00",
+                duration_type="calendar_months",
+                duration_value=1,
+                cycle_template_id=UUID(ids["template_id"]),
+                idempotency_key=key,
+                generate_appointments=True,
+            )
+        except AuthError as exc:
+            return exc
+        finally:
+            db.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(
+                lambda args: worker(*args),
+                [(UUID(ids["client_id"]), "race-cycle-a"), (other_client_id, "race-cycle-b")],
+            )
+        )
+
+    errors = [r for r in results if isinstance(r, AuthError)]
+    successes = [r for r in results if not isinstance(r, AuthError)]
+    assert len(successes) == 1, results
+    assert len(errors) == 1, results
+    # Whichever guard caught it — the app-level pre-check (SCHEDULE_CONFLICT)
+    # or the database-level backstop (appointment_conflict) — it must be
+    # one of these two known, clean codes, never an unhandled exception.
+    assert errors[0].code in {"SCHEDULE_CONFLICT", "appointment_conflict"}
+    assert errors[0].status_code == 409
+
+    db = SessionLocal()
+    try:
+        monday_start = datetime.fromisoformat(f"{monday.isoformat()}T09:00:00-03:00")
+        rows = list(
+            db.scalars(
+                select(Appointment).where(
+                    Appointment.organization_id == org_id,
+                    Appointment.starts_at == monday_start,
+                )
+            ).all()
+        )
+        assert len(rows) == 1
     finally:
         db.close()

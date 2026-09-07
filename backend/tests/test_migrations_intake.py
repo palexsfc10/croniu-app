@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -29,8 +30,15 @@ def _alembic_env() -> dict[str, str]:
 
 
 def _run_alembic(*args: str) -> subprocess.CompletedProcess[str]:
+    # `sys.executable -m alembic` instead of the bare `alembic` CLI script:
+    # the latter depends on the venv's bin/ directory being on PATH, which
+    # isn't guaranteed for the process pytest itself runs under (observed
+    # failing with a plain FileNotFoundError in an SSH-invoked run where
+    # only the venv's python interpreter, not its bin/, was reachable).
+    # `-m alembic` only needs the package importable by whichever
+    # interpreter is already running this test — always true here.
     return subprocess.run(
-        ["alembic", "-c", str(ALEMBIC_INI), *args],
+        [sys.executable, "-m", "alembic", "-c", str(ALEMBIC_INI), *args],
         cwd=str(BACKEND),
         env=_alembic_env(),
         capture_output=True,
@@ -80,10 +88,10 @@ def test_empty_database_upgrade_head_unique(migration_db: str):
     assert heads.returncode == 0, heads.stderr
     lines = [ln for ln in heads.stdout.strip().splitlines() if ln.strip()]
     assert len(lines) == 1
-    assert "0027_fixed_period_plan_pricing" in lines[0]
+    assert "0030_appointment_overlap_guard" in lines[0]
 
     current = _run_alembic("current")
-    assert "0027_fixed_period_plan_pricing" in current.stdout
+    assert "0030_appointment_overlap_guard" in current.stdout
 
     engine = create_engine(migration_db)
     insp = inspect(engine)
@@ -156,7 +164,7 @@ def test_upgrade_from_0018_to_head(migration_db: str):
     to_head = _run_alembic("upgrade", "head")
     assert to_head.returncode == 0, to_head.stdout + to_head.stderr
     heads = _run_alembic("heads")
-    assert "0027_fixed_period_plan_pricing" in heads.stdout
+    assert "0030_appointment_overlap_guard" in heads.stdout
     assert len([ln for ln in heads.stdout.strip().splitlines() if ln.strip()]) == 1
 
     engine = create_engine(migration_db)
@@ -195,5 +203,134 @@ def test_upgrade_from_0020_to_0021(migration_db: str):
     to_21 = _run_alembic("upgrade", "head")
     assert to_21.returncode == 0, to_21.stdout + to_21.stderr
     current = _run_alembic("current")
-    assert "0027_fixed_period_plan_pricing" in current.stdout
+    assert "0030_appointment_overlap_guard" in current.stdout
+
+
+def _seed_org_client(engine, *, org_id: uuid.UUID, client_id: uuid.UUID) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO organizations (id, name, status, plan_code, timezone) "
+                "VALUES (:org_id, 'Migration Test Org', 'evaluating', 'starter', "
+                "'America/Sao_Paulo')"
+            ),
+            {"org_id": org_id},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO clients (id, organization_id, full_name, status, "
+                "created_at, updated_at) "
+                "VALUES (:client_id, :org_id, 'Migration Client', 'active', now(), now())"
+            ),
+            {"client_id": client_id, "org_id": org_id},
+        )
+
+
+def test_upgrade_to_0030_preserves_valid_non_overlapping_appointments(migration_db: str):
+    os.environ["DATABASE_URL"] = migration_db
+    to_29 = _run_alembic("upgrade", "0029_renewal_cases")
+    assert to_29.returncode == 0, to_29.stdout + to_29.stderr
+
+    engine = create_engine(migration_db)
+    org_id = uuid.uuid4()
+    client_id = uuid.uuid4()
+    appt_id = uuid.uuid4()
+    _seed_org_client(engine, org_id=org_id, client_id=client_id)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO appointments (id, organization_id, client_id, starts_at, "
+                "ends_at, status, created_at, updated_at) "
+                "VALUES (:id, :org_id, :client_id, '2026-09-10 09:00:00-03', "
+                "'2026-09-10 10:00:00-03', 'scheduled', now(), now())"
+            ),
+            {"id": appt_id, "org_id": org_id, "client_id": client_id},
+        )
+
+    to_head = _run_alembic("upgrade", "head")
+    assert to_head.returncode == 0, to_head.stdout + to_head.stderr
+
+    with engine.connect() as conn:
+        remaining = conn.execute(
+            text("SELECT count(*) FROM appointments WHERE id = :id"), {"id": appt_id}
+        ).scalar_one()
+        assert remaining == 1
+    engine.dispose()
+
+
+def test_upgrade_to_0030_fails_clearly_on_existing_overlap_and_touches_nothing(
+    migration_db: str,
+):
+    os.environ["DATABASE_URL"] = migration_db
+    to_29 = _run_alembic("upgrade", "0029_renewal_cases")
+    assert to_29.returncode == 0, to_29.stdout + to_29.stderr
+
+    engine = create_engine(migration_db)
+    org_id = uuid.uuid4()
+    client_id = uuid.uuid4()
+    appt_a = uuid.uuid4()
+    appt_b = uuid.uuid4()
+    _seed_org_client(engine, org_id=org_id, client_id=client_id)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO appointments (id, organization_id, client_id, starts_at, "
+                "ends_at, status, created_at, updated_at) VALUES "
+                "(:a, :org_id, :client_id, '2026-09-10 09:00:00-03', "
+                "'2026-09-10 10:00:00-03', 'scheduled', now(), now()), "
+                "(:b, :org_id, :client_id, '2026-09-10 09:30:00-03', "
+                "'2026-09-10 10:30:00-03', 'scheduled', now(), now())"
+            ),
+            {"a": appt_a, "b": appt_b, "org_id": org_id, "client_id": client_id},
+        )
+
+    to_head = _run_alembic("upgrade", "head")
+    assert to_head.returncode != 0, "expected the migration to refuse to run"
+    assert "already overlap" in (to_head.stdout + to_head.stderr)
+    assert str(appt_a) in (to_head.stdout + to_head.stderr) or str(appt_b) in (
+        to_head.stdout + to_head.stderr
+    )
+
+    current = _run_alembic("current")
+    assert "0030_appointment_overlap_guard" not in current.stdout
+    assert "0029_renewal_cases" in current.stdout
+
+    with engine.connect() as conn:
+        remaining = conn.execute(
+            text("SELECT count(*) FROM appointments WHERE id IN (:a, :b)"),
+            {"a": appt_a, "b": appt_b},
+        ).scalar_one()
+        # Neither row was cancelled, edited, or deleted to force the migration through.
+        assert remaining == 2
+    engine.dispose()
+
+
+def test_downgrade_from_0030_removes_the_overlap_constraint(migration_db: str):
+    os.environ["DATABASE_URL"] = migration_db
+    to_head = _run_alembic("upgrade", "head")
+    assert to_head.returncode == 0, to_head.stdout + to_head.stderr
+
+    engine = create_engine(migration_db)
+    # Exclusion constraints don't reliably surface via SQLAlchemy's
+    # get_check_constraints()/get_indexes() across versions — check the
+    # Postgres catalog directly instead.
+    with engine.connect() as conn:
+        exists_before = conn.execute(
+            text(
+                "SELECT 1 FROM pg_constraint WHERE conname = 'ck_appointments_no_overlap'"
+            )
+        ).first()
+    assert exists_before is not None
+
+    down = _run_alembic("downgrade", "0029_renewal_cases")
+    assert down.returncode == 0, down.stdout + down.stderr
+
+    with engine.connect() as conn:
+        exists_after = conn.execute(
+            text(
+                "SELECT 1 FROM pg_constraint WHERE conname = 'ck_appointments_no_overlap'"
+            )
+        ).first()
+    assert exists_after is None
+    engine.dispose()
 

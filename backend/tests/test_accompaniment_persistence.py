@@ -551,8 +551,10 @@ def test_agenda_complete_only_counts_own_valid_distinct_lessons(
 ):
     from uuid import UUID
 
+    import pytest
     from app.models.appointment import Appointment
     from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
 
     _auth(client, register_payload)
     cid = client.post("/api/v1/clients", json={"full_name": "Cliente Agenda"}).json()["id"]
@@ -604,6 +606,12 @@ def test_agenda_complete_only_counts_own_valid_distinct_lessons(
     )
     assert manual.status_code == 201, manual.text
 
+    # ck_appointments_no_overlap (the same-org exclusion constraint added to stop
+    # double-booking races) now makes a second active appointment at the exact
+    # same organization+slot unconstructible, even via a raw ORM insert that
+    # bypasses agenda_svc entirely. count_cycle_agenda_slots's distinct(starts_at)
+    # dedup is kept as defense-in-depth (e.g. legacy pre-migration rows), but the
+    # scenario it used to guard against going forward is proven unreachable here.
     clone = Appointment(
         organization_id=rows[1].organization_id,
         client_id=rows[1].client_id,
@@ -616,7 +624,9 @@ def test_agenda_complete_only_counts_own_valid_distinct_lessons(
         notes="duplicate-slot",
     )
     db_session.add(clone)
-    db_session.commit()
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
 
     journey = client.get(f"/api/v1/clients/{cid}/journey").json()
     assert journey["accompaniment_checklist"]["cycle"] == "done"
