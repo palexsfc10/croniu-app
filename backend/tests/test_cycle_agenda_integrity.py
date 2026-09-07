@@ -13,6 +13,7 @@ from app.models.appointment import Appointment
 from app.services import agenda as agenda_svc
 from app.services import cycle_schedule as sched
 from app.services.auth import AuthError
+from app.services.cycle_calc import add_calendar_months, enumerate_lesson_dates
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -126,38 +127,52 @@ def test_rejects_missing_starts_time(client, register_payload):
     assert client.get("/api/v1/cycles").json() == []
 
 
-def test_john_like_thu_start_mon_wed_twelve_lessons_no_aug06(client, register_payload):
-    """Regression: starts_on Thursday with Mon–Wed schedule → first lesson Mon 10/08.
+def test_john_like_thu_start_mon_wed_skips_to_first_scheduled_weekday(client, register_payload):
+    """Regression: starts_on Thursday with Mon-Wed schedule -> first lesson is the
+    following Monday.
 
-    Agenda on 06/08 correctly has no occurrence for this client; cycle still has 12 appts.
+    Agenda on the Thursday start correctly has no occurrence for this client; the
+    cycle's lesson count/dates are derived from the same enumeration the API uses
+    (app.services.cycle_calc.enumerate_lesson_dates), not a hardcoded number, since
+    a calendar-month span's exact weekday count depends on which day it starts on.
+    starts_on is computed relative to today (not a fixed calendar date) so this
+    keeps testing the same Thursday-start scenario indefinitely instead of aging
+    out of the agenda's real ±31-day window.
     """
     _auth(client, register_payload)
     ids = _seed(client, weekly_frequency=3)
+    today = _today(client)
+    starts_on = _next_weekday_on_or_after(today, 3)  # Thursday
+    weekdays = [0, 1, 2]  # Mon, Tue, Wed
+    ends_on = add_calendar_months(starts_on, 1)
+    expected_dates = enumerate_lesson_dates(starts_on=starts_on, ends_on=ends_on, weekdays=weekdays)
+    first_monday = expected_dates[0]
+
     created = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": "2026-08-06",
-            "weekdays": [0, 1, 2],
+            "starts_on": starts_on.isoformat(),
+            "weekdays": weekdays,
             "starts_time": "17:00:00",
             "create_receivable": True,
-            "idempotency_key": "john-like-aug06",
+            "idempotency_key": "john-like-thu-start",
         },
     )
     assert created.status_code == 201, created.text
     cycle = created.json()
-    assert cycle["lesson_count"] == 12
-    assert cycle["lessons_remaining"] == 12
-    assert cycle["starts_on"] == "2026-08-06"
-    assert cycle["ends_on"] == "2026-09-06"
+    assert cycle["lesson_count"] == len(expected_dates)
+    assert cycle["lessons_remaining"] == len(expected_dates)
+    assert cycle["starts_on"] == starts_on.isoformat()
+    assert cycle["ends_on"] == ends_on.isoformat()
 
-    day_start = client.get("/api/v1/agenda/day", params={"day": "2026-08-06"})
+    day_start = client.get("/api/v1/agenda/day", params={"day": starts_on.isoformat()})
     assert day_start.status_code == 200
     assert day_start.json()["appointments"] == []
 
-    first = client.get("/api/v1/agenda/day", params={"day": "2026-08-10"})
+    first = client.get("/api/v1/agenda/day", params={"day": first_monday.isoformat()})
     assert first.status_code == 200
     appts = first.json()["appointments"]
     assert len(appts) == 1
@@ -165,7 +180,7 @@ def test_john_like_thu_start_mon_wed_twelve_lessons_no_aug06(client, register_pa
     assert appts[0]["status"] == "scheduled"
     starts = datetime.fromisoformat(appts[0]["starts_at"])
     local = starts.astimezone(ZoneInfo("America/Sao_Paulo"))
-    assert local.date() == date(2026, 8, 10)
+    assert local.date() == first_monday
     assert local.hour == 17
     assert local.minute == 0
 
@@ -180,28 +195,35 @@ def test_john_like_thu_start_mon_wed_twelve_lessons_no_aug06(client, register_pa
                 )
             ).all()
         )
-        assert len(linked) == 12
+        assert len(linked) == len(expected_dates)
         assert all(a.status == "scheduled" for a in linked)
         local_days = sorted(
             {a.starts_at.astimezone(ZoneInfo("America/Sao_Paulo")).date() for a in linked}
         )
-        assert local_days[0] == date(2026, 8, 10)
-        assert date(2026, 8, 6) not in local_days
+        assert local_days == expected_dates
+        assert starts_on not in local_days
     finally:
         db.close()
 
 
 def test_start_on_programmed_weekday_includes_first_day(client, register_payload):
-    """When starts_on falls on a programmed weekday, first appointment is that day."""
+    """When starts_on falls on a programmed weekday, first appointment is that day.
+
+    starts_on is computed relative to today (not a fixed calendar date) so the
+    scenario keeps exercising a Thursday start indefinitely instead of aging out
+    of the agenda's real ±31-day window.
+    """
     _auth(client, register_payload)
     ids = _seed(client, weekly_frequency=3)
+    today = _today(client)
+    starts_on = _next_weekday_on_or_after(today, 3)  # Thursday
     bad = client.post(
         "/api/v1/cycles/intelligent",
         json={
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": "2026-08-06",
+            "starts_on": starts_on.isoformat(),
             "weekdays": [3, 5],
             "starts_time": "17:00:00",
             "idempotency_key": "thu-on-start-bad",
@@ -225,23 +247,21 @@ def test_start_on_programmed_weekday_includes_first_day(client, register_payload
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": t2.json()["id"],
-            "starts_on": "2026-08-06",
+            "starts_on": starts_on.isoformat(),
             "weekdays": [3, 5],
             "starts_time": "17:00:00",
             "idempotency_key": "thu-on-start-ok",
         },
     )
     assert created.status_code == 201, created.text
-    day = client.get("/api/v1/agenda/day", params={"day": "2026-08-06"})
+    day = client.get("/api/v1/agenda/day", params={"day": starts_on.isoformat()})
     assert day.status_code == 200
     rows = day.json()["appointments"]
     assert len(rows) == 1
     assert rows[0]["cycle_id"] == created.json()["id"]
     assert rows[0]["status"] == "scheduled"
-    local = datetime.fromisoformat(rows[0]["starts_at"]).astimezone(
-        ZoneInfo("America/Sao_Paulo")
-    )
-    assert local.date() == date(2026, 8, 6)
+    local = datetime.fromisoformat(rows[0]["starts_at"]).astimezone(ZoneInfo("America/Sao_Paulo"))
+    assert local.date() == starts_on
     assert local.hour == 17
 
 
