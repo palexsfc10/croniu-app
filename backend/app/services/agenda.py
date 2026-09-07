@@ -11,7 +11,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.appointment import Appointment
+from app.models.appointment import APPOINTMENT_NO_OVERLAP_CONSTRAINT, Appointment
 from app.models.client import Client
 from app.models.cycle import Cycle
 from app.models.location import Location
@@ -417,6 +417,14 @@ def commit_or_raise_conflict(
     generation in `cycle_intelligence.py` and `cycle_schedule.py`) commits
     through this function rather than calling `db.commit()` directly.
 
+    Only a violation of `ck_appointments_no_overlap` specifically is ever
+    translated into a booking conflict — SQLSTATE 23P01 alone is not
+    enough, since it's the generic "exclusion_violation" code shared by
+    any exclusion constraint on the connection, present or future. Every
+    other `IntegrityError` (a different constraint, 23P01 without a
+    readable `diag.constraint_name`, or any other SQLSTATE) is re-raised
+    after rollback, unconverted.
+
     When the caller's own slot is known, the conflicting row(s) are
     reloaded and reported the same way a normal pre-insert conflict is
     (`AppointmentConflictItem` list) — safe because the failed transaction
@@ -429,7 +437,12 @@ def commit_or_raise_conflict(
     except IntegrityError as exc:
         db.rollback()
         orig = getattr(exc, "orig", None)
-        if getattr(orig, "sqlstate", None) != "23P01":
+        diag = getattr(orig, "diag", None)
+        constraint_name = getattr(diag, "constraint_name", None)
+        if (
+            getattr(orig, "sqlstate", None) != "23P01"
+            or constraint_name != APPOINTMENT_NO_OVERLAP_CONSTRAINT
+        ):
             raise
         if organization_id is not None and starts_at is not None and ends_at is not None:
             conflicts = find_conflicts(

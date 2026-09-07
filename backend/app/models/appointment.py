@@ -17,6 +17,15 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.service import Service
 
+# Shared with agenda_svc.commit_or_raise_conflict, which must recognize
+# exclusively this constraint's SQLSTATE 23P01 violations as a booking
+# conflict — never any other exclusion/check constraint that happens to
+# also raise 23P01. Migration 0030_appointment_overlap_guard creates the
+# same-named constraint via raw DDL and keeps its own literal string
+# (migrations must not import application code), so this name must be
+# kept in sync with it by hand if it's ever renamed.
+APPOINTMENT_NO_OVERLAP_CONSTRAINT = "ck_appointments_no_overlap"
+
 
 class Appointment(Base):
     __tablename__ = "appointments"
@@ -44,7 +53,7 @@ class Appointment(Base):
             (text("tstzrange(starts_at, ends_at, '[)')"), "&&"),
             where=text("status <> 'cancelled'"),
             using="gist",
-            name="ck_appointments_no_overlap",
+            name=APPOINTMENT_NO_OVERLAP_CONSTRAINT,
         ),
     )
 
