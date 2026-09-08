@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -410,6 +411,58 @@ def _is_overlap_violation(exc: IntegrityError) -> bool:
     )
 
 
+def _handle_overlap_integrity_error(
+    db: Session,
+    exc: IntegrityError,
+    *,
+    organization_id: uuid.UUID | None,
+    starts_at: datetime | None,
+    ends_at: datetime | None,
+    exclude_appointment_id: uuid.UUID | None,
+) -> None:
+    """Must be called only from within an active `except IntegrityError:`
+    handler for `exc` — relies on a bare `raise` to re-raise the original
+    exception with its traceback intact when it isn't a
+    `ck_appointments_no_overlap` violation. Python's exception-handling
+    context is tracked per-thread, not lexically, so this works correctly
+    even though the `raise` sits inside a separate function from the
+    `except` block that called it, as long as that block is still on the
+    call stack.
+
+    Always rolls back before classifying. Only `_is_overlap_violation`
+    cases are ever translated into a 409 `appointment_conflict`. When the
+    caller's own slot is known, the conflicting row(s) are reloaded and
+    reported the same way a normal pre-insert conflict is
+    (`AppointmentConflictItem` list) — safe because the failed transaction
+    was already rolled back, so this is a fresh read. When it isn't (e.g. a
+    bulk cycle-generation write spanning many slots at once), a plain 409
+    with no `details` is raised instead of guessing which slot lost.
+
+    Shared by `_flush_or_commit_and_raise_conflict` (the `flush_or_raise_
+    conflict`/`commit_or_raise_conflict` point-protection helpers) and
+    `appointment_overlap_guard` (the transactional-boundary context
+    manager) so the classification logic never diverges between the two.
+    """
+    db.rollback()
+    if not _is_overlap_violation(exc):
+        raise
+    if organization_id is not None and starts_at is not None and ends_at is not None:
+        conflicts = find_conflicts(
+            db,
+            organization_id=organization_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            exclude_appointment_id=exclude_appointment_id,
+        )
+        if conflicts:
+            _raise_conflict(conflicts)
+    raise AuthError(
+        "appointment_conflict",
+        "Este horário acabou de ser ocupado por outra reserva. Atualize e tente novamente.",
+        status_code=409,
+    ) from exc
+
+
 def _flush_or_commit_and_raise_conflict(
     db: Session,
     action: Callable[[], None],
@@ -436,41 +489,82 @@ def _flush_or_commit_and_raise_conflict(
     flushes/commits through these helpers rather than calling
     `db.flush()`/`db.commit()` directly.
 
-    Only `_is_overlap_violation` cases are ever translated into a booking
-    conflict. Every other `IntegrityError` (a different constraint, 23P01
-    without a readable `diag.constraint_name`, or any other SQLSTATE) is
-    re-raised after rollback, unconverted — a bare `raise` inside the
-    `except` block, so the original traceback is preserved.
-
-    When the caller's own slot is known, the conflicting row(s) are
-    reloaded and reported the same way a normal pre-insert conflict is
-    (`AppointmentConflictItem` list) — safe because the failed transaction
-    was already rolled back, so this is a fresh read. When it isn't (e.g.
-    a bulk cycle-generation flush/commit spanning many slots at once), a
-    plain 409 with no `details` is raised instead of guessing which slot
-    lost.
+    This point-protects a single flush/commit call. For an operation that
+    materializes many Appointment rows across several auxiliary service
+    calls — where a conflict can just as easily surface through an
+    explicit `db.flush()`/`db.commit()` buried several calls deep in the
+    stack (e.g. inside an auxiliary service the caller invokes), not only
+    at a call site you remembered to wrap — use `appointment_overlap_guard`
+    instead: it covers the entire unit of work, not one call. (This
+    session factory sets `autoflush=False` — see `app/db.py` — so an
+    ordinary read query never flushes pending writes on its own here; the
+    risk is specifically an explicit flush/commit somewhere in the call
+    tree, not implicit autoflush ahead of a query.)
     """
     try:
         action()
     except IntegrityError as exc:
-        db.rollback()
-        if not _is_overlap_violation(exc):
-            raise
-        if organization_id is not None and starts_at is not None and ends_at is not None:
-            conflicts = find_conflicts(
-                db,
-                organization_id=organization_id,
-                starts_at=starts_at,
-                ends_at=ends_at,
-                exclude_appointment_id=exclude_appointment_id,
-            )
-            if conflicts:
-                _raise_conflict(conflicts)
-        raise AuthError(
-            "appointment_conflict",
-            "Este horário acabou de ser ocupado por outra reserva. Atualize e tente novamente.",
-            status_code=409,
-        ) from exc
+        _handle_overlap_integrity_error(
+            db,
+            exc,
+            organization_id=organization_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            exclude_appointment_id=exclude_appointment_id,
+        )
+
+
+@contextmanager
+def appointment_overlap_guard(
+    db: Session,
+    *,
+    organization_id: uuid.UUID | None = None,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    exclude_appointment_id: uuid.UUID | None = None,
+) -> Iterator[None]:
+    """Transactional boundary for `ck_appointments_no_overlap`: wrap every
+    mutation of an operation that materializes Appointment rows, from the
+    first `db.add()`/attribute change through its final `db.commit()`, in a
+    single `with appointment_overlap_guard(db, ...):` block.
+
+    Protecting individual `flush()`/`commit()` call sites (see
+    `flush_or_raise_conflict`/`commit_or_raise_conflict` above) is the
+    wrong granularity for an operation with several intermediate steps:
+    Postgres validates the exclusion constraint immediately on every
+    INSERT/UPDATE, and an explicit `db.flush()`/`db.commit()` buried
+    several calls deep in an auxiliary service — with no flush of its own
+    visible at the call site that invokes it — flushes this same pending
+    unit of work just as much as one written directly here (e.g.
+    `create_intelligent_cycle` calling `renewal_case_svc.mark_renewed`,
+    which queries `Cycle` and then flushes explicitly on its own, line
+    335 of `renewal_case.py`). This session factory sets `autoflush=False`
+    (see `app/db.py`), so an ordinary read query never triggers this on
+    its own here — the risk is specifically an explicit flush/commit
+    anywhere in the call tree, present or added later, not implicit
+    autoflush ahead of a query. Wrapping only the call site you happened
+    to notice leaves every other explicit flush/commit in the same scope
+    unprotected.
+
+    This context manager is the actual boundary instead: it catches an
+    `IntegrityError` raised *anywhere* within its `with` block, no matter
+    how deep in the call stack the flush/commit that triggered it
+    originated (a nested service call, or the final commit), and reuses
+    the exact same classifier as the point-protection helpers via
+    `_handle_overlap_integrity_error` — same rollback-before-classification
+    order, same `_is_overlap_violation` check, same bare-`raise` traceback
+    preservation for anything else."""
+    try:
+        yield
+    except IntegrityError as exc:
+        _handle_overlap_integrity_error(
+            db,
+            exc,
+            organization_id=organization_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            exclude_appointment_id=exclude_appointment_id,
+        )
 
 
 def flush_or_raise_conflict(
@@ -484,8 +578,7 @@ def flush_or_raise_conflict(
     """`db.flush()` variant of `commit_or_raise_conflict` — see there for the
     full rationale. Postgres validates an exclusion constraint immediately on
     each INSERT/UPDATE, not only at COMMIT, so any write path that flushes
-    Appointment changes before its own final commit (explicitly, or
-    implicitly via SQLAlchemy's autoflush ahead of a query) needs this same
+    Appointment changes before its own final commit needs this same
     translation at the flush site too — otherwise a concurrent-booking loss
     surfaces as a raw `IntegrityError`/500 before ever reaching the commit
     handler."""
@@ -647,12 +740,13 @@ def update_appointment(
     if "status" in fields and fields["status"] is not None:
         row.status = fields["status"]
 
-    # _active_cycle_for_appointment below queries Cycle, which would
-    # otherwise trigger SQLAlchemy's implicit autoflush of this row's
-    # pending starts_at/ends_at change before we ever reach the protected
-    # commit below — an unprotected flush that lets a concurrent-booking
-    # ck_appointments_no_overlap violation escape as a raw
-    # IntegrityError/500. Flushing explicitly here first closes that gap.
+    # Explicit, protected checkpoint for this row's pending starts_at/
+    # ends_at change, ahead of the protected commit below. (This session
+    # factory sets autoflush=False — see app/db.py — so
+    # _active_cycle_for_appointment's query just below does not flush this
+    # row on its own; the final commit_or_raise_conflict call is what
+    # actually enforces ck_appointments_no_overlap here. This early flush
+    # is redundant defense-in-depth, not a gap-closer.)
     db.add(row)
     flush_or_raise_conflict(
         db,

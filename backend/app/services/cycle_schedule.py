@@ -576,86 +576,88 @@ def create_cycle_with_schedule(
         idempotency_key=idempotency_key,
         notes=domain_svc._normalize_optional_str(notes),
     )
-    db.add(cycle)
-    db.flush()
+    # Transactional boundary for ck_appointments_no_overlap covering every
+    # mutation below, from the first db.add() through the final commit —
+    # not just the flush/commit call sites. See
+    # agenda_svc.appointment_overlap_guard for the full rationale (mirrors
+    # cycle_intelligence.create_intelligent_cycle's identical wrapping).
+    with agenda_svc.appointment_overlap_guard(db):
+        db.add(cycle)
+        db.flush()
 
-    # A cycle worth R$0,00 (free) never creates a receivable — there is
-    # nothing to charge, so no pendency should ever exist for it.
-    if create_receivable and money.final_cents:
-        due = receivable_due_on or starts_on
-        db.add(
-            Receivable(
-                organization_id=organization_id,
-                cycle_id=cycle.id,
-                client_id=client.id,
-                amount_cents=money.final_cents,
-                due_on=due,
-                status="pending",
+        # A cycle worth R$0,00 (free) never creates a receivable — there is
+        # nothing to charge, so no pendency should ever exist for it.
+        if create_receivable and money.final_cents:
+            due = receivable_due_on or starts_on
+            db.add(
+                Receivable(
+                    organization_id=organization_id,
+                    cycle_id=cycle.id,
+                    client_id=client.id,
+                    amount_cents=money.final_cents,
+                    due_on=due,
+                    status="pending",
+                )
             )
-        )
 
-    title = f"{service.name} · {client.full_name}"
-    for occ in occurrences:
-        appt = Appointment(
+        title = f"{service.name} · {client.full_name}"
+        for occ in occurrences:
+            appt = Appointment(
+                organization_id=organization_id,
+                client_id=client.id,
+                cycle_id=cycle.id,
+                service_id=service.id,
+                location_id=location.id if location else None,
+                title=title,
+                notes="Origem: ciclo",
+                starts_at=occ.starts_at,
+                ends_at=occ.ends_at,
+                status="scheduled",
+            )
+            db.add(appt)
+            planned_appts.append(appt)
+
+        if len(planned_appts) != int(cycle.lesson_count or 0):
+            db.rollback()
+            raise AuthError(
+                "agenda_incomplete",
+                "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
+                500,
+            )
+
+        # Flushes every planned appointment above — still inside
+        # appointment_overlap_guard, so a concurrent-booking violation here
+        # is caught the same way as anywhere else in this block.
+        db.flush()
+        hits_final = find_occurrence_conflicts(
+            db,
             organization_id=organization_id,
-            client_id=client.id,
-            cycle_id=cycle.id,
-            service_id=service.id,
-            location_id=location.id if location else None,
-            title=title,
-            notes="Origem: ciclo",
-            starts_at=occ.starts_at,
-            ends_at=occ.ends_at,
-            status="scheduled",
+            occurrences=occurrences,
+            exclude_cycle_id=cycle.id,
         )
-        db.add(appt)
-        planned_appts.append(appt)
+        if hits_final:
+            db.rollback()
+            raise_schedule_conflict(
+                conflicts=[
+                    {
+                        "id": str(c.id) if c.id else None,
+                        "client_name": c.client.full_name if c.client else None,
+                        "starts_at": c.starts_at.isoformat(),
+                        "ends_at": c.ends_at.isoformat(),
+                        "status": c.status,
+                    }
+                    for hit in hits_final
+                    for c in (hit.conflicting or [])
+                ],
+                conflict_count=len(hits_final),
+                occurrence_count=len(occurrences),
+            )
 
-    if len(planned_appts) != int(cycle.lesson_count or 0):
-        db.rollback()
-        raise AuthError(
-            "agenda_incomplete",
-            "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
-            500,
-        )
-
-    # find_occurrence_conflicts below queries Appointment, which would
-    # otherwise trigger SQLAlchemy's implicit autoflush of every planned
-    # appointment just added above — an unprotected flush that lets a
-    # concurrent-booking ck_appointments_no_overlap violation escape as a
-    # raw IntegrityError/500. Flushing explicitly here, through the same
-    # translator used everywhere else, closes that gap.
-    agenda_svc.flush_or_raise_conflict(db)
-    hits_final = find_occurrence_conflicts(
-        db,
-        organization_id=organization_id,
-        occurrences=occurrences,
-        exclude_cycle_id=cycle.id,
-    )
-    if hits_final:
-        db.rollback()
-        raise_schedule_conflict(
-            conflicts=[
-                {
-                    "id": str(c.id) if c.id else None,
-                    "client_name": c.client.full_name if c.client else None,
-                    "starts_at": c.starts_at.isoformat(),
-                    "ends_at": c.ends_at.isoformat(),
-                    "status": c.status,
-                }
-                for hit in hits_final
-                for c in (hit.conflicting or [])
-            ],
-            conflict_count=len(hits_final),
-            occurrence_count=len(occurrences),
-        )
-
-    # Bulk commit spanning every lesson of the cycle — see the identical
-    # comment in cycle_intelligence.py: no single starts_at/ends_at to
-    # reload a conflict for here, so a database-level exclusion-constraint
-    # hit (the backstop for a concurrent booking racing this generation)
-    # surfaces as a plain 409 appointment_conflict, never a raw 500.
-    agenda_svc.commit_or_raise_conflict(db)
+        # Bulk commit spanning every lesson of the cycle — no single
+        # starts_at/ends_at to reload a conflict for, so a database-level
+        # exclusion-constraint hit surfaces as a plain 409
+        # appointment_conflict, never a raw 500.
+        db.commit()
     cycle_out = domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
     appt_ids = [a.id for a in planned_appts]
     planned_appts = list(

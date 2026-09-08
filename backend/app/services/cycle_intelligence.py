@@ -533,147 +533,156 @@ def create_intelligent_cycle(
         idempotency_key=payload.idempotency_key,
         notes=domain_svc._normalize_optional_str(payload.notes),
     )
-    db.add(cycle)
-    db.flush()
+    # Transactional boundary for ck_appointments_no_overlap covering every
+    # mutation below, from the first db.add() through the final commit —
+    # not just the two obvious flush/commit call sites. This operation
+    # calls into auxiliary services — renewal_case_svc.mark_renewed, in
+    # particular, which queries Cycle and then flushes explicitly on its
+    # own (renewal_case.py:335) — against this same pending unit of work.
+    # A concurrent booking's exclusion-constraint violation can surface at
+    # that flush, not necessarily at a call site written here. See
+    # agenda_svc.appointment_overlap_guard for the full rationale.
+    with agenda_svc.appointment_overlap_guard(db):
+        db.add(cycle)
+        db.flush()
 
-    # A cycle worth R$0,00 (free) never creates a receivable — there is
-    # nothing to charge, so no pendency should ever exist for it.
-    if payload.create_receivable and preview.final_cents:
-        due = payload.receivable_due_on or payload.starts_on
-        db.add(
-            Receivable(
-                organization_id=organization_id,
-                cycle_id=cycle.id,
-                client_id=client.id,
-                amount_cents=preview.final_cents,
-                due_on=due,
-                status="pending",
-            )
-        )
-
-    if len(planned) != int(preview.lesson_count):
-        db.rollback()
-        raise AuthError(
-            "agenda_incomplete",
-            "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
-            500,
-        )
-
-    title = f"{service.name} · {client.full_name}"
-    for start_at, end_at in planned:
-        db.add(
-            Appointment(
-                organization_id=organization_id,
-                client_id=client.id,
-                cycle_id=cycle.id,
-                service_id=service.id,
-                location_id=location.id if location else None,
-                title=title,
-                notes="Origem: ciclo",
-                starts_at=start_at,
-                ends_at=end_at,
-                status="scheduled",
-            )
-        )
-
-    if payload.renewal_request_id is not None and renewal_row is not None:
-        renewal_row.status = "resolved"
-        renewal_row.resolved_at = datetime.now(UTC)
-        renewal_row.created_cycle_id = cycle.id
-        db.add(renewal_row)
-
-    if source_cycle_id_to_end is not None:
-        # Source cycle leaves the operational "active nearing" surface once renewed.
-        source = db.scalar(
-            select(Cycle).where(
-                Cycle.organization_id == organization_id,
-                Cycle.id == source_cycle_id_to_end,
-            )
-        )
-        if source is not None and source.status == "active":
-            source.status = "ended"
-            db.add(source)
-            now_utc = datetime.now(UTC)
-            future_open = list(
-                db.scalars(
-                    select(Appointment).where(
-                        Appointment.organization_id == organization_id,
-                        Appointment.cycle_id == source.id,
-                        Appointment.status == "scheduled",
-                        Appointment.starts_at > now_utc,
-                    )
-                ).all()
-            )
-            for appt in future_open:
-                appt.status = "cancelled"
-                db.add(appt)
-        # A portal-submitted request for this exact source cycle is now
-        # genuinely resolved too, even when this cycle came from the generic
-        # "Preparar renovação" flow (not the renewal_request_id path) —
-        # never leave a client's request looking open once the professional
-        # already renewed them another way.
-        if renewal_row is None:
-            open_request = db.scalar(
-                select(RenewalRequest).where(
-                    RenewalRequest.organization_id == organization_id,
-                    RenewalRequest.source_cycle_id == source_cycle_id_to_end,
-                    RenewalRequest.status.in_(("requested", "acknowledged", "payment_reported")),
+        # A cycle worth R$0,00 (free) never creates a receivable — there is
+        # nothing to charge, so no pendency should ever exist for it.
+        if payload.create_receivable and preview.final_cents:
+            due = payload.receivable_due_on or payload.starts_on
+            db.add(
+                Receivable(
+                    organization_id=organization_id,
+                    cycle_id=cycle.id,
+                    client_id=client.id,
+                    amount_cents=preview.final_cents,
+                    due_on=due,
+                    status="pending",
                 )
             )
-            if open_request is not None:
-                open_request.status = "resolved"
-                open_request.resolved_at = datetime.now(UTC)
-                open_request.created_cycle_id = cycle.id
-                db.add(open_request)
-        renewal_case_svc.mark_renewed(
+
+        if len(planned) != int(preview.lesson_count):
+            db.rollback()
+            raise AuthError(
+                "agenda_incomplete",
+                "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
+                500,
+            )
+
+        title = f"{service.name} · {client.full_name}"
+        for start_at, end_at in planned:
+            db.add(
+                Appointment(
+                    organization_id=organization_id,
+                    client_id=client.id,
+                    cycle_id=cycle.id,
+                    service_id=service.id,
+                    location_id=location.id if location else None,
+                    title=title,
+                    notes="Origem: ciclo",
+                    starts_at=start_at,
+                    ends_at=end_at,
+                    status="scheduled",
+                )
+            )
+
+        if payload.renewal_request_id is not None and renewal_row is not None:
+            renewal_row.status = "resolved"
+            renewal_row.resolved_at = datetime.now(UTC)
+            renewal_row.created_cycle_id = cycle.id
+            db.add(renewal_row)
+
+        if source_cycle_id_to_end is not None:
+            # Source cycle leaves the operational "active nearing" surface once renewed.
+            source = db.scalar(
+                select(Cycle).where(
+                    Cycle.organization_id == organization_id,
+                    Cycle.id == source_cycle_id_to_end,
+                )
+            )
+            if source is not None and source.status == "active":
+                source.status = "ended"
+                db.add(source)
+                now_utc = datetime.now(UTC)
+                future_open = list(
+                    db.scalars(
+                        select(Appointment).where(
+                            Appointment.organization_id == organization_id,
+                            Appointment.cycle_id == source.id,
+                            Appointment.status == "scheduled",
+                            Appointment.starts_at > now_utc,
+                        )
+                    ).all()
+                )
+                for appt in future_open:
+                    appt.status = "cancelled"
+                    db.add(appt)
+            # A portal-submitted request for this exact source cycle is now
+            # genuinely resolved too, even when this cycle came from the generic
+            # "Preparar renovação" flow (not the renewal_request_id path) —
+            # never leave a client's request looking open once the professional
+            # already renewed them another way.
+            if renewal_row is None:
+                open_request = db.scalar(
+                    select(RenewalRequest).where(
+                        RenewalRequest.organization_id == organization_id,
+                        RenewalRequest.source_cycle_id == source_cycle_id_to_end,
+                        RenewalRequest.status.in_(
+                            ("requested", "acknowledged", "payment_reported")
+                        ),
+                    )
+                )
+                if open_request is not None:
+                    open_request.status = "resolved"
+                    open_request.resolved_at = datetime.now(UTC)
+                    open_request.created_cycle_id = cycle.id
+                    db.add(open_request)
+            renewal_case_svc.mark_renewed(
+                db,
+                organization_id=organization_id,
+                source_cycle_id=source_cycle_id_to_end,
+                successor_cycle_id=cycle.id,
+            )
+
+        # Flushes every pending write above — cycle, receivable, every
+        # planned Appointment, and whatever renewal_case_svc.mark_renewed
+        # already flushed on its own. Still inside appointment_overlap_guard,
+        # so a concurrent-booking violation here is caught the same way as
+        # anywhere else in this block.
+        db.flush()
+        hits_final = schedule_svc.find_occurrence_conflicts(
             db,
             organization_id=organization_id,
-            source_cycle_id=source_cycle_id_to_end,
-            successor_cycle_id=cycle.id,
+            occurrences=occurrences,
+            exclude_cycle_id=cycle.id,
         )
+        if hits_final:
+            flat: list[dict] = []
+            tz = _org_tz(db, organization_id)
+            for hit in hits_final:
+                for row in hit.conflicting:
+                    flat.append(
+                        {
+                            "id": str(row.id),
+                            "client_name": row.client.full_name if row.client else None,
+                            "starts_at": row.starts_at.isoformat(),
+                            "ends_at": row.ends_at.isoformat(),
+                            "status": row.status,
+                            "occurrence": schedule_svc.format_occurrence_label(hit.occurrence, tz),
+                        }
+                    )
+            db.rollback()
+            schedule_svc.raise_schedule_conflict(
+                conflicts=flat,
+                conflict_count=len(hits_final),
+                occurrence_count=len(occurrences),
+            )
 
-    # Bulk flush spanning every lesson just added — Postgres validates
-    # ck_appointments_no_overlap immediately on each INSERT, not only at
-    # COMMIT, so a concurrent booking that already took one of these exact
-    # slots surfaces right here, not later at the final commit. No single
-    # starts_at/ends_at to reload a conflict for (many lessons at once),
-    # so this becomes a plain 409 appointment_conflict instead of a raw
-    # IntegrityError/500.
-    agenda_svc.flush_or_raise_conflict(db)
-    hits_final = schedule_svc.find_occurrence_conflicts(
-        db,
-        organization_id=organization_id,
-        occurrences=occurrences,
-        exclude_cycle_id=cycle.id,
-    )
-    if hits_final:
-        flat: list[dict] = []
-        tz = _org_tz(db, organization_id)
-        for hit in hits_final:
-            for row in hit.conflicting:
-                flat.append(
-                    {
-                        "id": str(row.id),
-                        "client_name": row.client.full_name if row.client else None,
-                        "starts_at": row.starts_at.isoformat(),
-                        "ends_at": row.ends_at.isoformat(),
-                        "status": row.status,
-                        "occurrence": schedule_svc.format_occurrence_label(hit.occurrence, tz),
-                    }
-                )
-        db.rollback()
-        schedule_svc.raise_schedule_conflict(
-            conflicts=flat,
-            conflict_count=len(hits_final),
-            occurrence_count=len(occurrences),
-        )
-
-    # Bulk commit spanning every lesson of the cycle — no single
-    # starts_at/ends_at to reload a conflict for, so a database-level
-    # exclusion-constraint hit (the backstop for a concurrent booking
-    # racing this same generation) surfaces as a plain 409
-    # appointment_conflict instead of a raw IntegrityError/500.
-    agenda_svc.commit_or_raise_conflict(db)
+        # Bulk commit spanning every lesson of the cycle — no single
+        # starts_at/ends_at to reload a conflict for, so a database-level
+        # exclusion-constraint hit surfaces as a plain 409
+        # appointment_conflict instead of a raw IntegrityError/500.
+        db.commit()
     return domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
 
 
