@@ -7,8 +7,7 @@ and distinguishes the states the assistant must not confuse (§13/§20 spec).
 from __future__ import annotations
 
 import uuid
-from datetime import date, time
-
+from datetime import date, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.agent.tools import ToolContext, get_tool
@@ -27,6 +26,18 @@ def _auth(client, payload: dict) -> None:
 def _me(client) -> tuple[uuid.UUID, uuid.UUID]:
     me = client.get("/api/v1/auth/me").json()
     return uuid.UUID(me["organization"]["id"]), uuid.UUID(me["user"]["id"])
+
+
+def _next_monday_strictly_after(day: date) -> date:
+    """Next Monday strictly later than `day` — never `day` itself, even when
+    `day` is already a Monday. compute_free_slots drops any slot whose start
+    is before `datetime.now(UTC)` (see app/services/availability.py), so a
+    same-day date silently loses all its slots once real wall-clock time
+    passes the configured journey's end for that day. Always landing on a
+    future day (at most 7 days out, well inside MAX_AGENDA_RANGE_DAYS=31)
+    keeps this test's outcome independent of what time it happens to run."""
+    days_ahead = (0 - day.weekday()) % 7 or 7
+    return day + timedelta(days=days_ahead)
 
 
 def _configure_week(db, organization_id: uuid.UUID) -> None:
@@ -92,13 +103,12 @@ def test_tool_returns_real_slots_matching_engine(client, register_payload):
     db = SessionLocal()
     try:
         _configure_week(db, org_id)
-        # 2026-09-07 is a Monday
+        org = agenda_svc.get_organization(db, org_id)
+        monday = _next_monday_strictly_after(agenda_svc.org_local_today(org))
         ctx = ToolContext(organization_id=org_id, user_id=user_id, db=db)
-        result = get_tool("get_available_slots").handler(ctx, {"starts_on": "2026-09-07"})
+        result = get_tool("get_available_slots").handler(ctx, {"starts_on": monday.isoformat()})
         assert result["configured"] is True
-        engine = availability_svc.compute_day(
-            db, organization_id=org_id, day=date(2026, 9, 7)
-        )
+        engine = availability_svc.compute_day(db, organization_id=org_id, day=monday)
         assert result["days"][0]["slots"] == [s.label for s in engine.slots]
         assert len(result["days"][0]["slots"]) > 0
     finally:
