@@ -285,264 +285,265 @@ def create_intelligent_cycle(
     organization_id: uuid.UUID,
     payload: IntelligentCycleCreate,
 ) -> Cycle:
-    if payload.idempotency_key:
-        replay = schedule_svc.replay_or_release_idempotent_cycle(
-            db,
-            organization_id=organization_id,
-            idempotency_key=payload.idempotency_key,
-        )
-        if replay is not None:
-            existing, _appts = replay
-            return domain_svc.get_cycle(
-                db, organization_id=organization_id, cycle_id=existing.id
-            )
-
-    client = domain_svc.get_client(
-        db, organization_id=organization_id, client_id=payload.client_id
-    )
-    if client.status != "active":
-        raise AuthError("client_archived", "Não é possível criar ciclo para cliente arquivado.")
-    service = domain_svc.get_service(
-        db, organization_id=organization_id, service_id=payload.service_id
-    )
-    if service.status != "active":
-        raise AuthError("service_archived", "Não é possível criar ciclo com serviço arquivado.")
-
-    renewal_row: RenewalRequest | None = None
-    if payload.renewal_request_id is not None:
-        renewal_row = db.scalar(
-            select(RenewalRequest).where(
-                RenewalRequest.organization_id == organization_id,
-                RenewalRequest.id == payload.renewal_request_id,
-            )
-        )
-        if renewal_row is None:
-            raise AuthError("renewal_not_found", "Solicitação de renovação não encontrada.", 404)
-        if renewal_row.client_id != payload.client_id:
-            raise AuthError(
-                "renewal_client_mismatch",
-                "A renovação não pertence a este cliente.",
-                422,
-            )
-        if renewal_row.created_cycle_id is not None:
-            return domain_svc.get_cycle(
-                db, organization_id=organization_id, cycle_id=renewal_row.created_cycle_id
-            )
-        if renewal_row.status in {"dismissed", "canceled", "rejected"}:
-            raise AuthError(
-                "renewal_closed",
-                "Esta solicitação de renovação não pode mais ser aprovada.",
-                422,
-            )
-
-    renewed_from_cycle: Cycle | None = None
-    if payload.renewal_request_id is None and payload.renewed_from_cycle_id is not None:
-        renewed_from_cycle = db.scalar(
-            select(Cycle).where(
-                Cycle.organization_id == organization_id,
-                Cycle.id == payload.renewed_from_cycle_id,
-            )
-        )
-        if renewed_from_cycle is None:
-            raise AuthError("cycle_not_found", "Ciclo de origem não encontrado.", 404)
-        if renewed_from_cycle.client_id != payload.client_id:
-            raise AuthError(
-                "renewal_client_mismatch",
-                "O ciclo de origem não pertence a este cliente.",
-                422,
-            )
-        if renewed_from_cycle.status == "cancelled":
-            raise AuthError(
-                "cycle_cancelled",
-                "Um ciclo cancelado não pode ser usado como origem de renovação.",
-                422,
-            )
-        existing_case = db.scalar(
-            select(RenewalCase).where(
-                RenewalCase.organization_id == organization_id,
-                RenewalCase.source_cycle_id == renewed_from_cycle.id,
-            )
-        )
-        if existing_case is not None and existing_case.status == "renewed":
-            if existing_case.successor_cycle_id is not None:
-                return domain_svc.get_cycle(
-                    db,
-                    organization_id=organization_id,
-                    cycle_id=existing_case.successor_cycle_id,
-                )
-        if existing_case is not None and existing_case.status == "ended_without_renewal":
-            raise AuthError(
-                "renewal_closed",
-                "Este processo de renovação já foi encerrado sem renovação.",
-                422,
-            )
-
-    template = get_template(
-        db, organization_id=organization_id, template_id=payload.cycle_template_id
-    )
-    if template.status != "active":
-        raise AuthError("template_archived", "Não é possível usar um modelo arquivado.")
-
-    if len(payload.weekdays) != template.weekly_frequency:
-        raise AuthError(
-            "weekday_mismatch",
-            f"Selecione exatamente {template.weekly_frequency} dia(s) da semana.",
-            422,
-        )
-
-    location: Location | None = None
-    if payload.location_id is not None:
-        location = agenda_svc.get_location(
-            db, organization_id=organization_id, location_id=payload.location_id
-        )
-
-    preview = build_preview(
-        db,
-        organization_id=organization_id,
-        payload=CyclePreviewIn(
-            service_id=payload.service_id,
-            cycle_template_id=payload.cycle_template_id,
-            starts_on=payload.starts_on,
-            weekdays=payload.weekdays,
-            unit_price_cents=payload.unit_price_cents,
-            adjustment_cents=payload.adjustment_cents,
-            final_cents=payload.final_cents,
-            lesson_duration_minutes=payload.lesson_duration_minutes,
-        ),
-    )
-    if preview.lesson_count < 1:
-        raise AuthError(
-            "no_lessons",
-            "Nenhuma aula cai neste período com os dias escolhidos.",
-            422,
-        )
-
-    source_cycle_id_to_end: uuid.UUID | None = (
-        renewal_row.source_cycle_id
-        if renewal_row is not None and renewal_row.source_cycle_id is not None
-        else (renewed_from_cycle.id if renewed_from_cycle is not None else None)
-    )
-    exclude_cycle_id = source_cycle_id_to_end
-    cycle_guard_svc.assert_no_duplicate_or_overlap(
-        db,
-        organization_id=organization_id,
-        client_id=client.id,
-        service_id=service.id,
-        starts_on=preview.starts_on,
-        ends_on=preview.ends_on,
-        lesson_count=preview.lesson_count,
-        exclude_cycle_id=exclude_cycle_id,
-    )
-
-    planned: list[tuple[datetime, datetime]] = []
-    if not payload.generate_appointments or payload.starts_time is None:
-        raise AuthError(
-            "agenda_required",
-            "Ciclo com programação deve gerar as aulas na agenda.",
-            422,
-        )
-    assert payload.starts_time is not None
-    tz = _org_tz(db, organization_id)
-    slots = schedule_svc.slots_from_payload(
-        payload.weekdays, starts_time=payload.starts_time
-    )
-    occurrences = schedule_svc.build_occurrences(
-        starts_on=preview.starts_on,
-        ends_on=preview.ends_on,
-        slots=slots,
-        duration_minutes=preview.lesson_duration_minutes,
-        tz=tz,
-    )
-    planned = [(o.starts_at, o.ends_at) for o in occurrences]
-    # Renewal approval will end the source cycle and cancel its future scheduled
-    # appointments after create. Exclude that source from conflict detection so a
-    # legitimate same-slot renewal is not blocked by appointments about to be cancelled.
-    exclude_cycle_id = source_cycle_id_to_end
-    hits = schedule_svc.find_occurrence_conflicts(
-        db,
-        organization_id=organization_id,
-        occurrences=occurrences,
-        exclude_cycle_id=exclude_cycle_id,
-    )
-    if hits:
-        all_conflicts = []
-        for hit in hits:
-            for row in hit.conflicting:
-                all_conflicts.append(
-                    {
-                        "id": str(row.id),
-                        "client_name": row.client.full_name if row.client else None,
-                        "starts_at": row.starts_at.isoformat(),
-                        "ends_at": row.ends_at.isoformat(),
-                        "status": row.status,
-                        "occurrence": schedule_svc.format_occurrence_label(
-                            hit.occurrence, tz
-                        ),
-                    }
-                )
-            if not hit.conflicting:
-                all_conflicts.append(
-                    {
-                        "id": None,
-                        "client_name": client.full_name,
-                        "starts_at": hit.occurrence.starts_at.isoformat(),
-                        "ends_at": hit.occurrence.ends_at.isoformat(),
-                        "status": "planned_batch",
-                    }
-                )
-        alts = schedule_svc.suggest_recurring_times(
-            db,
-            organization_id=organization_id,
-            starts_on=preview.starts_on,
-            ends_on=preview.ends_on,
-            weekdays=payload.weekdays,
-            duration_minutes=preview.lesson_duration_minutes,
-            tz=tz,
-            preferred=payload.starts_time,
-        )
-        schedule_svc.raise_schedule_conflict(
-            conflicts=all_conflicts,
-            conflict_count=len(hits),
-            occurrence_count=len(occurrences),
-            suggestions=alts,
-        )
-
-    cycle = Cycle(
-        organization_id=organization_id,
-        client_id=client.id,
-        service_id=service.id,
-        cycle_template_id=template.id,
-        cycle_type="period",
-        status="active",
-        starts_on=preview.starts_on,
-        ends_on=preview.ends_on,
-        weekdays=preview.weekdays,
-        lesson_count=preview.lesson_count,
-        pricing_mode=preview.pricing_mode,
-        unit_price_cents=preview.unit_price_cents,
-        subtotal_cents=preview.subtotal_cents,
-        adjustment_cents=preview.adjustment_cents,
-        value_cents=preview.final_cents,
-        lesson_duration_minutes=preview.lesson_duration_minutes,
-        default_location_id=location.id if location else None,
-        default_starts_time=payload.starts_time,
-        duration_type=preview.duration_type,
-        duration_value=preview.duration_value,
-        weekly_frequency=preview.weekly_frequency,
-        is_legacy=False,
-        idempotency_key=payload.idempotency_key,
-        notes=domain_svc._normalize_optional_str(payload.notes),
-    )
     # Transactional boundary for ck_appointments_no_overlap covering every
-    # mutation below, from the first db.add() through the final commit —
-    # not just the two obvious flush/commit call sites. This operation
-    # calls into auxiliary services — renewal_case_svc.mark_renewed, in
-    # particular, which queries Cycle and then flushes explicitly on its
-    # own (renewal_case.py:335) — against this same pending unit of work.
-    # A concurrent booking's exclusion-constraint violation can surface at
-    # that flush, not necessarily at a call site written here. See
+    # mutation of the idempotent-replay/creation path below, from the very
+    # first read-then-mutate step (replay_or_release_idempotent_cycle can
+    # itself mutate an incomplete cycle and flush) through the final commit —
+    # a single boundary for the whole function, not one nested inside it.
+    # This operation also calls into auxiliary services —
+    # renewal_case_svc.mark_renewed, in particular, which queries Cycle and
+    # then flushes explicitly on its own (renewal_case.py:335) — against this
+    # same pending unit of work. A concurrent booking's exclusion-constraint
+    # violation can surface at any of these flushes, not necessarily at a
+    # call site written directly in this function. See
     # agenda_svc.appointment_overlap_guard for the full rationale.
     with agenda_svc.appointment_overlap_guard(db):
+        if payload.idempotency_key:
+            replay = schedule_svc.replay_or_release_idempotent_cycle(
+                db,
+                organization_id=organization_id,
+                idempotency_key=payload.idempotency_key,
+            )
+            if replay is not None:
+                existing, _appts = replay
+                return domain_svc.get_cycle(
+                    db, organization_id=organization_id, cycle_id=existing.id
+                )
+
+        client = domain_svc.get_client(
+            db, organization_id=organization_id, client_id=payload.client_id
+        )
+        if client.status != "active":
+            raise AuthError("client_archived", "Não é possível criar ciclo para cliente arquivado.")
+        service = domain_svc.get_service(
+            db, organization_id=organization_id, service_id=payload.service_id
+        )
+        if service.status != "active":
+            raise AuthError("service_archived", "Não é possível criar ciclo com serviço arquivado.")
+
+        renewal_row: RenewalRequest | None = None
+        if payload.renewal_request_id is not None:
+            renewal_row = db.scalar(
+                select(RenewalRequest).where(
+                    RenewalRequest.organization_id == organization_id,
+                    RenewalRequest.id == payload.renewal_request_id,
+                )
+            )
+            if renewal_row is None:
+                raise AuthError(
+                    "renewal_not_found", "Solicitação de renovação não encontrada.", 404
+                )
+            if renewal_row.client_id != payload.client_id:
+                raise AuthError(
+                    "renewal_client_mismatch",
+                    "A renovação não pertence a este cliente.",
+                    422,
+                )
+            if renewal_row.created_cycle_id is not None:
+                return domain_svc.get_cycle(
+                    db, organization_id=organization_id, cycle_id=renewal_row.created_cycle_id
+                )
+            if renewal_row.status in {"dismissed", "canceled", "rejected"}:
+                raise AuthError(
+                    "renewal_closed",
+                    "Esta solicitação de renovação não pode mais ser aprovada.",
+                    422,
+                )
+
+        renewed_from_cycle: Cycle | None = None
+        if payload.renewal_request_id is None and payload.renewed_from_cycle_id is not None:
+            renewed_from_cycle = db.scalar(
+                select(Cycle).where(
+                    Cycle.organization_id == organization_id,
+                    Cycle.id == payload.renewed_from_cycle_id,
+                )
+            )
+            if renewed_from_cycle is None:
+                raise AuthError("cycle_not_found", "Ciclo de origem não encontrado.", 404)
+            if renewed_from_cycle.client_id != payload.client_id:
+                raise AuthError(
+                    "renewal_client_mismatch",
+                    "O ciclo de origem não pertence a este cliente.",
+                    422,
+                )
+            if renewed_from_cycle.status == "cancelled":
+                raise AuthError(
+                    "cycle_cancelled",
+                    "Um ciclo cancelado não pode ser usado como origem de renovação.",
+                    422,
+                )
+            existing_case = db.scalar(
+                select(RenewalCase).where(
+                    RenewalCase.organization_id == organization_id,
+                    RenewalCase.source_cycle_id == renewed_from_cycle.id,
+                )
+            )
+            if existing_case is not None and existing_case.status == "renewed":
+                if existing_case.successor_cycle_id is not None:
+                    return domain_svc.get_cycle(
+                        db,
+                        organization_id=organization_id,
+                        cycle_id=existing_case.successor_cycle_id,
+                    )
+            if existing_case is not None and existing_case.status == "ended_without_renewal":
+                raise AuthError(
+                    "renewal_closed",
+                    "Este processo de renovação já foi encerrado sem renovação.",
+                    422,
+                )
+
+        template = get_template(
+            db, organization_id=organization_id, template_id=payload.cycle_template_id
+        )
+        if template.status != "active":
+            raise AuthError("template_archived", "Não é possível usar um modelo arquivado.")
+
+        if len(payload.weekdays) != template.weekly_frequency:
+            raise AuthError(
+                "weekday_mismatch",
+                f"Selecione exatamente {template.weekly_frequency} dia(s) da semana.",
+                422,
+            )
+
+        location: Location | None = None
+        if payload.location_id is not None:
+            location = agenda_svc.get_location(
+                db, organization_id=organization_id, location_id=payload.location_id
+            )
+
+        preview = build_preview(
+            db,
+            organization_id=organization_id,
+            payload=CyclePreviewIn(
+                service_id=payload.service_id,
+                cycle_template_id=payload.cycle_template_id,
+                starts_on=payload.starts_on,
+                weekdays=payload.weekdays,
+                unit_price_cents=payload.unit_price_cents,
+                adjustment_cents=payload.adjustment_cents,
+                final_cents=payload.final_cents,
+                lesson_duration_minutes=payload.lesson_duration_minutes,
+            ),
+        )
+        if preview.lesson_count < 1:
+            raise AuthError(
+                "no_lessons",
+                "Nenhuma aula cai neste período com os dias escolhidos.",
+                422,
+            )
+
+        source_cycle_id_to_end: uuid.UUID | None = (
+            renewal_row.source_cycle_id
+            if renewal_row is not None and renewal_row.source_cycle_id is not None
+            else (renewed_from_cycle.id if renewed_from_cycle is not None else None)
+        )
+        exclude_cycle_id = source_cycle_id_to_end
+        cycle_guard_svc.assert_no_duplicate_or_overlap(
+            db,
+            organization_id=organization_id,
+            client_id=client.id,
+            service_id=service.id,
+            starts_on=preview.starts_on,
+            ends_on=preview.ends_on,
+            lesson_count=preview.lesson_count,
+            exclude_cycle_id=exclude_cycle_id,
+        )
+
+        planned: list[tuple[datetime, datetime]] = []
+        if not payload.generate_appointments or payload.starts_time is None:
+            raise AuthError(
+                "agenda_required",
+                "Ciclo com programação deve gerar as aulas na agenda.",
+                422,
+            )
+        assert payload.starts_time is not None
+        tz = _org_tz(db, organization_id)
+        slots = schedule_svc.slots_from_payload(payload.weekdays, starts_time=payload.starts_time)
+        occurrences = schedule_svc.build_occurrences(
+            starts_on=preview.starts_on,
+            ends_on=preview.ends_on,
+            slots=slots,
+            duration_minutes=preview.lesson_duration_minutes,
+            tz=tz,
+        )
+        planned = [(o.starts_at, o.ends_at) for o in occurrences]
+        # Renewal approval will end the source cycle and cancel its future scheduled
+        # appointments after create. Exclude that source from conflict detection so a
+        # legitimate same-slot renewal is not blocked by appointments about to be cancelled.
+        exclude_cycle_id = source_cycle_id_to_end
+        hits = schedule_svc.find_occurrence_conflicts(
+            db,
+            organization_id=organization_id,
+            occurrences=occurrences,
+            exclude_cycle_id=exclude_cycle_id,
+        )
+        if hits:
+            all_conflicts = []
+            for hit in hits:
+                for row in hit.conflicting:
+                    all_conflicts.append(
+                        {
+                            "id": str(row.id),
+                            "client_name": row.client.full_name if row.client else None,
+                            "starts_at": row.starts_at.isoformat(),
+                            "ends_at": row.ends_at.isoformat(),
+                            "status": row.status,
+                            "occurrence": schedule_svc.format_occurrence_label(hit.occurrence, tz),
+                        }
+                    )
+                if not hit.conflicting:
+                    all_conflicts.append(
+                        {
+                            "id": None,
+                            "client_name": client.full_name,
+                            "starts_at": hit.occurrence.starts_at.isoformat(),
+                            "ends_at": hit.occurrence.ends_at.isoformat(),
+                            "status": "planned_batch",
+                        }
+                    )
+            alts = schedule_svc.suggest_recurring_times(
+                db,
+                organization_id=organization_id,
+                starts_on=preview.starts_on,
+                ends_on=preview.ends_on,
+                weekdays=payload.weekdays,
+                duration_minutes=preview.lesson_duration_minutes,
+                tz=tz,
+                preferred=payload.starts_time,
+            )
+            schedule_svc.raise_schedule_conflict(
+                conflicts=all_conflicts,
+                conflict_count=len(hits),
+                occurrence_count=len(occurrences),
+                suggestions=alts,
+            )
+
+        cycle = Cycle(
+            organization_id=organization_id,
+            client_id=client.id,
+            service_id=service.id,
+            cycle_template_id=template.id,
+            cycle_type="period",
+            status="active",
+            starts_on=preview.starts_on,
+            ends_on=preview.ends_on,
+            weekdays=preview.weekdays,
+            lesson_count=preview.lesson_count,
+            pricing_mode=preview.pricing_mode,
+            unit_price_cents=preview.unit_price_cents,
+            subtotal_cents=preview.subtotal_cents,
+            adjustment_cents=preview.adjustment_cents,
+            value_cents=preview.final_cents,
+            lesson_duration_minutes=preview.lesson_duration_minutes,
+            default_location_id=location.id if location else None,
+            default_starts_time=payload.starts_time,
+            duration_type=preview.duration_type,
+            duration_value=preview.duration_value,
+            weekly_frequency=preview.weekly_frequency,
+            is_legacy=False,
+            idempotency_key=payload.idempotency_key,
+            notes=domain_svc._normalize_optional_str(payload.notes),
+        )
         db.add(cycle)
         db.flush()
 
