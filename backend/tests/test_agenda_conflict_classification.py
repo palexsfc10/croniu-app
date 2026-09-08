@@ -157,3 +157,131 @@ def test_session_is_usable_again_after_a_real_overlap_violation(db_session):
         ends_at=later_starts + timedelta(hours=1),
     )
     assert db_session.get(Appointment, healthy.id) is not None
+
+
+# flush_or_raise_conflict shares its classifier with commit_or_raise_conflict
+# (both call the same _flush_or_commit_and_raise_conflict/_is_overlap_violation
+# internals) — these mirror the commit-side cases above for the flush entry
+# point specifically, since Postgres validates ck_appointments_no_overlap
+# immediately on INSERT/UPDATE, not only at COMMIT.
+
+
+def test_flush_real_no_overlap_violation_becomes_409_appointment_conflict(db_session):
+    org, client = _seed_org_and_client(db_session)
+    starts = datetime(2027, 3, 3, 9, 0, tzinfo=UTC)
+    ends = starts + timedelta(hours=1)
+
+    first = Appointment(
+        organization_id=org.id,
+        client_id=client.id,
+        starts_at=starts,
+        ends_at=ends,
+        status="scheduled",
+    )
+    db_session.add(first)
+    db_session.flush()
+
+    duplicate = Appointment(
+        organization_id=org.id,
+        client_id=client.id,
+        starts_at=starts,
+        ends_at=ends,
+        status="scheduled",
+    )
+    db_session.add(duplicate)
+    with pytest.raises(AuthError) as excinfo:
+        agenda_svc.flush_or_raise_conflict(
+            db_session, organization_id=org.id, starts_at=starts, ends_at=ends
+        )
+    assert excinfo.value.code == "appointment_conflict"
+    assert excinfo.value.status_code == 409
+
+
+def test_flush_other_constraint_23p01_is_reraised_untouched(db_session, monkeypatch):
+    _seed_org_and_client(db_session)
+    exc = _fake_integrity_error(sqlstate="23P01", constraint_name="some_other_exclusion_constraint")
+    monkeypatch.setattr(db_session, "flush", _make_commit_raise(exc))
+    with pytest.raises(IntegrityError):
+        agenda_svc.flush_or_raise_conflict(db_session)
+
+
+def test_flush_23p01_without_readable_constraint_name_is_reraised(db_session, monkeypatch):
+    _seed_org_and_client(db_session)
+    exc = _fake_integrity_error(sqlstate="23P01", constraint_name=None, has_diag=False)
+    monkeypatch.setattr(db_session, "flush", _make_commit_raise(exc))
+    with pytest.raises(IntegrityError):
+        agenda_svc.flush_or_raise_conflict(db_session)
+
+
+def test_flush_other_sqlstate_is_reraised_even_with_matching_constraint_name(
+    db_session, monkeypatch
+):
+    _seed_org_and_client(db_session)
+    exc = _fake_integrity_error(sqlstate="23505", constraint_name=APPOINTMENT_NO_OVERLAP_CONSTRAINT)
+    monkeypatch.setattr(db_session, "flush", _make_commit_raise(exc))
+    with pytest.raises(IntegrityError):
+        agenda_svc.flush_or_raise_conflict(db_session)
+
+
+def test_flush_rollback_happens_for_every_reraised_case(db_session, monkeypatch):
+    _seed_org_and_client(db_session)
+    calls = {"count": 0}
+    real_rollback = db_session.rollback
+
+    def _spy_rollback():
+        calls["count"] += 1
+        real_rollback()
+
+    monkeypatch.setattr(db_session, "rollback", _spy_rollback)
+    exc = _fake_integrity_error(sqlstate="23505", constraint_name="unrelated")
+    monkeypatch.setattr(db_session, "flush", _make_commit_raise(exc))
+    with pytest.raises(IntegrityError):
+        agenda_svc.flush_or_raise_conflict(db_session)
+    assert calls["count"] == 1
+
+
+def test_flush_session_is_usable_again_after_a_real_overlap_violation(db_session):
+    org, client = _seed_org_and_client(db_session)
+    starts = datetime(2027, 3, 4, 9, 0, tzinfo=UTC)
+    ends = starts + timedelta(hours=1)
+
+    first = Appointment(
+        organization_id=org.id,
+        client_id=client.id,
+        starts_at=starts,
+        ends_at=ends,
+        status="scheduled",
+    )
+    db_session.add(first)
+    db_session.flush()
+
+    duplicate = Appointment(
+        organization_id=org.id,
+        client_id=client.id,
+        starts_at=starts,
+        ends_at=ends,
+        status="scheduled",
+    )
+    db_session.add(duplicate)
+    with pytest.raises(AuthError):
+        agenda_svc.flush_or_raise_conflict(
+            db_session, organization_id=org.id, starts_at=starts, ends_at=ends
+        )
+
+    later_starts = starts + timedelta(hours=3)
+    healthy = Appointment(
+        organization_id=org.id,
+        client_id=client.id,
+        starts_at=later_starts,
+        ends_at=later_starts + timedelta(hours=1),
+        status="scheduled",
+    )
+    db_session.add(healthy)
+    agenda_svc.flush_or_raise_conflict(
+        db_session,
+        organization_id=org.id,
+        starts_at=later_starts,
+        ends_at=later_starts + timedelta(hours=1),
+    )
+    db_session.commit()
+    assert db_session.get(Appointment, healthy.id) is not None

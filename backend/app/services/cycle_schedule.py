@@ -619,6 +619,13 @@ def create_cycle_with_schedule(
             500,
         )
 
+    # find_occurrence_conflicts below queries Appointment, which would
+    # otherwise trigger SQLAlchemy's implicit autoflush of every planned
+    # appointment just added above — an unprotected flush that lets a
+    # concurrent-booking ck_appointments_no_overlap violation escape as a
+    # raw IntegrityError/500. Flushing explicitly here, through the same
+    # translator used everywhere else, closes that gap.
+    agenda_svc.flush_or_raise_conflict(db)
     hits_final = find_occurrence_conflicts(
         db,
         organization_id=organization_id,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime, time, timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -394,55 +395,66 @@ def _raise_conflict(conflicts: list[Appointment]) -> None:
     )
 
 
-def commit_or_raise_conflict(
+def _is_overlap_violation(exc: IntegrityError) -> bool:
+    """True only for a genuine `ck_appointments_no_overlap` exclusion-constraint
+    hit (Postgres SQLSTATE 23P01) — never for any other exclusion/check
+    constraint that happens to share that generic "exclusion_violation" code,
+    present or future. `orig`/`orig.diag` are read defensively via getattr:
+    depending on the driver/exception, either may not exist."""
+    orig = getattr(exc, "orig", None)
+    diag = getattr(orig, "diag", None)
+    constraint_name = getattr(diag, "constraint_name", None)
+    return (
+        getattr(orig, "sqlstate", None) == "23P01"
+        and constraint_name == APPOINTMENT_NO_OVERLAP_CONSTRAINT
+    )
+
+
+def _flush_or_commit_and_raise_conflict(
     db: Session,
+    action: Callable[[], None],
     *,
-    organization_id: uuid.UUID | None = None,
-    starts_at: datetime | None = None,
-    ends_at: datetime | None = None,
-    exclude_appointment_id: uuid.UUID | None = None,
+    organization_id: uuid.UUID | None,
+    starts_at: datetime | None,
+    ends_at: datetime | None,
+    exclude_appointment_id: uuid.UUID | None,
 ) -> None:
-    """Commit the current transaction, translating a database-level
-    `ck_appointments_no_overlap` exclusion violation (Postgres 23P01) into
-    the same 409 `appointment_conflict` shape as `_raise_conflict` above.
+    """Run `action` (either `db.flush` or `db.commit`), translating a
+    database-level `ck_appointments_no_overlap` exclusion violation
+    (Postgres 23P01) into the same 409 `appointment_conflict` shape as
+    `_raise_conflict` above. Shared by `flush_or_raise_conflict` and
+    `commit_or_raise_conflict` so the classification logic never diverges
+    between the two.
 
     This is the backstop for the race the app-level pre-check can never
     fully close on its own: `find_conflicts` runs a SELECT before any
     INSERT, but two concurrent requests can both pass that check for the
     same free slot (nothing exists yet to lock) and both attempt to
-    commit — only one can win once the database constraint exists, and
-    the loser lands here instead of raising a raw `IntegrityError`
-    (never a bare 500). Every write path that creates or reschedules an
-    Appointment (`create_appointment`, `update_appointment`, cycle/agenda
-    generation in `cycle_intelligence.py` and `cycle_schedule.py`) commits
-    through this function rather than calling `db.commit()` directly.
+    write — only one can win once the database constraint exists, and the
+    loser lands here instead of raising a raw `IntegrityError` (never a
+    bare 500). Every write path that creates or reschedules an Appointment
+    flushes/commits through these helpers rather than calling
+    `db.flush()`/`db.commit()` directly.
 
-    Only a violation of `ck_appointments_no_overlap` specifically is ever
-    translated into a booking conflict — SQLSTATE 23P01 alone is not
-    enough, since it's the generic "exclusion_violation" code shared by
-    any exclusion constraint on the connection, present or future. Every
-    other `IntegrityError` (a different constraint, 23P01 without a
-    readable `diag.constraint_name`, or any other SQLSTATE) is re-raised
-    after rollback, unconverted.
+    Only `_is_overlap_violation` cases are ever translated into a booking
+    conflict. Every other `IntegrityError` (a different constraint, 23P01
+    without a readable `diag.constraint_name`, or any other SQLSTATE) is
+    re-raised after rollback, unconverted — a bare `raise` inside the
+    `except` block, so the original traceback is preserved.
 
     When the caller's own slot is known, the conflicting row(s) are
     reloaded and reported the same way a normal pre-insert conflict is
     (`AppointmentConflictItem` list) — safe because the failed transaction
     was already rolled back, so this is a fresh read. When it isn't (e.g.
-    a bulk cycle-generation commit spanning many slots at once), a plain
-    409 with no `details` is raised instead of guessing which slot lost.
+    a bulk cycle-generation flush/commit spanning many slots at once), a
+    plain 409 with no `details` is raised instead of guessing which slot
+    lost.
     """
     try:
-        db.commit()
+        action()
     except IntegrityError as exc:
         db.rollback()
-        orig = getattr(exc, "orig", None)
-        diag = getattr(orig, "diag", None)
-        constraint_name = getattr(diag, "constraint_name", None)
-        if (
-            getattr(orig, "sqlstate", None) != "23P01"
-            or constraint_name != APPOINTMENT_NO_OVERLAP_CONSTRAINT
-        ):
+        if not _is_overlap_violation(exc):
             raise
         if organization_id is not None and starts_at is not None and ends_at is not None:
             conflicts = find_conflicts(
@@ -459,6 +471,55 @@ def commit_or_raise_conflict(
             "Este horário acabou de ser ocupado por outra reserva. Atualize e tente novamente.",
             status_code=409,
         ) from exc
+
+
+def flush_or_raise_conflict(
+    db: Session,
+    *,
+    organization_id: uuid.UUID | None = None,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    exclude_appointment_id: uuid.UUID | None = None,
+) -> None:
+    """`db.flush()` variant of `commit_or_raise_conflict` — see there for the
+    full rationale. Postgres validates an exclusion constraint immediately on
+    each INSERT/UPDATE, not only at COMMIT, so any write path that flushes
+    Appointment changes before its own final commit (explicitly, or
+    implicitly via SQLAlchemy's autoflush ahead of a query) needs this same
+    translation at the flush site too — otherwise a concurrent-booking loss
+    surfaces as a raw `IntegrityError`/500 before ever reaching the commit
+    handler."""
+    _flush_or_commit_and_raise_conflict(
+        db,
+        db.flush,
+        organization_id=organization_id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        exclude_appointment_id=exclude_appointment_id,
+    )
+
+
+def commit_or_raise_conflict(
+    db: Session,
+    *,
+    organization_id: uuid.UUID | None = None,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    exclude_appointment_id: uuid.UUID | None = None,
+) -> None:
+    """`db.commit()` variant — see `_flush_or_commit_and_raise_conflict` for
+    the full rationale. Every write path that creates or reschedules an
+    Appointment (`create_appointment`, `update_appointment`, cycle/agenda
+    generation in `cycle_intelligence.py` and `cycle_schedule.py`) commits
+    through this function rather than calling `db.commit()` directly."""
+    _flush_or_commit_and_raise_conflict(
+        db,
+        db.commit,
+        organization_id=organization_id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        exclude_appointment_id=exclude_appointment_id,
+    )
 
 
 def create_appointment(
@@ -585,6 +646,21 @@ def update_appointment(
         row.notes = _normalize_optional(fields["notes"])
     if "status" in fields and fields["status"] is not None:
         row.status = fields["status"]
+
+    # _active_cycle_for_appointment below queries Cycle, which would
+    # otherwise trigger SQLAlchemy's implicit autoflush of this row's
+    # pending starts_at/ends_at change before we ever reach the protected
+    # commit below — an unprotected flush that lets a concurrent-booking
+    # ck_appointments_no_overlap violation escape as a raw
+    # IntegrityError/500. Flushing explicitly here first closes that gap.
+    db.add(row)
+    flush_or_raise_conflict(
+        db,
+        organization_id=organization_id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        exclude_appointment_id=row.id,
+    )
 
     # Realizado / falta encerra a aula e consome 1 do saldo do ciclo do cliente.
     if row.status in {"completed", "no_show"}:

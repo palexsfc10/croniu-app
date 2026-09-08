@@ -632,7 +632,14 @@ def create_intelligent_cycle(
             successor_cycle_id=cycle.id,
         )
 
-    db.flush()
+    # Bulk flush spanning every lesson just added — Postgres validates
+    # ck_appointments_no_overlap immediately on each INSERT, not only at
+    # COMMIT, so a concurrent booking that already took one of these exact
+    # slots surfaces right here, not later at the final commit. No single
+    # starts_at/ends_at to reload a conflict for (many lessons at once),
+    # so this becomes a plain 409 appointment_conflict instead of a raw
+    # IntegrityError/500.
+    agenda_svc.flush_or_raise_conflict(db)
     hits_final = schedule_svc.find_occurrence_conflicts(
         db,
         organization_id=organization_id,
