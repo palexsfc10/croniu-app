@@ -12,8 +12,10 @@ from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from app.db import SessionLocal
+from app.models.appointment import Appointment
 from app.services import agenda as agenda_svc
 from app.services.auth import AuthError
+from sqlalchemy import func, select
 
 
 def _auth_client(client, register_payload):
@@ -339,7 +341,242 @@ def test_concurrent_booking_of_same_suggested_slot_only_one_succeeds(client, reg
     assert len(successes) == 1, results
     assert len(errors) == 1, results
     assert errors[0].code == "appointment_conflict"
+    assert errors[0].status_code == 409
 
     # The slot is no longer offered — the suggestion engine and the real agenda agree.
     after = client.get(f"/api/v1/availability/day?day={tuesday.isoformat()}").json()
     assert "09:00" not in [s["label"] for s in after["slots"]]
+
+    # The database itself — not just the two in-process return values —
+    # only ever ends up with the one appointment the constraint let through.
+    db = SessionLocal()
+    try:
+        count = db.scalar(
+            select(func.count())
+            .select_from(Appointment)
+            .where(Appointment.organization_id == org_id, Appointment.client_id == client_id)
+        )
+        assert count == 1
+    finally:
+        db.close()
+
+
+def test_concurrent_partial_overlap_is_also_blocked(client, register_payload):
+    """Not just the identical slot — a genuinely concurrent booking that
+    only partially overlaps an existing one must be blocked too."""
+    _auth_client(client, register_payload)
+    client.put("/api/v1/availability/settings", json=_full_week_payload())
+    person = _create_client(client)
+    org_id = UUID(client.get("/api/v1/auth/me").json()["organization"]["id"])
+    client_id = UUID(person["id"])
+    tuesday = _next_weekday(1)
+
+    def worker(offset_minutes: int):
+        db = SessionLocal()
+        try:
+            base = datetime.fromisoformat(f"{tuesday.isoformat()}T09:00:00-03:00")
+            start = base + timedelta(minutes=offset_minutes)
+            return agenda_svc.create_appointment(
+                db,
+                organization_id=org_id,
+                client_id=client_id,
+                starts_at=start,
+                ends_at=start + timedelta(hours=1),
+            )
+        except AuthError as exc:
+            return exc
+        finally:
+            db.close()
+
+    # 09:00–10:00 and 09:30–10:30 — neither contains the other, but they
+    # do overlap (09:30–10:00).
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(worker, [0, 30]))
+
+    errors = [r for r in results if isinstance(r, AuthError)]
+    successes = [r for r in results if not isinstance(r, AuthError)]
+    assert len(successes) == 1, results
+    assert len(errors) == 1, results
+    assert errors[0].code == "appointment_conflict"
+    assert errors[0].status_code == 409
+
+
+def test_back_to_back_appointments_are_not_overlapping(client, register_payload):
+    """The exclusion constraint uses a half-open [starts_at, ends_at) range
+    — one appointment ending exactly when the next starts is adjacency,
+    not overlap, and must remain allowed (sequential, no race needed)."""
+    _auth_client(client, register_payload)
+    person = _create_client(client)
+    org_id = UUID(client.get("/api/v1/auth/me").json()["organization"]["id"])
+    client_id = UUID(person["id"])
+    tuesday = _next_weekday(1)
+
+    db = SessionLocal()
+    try:
+        first = agenda_svc.create_appointment(
+            db,
+            organization_id=org_id,
+            client_id=client_id,
+            starts_at=datetime.fromisoformat(f"{tuesday.isoformat()}T09:00:00-03:00"),
+            ends_at=datetime.fromisoformat(f"{tuesday.isoformat()}T10:00:00-03:00"),
+        )
+        second = agenda_svc.create_appointment(
+            db,
+            organization_id=org_id,
+            client_id=client_id,
+            starts_at=datetime.fromisoformat(f"{tuesday.isoformat()}T10:00:00-03:00"),
+            ends_at=datetime.fromisoformat(f"{tuesday.isoformat()}T11:00:00-03:00"),
+        )
+        assert first.id != second.id
+    finally:
+        db.close()
+
+
+def test_cancelled_appointment_does_not_block_the_slot(client, register_payload):
+    _auth_client(client, register_payload)
+    person = _create_client(client)
+    org_id = UUID(client.get("/api/v1/auth/me").json()["organization"]["id"])
+    client_id = UUID(person["id"])
+    tuesday = _next_weekday(1)
+    starts_at = datetime.fromisoformat(f"{tuesday.isoformat()}T09:00:00-03:00")
+    ends_at = datetime.fromisoformat(f"{tuesday.isoformat()}T10:00:00-03:00")
+
+    db = SessionLocal()
+    try:
+        first = agenda_svc.create_appointment(
+            db, organization_id=org_id, client_id=client_id, starts_at=starts_at, ends_at=ends_at
+        )
+        agenda_svc.update_appointment(
+            db,
+            organization_id=org_id,
+            appointment_id=first.id,
+            fields={"status": "cancelled"},
+        )
+        # The exact same slot, freed up by the cancellation, is bookable again.
+        second = agenda_svc.create_appointment(
+            db, organization_id=org_id, client_id=client_id, starts_at=starts_at, ends_at=ends_at
+        )
+        assert second.id != first.id
+    finally:
+        db.close()
+
+
+def test_concurrent_reschedule_into_an_existing_slot_is_blocked(client, register_payload):
+    """The target slot (09:00–10:00) starts out genuinely EMPTY — if a
+    third, already-committed appointment already sat there, the ordinary
+    pre-check (`find_conflicts`) would deterministically catch both
+    threads on its own and this would never exercise the database-level
+    backstop at all. Racing two reschedules into a slot that is free at
+    check-time for both is what actually reproduces the check-then-insert
+    window."""
+    _auth_client(client, register_payload)
+    person = _create_client(client)
+    org_id = UUID(client.get("/api/v1/auth/me").json()["organization"]["id"])
+    client_id = UUID(person["id"])
+    tuesday = _next_weekday(1)
+
+    db = SessionLocal()
+    try:
+        movable_a_id = agenda_svc.create_appointment(
+            db,
+            organization_id=org_id,
+            client_id=client_id,
+            starts_at=datetime.fromisoformat(f"{tuesday.isoformat()}T13:00:00-03:00"),
+            ends_at=datetime.fromisoformat(f"{tuesday.isoformat()}T14:00:00-03:00"),
+        ).id
+        movable_b_id = agenda_svc.create_appointment(
+            db,
+            organization_id=org_id,
+            client_id=client_id,
+            starts_at=datetime.fromisoformat(f"{tuesday.isoformat()}T15:00:00-03:00"),
+            ends_at=datetime.fromisoformat(f"{tuesday.isoformat()}T16:00:00-03:00"),
+        ).id
+    finally:
+        db.close()
+
+    def worker(appointment_id):
+        db = SessionLocal()
+        try:
+            return agenda_svc.update_appointment(
+                db,
+                organization_id=org_id,
+                appointment_id=appointment_id,
+                fields={
+                    "starts_at": datetime.fromisoformat(f"{tuesday.isoformat()}T09:00:00-03:00"),
+                    "ends_at": datetime.fromisoformat(f"{tuesday.isoformat()}T10:00:00-03:00"),
+                },
+            )
+        except AuthError as exc:
+            return exc
+        finally:
+            db.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(worker, [movable_a_id, movable_b_id]))
+
+    errors = [r for r in results if isinstance(r, AuthError)]
+    successes = [r for r in results if not isinstance(r, AuthError)]
+    assert len(errors) == 1, results
+    assert errors[0].code == "appointment_conflict"
+    assert len(successes) == 1, results
+
+    db = SessionLocal()
+    try:
+        rows = list(
+            db.scalars(
+                select(Appointment).where(
+                    Appointment.organization_id == org_id,
+                    Appointment.starts_at
+                    == datetime.fromisoformat(f"{tuesday.isoformat()}T09:00:00-03:00"),
+                )
+            ).all()
+        )
+        # Only one of the two reschedules actually landed at 09:00 — never two.
+        assert len(rows) == 1
+        assert rows[0].id in {movable_a_id, movable_b_id}
+    finally:
+        db.close()
+
+
+def test_different_organizations_can_use_the_identical_slot(client, register_payload):
+    """The exclusion constraint is scoped by organization_id equality —
+    two tenants booking the exact same wall-clock time never conflict."""
+    _auth_client(client, register_payload)
+    person_a = _create_client(client)
+    org_a = UUID(client.get("/api/v1/auth/me").json()["organization"]["id"])
+    client_a = UUID(person_a["id"])
+    tuesday = _next_weekday(1)
+    starts_at = datetime.fromisoformat(f"{tuesday.isoformat()}T09:00:00-03:00")
+    ends_at = datetime.fromisoformat(f"{tuesday.isoformat()}T10:00:00-03:00")
+
+    client.post("/api/v1/auth/logout")
+    other_payload = {
+        "email": "other_overlap_org@example.com",
+        "password": "SenhaForte1!",
+        "full_name": "Outro",
+        "organization_name": "Outro Studio Overlap",
+    }
+    _auth_client(client, other_payload)
+    person_b = _create_client(client, name="Aluno B")
+    org_b = UUID(client.get("/api/v1/auth/me").json()["organization"]["id"])
+    client_b = UUID(person_b["id"])
+
+    def worker(org_id, client_id):
+        db = SessionLocal()
+        try:
+            return agenda_svc.create_appointment(
+                db,
+                organization_id=org_id,
+                client_id=client_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            )
+        except AuthError as exc:
+            return exc
+        finally:
+            db.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda args: worker(*args), [(org_a, client_a), (org_b, client_b)]))
+
+    assert all(not isinstance(r, AuthError) for r in results), results

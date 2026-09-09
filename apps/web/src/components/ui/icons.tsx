@@ -5,6 +5,15 @@ type IconProps = SVGProps<SVGSVGElement>;
 const base =
   "h-5 w-5 shrink-0 fill-none stroke-current [stroke-width:1.75] [stroke-linecap:round] [stroke-linejoin:round]";
 
+export function IconSearch({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
 export function IconHome({ className = "", ...props }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
@@ -352,11 +361,28 @@ export function IconCalendarPlus({ className = "", ...props }: IconProps) {
   );
 }
 
+export function IconEye({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export function IconClock({ className = "", ...props }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3.5 2" />
+    </svg>
+  );
+}
+
+export function IconMinus({ className = "", ...props }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${base} ${className}`} aria-hidden {...props}>
+      <path d="M5 12h14" />
     </svg>
   );
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import uuid
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
@@ -240,3 +241,116 @@ def test_tenant_isolation_access_and_proof(client, register_payload):
     _auth(client, other)
     assert client.get(f"/api/v1/payment-reports/{report_id}/proof").status_code == 404
     assert client.get(f"/api/v1/clients/{ids['client_id']}/public-access").status_code == 404
+
+
+def test_next_appointment_future_scheduled_only(client, register_payload):
+    # A bare client with no cycle — /cycles/intelligent auto-schedules its
+    # own lesson appointments, which would confound "which one is next"
+    # here. Appointments are a standalone concern from cycles/receivables.
+    _auth(client, register_payload)
+    client_id = client.post(
+        "/api/v1/clients", json={"full_name": "Bruno Costa", "phone": "11977776666"}
+    ).json()["id"]
+    service_id = client.post(
+        "/api/v1/services",
+        json={"name": "Personal", "default_price_cents": 9000, "default_duration_minutes": 60},
+    ).json()["id"]
+    today = client.get("/api/v1/organization/preferences").json()["local_today"]
+    past = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+    future = (date.fromisoformat(today) + timedelta(days=3)).isoformat()
+
+    # Past appointment must never surface as "next".
+    client.post(
+        "/api/v1/appointments",
+        json={
+            "client_id": client_id,
+            "service_id": service_id,
+            "starts_at": f"{past}T09:00:00-03:00",
+            "ends_at": f"{past}T10:00:00-03:00",
+        },
+    )
+    # Cancelled future appointment must never surface either.
+    cancelled = client.post(
+        "/api/v1/appointments",
+        json={
+            "client_id": client_id,
+            "service_id": service_id,
+            "starts_at": f"{future}T08:00:00-03:00",
+            "ends_at": f"{future}T09:00:00-03:00",
+        },
+    ).json()
+    client.patch(f"/api/v1/appointments/{cancelled['id']}", json={"status": "cancelled"})
+    # The real next one, further out.
+    client.post(
+        "/api/v1/appointments",
+        json={
+            "client_id": client_id,
+            "service_id": service_id,
+            "starts_at": f"{future}T14:30:00-03:00",
+            "ends_at": f"{future}T15:30:00-03:00",
+        },
+    )
+
+    token = client.post(f"/api/v1/clients/{client_id}/public-access").json()["token"]
+    body = client.get(f"/api/v1/public/my-cycle/{token}").json()
+    assert body["org_timezone"] == "America/Sao_Paulo"
+    assert body["next_appointment"] is not None
+    assert body["next_appointment"]["starts_at"].startswith(f"{future}T17:30:00")
+    assert body["next_appointment"]["service_name"] == "Personal"
+    # No internal fields (notes, location, other clients) leak through.
+    assert set(body["next_appointment"].keys()) == {"starts_at", "service_name", "status"}
+
+
+def test_next_appointment_absent_when_none_scheduled(client, register_payload):
+    _auth(client, register_payload)
+    client_id = client.post(
+        "/api/v1/clients", json={"full_name": "Sem Compromisso", "phone": "11966665555"}
+    ).json()["id"]
+    token = client.post(f"/api/v1/clients/{client_id}/public-access").json()["token"]
+    body = client.get(f"/api/v1/public/my-cycle/{token}").json()
+    assert body["next_appointment"] is None
+
+
+def test_cancelled_and_zero_receivables_never_leak_technical_label(client, register_payload, db_session):
+    # No isolated edit/cancel endpoint exists for a single Receivable (tracked
+    # gap) — cancel directly at the DB layer, same pattern as the Financeiro
+    # fatia's zero-value fixtures, to prove the READ side (Portal) is safe.
+    from app.models.receivable import Receivable
+
+    _auth(client, register_payload)
+    ids = _seed_cycle(client, "mc-label-1")
+    token = client.post(f"/api/v1/clients/{ids['client_id']}/public-access").json()["token"]
+
+    all_recv = client.get("/api/v1/receivables").json()
+    recv_id = next(r["id"] for r in all_recv if r["cycle_id"] == ids["cycle_id"])
+    row = db_session.get(Receivable, uuid.UUID(recv_id))
+    row.status = "cancelled"
+    db_session.add(row)
+    db_session.commit()
+
+    body = client.get(f"/api/v1/public/my-cycle/{token}").json()
+    assert body["cycle"]["payment_status"] == "cancelado"
+
+
+def test_portal_preview_matches_public_view_and_blocks_cross_tenant(client, register_payload):
+    _auth(client, register_payload)
+    ids = _seed_cycle(client, "mc-preview-1")
+    token = client.post(f"/api/v1/clients/{ids['client_id']}/public-access").json()["token"]
+    public_body = client.get(f"/api/v1/public/my-cycle/{token}").json()
+    preview = client.get(f"/api/v1/clients/{ids['client_id']}/portal-preview")
+    assert preview.status_code == 200
+    assert preview.headers.get("cache-control") == "no-store"
+    preview_body = preview.json()
+    assert preview_body["cycle"]["value_cents"] == public_body["cycle"]["value_cents"]
+    assert preview_body["cycle"]["status_summary"] == public_body["cycle"]["status_summary"]
+    assert preview_body["evaluations"] == public_body["evaluations"]
+
+    client.post("/api/v1/auth/logout")
+    other = {
+        "email": "mc_preview_other@example.com",
+        "password": "SenhaForte1!",
+        "full_name": "Outro",
+        "organization_name": "Outro Studio",
+    }
+    _auth(client, other)
+    assert client.get(f"/api/v1/clients/{ids['client_id']}/portal-preview").status_code == 404

@@ -20,6 +20,7 @@ from app.api import health as health_routes
 from app.api import home as home_routes
 from app.api import platform as platform_routes
 from app.api import receivables as receivables_routes
+from app.api import renewal_cases as renewal_cases_routes
 from app.api import services as services_routes
 from app.config import get_settings
 from app.security.log_redact import install_portal_log_filter
@@ -90,9 +91,11 @@ def create_app() -> FastAPI:
     app.include_router(cycle_intelligence_routes.router, prefix="/api/v1")
     app.include_router(cycles_routes.router, prefix="/api/v1")
     app.include_router(receivables_routes.router, prefix="/api/v1")
+    app.include_router(renewal_cases_routes.router, prefix="/api/v1")
     app.include_router(agenda_routes.router, prefix="/api/v1")
     app.include_router(availability_routes.router, prefix="/api/v1")
     from app.api import agent as agent_routes
+    from app.api import client_evolution as client_evolution_routes
     from app.api import evaluations as evaluations_routes
     from app.api import feedback as feedback_routes
     from app.api import intake as intake_routes
@@ -109,13 +112,16 @@ def create_app() -> FastAPI:
     app.include_router(protocols_routes.router, prefix="/api/v1")
     app.include_router(routines_routes.router, prefix="/api/v1")
     app.include_router(evaluations_routes.router, prefix="/api/v1")
+    app.include_router(client_evolution_routes.router, prefix="/api/v1")
     app.include_router(agent_routes.router, prefix="/api/v1")
     app.include_router(feedback_routes.router, prefix="/api/v1")
     from app.api import billing as billing_routes
     from app.api import billing_webhooks as billing_webhooks_routes
     from app.api import profession as profession_routes
+    from app.api import user_contact as user_contact_routes
 
     app.include_router(profession_routes.router, prefix="/api/v1")
+    app.include_router(user_contact_routes.router, prefix="/api/v1")
     app.include_router(billing_routes.router, prefix="/api/v1")
     app.include_router(billing_webhooks_routes.router, prefix="/api/v1")
     from app.api import referral as referral_routes

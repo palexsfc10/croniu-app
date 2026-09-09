@@ -386,262 +386,270 @@ def create_cycle_with_schedule(
             "Não é permitido criar ciclo ativo sem compromissos.",
             422,
         )
-    if idempotency_key:
-        replay = replay_or_release_idempotent_cycle(
-            db, organization_id=organization_id, idempotency_key=idempotency_key
-        )
-        if replay is not None:
-            existing, appts = replay
-            return (
-                domain_svc.get_cycle(
-                    db, organization_id=organization_id, cycle_id=existing.id
-                ),
-                appts,
+    # Transactional boundary for ck_appointments_no_overlap covering every
+    # mutation of the idempotent-replay/creation path below, from the very
+    # first read-then-mutate step (replay_or_release_idempotent_cycle can
+    # itself mutate an incomplete cycle and flush) through the final commit —
+    # a single boundary for the whole function, not one nested inside it. See
+    # agenda_svc.appointment_overlap_guard for the full rationale (mirrors
+    # cycle_intelligence.create_intelligent_cycle's identical wrapping).
+    with agenda_svc.appointment_overlap_guard(db):
+        if idempotency_key:
+            replay = replay_or_release_idempotent_cycle(
+                db, organization_id=organization_id, idempotency_key=idempotency_key
             )
+            if replay is not None:
+                existing, appts = replay
+                return (
+                    domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=existing.id),
+                    appts,
+                )
 
-    client = domain_svc.get_client(
-        db, organization_id=organization_id, client_id=client_id
-    )
-    if client.status != "active":
-        raise AuthError("client_archived", "Não é possível criar ciclo para cliente arquivado.")
-    service = domain_svc.get_service(
-        db, organization_id=organization_id, service_id=service_id
-    )
-    if service.status != "active":
-        raise AuthError("service_archived", "Não é possível criar ciclo com serviço arquivado.")
+        client = domain_svc.get_client(db, organization_id=organization_id, client_id=client_id)
+        if client.status != "active":
+            raise AuthError("client_archived", "Não é possível criar ciclo para cliente arquivado.")
+        service = domain_svc.get_service(db, organization_id=organization_id, service_id=service_id)
+        if service.status != "active":
+            raise AuthError("service_archived", "Não é possível criar ciclo com serviço arquivado.")
 
-    template = None
-    weekly_frequency = len(sorted(set(weekdays)))
-    if cycle_template_id is not None:
-        from app.services import cycle_intelligence as ci_svc
+        template = None
+        weekly_frequency = len(sorted(set(weekdays)))
+        if cycle_template_id is not None:
+            from app.services import cycle_intelligence as ci_svc
 
-        template = ci_svc.get_template(
-            db, organization_id=organization_id, template_id=cycle_template_id
+            template = ci_svc.get_template(
+                db, organization_id=organization_id, template_id=cycle_template_id
+            )
+            if template.status != "active":
+                raise AuthError("template_archived", "Não é possível usar um modelo arquivado.")
+            duration_type = template.duration_type
+            duration_value = template.duration_value
+            weekly_frequency = template.weekly_frequency
+            if len(sorted(set(weekdays))) != template.weekly_frequency:
+                raise AuthError(
+                    "weekday_mismatch",
+                    f"Selecione exatamente {template.weekly_frequency} dia(s) da semana.",
+                    422,
+                )
+
+        ends_on = compute_renewal_on(
+            starts_on=starts_on, duration_type=duration_type, duration_value=duration_value
         )
-        if template.status != "active":
-            raise AuthError("template_archived", "Não é possível usar um modelo arquivado.")
-        duration_type = template.duration_type
-        duration_value = template.duration_value
-        weekly_frequency = template.weekly_frequency
-        if len(sorted(set(weekdays))) != template.weekly_frequency:
+        slots = slots_from_payload(weekdays, starts_time=starts_time, schedule_slots=schedule_slots)
+        duration_minutes = lesson_duration_minutes or service.default_duration_minutes or 60
+        tz = org_timezone(db, organization_id)
+        occurrences = build_occurrences(
+            starts_on=starts_on,
+            ends_on=ends_on,
+            slots=slots,
+            duration_minutes=duration_minutes,
+            tz=tz,
+        )
+        if not occurrences:
             raise AuthError(
-                "weekday_mismatch",
-                f"Selecione exatamente {template.weekly_frequency} dia(s) da semana.",
+                "no_lessons",
+                "Nenhuma aula cai neste período com os dias escolhidos.",
                 422,
             )
 
-    ends_on = compute_renewal_on(
-        starts_on=starts_on, duration_type=duration_type, duration_value=duration_value
-    )
-    slots = slots_from_payload(
-        weekdays, starts_time=starts_time, schedule_slots=schedule_slots
-    )
-    duration_minutes = (
-        lesson_duration_minutes
-        or service.default_duration_minutes
-        or 60
-    )
-    tz = org_timezone(db, organization_id)
-    occurrences = build_occurrences(
-        starts_on=starts_on,
-        ends_on=ends_on,
-        slots=slots,
-        duration_minutes=duration_minutes,
-        tz=tz,
-    )
-    if not occurrences:
-        raise AuthError(
-            "no_lessons",
-            "Nenhuma aula cai neste período com os dias escolhidos.",
-            422,
-        )
-
-    cycle_guard_svc.assert_no_duplicate_or_overlap(
-        db,
-        organization_id=organization_id,
-        client_id=client.id,
-        service_id=service.id,
-        starts_on=starts_on,
-        ends_on=ends_on,
-        lesson_count=len(occurrences),
-    )
-
-    # Billing mode is a property of the Service, never chosen by the caller — a cycle
-    # always snapshots exactly how its service is configured to charge.
-    pricing_mode = service.pricing_mode
-    # Prefer explicit package total from assistant when provided as value_cents/final_cents
-    money_final = final_cents if final_cents is not None else value_cents
-    try:
-        if pricing_mode == cycle_calc.PRICING_FIXED_PERIOD:
-            money = compose_financial(
-                lesson_count=len(occurrences),
-                pricing_mode=pricing_mode,
-                fixed_price_cents=service.fixed_price_cents,
-                adjustment_cents=adjustment_cents,
-                final_cents=money_final,
-            )
-        else:
-            unit = (
-                unit_price_cents if unit_price_cents is not None else (service.default_price_cents or 0)
-            )
-            money = compose_financial(
-                lesson_count=len(occurrences),
-                pricing_mode=pricing_mode,
-                unit_price_cents=unit,
-                adjustment_cents=adjustment_cents,
-                final_cents=money_final,
-            )
-    except ValueError as exc:
-        raise AuthError("invalid_financial", str(exc), 422) from exc
-
-    location = None
-    if location_id is not None:
-        location = agenda_svc.get_location(
-            db, organization_id=organization_id, location_id=location_id
-        )
-
-    planned_appts: list[Appointment] = []
-    if generate_appointments:
-        hits = find_occurrence_conflicts(
-            db, organization_id=organization_id, occurrences=occurrences
-        )
-        if hits:
-            flat: list[dict[str, Any]] = []
-            for hit in hits:
-                for c in hit.conflicting:
-                    flat.append(
-                        {
-                            "id": str(c.id),
-                            "client_name": c.client.full_name if c.client else None,
-                            "starts_at": c.starts_at.isoformat(),
-                            "ends_at": c.ends_at.isoformat(),
-                            "status": c.status,
-                            "occurrence": format_occurrence_label(hit.occurrence, tz),
-                        }
-                    )
-                if not hit.conflicting:
-                    flat.append(
-                        {
-                            "id": None,
-                            "client_name": None,
-                            "starts_at": hit.occurrence.starts_at.isoformat(),
-                            "ends_at": hit.occurrence.ends_at.isoformat(),
-                            "status": "planned_batch",
-                            "occurrence": format_occurrence_label(hit.occurrence, tz),
-                        }
-                    )
-            preferred = slots[0].starts_time
-            alts = suggest_recurring_times(
-                db,
-                organization_id=organization_id,
-                starts_on=starts_on,
-                ends_on=ends_on,
-                weekdays=weekdays,
-                duration_minutes=duration_minutes,
-                tz=tz,
-                preferred=preferred,
-            )
-            raise_schedule_conflict(
-                conflicts=flat,
-                conflict_count=len(hits),
-                occurrence_count=len(occurrences),
-                suggestions=alts,
-            )
-
-    default_time = slots[0].starts_time if slots else None
-    # Store first slot time; per-day variance lives in appointments
-    cycle = Cycle(
-        organization_id=organization_id,
-        client_id=client.id,
-        service_id=service.id,
-        cycle_template_id=template.id if template else None,
-        cycle_type="period",
-        status="active",
-        starts_on=starts_on,
-        ends_on=ends_on,
-        weekdays=sorted(set(weekdays)),
-        lesson_count=money.lesson_count,
-        pricing_mode=money.pricing_mode,
-        unit_price_cents=money.unit_price_cents,
-        subtotal_cents=money.subtotal_cents,
-        adjustment_cents=money.adjustment_cents,
-        value_cents=money.final_cents,
-        lesson_duration_minutes=duration_minutes,
-        default_location_id=location.id if location else None,
-        default_starts_time=default_time,
-        duration_type=duration_type,
-        duration_value=duration_value,
-        weekly_frequency=weekly_frequency,
-        is_legacy=False,
-        idempotency_key=idempotency_key,
-        notes=domain_svc._normalize_optional_str(notes),
-    )
-    db.add(cycle)
-    db.flush()
-
-    if create_receivable and money.final_cents is not None:
-        due = receivable_due_on or starts_on
-        db.add(
-            Receivable(
-                organization_id=organization_id,
-                cycle_id=cycle.id,
-                client_id=client.id,
-                amount_cents=money.final_cents,
-                due_on=due,
-                status="pending",
-            )
-        )
-
-    title = f"{service.name} · {client.full_name}"
-    for occ in occurrences:
-        appt = Appointment(
+        cycle_guard_svc.assert_no_duplicate_or_overlap(
+            db,
             organization_id=organization_id,
             client_id=client.id,
-            cycle_id=cycle.id,
             service_id=service.id,
-            location_id=location.id if location else None,
-            title=title,
-            notes="Origem: ciclo",
-            starts_at=occ.starts_at,
-            ends_at=occ.ends_at,
-            status="scheduled",
-        )
-        db.add(appt)
-        planned_appts.append(appt)
-
-    if len(planned_appts) != int(cycle.lesson_count or 0):
-        db.rollback()
-        raise AuthError(
-            "agenda_incomplete",
-            "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
-            500,
+            starts_on=starts_on,
+            ends_on=ends_on,
+            lesson_count=len(occurrences),
         )
 
-    hits_final = find_occurrence_conflicts(
-        db,
-        organization_id=organization_id,
-        occurrences=occurrences,
-        exclude_cycle_id=cycle.id,
-    )
-    if hits_final:
-        db.rollback()
-        raise_schedule_conflict(
-            conflicts=[
-                {
-                    "id": str(c.id) if c.id else None,
-                    "client_name": c.client.full_name if c.client else None,
-                    "starts_at": c.starts_at.isoformat(),
-                    "ends_at": c.ends_at.isoformat(),
-                    "status": c.status,
-                }
-                for hit in hits_final
-                for c in (hit.conflicting or [])
-            ],
-            conflict_count=len(hits_final),
-            occurrence_count=len(occurrences),
-        )
+        # Billing mode is a property of the Service, never chosen by the caller — a cycle
+        # always snapshots exactly how its service is configured to charge.
+        pricing_mode = service.pricing_mode
+        # Prefer explicit package total from assistant when provided as value_cents/final_cents
+        money_final = final_cents if final_cents is not None else value_cents
+        try:
+            if pricing_mode == cycle_calc.PRICING_FIXED_PERIOD:
+                money = compose_financial(
+                    lesson_count=len(occurrences),
+                    pricing_mode=pricing_mode,
+                    fixed_price_cents=service.fixed_price_cents,
+                    adjustment_cents=adjustment_cents,
+                    final_cents=money_final,
+                )
+            else:
+                unit = (
+                    unit_price_cents
+                    if unit_price_cents is not None
+                    else (service.default_price_cents or 0)
+                )
+                money = compose_financial(
+                    lesson_count=len(occurrences),
+                    pricing_mode=pricing_mode,
+                    unit_price_cents=unit,
+                    adjustment_cents=adjustment_cents,
+                    final_cents=money_final,
+                )
+        except ValueError as exc:
+            raise AuthError("invalid_financial", str(exc), 422) from exc
 
-    db.commit()
+        location = None
+        if location_id is not None:
+            location = agenda_svc.get_location(
+                db, organization_id=organization_id, location_id=location_id
+            )
+
+        planned_appts: list[Appointment] = []
+        if generate_appointments:
+            hits = find_occurrence_conflicts(
+                db, organization_id=organization_id, occurrences=occurrences
+            )
+            if hits:
+                flat: list[dict[str, Any]] = []
+                for hit in hits:
+                    for c in hit.conflicting:
+                        flat.append(
+                            {
+                                "id": str(c.id),
+                                "client_name": c.client.full_name if c.client else None,
+                                "starts_at": c.starts_at.isoformat(),
+                                "ends_at": c.ends_at.isoformat(),
+                                "status": c.status,
+                                "occurrence": format_occurrence_label(hit.occurrence, tz),
+                            }
+                        )
+                    if not hit.conflicting:
+                        flat.append(
+                            {
+                                "id": None,
+                                "client_name": None,
+                                "starts_at": hit.occurrence.starts_at.isoformat(),
+                                "ends_at": hit.occurrence.ends_at.isoformat(),
+                                "status": "planned_batch",
+                                "occurrence": format_occurrence_label(hit.occurrence, tz),
+                            }
+                        )
+                preferred = slots[0].starts_time
+                alts = suggest_recurring_times(
+                    db,
+                    organization_id=organization_id,
+                    starts_on=starts_on,
+                    ends_on=ends_on,
+                    weekdays=weekdays,
+                    duration_minutes=duration_minutes,
+                    tz=tz,
+                    preferred=preferred,
+                )
+                raise_schedule_conflict(
+                    conflicts=flat,
+                    conflict_count=len(hits),
+                    occurrence_count=len(occurrences),
+                    suggestions=alts,
+                )
+
+        default_time = slots[0].starts_time if slots else None
+        # Store first slot time; per-day variance lives in appointments
+        cycle = Cycle(
+            organization_id=organization_id,
+            client_id=client.id,
+            service_id=service.id,
+            cycle_template_id=template.id if template else None,
+            cycle_type="period",
+            status="active",
+            starts_on=starts_on,
+            ends_on=ends_on,
+            weekdays=sorted(set(weekdays)),
+            lesson_count=money.lesson_count,
+            pricing_mode=money.pricing_mode,
+            unit_price_cents=money.unit_price_cents,
+            subtotal_cents=money.subtotal_cents,
+            adjustment_cents=money.adjustment_cents,
+            value_cents=money.final_cents,
+            lesson_duration_minutes=duration_minutes,
+            default_location_id=location.id if location else None,
+            default_starts_time=default_time,
+            duration_type=duration_type,
+            duration_value=duration_value,
+            weekly_frequency=weekly_frequency,
+            is_legacy=False,
+            idempotency_key=idempotency_key,
+            notes=domain_svc._normalize_optional_str(notes),
+        )
+        db.add(cycle)
+        db.flush()
+
+        # A cycle worth R$0,00 (free) never creates a receivable — there is
+        # nothing to charge, so no pendency should ever exist for it.
+        if create_receivable and money.final_cents:
+            due = receivable_due_on or starts_on
+            db.add(
+                Receivable(
+                    organization_id=organization_id,
+                    cycle_id=cycle.id,
+                    client_id=client.id,
+                    amount_cents=money.final_cents,
+                    due_on=due,
+                    status="pending",
+                )
+            )
+
+        title = f"{service.name} · {client.full_name}"
+        for occ in occurrences:
+            appt = Appointment(
+                organization_id=organization_id,
+                client_id=client.id,
+                cycle_id=cycle.id,
+                service_id=service.id,
+                location_id=location.id if location else None,
+                title=title,
+                notes="Origem: ciclo",
+                starts_at=occ.starts_at,
+                ends_at=occ.ends_at,
+                status="scheduled",
+            )
+            db.add(appt)
+            planned_appts.append(appt)
+
+        if len(planned_appts) != int(cycle.lesson_count or 0):
+            db.rollback()
+            raise AuthError(
+                "agenda_incomplete",
+                "A agenda gerada não corresponde à quantidade de aulas do ciclo.",
+                500,
+            )
+
+        # Flushes every planned appointment above — still inside
+        # appointment_overlap_guard, so a concurrent-booking violation here
+        # is caught the same way as anywhere else in this block.
+        db.flush()
+        hits_final = find_occurrence_conflicts(
+            db,
+            organization_id=organization_id,
+            occurrences=occurrences,
+            exclude_cycle_id=cycle.id,
+        )
+        if hits_final:
+            db.rollback()
+            raise_schedule_conflict(
+                conflicts=[
+                    {
+                        "id": str(c.id) if c.id else None,
+                        "client_name": c.client.full_name if c.client else None,
+                        "starts_at": c.starts_at.isoformat(),
+                        "ends_at": c.ends_at.isoformat(),
+                        "status": c.status,
+                    }
+                    for hit in hits_final
+                    for c in (hit.conflicting or [])
+                ],
+                conflict_count=len(hits_final),
+                occurrence_count=len(occurrences),
+            )
+
+        # Bulk commit spanning every lesson of the cycle — no single
+        # starts_at/ends_at to reload a conflict for, so a database-level
+        # exclusion-constraint hit surfaces as a plain 409
+        # appointment_conflict, never a raw 500.
+        db.commit()
     cycle_out = domain_svc.get_cycle(db, organization_id=organization_id, cycle_id=cycle.id)
     appt_ids = [a.id for a in planned_appts]
     planned_appts = list(

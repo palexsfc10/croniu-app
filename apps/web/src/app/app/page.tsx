@@ -5,6 +5,7 @@ import { apiFetch, type HomeSummary } from "@/lib/api";
 import { TodayBoard } from "@/components/app/today-board";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AppHomePage() {
   const [summary, setSummary] = useState<HomeSummary | null>(null);
@@ -32,7 +33,19 @@ export default function AppHomePage() {
   }, [reloadKey]);
 
   if (loading) {
-    return <p className="text-sm text-[var(--color-ink-muted)]">Carregando painel…</p>;
+    return (
+      <div className="space-y-5 md:space-y-6" role="status" aria-label="Carregando painel">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <Skeleton className="h-24 w-full" />
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </div>
+    );
   }
 
   if (error) {

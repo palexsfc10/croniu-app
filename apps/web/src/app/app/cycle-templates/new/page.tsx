@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BackLink } from "@/components/app/back-link";
@@ -100,7 +101,7 @@ function NewCycleTemplateForm() {
   return (
     <div className="space-y-4 animate-fade-up">
       <BackLink href={returnTo} label="Voltar" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo modelo</h1>
+      <PageTitle>Novo modelo</PageTitle>
       <p className="text-sm text-[var(--color-ink-muted)]">
         O modelo é reutilizável. O ciclo real de um cliente é criado depois, com o serviço escolhido
         na hora.

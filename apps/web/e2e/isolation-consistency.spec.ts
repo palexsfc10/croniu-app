@@ -50,7 +50,7 @@ test.describe("isolation, agenda, register and ficha", () => {
     const step1 = page.getByRole("link", { name: "Entrar" });
     await expect(step1).toBeVisible();
     const box1 = await step1.boundingBox();
-    const continueBox = await page.getByRole("button", { name: "Continuar" }).boundingBox();
+    const continueBox = await page.getByRole("button", { name: "Criar minha conta" }).boundingBox();
     expect(box1 && continueBox).toBeTruthy();
     const overlap =
       box1!.x < continueBox!.x + continueBox!.width &&
@@ -66,8 +66,6 @@ test.describe("isolation, agenda, register and ficha", () => {
     await page.getByLabel(/Nome do negócio/).fill("Studio Outro");
     await page.getByLabel("E-mail").fill(`other_${Date.now()}@example.com`);
     await page.getByLabel("Senha").fill("SenhaForte1!");
-    await page.getByRole("button", { name: "Continuar" }).click();
-    await expect(page.getByText(/Etapa 2 de 2/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: "Criar minha conta" })).toBeVisible();
     const registerPosts: string[] = [];
     page.on("request", (req) => {
@@ -122,21 +120,26 @@ test.describe("isolation, agenda, register and ficha", () => {
     });
     expect(anaRes.ok()).toBeTruthy();
     const ana = await anaRes.json();
-    await page.goto(`/app/clients/${ana.id}?tab=acompanhamento`);
+    await page.goto(`/app/clients/${ana.id}?tab=plano`);
     await expect(page.getByRole("heading", { name: /Ana Souza/i })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "Criar ciclo" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Criar plano" })).toBeVisible();
-    await page.goto(`/app/clients/${murilo.id}?tab=acompanhamento`);
+    await page.goto(`/app/clients/${murilo.id}?tab=plano`);
     await expect(page.getByRole("heading", { name: /Murilo Macedo/i })).toBeVisible();
     await expect(page.getByText("Ana Souza")).toHaveCount(0);
-    const accomp = page.getByRole("tabpanel", { name: "Acompanhamento" });
-    await expect(accomp).toBeVisible();
-    await expect(accomp.getByText("Ciclo atual")).toBeVisible();
-    await expect(accomp.getByText("Avaliações")).toBeVisible();
-    await expect(accomp.getByRole("heading", { name: "Rotinas" })).toBeVisible();
-    await expect(accomp.getByRole("button", { name: "Criar plano" })).toBeVisible();
-    await expect(accomp.getByRole("button", { name: "Criar ciclo" })).toBeVisible();
-    await expect(accomp.getByRole("button", { name: "Nova avaliação" })).toBeVisible();
+    const plano = page.getByRole("tabpanel", { name: "Plano e ciclo" });
+    await expect(plano).toBeVisible();
+    await expect(plano.getByText("Ciclo atual")).toBeVisible();
+    await expect(plano.getByRole("button", { name: "Criar plano" })).toBeVisible();
+    await expect(plano.getByRole("button", { name: "Criar ciclo" })).toBeVisible();
+    // Avaliações and Rotinas moved to Prontuário / Resumo in the redesigned
+    // Cliente 360° — still real, working actions, just relocated.
+    await page.goto(`/app/clients/${murilo.id}?tab=prontuario`);
+    const prontuario = page.getByRole("tabpanel", { name: "Prontuário" });
+    await expect(prontuario.getByText("Avaliações")).toBeVisible();
+    await expect(prontuario.getByRole("button", { name: "Nova avaliação" })).toBeVisible();
+    await page.goto(`/app/clients/${murilo.id}?tab=resumo`);
+    await expect(page.getByRole("link", { name: /Rotinas/ })).toBeVisible();
     await expect(page.getByText("Criar treino")).toHaveCount(0);
 
     await page.screenshot({ path: path.join(artifacts, "ficha-390.png"), fullPage: true });

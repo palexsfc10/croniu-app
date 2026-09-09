@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from fastapi.testclient import TestClient
 
 
@@ -14,8 +16,38 @@ def _register(client: TestClient, payload: dict) -> None:
     )
 
 
-def _cycle_720(client: TestClient, register_payload: dict, *, key: str) -> dict:
-    _register(client, register_payload)
+def _today(client: TestClient) -> date:
+    local_today = client.get("/api/v1/organization/preferences").json()["local_today"]
+    y, m, d = (int(part) for part in local_today.split("-"))
+    return date(y, m, d)
+
+
+def _next_weekday_on_or_after(start: date, weekday: int) -> date:
+    """`weekday` uses Python's convention (Monday=0), matching the
+    cycle-intelligence API's `weekdays` payload."""
+    return start + timedelta(days=(weekday - start.weekday()) % 7)
+
+
+def _create_720_cycle(
+    client: TestClient,
+    *,
+    key: str,
+    starts_on: str,
+    duration_type: str = "calendar_months",
+    duration_value: int = 1,
+) -> dict:
+    """Same 2x/mês·R$720 cycle `_cycle_720` builds, minus the registration
+    step — used when the caller needs to compute `starts_on` from a
+    real, already-authenticated `local_today` before creating the cycle.
+
+    `duration_type`/`duration_value` default to the original calendar-month
+    window, but a caller starting from a clock-relative `starts_on` (instead
+    of the fixed "2026-08-01") should pass `fixed_days`/28 instead: with
+    weekdays=[1, 3] (2x/semana), a *calendar month* window's lesson count
+    depends on which day-of-month the start lands on (8 or 9 occurrences),
+    while a 28-day (exactly 4 weeks) window always yields exactly 8
+    occurrences regardless of the starting weekday — preserving the
+    8-lesson/R$720 assumption below without re-introducing a fixed date."""
     client_id = client.post(
         "/api/v1/clients", json={"full_name": "Ana Souza", "phone": "11999990000"}
     ).json()["id"]
@@ -32,8 +64,8 @@ def _cycle_720(client: TestClient, register_payload: dict, *, key: str) -> dict:
         json={
             "name": "2x mensal",
             "weekly_frequency": 2,
-            "duration_type": "calendar_months",
-            "duration_value": 1,
+            "duration_type": duration_type,
+            "duration_value": duration_value,
         },
     ).json()["id"]
     loc = client.post("/api/v1/locations", json={"name": "Sala A"}).json()["id"]
@@ -43,7 +75,7 @@ def _cycle_720(client: TestClient, register_payload: dict, *, key: str) -> dict:
             "client_id": client_id,
             "service_id": service_id,
             "cycle_template_id": template_id,
-            "starts_on": "2026-08-01",
+            "starts_on": starts_on,
             "weekdays": [1, 3],
             "starts_time": "09:00:00",
             "generate_appointments": True,
@@ -60,9 +92,18 @@ def _cycle_720(client: TestClient, register_payload: dict, *, key: str) -> dict:
     }
 
 
+def _cycle_720(client: TestClient, register_payload: dict, *, key: str) -> dict:
+    _register(client, register_payload)
+    return _create_720_cycle(client, key=key, starts_on="2026-08-01")
+
+
 def test_financial_discount_updates_pending(client, register_payload):
-    ids = _cycle_720(client, register_payload, key="fin-disc-1")
-    before_appts = client.get("/api/v1/agenda/day", params={"day": "2026-08-04"}).json()[
+    _register(client, register_payload)
+    tuesday = _next_weekday_on_or_after(_today(client), 1).isoformat()
+    ids = _create_720_cycle(
+        client, key="fin-disc-1", starts_on=tuesday, duration_type="fixed_days", duration_value=28
+    )
+    before_appts = client.get("/api/v1/agenda/day", params={"day": tuesday}).json()[
         "appointments"
     ]
     assert len(before_appts) == 1
@@ -83,7 +124,7 @@ def test_financial_discount_updates_pending(client, register_payload):
     assert recv[0]["amount_cents"] == 66000
     assert recv[0]["status"] == "pending"
 
-    after_appts = client.get("/api/v1/agenda/day", params={"day": "2026-08-04"}).json()[
+    after_appts = client.get("/api/v1/agenda/day", params={"day": tuesday}).json()[
         "appointments"
     ]
     assert len(after_appts) == 1

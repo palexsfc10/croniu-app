@@ -193,3 +193,44 @@ describe("changes-requested pending correction card", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("Área do <termo> uses the workspace's profession-adaptive nomenclature", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  function stubFetch(intakeStatus: Record<string, unknown>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/public/intake/portal/")) {
+          return { ok: true, json: async () => intakeStatus };
+        }
+        return { ok: false, json: async () => ({ message: "sem ciclo" }) };
+      }),
+    );
+  }
+
+  it("shows 'Área do aluno' for a personal-trainer workspace, never a hardcoded 'cliente'", async () => {
+    stubFetch({
+      journey_stage: "active",
+      journey_label: "Em acompanhamento",
+      client_first_name: "João",
+      nomenclature: { client: "aluno", clients: "alunos" },
+    });
+    render(<PublicMyCyclePage />);
+    expect(await screen.findByText("Área do aluno")).toBeInTheDocument();
+    expect(screen.queryByText("Área do cliente")).not.toBeInTheDocument();
+  });
+
+  it("falls back to 'Área do cliente' when the backend sends no nomenclature (older payload)", async () => {
+    stubFetch({
+      journey_stage: "active",
+      journey_label: "Em acompanhamento",
+      client_first_name: "João",
+    });
+    render(<PublicMyCyclePage />);
+    expect(await screen.findByText("Área do cliente")).toBeInTheDocument();
+  });
+});

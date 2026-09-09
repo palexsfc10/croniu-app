@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useEffect, useState } from "react";
 import { apiFetch, formatBRL } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -66,8 +67,8 @@ export default function PaymentReportsPage() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <BackLink href="/app" label="Hoje" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Pagamentos informados</h1>
+      <BackLink href="/app" label="Início" />
+      <PageTitle>Pagamentos informados</PageTitle>
       {error ? (
         <p role="alert" className="text-sm text-[var(--color-danger)]">
           {error}

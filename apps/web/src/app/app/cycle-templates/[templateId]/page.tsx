@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { PageTitle } from "@/components/ui/page-title";
 import { useEffect, useState } from "react";
 import { apiFetch, type CycleTemplate } from "@/lib/api";
 import { BackLink } from "@/components/app/back-link";
@@ -111,7 +112,7 @@ export default function EditCycleTemplatePage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <BackLink href="/app/cycle-templates" label="Modelos" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Editar modelo</h1>
+      <PageTitle>Editar modelo</PageTitle>
       <p className="text-sm text-[var(--color-ink-muted)]">
         Alterar o modelo não muda ciclos já criados.
         {status === "archived" ? " Este modelo está arquivado." : ""}

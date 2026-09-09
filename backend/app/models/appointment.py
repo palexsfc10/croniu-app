@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func, text
+from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -17,6 +17,15 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.service import Service
 
+# Shared with agenda_svc.commit_or_raise_conflict, which must recognize
+# exclusively this constraint's SQLSTATE 23P01 violations as a booking
+# conflict — never any other exclusion/check constraint that happens to
+# also raise 23P01. Migration 0030_appointment_overlap_guard creates the
+# same-named constraint via raw DDL and keeps its own literal string
+# (migrations must not import application code), so this name must be
+# kept in sync with it by hand if it's ever renamed.
+APPOINTMENT_NO_OVERLAP_CONSTRAINT = "ck_appointments_no_overlap"
+
 
 class Appointment(Base):
     __tablename__ = "appointments"
@@ -24,6 +33,28 @@ class Appointment(Base):
         CheckConstraint("ends_at > starts_at", name="ck_appointments_ends_after_starts"),
         Index("ix_appointments_org_starts", "organization_id", "starts_at"),
         Index("ix_appointments_org_status_starts", "organization_id", "status", "starts_at"),
+        # Database-level guarantee against double-booking — the app-level
+        # check-then-insert in agenda_svc.find_conflicts/create_appointment
+        # has no protection against two concurrent requests both passing
+        # that check for the same free slot (reproduced directly: two
+        # threads booking the identical slot both succeeded). Mirrors
+        # migration 0030_appointment_overlap_guard, which applies the same
+        # constraint via raw DDL for real (Alembic-managed) databases —
+        # this ORM-level declaration is what actually creates it for the
+        # test database, which is built via `Base.metadata.create_all()`,
+        # not Alembic (see conftest.py). Half-open `[starts_at, ends_at)`
+        # matches `ck_appointments_ends_after_starts` and
+        # `find_conflicts`'s own overlap comparison — back-to-back
+        # appointments (one's `ends_at` equal to the other's `starts_at`)
+        # do not overlap and stay allowed. Cancelled appointments are
+        # excluded: a cancelled slot must remain bookable.
+        ExcludeConstraint(
+            (text("organization_id"), "="),
+            (text("tstzrange(starts_at, ends_at, '[)')"), "&&"),
+            where=text("status <> 'cancelled'"),
+            using="gist",
+            name=APPOINTMENT_NO_OVERLAP_CONSTRAINT,
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

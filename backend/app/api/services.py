@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.domain import ServiceCreate, ServiceOut, ServiceUpdate
+from app.schemas.domain import ServiceCreate, ServiceOut, ServiceUpdate, ServiceUsageOut
+from app.services import agenda as agenda_svc
+from app.services import catalog_usage as catalog_usage_svc
 from app.services import domain as domain_svc
 from app.services.auth import AuthContext, AuthError, get_current_auth
 
@@ -18,6 +20,20 @@ def _http(exc: AuthError) -> HTTPException:
         status_code=exc.status_code,
         detail={"code": exc.code, "message": exc.message},
     )
+
+
+# Declared before "/{service_id}" so the literal path is matched first and
+# never swallowed by the UUID route.
+@router.get("/usage", response_model=list[ServiceUsageOut])
+def list_service_usage(
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> list[ServiceUsageOut]:
+    today = agenda_svc.org_local_today(auth.organization)
+    usage = catalog_usage_svc.service_usage(
+        db, organization_id=auth.organization.id, today=today
+    )
+    return [ServiceUsageOut(**item.__dict__) for item in usage.values()]
 
 
 @router.get("", response_model=list[ServiceOut])

@@ -80,13 +80,14 @@ test.describe("Referral program — web", () => {
     await page.getByLabel(/Nome do negócio/).fill(`Studio Indicado ${suffix}`);
     await page.getByLabel("E-mail").fill(`referred_web_e2e_${suffix}@example.com`);
     await page.getByLabel("Senha").fill(DEFAULT_PASSWORD);
-    await page.getByRole("button", { name: "Continuar" }).click();
-    await expect(page.getByText(/Etapa 2 de 2/)).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("radio", { name: "Personal trainer" }).click();
     await page.getByRole("button", { name: "Criar minha conta" }).click();
+    // Cadastro enxuto: profissão migrou para o onboarding pós-login.
     await expect(page).toHaveURL(/\/app/, { timeout: 45_000 });
+    if (page.url().includes("/app/onboarding")) {
+      await page.getByRole("button", { name: "Concluir depois" }).click();
+    }
 
-    await page.goto("/app/billing");
+    await page.goto("/app/settings/billing");
     // Subtitle reflects the discounted entitlement price regardless of
     // whether card checkout is enabled in this environment.
     await expect(page.getByText(/plano mensal R\$\s?26,91/)).toBeVisible({ timeout: 15_000 });
@@ -105,13 +106,13 @@ test.describe("Referral program — web", () => {
     await page.getByLabel(/Nome do negócio/).fill(`Studio Normal ${suffix}`);
     await page.getByLabel("E-mail").fill(`normal_web_e2e_${suffix}@example.com`);
     await page.getByLabel("Senha").fill(DEFAULT_PASSWORD);
-    await page.getByRole("button", { name: "Continuar" }).click();
-    await expect(page.getByText(/Etapa 2 de 2/)).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("radio", { name: "Personal trainer" }).click();
     await page.getByRole("button", { name: "Criar minha conta" }).click();
     await expect(page).toHaveURL(/\/app/, { timeout: 45_000 });
+    if (page.url().includes("/app/onboarding")) {
+      await page.getByRole("button", { name: "Concluir depois" }).click();
+    }
 
-    await page.goto("/app/billing");
+    await page.goto("/app/settings/billing");
     await expect(page.getByText(/plano mensal R\$\s?29,90/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Desconto vitalício de indicação")).toHaveCount(0);
   });

@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, type Location } from "@/lib/api";
@@ -66,7 +67,7 @@ export default function LocationDetailPage() {
   return (
     <form onSubmit={save} className="space-y-4 animate-fade-up">
       <BackLink href="/app/locations" label="Locais" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Editar local</h1>
+      <PageTitle>Editar local</PageTitle>
       {item ? (
         <>
           <TextField

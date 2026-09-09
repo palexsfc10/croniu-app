@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { PageTitle } from "@/components/ui/page-title";
 import { useEffect, useMemo, useState } from "react";
 import {
   apiFetch,
@@ -123,7 +124,7 @@ export default function CycleFinancialEditPage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <BackLink href={`/app/cycles/${params.cycleId}`} label="Ciclo" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Editar valores</h1>
+      <PageTitle>Editar valores</PageTitle>
 
       {cycle ? (
         <section className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">

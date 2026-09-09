@@ -33,6 +33,19 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Contact WhatsApp of the person who owns this login (not auth, never
+    # required) + explicit marketing/support consent for it, collected in the
+    # post-login onboarding wizard. NULL means "never contact this number for
+    # marketing" — enforced at the call site, not here. Distinct from
+    # organization_payment_settings.whatsapp_e164 (renewal receipts to
+    # clients) and from any future org-level operational WhatsApp.
+    contact_whatsapp_e164: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    whatsapp_marketing_consent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    whatsapp_marketing_consent_version: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

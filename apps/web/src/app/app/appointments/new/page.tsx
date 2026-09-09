@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import {
@@ -15,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { useAuth } from "@/components/auth/auth-provider";
+import { safeReturnTo } from "@/lib/nomenclature";
 
 function NewAppointmentForm() {
   const router = useRouter();
@@ -24,10 +26,14 @@ function NewAppointmentForm() {
   const day = searchParams.get("day");
   const startParam = searchParams.get("start");
   const endParam = searchParams.get("end");
+  // "Agendar" from Cliente 360° preselects the client and returns there
+  // after saving instead of the appointment's own detail page.
+  const preselectedClientId = searchParams.get("clientId") || "";
+  const returnTo = safeReturnTo(searchParams.get("returnTo"));
 
   const [clients, setClients] = useState<Client[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(preselectedClientId);
   const [locationId, setLocationId] = useState("");
   const [startsLocal, setStartsLocal] = useState(
     day ? `${day}T${startParam || "09:00"}` : isoToLocalInput(new Date().toISOString()),
@@ -91,13 +97,13 @@ function NewAppointmentForm() {
       }
       return;
     }
-    router.replace(`/app/appointments/${result.data?.id}`);
+    router.replace(returnTo || `/app/appointments/${result.data?.id}`);
   }
 
   return (
     <form onSubmit={submit} className="space-y-4 animate-fade-up">
       <BackLink href="/app/agenda" label="Agenda" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Novo compromisso</h1>
+      <PageTitle>Novo compromisso</PageTitle>
 
       <label className="block space-y-1.5" htmlFor="appointment-client">
         <span className="text-sm font-medium">Cliente</span>

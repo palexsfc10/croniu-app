@@ -23,7 +23,13 @@ export function AuthScreen({
 }: AuthScreenProps) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-6 sm:px-5 sm:pt-10 md:max-w-lg md:justify-center">
-      <div className="animate-fade-up flex min-h-0 flex-1 flex-col gap-6 md:flex-none">
+      {/* No `flex-1` here on purpose: stretching this block to the full
+          viewport height on mobile is what pushed each form's `mt-auto`
+          submit button all the way to the bottom, leaving a large empty gap
+          on short screens (360/390px) and jumping around when the virtual
+          keyboard opens. Natural content height plus `md:justify-center` on
+          `main` still centers the card on desktop. */}
+      <div className="animate-fade-up flex flex-col gap-6">
         <header className="grid grid-cols-[1fr_auto] items-center gap-3">
           <div className="min-w-0 justify-self-start">
             {backHref ? (
@@ -37,13 +43,14 @@ export function AuthScreen({
               <span aria-hidden="true" className="block min-h-11 w-px" />
             )}
           </div>
-          <div className="justify-self-end">
+          <div className="flex items-baseline gap-1 justify-self-end">
             <BrandWordmark size="md" surface="light" />
+            <span className="text-xs font-normal text-[var(--color-ink-subtle)]">Workspace</span>
           </div>
         </header>
 
         <div className="space-y-1">
-          <h1 className="h-display-public text-2xl text-[var(--color-ink)]">{title}</h1>
+          <h1 className="h-display text-2xl text-[var(--color-ink)]">{title}</h1>
           {subtitle ? (
             <p className="text-sm text-[var(--color-ink-muted)]">{subtitle}</p>
           ) : null}
@@ -51,7 +58,7 @@ export function AuthScreen({
 
         {children}
 
-        <p className="pt-2 text-center text-xs text-[var(--color-ink-subtle)]">
+        <p className="pt-2 text-center text-xs text-[var(--color-ink-muted)]">
           Ao continuar, você concorda com os{" "}
           <Link href="/termos" className="underline-offset-2 hover:underline">
             Termos de Uso

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -11,6 +11,18 @@ from app.services import evaluations as eval_svc
 from app.services.auth import AuthContext, AuthError, get_current_auth
 
 router = APIRouter(tags=["evaluations"])
+
+
+@router.get("/evaluations/recent", response_model=list[EvaluationOut])
+def list_recent_evaluations(
+    limit: int = Query(default=50, ge=1, le=200),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> list[EvaluationOut]:
+    """Org-wide feed of published evaluations — powers the Acompanhamentos
+    "Histórico" timeline. Read-only, additive."""
+    rows = eval_svc.list_recent_published(db, organization_id=auth.organization.id, limit=limit)
+    return [eval_svc.evaluation_to_out(row) for row in rows]
 
 
 def _http(exc: AuthError) -> HTTPException:

@@ -1,6 +1,7 @@
 "use client";
 
 import { BackLink } from "@/components/app/back-link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, reaisToCents, type PricingMode, type Service } from "@/lib/api";
@@ -114,7 +115,7 @@ export default function ServiceDetailPage() {
   return (
     <div className="space-y-4 animate-fade-up">
       <BackLink href="/app/services" label="Serviços" />
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">Editar serviço</h1>
+      <PageTitle>Editar serviço</PageTitle>
       <p className="text-sm text-[var(--color-ink-muted)]">
         Alterar o preço não muda ciclos já criados.
         {status === "archived" ? " Este serviço está arquivado." : ""}

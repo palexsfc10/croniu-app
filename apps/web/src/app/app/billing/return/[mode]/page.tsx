@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageTitle } from "@/components/ui/page-title";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -89,7 +90,7 @@ export default function BillingReturnPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-8">
-      <h1 className="h-display text-3xl text-[var(--color-ink)]">{title}</h1>
+      <PageTitle>{title}</PageTitle>
       {loading ? (
         <p className="text-sm text-[var(--color-ink-muted)]">Consultando sua assinatura…</p>
       ) : null}

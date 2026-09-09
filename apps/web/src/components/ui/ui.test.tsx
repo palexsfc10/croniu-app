@@ -103,7 +103,7 @@ describe("UI fundamentals", () => {
     expect(screen.getByLabelText("E-mail")).toBeInTheDocument();
   });
 
-  it("shows single priority action without redundant hint strip", () => {
+  it("shows the main risk in the daily briefing without a redundant hint strip", () => {
     render(
       <TodayBoard
         summary={{
@@ -154,12 +154,21 @@ describe("UI fundamentals", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       /Bom dia, Ana|Boa tarde, Ana|Boa noite, Ana/,
     );
-    expect(screen.getByText("Veja o que precisa da sua atenção hoje.")).toBeInTheDocument();
+    // The old long intro message is gone — the header stays a short greeting,
+    // and the contextual hint string is never shown as a separate strip.
     expect(screen.queryByText("1 ciclo(s) encerrando")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Ciclo chegando ao fim" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Ver ciclo/i })).toBeInTheDocument();
-    expect(screen.getByText(/Precisa de atenção/)).toBeInTheDocument();
-    expect(screen.getByText("Agenda de hoje")).toBeInTheDocument();
+    // priority_action feeds the deterministic briefing's "Principal risco"
+    // line, not a duplicate heading/CTA of its own.
+    expect(screen.getByText("Ciclo chegando ao fim")).toBeInTheDocument();
+    // Ana's cycle is the same case already shown as "Principal risco" above
+    // — it must never also render as a one-item "Precisa de decisão" queue
+    // right below it (the queue is hidden entirely once it has nothing
+    // left after removing the case the briefing already promoted).
+    expect(screen.queryByText(/Precisa de decisão/)).not.toBeInTheDocument();
+    // The Home is a business-decision center now — it never reproduces the
+    // Agenda's own timeline (that section was removed entirely).
+    expect(screen.queryByText("Agenda de hoje")).not.toBeInTheDocument();
+    expect(screen.getByText("Clientes ativos")).toBeInTheDocument();
   });
 
   it("does not duplicate intake attention as Operação de hoje", () => {
@@ -182,13 +191,21 @@ describe("UI fundamentals", () => {
     );
     expect(screen.queryByText("Operação de hoje")).not.toBeInTheDocument();
     expect(screen.queryByText("Tudo em dia")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Novos cadastros")).toHaveLength(1);
-    expect(screen.getByText("1 cadastro aguardando análise")).toBeInTheDocument();
+    // The old dead "Operação de hoje" section is gone, and the case still
+    // surfaces — now exactly once, via the briefing's "Vale olhar" line,
+    // never also repeated as a one-item "Precisa de decisão" queue below it.
+    expect(screen.getByText(/Vale olhar:/)).toBeInTheDocument();
+    expect(screen.getAllByText("Novos cadastros").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Precisa de decisão/)).not.toBeInTheDocument();
   });
 
-  it("shows calm empty day when nothing needs attention", () => {
+  it("shows a calm state when nothing needs a decision, without hiding the always-on business blocks", () => {
     render(<TodayBoard summary={emptySummary} />);
-    expect(screen.getByText("Tudo organizado")).toBeInTheDocument();
+    expect(screen.getByText("Nenhuma pendência crítica agora.")).toBeInTheDocument();
+    expect(screen.getAllByText("Nenhuma decisão pendente agora.").length).toBeGreaterThan(0);
+    // Indicators/Financeiro stay visible even on a calm day — they are not
+    // gated behind "something urgent exists".
+    expect(screen.getByText("Clientes ativos")).toBeInTheDocument();
     expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
   });
 
@@ -223,14 +240,17 @@ describe("UI fundamentals", () => {
         }}
       />,
     );
-    expect(screen.getByLabelText("Sem prioridade operacional")).toBeInTheDocument();
-    expect(screen.getByText("Tudo em dia")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Ação prioritária")).not.toBeInTheDocument();
-    expect(screen.getByText("Lia")).toBeInTheDocument();
+    // No priority_action and no attention_items — the briefing shows the
+    // real next appointment and never fabricates a risk or opportunity line.
+    expect(screen.queryByText(/Principal risco/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Vale olhar/)).not.toBeInTheDocument();
+    // The next appointment lives only in its own compact context card now —
+    // never restated inside the briefing text.
+    expect(screen.getAllByText(/Lia/).length).toBeGreaterThan(0);
     expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
   });
 
-  it("shows in-progress badge and does not treat past as upcoming", () => {
+  it("never reproduces the Agenda's in-progress timeline on the Home, but still surfaces the real pending outcome as a decision", () => {
     render(
       <TodayBoard
         summary={{
@@ -289,9 +309,16 @@ describe("UI fundamentals", () => {
         }}
       />,
     );
-    expect(screen.getByText("Em andamento")).toBeInTheDocument();
-    expect(screen.getByText("Bruno")).toBeInTheDocument();
-    expect(screen.getByText("PastClient")).toBeInTheDocument();
+    // The in-progress appointment (Bruno) belongs to the Agenda screen only —
+    // the Home never restates a live timeline or an "Em andamento" badge.
+    expect(screen.queryByText("Em andamento")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bruno")).not.toBeInTheDocument();
+    // The real pending decision (PastClient's appointment awaiting outcome)
+    // still surfaces — it's the only case here, so the briefing promotes
+    // it directly ("Vale olhar: PastClient") instead of also repeating it
+    // as a one-item "Precisa de decisão" queue right below.
+    expect(screen.getAllByText(/PastClient/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Precisa de decisão/)).not.toBeInTheDocument();
     expect(screen.queryByText("OrganizadoCard")).not.toBeInTheDocument();
   });
 
@@ -324,7 +351,10 @@ describe("UI fundamentals", () => {
     expect(screen.getByText("Cliente quer continuar")).toBeInTheDocument();
     expect(screen.queryByText("Tudo organizado")).not.toBeInTheDocument();
     expect(screen.queryByText("Tudo certo por aqui")).not.toBeInTheDocument();
-    expect(screen.getByText(/Precisa de atenção · 1/)).toBeInTheDocument();
+    // Pedro's renewal request is the same case as the "Principal risco"
+    // above (same entity_id) — it must never also render as a one-item
+    // "Precisa de decisão" queue right below it.
+    expect(screen.queryByText(/Precisa de decisão/)).not.toBeInTheDocument();
   });
 
   it("shows initial setup card instead of Tudo organizado when config is missing", () => {

@@ -155,6 +155,7 @@ class JourneyOut(BaseModel):
     attention_note: str | None = None
     next_action: str | None = None
     next_action_label: str | None = None
+    next_step: str | None = None
     preparation_status: str | None = None
     accompaniment_checklist: dict[str, Any] | None = None
     accompaniment_summaries: dict[str, str | None] | None = None

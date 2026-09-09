@@ -108,15 +108,8 @@ compose() {
   docker compose -p "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
-build_images() {
-  local git_sha app_version build_time
-  git_sha="$(resolve_git_sha)"
-  app_version="$(resolve_app_version)"
-  build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  log "GIT_SHA=${git_sha}"
-  log "APP_VERSION=${app_version}"
-  log "BUILD_TIME=${build_time}"
-
+build_api_image() {
+  local git_sha="$1" app_version="$2" build_time="$3"
   log "Construindo imagem da API"
   docker build \
     --build-arg "GIT_SHA=${git_sha}" \
@@ -125,6 +118,15 @@ build_images() {
     -t "${CRONIU_API_IMAGE:-croniu-hml-api:local}" \
     -f "${REPO_ROOT}/backend/Dockerfile" \
     "${REPO_ROOT}/backend"
+}
+
+# Nunca imprime NEXT_PUBLIC_GOOGLE_CLIENT_ID — só o repassa como build-arg.
+# validate_google_oauth_contract (chamada em load_env, antes de qualquer
+# build) já garantiu que a variável está presente e íntegra quando o Google
+# OAuth está habilitado; aqui só preservamos o mesmo build-arg que build_images
+# sempre usou, também no caminho web-only.
+build_web_image() {
+  local git_sha="$1" app_version="$2" build_time="$3"
   log "Construindo imagem do web"
   # Browser uses same-origin /api; rewrite target must be the docker service name.
   docker build \
@@ -140,6 +142,10 @@ build_images() {
     -t "${CRONIU_WEB_IMAGE:-croniu-hml-web:local}" \
     -f "${REPO_ROOT}/apps/web/Dockerfile" \
     "${REPO_ROOT}/apps/web"
+}
+
+build_admin_image() {
+  local git_sha="$1" app_version="$2" build_time="$3"
   log "Construindo imagem do admin"
   docker build \
     --build-arg "GIT_SHA=${git_sha}" \
@@ -152,6 +158,125 @@ build_images() {
     -t "${CRONIU_ADMIN_IMAGE:-croniu-hml-admin:local}" \
     -f "${REPO_ROOT}/apps/admin/Dockerfile" \
     "${REPO_ROOT}/apps/admin"
+}
+
+build_images() {
+  local git_sha app_version build_time
+  git_sha="$(resolve_git_sha)"
+  app_version="$(resolve_app_version)"
+  build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  log "GIT_SHA=${git_sha}"
+  log "APP_VERSION=${app_version}"
+  log "BUILD_TIME=${build_time}"
+
+  build_api_image "$git_sha" "$app_version" "$build_time"
+  build_web_image "$git_sha" "$app_version" "$build_time"
+  build_admin_image "$git_sha" "$app_version" "$build_time"
+}
+
+# Verifica que a imagem recém-construída foi de fato marcada com o GIT_SHA
+# pedido pelo operador (label OCI gravada pelo Dockerfile a partir do
+# build-arg GIT_SHA) — nunca troca o container em produção/HML por uma
+# imagem cujo conteúdo não se pode provar que é o commit esperado.
+assert_image_matches_git_sha() {
+  local image="$1" expected_sha="$2" label revision
+  label="$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image" 2>/dev/null || true)"
+  revision="${label:-}"
+  [[ -n "$revision" ]] || die "Imagem ${image} não tem o label org.opencontainers.image.revision — build possivelmente falhou silenciosamente"
+  [[ "$revision" == "$expected_sha" ]] || die "Imagem ${image} foi construída com GIT_SHA=${revision}, mas o commit esperado é ${expected_sha} — aborta antes de recriar o container"
+  log "Imagem ${image} confirmada no commit ${revision}"
+}
+
+# Deploy de mudanças somente-frontend (apps/web): builda só a imagem web e
+# recria só o container web com --no-deps, provando antes/depois que
+# croniu-hml-api e croniu-hml-admin não foram tocados (Id do container e
+# StartedAt idênticos). Existe porque `up`/`build` reconstroem as 3 imagens
+# toda vez (BUILD_TIME/GIT_SHA novos mudam o digest mesmo sem mudança de
+# código), e croniu-hml-web depende de croniu-hml-api via depends_on
+# service_healthy — sem --no-deps, `compose up -d croniu-hml-web` recria a
+# API também só porque o digest da imagem dela mudou.
+deploy_web_only() {
+  local git_sha app_version build_time
+  git_sha="$(resolve_git_sha)"
+  app_version="$(resolve_app_version)"
+  build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  log "GIT_SHA=${git_sha}"
+  log "APP_VERSION=${app_version}"
+  log "BUILD_TIME=${build_time}"
+
+  local api_id_before admin_id_before api_started_before admin_started_before
+  api_id_before="$(docker inspect -f '{{.Id}}' croniu-hml-api)"
+  admin_id_before="$(docker inspect -f '{{.Id}}' croniu-hml-admin)"
+  api_started_before="$(docker inspect -f '{{.State.StartedAt}}' croniu-hml-api)"
+  admin_started_before="$(docker inspect -f '{{.State.StartedAt}}' croniu-hml-admin)"
+
+  build_web_image "$git_sha" "$app_version" "$build_time"
+  assert_image_matches_git_sha "${CRONIU_WEB_IMAGE:-croniu-hml-web:local}" "$git_sha"
+
+  log "Recriando somente croniu-hml-web (--no-deps — api/admin não são tocados)"
+  compose up -d --no-deps croniu-hml-web
+  log "Aguardando healthcheck do web"
+  sleep 5
+  compose ps croniu-hml-web
+
+  local api_id_after admin_id_after api_started_after admin_started_after
+  api_id_after="$(docker inspect -f '{{.Id}}' croniu-hml-api)"
+  admin_id_after="$(docker inspect -f '{{.Id}}' croniu-hml-admin)"
+  api_started_after="$(docker inspect -f '{{.State.StartedAt}}' croniu-hml-api)"
+  admin_started_after="$(docker inspect -f '{{.State.StartedAt}}' croniu-hml-admin)"
+
+  [[ "$api_id_before" == "$api_id_after" ]] || die "REGRESSÃO: container croniu-hml-api foi recriado (Id mudou) durante um deploy que deveria ser web-only"
+  [[ "$admin_id_before" == "$admin_id_after" ]] || die "REGRESSÃO: container croniu-hml-admin foi recriado (Id mudou) durante um deploy que deveria ser web-only"
+  [[ "$api_started_before" == "$api_started_after" ]] || die "REGRESSÃO: container croniu-hml-api reiniciou (StartedAt mudou) durante um deploy que deveria ser web-only"
+  [[ "$admin_started_before" == "$admin_started_after" ]] || die "REGRESSÃO: container croniu-hml-admin reiniciou (StartedAt mudou) durante um deploy que deveria ser web-only"
+
+  log "OK: croniu-hml-api e croniu-hml-admin preservados (mesmo Id de container e mesmo StartedAt de antes do deploy)"
+}
+
+# Deploy de mudanças somente-backend (backend/): builda só a imagem api e
+# recria só o container api com --no-deps, provando antes/depois que
+# croniu-hml-web e croniu-hml-admin não foram tocados. Espelha exatamente
+# deploy_web_only — mesma prova por Id/StartedAt, mesmo aborto se a imagem
+# não bater no GIT_SHA esperado. api não tem dependents no compose (nada
+# depende dela via depends_on), então não há o mesmo risco de cascata que
+# motivou --no-deps no lado web — mas o --no-deps e a prova ficam mesmo
+# assim, para nunca depender de suposição.
+deploy_api_only() {
+  local git_sha app_version build_time
+  git_sha="$(resolve_git_sha)"
+  app_version="$(resolve_app_version)"
+  build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  log "GIT_SHA=${git_sha}"
+  log "APP_VERSION=${app_version}"
+  log "BUILD_TIME=${build_time}"
+
+  local web_id_before admin_id_before web_started_before admin_started_before
+  web_id_before="$(docker inspect -f '{{.Id}}' croniu-hml-web)"
+  admin_id_before="$(docker inspect -f '{{.Id}}' croniu-hml-admin)"
+  web_started_before="$(docker inspect -f '{{.State.StartedAt}}' croniu-hml-web)"
+  admin_started_before="$(docker inspect -f '{{.State.StartedAt}}' croniu-hml-admin)"
+
+  build_api_image "$git_sha" "$app_version" "$build_time"
+  assert_image_matches_git_sha "${CRONIU_API_IMAGE:-croniu-hml-api:local}" "$git_sha"
+
+  log "Recriando somente croniu-hml-api (--no-deps — web/admin não são tocados)"
+  compose up -d --no-deps croniu-hml-api
+  log "Aguardando healthcheck da API"
+  sleep 5
+  compose ps croniu-hml-api
+
+  local web_id_after admin_id_after web_started_after admin_started_after
+  web_id_after="$(docker inspect -f '{{.Id}}' croniu-hml-web)"
+  admin_id_after="$(docker inspect -f '{{.Id}}' croniu-hml-admin)"
+  web_started_after="$(docker inspect -f '{{.State.StartedAt}}' croniu-hml-web)"
+  admin_started_after="$(docker inspect -f '{{.State.StartedAt}}' croniu-hml-admin)"
+
+  [[ "$web_id_before" == "$web_id_after" ]] || die "REGRESSÃO: container croniu-hml-web foi recriado (Id mudou) durante um deploy que deveria ser api-only"
+  [[ "$admin_id_before" == "$admin_id_after" ]] || die "REGRESSÃO: container croniu-hml-admin foi recriado (Id mudou) durante um deploy que deveria ser api-only"
+  [[ "$web_started_before" == "$web_started_after" ]] || die "REGRESSÃO: container croniu-hml-web reiniciou (StartedAt mudou) durante um deploy que deveria ser api-only"
+  [[ "$admin_started_before" == "$admin_started_after" ]] || die "REGRESSÃO: container croniu-hml-admin reiniciou (StartedAt mudou) durante um deploy que deveria ser api-only"
+
+  log "OK: croniu-hml-web e croniu-hml-admin preservados (mesmo Id de container e mesmo StartedAt de antes do deploy)"
 }
 
 cmd="${1:-up}"
@@ -171,6 +296,32 @@ case "$cmd" in
   build)
     build_images
     ;;
+  build-web)
+    git_sha="$(resolve_git_sha)"
+    app_version="$(resolve_app_version)"
+    build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    log "GIT_SHA=${git_sha}"
+    log "APP_VERSION=${app_version}"
+    log "BUILD_TIME=${build_time}"
+    build_web_image "$git_sha" "$app_version" "$build_time"
+    assert_image_matches_git_sha "${CRONIU_WEB_IMAGE:-croniu-hml-web:local}" "$git_sha"
+    ;;
+  up-web)
+    deploy_web_only
+    ;;
+  build-api)
+    git_sha="$(resolve_git_sha)"
+    app_version="$(resolve_app_version)"
+    build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    log "GIT_SHA=${git_sha}"
+    log "APP_VERSION=${app_version}"
+    log "BUILD_TIME=${build_time}"
+    build_api_image "$git_sha" "$app_version" "$build_time"
+    assert_image_matches_git_sha "${CRONIU_API_IMAGE:-croniu-hml-api:local}" "$git_sha"
+    ;;
+  up-api)
+    deploy_api_only
+    ;;
   down)
     log "Parando containers Croniu HML (volumes preservados)"
     compose down --remove-orphans
@@ -188,6 +339,6 @@ case "$cmd" in
     fi
     ;;
   *)
-    die "Uso: $0 {up|build|down|ps|logs|version}"
+    die "Uso: $0 {up|build|build-web|up-web|build-api|up-api|down|ps|logs|version}"
     ;;
 esac

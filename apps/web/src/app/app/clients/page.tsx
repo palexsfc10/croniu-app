@@ -4,25 +4,51 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiFetch,
+  formatBRL,
+  formatOrgDate,
+  formatOrgDateTime,
   type Client,
   type Cycle,
   type HomeSummary,
   type IntakeLink,
   type IntakeSubmissionListItem,
+  type NextAppointmentsByClient,
+  type Receivable,
+  type RenewalCaseView,
 } from "@/lib/api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { nomenclatureFor } from "@/lib/nomenclature";
-import { clientInitials, clientListPresentation } from "@/lib/client-list";
+import {
+  ATTENTION_REASON_LABEL,
+  buildClientRow,
+  clientInitials,
+  matchesView,
+  mobileAttentionDetail,
+  primaryAttentionReason,
+  type ClientListView,
+  type ClientRow,
+} from "@/lib/client-list";
+import { buildRenewalCaseIndex, renewalStatusLabel, renewalStatusTone } from "@/lib/renewal-status";
+import { PageTitle } from "@/components/ui/page-title";
+import { Avatar } from "@/components/ui/avatar";
+import { ListCard } from "@/components/ui/list-card";
+import { cycleListStatus } from "@/lib/cycle-period";
+import { formatPhoneBR } from "@/lib/status-labels";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockError } from "@/components/ui/block-error";
 import {
+  IconAlertCircle,
   IconChevronRight,
   IconClipboardList,
   IconLink,
   IconPlus,
-  IconUser,
+  IconSliders,
   IconWhatsApp,
 } from "@/components/ui/icons";
 
@@ -176,16 +202,240 @@ function InviteButton({ variant = "secondary" }: { variant?: "primary" | "second
   );
 }
 
+const VIEW_OPTIONS: { value: ClientListView; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "attention", label: "Atenção" },
+  { value: "onboarding", label: "Onboarding" },
+  { value: "renewal", label: "Renovação" },
+  { value: "financial", label: "Financeiro" },
+  { value: "no_accompaniment", label: "Sem acompanhamento" },
+];
+
+/** Mobile shows only these as quick pills — Onboarding/Financeiro/Sem
+ * acompanhamento move into "Mais filtros" so the header doesn't push the
+ * list itself below the first fold. */
+const MOBILE_QUICK_VIEWS: ClientListView[] = ["all", "attention", "renewal"];
+
+type SortKey = "name" | "attention" | "next_session";
+
+function sortRows(rows: ClientRow[], sort: SortKey): ClientRow[] {
+  const copy = [...rows];
+  if (sort === "name") {
+    copy.sort((a, b) => a.client.full_name.localeCompare(b.client.full_name, "pt-BR"));
+  } else if (sort === "attention") {
+    copy.sort((a, b) => {
+      if (b.reasons.length !== a.reasons.length) return b.reasons.length - a.reasons.length;
+      return a.client.full_name.localeCompare(b.client.full_name, "pt-BR");
+    });
+  } else if (sort === "next_session") {
+    copy.sort((a, b) => {
+      const aTime = a.nextAppointment ? new Date(a.nextAppointment.starts_at).getTime() : Infinity;
+      const bTime = b.nextAppointment ? new Date(b.nextAppointment.starts_at).getTime() : Infinity;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.client.full_name.localeCompare(b.client.full_name, "pt-BR");
+    });
+  }
+  return copy;
+}
+
+function AttentionBadges({ row }: { row: ClientRow }) {
+  if (!row.reasons.length) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">Em dia</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {row.reasons.map((reason) => (
+        <Badge key={reason} tone={reason === "financial" ? "danger" : "warning"}>
+          {ATTENTION_REASON_LABEL[reason]}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function AtendimentoCell({ row, today }: { row: ClientRow; today: string }) {
+  const cycle = row.activeCycle ?? row.upcomingCycle;
+  if (!cycle) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">Sem ciclo</span>;
+  }
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-sm font-medium text-[var(--color-ink)]">
+        {cycle.service_name || "Serviço"}
+      </p>
+      <p className="text-xs text-[var(--color-ink-muted)]">{cycleListStatus(cycle, today)}</p>
+    </div>
+  );
+}
+
+function AgendaCell({ row, timeZone }: { row: ClientRow; timeZone: string }) {
+  if (!row.nextAppointment) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">Sem agendamento</span>;
+  }
+  const date = formatOrgDate(row.nextAppointment.starts_at, timeZone);
+  const time = formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  return (
+    <span className="text-sm text-[var(--color-ink)]">
+      {date} · {time}
+    </span>
+  );
+}
+
+function EvolucaoCell({ row }: { row: ClientRow }) {
+  const cycle = row.activeCycle;
+  if (!cycle || cycle.lesson_count == null) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">—</span>;
+  }
+  return (
+    <span className="text-sm tabular-nums text-[var(--color-ink)]">
+      {cycle.lessons_completed ?? 0}/{cycle.lesson_count}
+    </span>
+  );
+}
+
+function FinanceiroCell({ row }: { row: ClientRow }) {
+  if (row.pendingReceivablesCount === 0) {
+    return <span className="text-sm text-[var(--color-ink-muted)]">Em dia</span>;
+  }
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <span
+        className={`text-sm font-medium tabular-nums ${
+          row.overdueReceivablesCount > 0 ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"
+        }`}
+      >
+        {formatBRL(row.pendingReceivablesTotalCents)}
+      </span>
+      {row.overdueReceivablesCount > 0 ? <Badge tone="danger">Atrasado</Badge> : null}
+    </span>
+  );
+}
+
+function RenovacaoCell({ row }: { row: ClientRow }) {
+  if (row.renewalCase) {
+    return (
+      <Badge tone={renewalStatusTone(row.renewalCase.display_status)}>
+        {renewalStatusLabel(row.renewalCase.display_status)}
+      </Badge>
+    );
+  }
+  const cycle = row.activeCycle;
+  if (cycle?.is_nearing_end && cycle.days_remaining != null) {
+    return (
+      <Badge tone="warning">
+        {cycle.days_remaining} {cycle.days_remaining === 1 ? "dia" : "dias"}
+      </Badge>
+    );
+  }
+  return <span className="text-sm text-[var(--color-ink-muted)]">—</span>;
+}
+
+const GRID_COLUMNS =
+  "grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,1.3fr)]";
+
+function ClientTableRow({
+  row,
+  timeZone,
+  today,
+}: {
+  row: ClientRow;
+  timeZone: string;
+  today: string;
+}) {
+  const { client } = row;
+  return (
+    <Link
+      href={`/app/clients/${client.id}`}
+      className={`grid ${GRID_COLUMNS} items-center gap-3 rounded-[var(--radius-md)] px-3 py-3 transition-colors hover:bg-[var(--color-surface-subtle)]`}
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        <Avatar initials={clientInitials(client.full_name)} size="sm" />
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate font-semibold text-[var(--color-ink)]">{client.full_name}</span>
+            {client.status === "archived" ? <Badge tone="neutral">Arquivado</Badge> : null}
+          </span>
+          <span className="block truncate text-xs text-[var(--color-ink-muted)]">
+            {formatPhoneBR(client.phone)}
+          </span>
+        </span>
+      </span>
+      <AtendimentoCell row={row} today={today} />
+      <AgendaCell row={row} timeZone={timeZone} />
+      <EvolucaoCell row={row} />
+      <FinanceiroCell row={row} />
+      <RenovacaoCell row={row} />
+      <AttentionBadges row={row} />
+    </Link>
+  );
+}
+
+function ClientCard({
+  row,
+  timeZone,
+  today,
+}: {
+  row: ClientRow;
+  timeZone: string;
+  today: string;
+}) {
+  const { client } = row;
+  return (
+    <ListCard
+      href={`/app/clients/${client.id}`}
+      className="flex min-h-16 items-center gap-3.5 px-4 py-3"
+    >
+      <Avatar initials={clientInitials(client.full_name)} size="md" />
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="truncate font-semibold text-[var(--color-ink)]">{client.full_name}</span>
+          {client.status === "archived" ? <Badge tone="neutral">Arquivado</Badge> : null}
+        </span>
+        <span className="block truncate text-sm text-[var(--color-ink-muted)]">
+          {row.nextAppointment
+            ? `Próxima sessão · ${formatOrgDate(row.nextAppointment.starts_at, timeZone)} ${formatOrgDateTime(row.nextAppointment.starts_at, timeZone, {
+                hour: "2-digit",
+                minute: "2-digit",
+                hourCycle: "h23",
+              })}`
+            : row.activeCycle
+              ? cycleListStatus(row.activeCycle, today)
+              : "Sem agendamento"}
+        </span>
+        {mobileAttentionDetail(row) ? (
+          <span className="mt-1.5 inline-block">
+            <Badge tone={primaryAttentionReason(row) === "financial" ? "danger" : "warning"}>
+              {mobileAttentionDetail(row)}
+            </Badge>
+          </span>
+        ) : null}
+      </span>
+      <IconChevronRight className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)]" />
+    </ListCard>
+  );
+}
+
 export default function ClientsPage() {
   const { me } = useAuth();
+  const timeZone = me?.organization.timezone || "America/Sao_Paulo";
   const [items, setItems] = useState<Client[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [nextAppointments, setNextAppointments] = useState<NextAppointmentsByClient>({});
+  const [renewalCases, setRenewalCases] = useState<RenewalCaseView[]>([]);
   const [today, setToday] = useState("");
   const [pendingIntakes, setPendingIntakes] = useState<IntakeSubmissionListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"active" | "archived">("active");
+  const [view, setView] = useState<ClientListView>("all");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("name");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const terms = nomenclatureFor(me?.organization.profession_code);
   const title = terms.clients.charAt(0).toUpperCase() + terms.clients.slice(1);
   const addLabel = `Adicionar ${terms.client}`;
@@ -195,12 +445,16 @@ export default function ClientsPage() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      const [result, cycleRes, home, pendingRes] = await Promise.all([
-        apiFetch<Client[]>(`/api/v1/clients?status=${statusFilter}`),
-        apiFetch<Cycle[]>("/api/v1/cycles"),
-        apiFetch<HomeSummary>("/api/v1/home/summary"),
-        apiFetch<IntakeSubmissionListItem[]>("/api/v1/intake-submissions?status=pending_review"),
-      ]);
+      const [result, cycleRes, home, pendingRes, receivablesRes, nextApptRes, renewalCasesRes] =
+        await Promise.all([
+          apiFetch<Client[]>(`/api/v1/clients?status=${statusFilter}`),
+          apiFetch<Cycle[]>("/api/v1/cycles"),
+          apiFetch<HomeSummary>("/api/v1/home/summary"),
+          apiFetch<IntakeSubmissionListItem[]>("/api/v1/intake-submissions?status=pending_review"),
+          apiFetch<Receivable[]>("/api/v1/receivables"),
+          apiFetch<NextAppointmentsByClient>("/api/v1/agenda/next-appointments"),
+          apiFetch<RenewalCaseView[]>("/api/v1/renewal-cases?scope=all"),
+        ]);
       if (cancelled) return;
       if (result.error) setError(result.error.message);
       else {
@@ -210,6 +464,9 @@ export default function ClientsPage() {
       setCycles(cycleRes.data ?? []);
       setToday(home.data?.local_today ?? "");
       setPendingIntakes(pendingRes.data ?? []);
+      setReceivables(receivablesRes.data ?? []);
+      setNextAppointments(nextApptRes.data ?? {});
+      setRenewalCases(renewalCasesRes.data ?? []);
       setLoading(false);
     })();
     return () => {
@@ -217,31 +474,85 @@ export default function ClientsPage() {
     };
   }, [statusFilter]);
 
-  const visible = useMemo(() => {
+  const pendingIntakeClientIds = useMemo(
+    () => new Set(pendingIntakes.map((s) => s.client_id).filter((id): id is string => Boolean(id))),
+    [pendingIntakes],
+  );
+
+  const renewalCaseIndex = useMemo(() => buildRenewalCaseIndex(renewalCases), [renewalCases]);
+
+  const rows = useMemo(() => {
+    return items.map((client) =>
+      buildClientRow(client, {
+        cycles,
+        receivables,
+        nextAppointmentByClientId: nextAppointments,
+        pendingIntakeClientIds,
+        renewalCases: renewalCaseIndex,
+        today,
+      }),
+    );
+  }, [items, cycles, receivables, nextAppointments, pendingIntakeClientIds, renewalCaseIndex, today]);
+
+  // "Saúde da carteira" at a glance — reuses the same `reasons` the
+  // Atenção filter and each row's badges already compute; no new logic.
+  const attentionCount = useMemo(() => rows.filter((r) => r.reasons.length > 0).length, [rows]);
+
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => item.full_name.toLowerCase().includes(q));
-  }, [items, query]);
+    const byView = rows.filter((row) => matchesView(row, view));
+    const byQuery = q ? byView.filter((row) => row.client.full_name.toLowerCase().includes(q)) : byView;
+    return sortRows(byQuery, sort);
+  }, [rows, view, query, sort]);
 
   const showSearch = items.length >= 8 || query.length > 0;
 
   return (
     <div className="space-y-5 animate-fade-up pb-4 md:space-y-6">
       <header className="space-y-3">
-        <div>
-          <h1 className="h-display text-3xl text-[var(--color-ink)] md:text-[2.25rem]">{title}</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            Pessoas que você atende, com o próximo passo à vista.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/app/clients/new" className="min-w-0">
-            <Button className="whitespace-nowrap">
-              <IconPlus className="mr-1.5 h-4 w-4" />
-              {addLabel}
-            </Button>
-          </Link>
-          <InviteButton />
+        {/* Faixa 1: título/contagem à esquerda, ações à direita — uma única
+            faixa, não título+descrição empilhados acima de uma faixa de
+            botões separada. Desktop mantém os dois botões completos;
+            mobile compacta "Adicionar" para o mesmo "+" que qualquer outro
+            "+" do produto já significa, "Convidar" continua alcançável. */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+              <PageTitle>{title}</PageTitle>
+              {!loading ? (
+                <span className="text-sm font-medium text-[var(--color-ink-muted)]">
+                  {rows.length}
+                  {attentionCount > 0
+                    ? ` · ${attentionCount} ${attentionCount === 1 ? "precisa" : "precisam"} de atenção`
+                    : statusFilter === "active" && rows.length > 0
+                      ? " · carteira em dia"
+                      : ""}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              Pessoas que você atende, com o próximo passo à vista.
+            </p>
+          </div>
+          <div className="hidden shrink-0 items-center gap-2 lg:flex">
+            <Link href="/app/clients/new" className="min-w-0">
+              <Button className="whitespace-nowrap">
+                <IconPlus className="mr-1.5 h-4 w-4" />
+                {addLabel}
+              </Button>
+            </Link>
+            <InviteButton />
+          </div>
+          <div className="flex shrink-0 items-center gap-2 lg:hidden">
+            <Link
+              href="/app/clients/new"
+              aria-label={addLabel}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+            >
+              <IconPlus className="h-5 w-5" />
+            </Link>
+            <InviteButton />
+          </div>
         </div>
         {pendingIntakes.length > 0 ? (
           <Link
@@ -278,47 +589,99 @@ export default function ClientsPage() {
         ) : null}
       </header>
 
-      <div className="flex gap-2">
+      {/* Faixa 2: Ativos/Arquivados, filtros e ordenação numa toolbar
+          compacta única — mesma para desktop e mobile. Os 3 filtros mais
+          usados (Todos/Atenção/Renovação) ficam à mostra; o resto
+          (Onboarding/Financeiro/Sem acompanhamento) recolhe em "Mais
+          filtros", que agora também é onde o desktop os alcança — não
+          mais uma lista fixa de 6 chips ocupando sozinha uma linha
+          inteira antes mesmo de haver algo para filtrar. */}
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar e ordenar">
         {(
           [
             ["active", "Ativos"],
             ["archived", "Arquivados"],
           ] as const
         ).map(([value, label]) => (
-          <button
+          <SegmentedToggle
             key={value}
-            type="button"
-            aria-pressed={statusFilter === value}
-            className={`min-h-11 rounded-[var(--radius-md)] border px-3 text-sm font-semibold transition-colors ${
-              statusFilter === value
-                ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle)] text-[var(--color-primary)]"
-                : "border-[var(--color-border)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-subtle)]"
-            }`}
+            active={statusFilter === value}
             onClick={() => setStatusFilter(value)}
           >
             {label}
-          </button>
+          </SegmentedToggle>
         ))}
+        {MOBILE_QUICK_VIEWS.map((value) => {
+          const label = VIEW_OPTIONS.find((v) => v.value === value)!.label;
+          const count = value === "all" ? rows.length : rows.filter((r) => matchesView(r, value)).length;
+          return (
+            <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
+              {label}
+              {value !== "all" && count > 0 ? ` · ${count}` : ""}
+            </SegmentedToggle>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setFiltersOpen(true)}
+          className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--color-border)] px-3 text-sm font-medium text-[var(--color-ink-muted)]"
+        >
+          <IconSliders className="h-3.5 w-3.5" aria-hidden />
+          Mais filtros
+        </button>
+        {showSearch ? (
+          <label className="block min-w-[10rem] flex-1">
+            <span className="sr-only">Buscar {terms.client}</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Buscar ${terms.client}`}
+              className="min-h-9 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+            />
+          </label>
+        ) : null}
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-[var(--color-ink-muted)]">Ordenar por</span>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="min-h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm"
+          >
+            <option value="name">Nome</option>
+            <option value="attention">Atenção</option>
+            <option value="next_session">Próxima sessão</option>
+          </select>
+        </label>
       </div>
 
-      {showSearch ? (
-        <label className="block">
-          <span className="sr-only">Buscar {terms.client}</span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Buscar ${terms.client}`}
-            className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
-          />
-        </label>
-      ) : null}
+      <ActionSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} labelledBy="clients-more-filters-title">
+        <h2 id="clients-more-filters-title" className="text-base font-semibold text-[var(--color-ink)]">
+          Mais filtros
+        </h2>
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Outras situações">
+          {VIEW_OPTIONS.filter((v) => !MOBILE_QUICK_VIEWS.includes(v.value)).map(({ value, label }) => {
+            const count = rows.filter((r) => matchesView(r, value)).length;
+            return (
+              <SegmentedToggle key={value} active={view === value} onClick={() => setView(value)}>
+                {label}
+                {count > 0 ? ` · ${count}` : ""}
+              </SegmentedToggle>
+            );
+          })}
+        </div>
+        <Button fullWidth className="mt-4" onClick={() => setFiltersOpen(false)}>
+          Aplicar
+        </Button>
+      </ActionSheet>
 
-      {loading ? <p className="text-sm text-[var(--color-ink-muted)]">Carregando…</p> : null}
-      {error ? (
-        <p role="alert" className="text-sm text-[var(--color-danger)]">
-          {error}
-        </p>
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
       ) : null}
+      {error ? <BlockError message={error} /> : null}
 
       {!loading && !items.length ? (
         <EmptyState
@@ -327,47 +690,58 @@ export default function ClientsPage() {
         />
       ) : null}
 
-      <ul className="space-y-2.5 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 xl:grid-cols-3">
-        {visible.map((item) => {
-          const row = clientListPresentation(item, cycles, today, terms);
-          return (
-            <li key={item.id} className="lg:h-full">
-              <Link
-                href={`/app/clients/${item.id}`}
-                className="flex min-h-16 items-center gap-3.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm transition-all hover:-translate-y-px hover:shadow-md lg:h-full"
-              >
-                <span
-                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle)] text-sm font-semibold text-[var(--color-primary)]"
-                  aria-hidden
-                >
-                  {clientInitials(item.full_name) || <IconUser className="h-4 w-4" />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-[var(--color-ink)]">
-                    {item.full_name}
-                  </span>
-                  <span className="block truncate text-sm text-[var(--color-ink-muted)]">
-                    {row.subtitle}
-                  </span>
-                </span>
-                <span
-                  className={[
-                    "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                    row.badge.tone === "warning"
-                      ? "bg-[var(--color-warning-subtle)] text-[var(--color-warning)]"
-                      : row.badge.tone === "muted"
-                        ? "bg-[var(--color-surface-subtle)] text-[var(--color-ink-muted)]"
-                        : "bg-[var(--color-success-subtle)] text-[var(--color-success)]",
-                  ].join(" ")}
-                >
-                  {row.badge.label}
-                </span>
-                <IconChevronRight className="h-4 w-4 shrink-0 text-[var(--color-ink-subtle)]" />
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      {!loading && items.length > 0 && !filtered.length ? (
+        <EmptyState
+          title="Nenhum resultado para este filtro"
+          description="Tente outra situação ou limpe a busca."
+          action={
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setView("all");
+                setQuery("");
+              }}
+            >
+              <IconAlertCircle className="mr-1.5 h-4 w-4" />
+              Ver todos
+            </Button>
+          }
+        />
+      ) : null}
+
+      {filtered.length > 0 ? (
+        <>
+          {/* Desktop / notebook: dense table */}
+          <div className="hidden lg:block">
+            <div
+              className={`grid ${GRID_COLUMNS} gap-3 border-b border-[var(--color-border)] px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]`}
+            >
+              <span>{terms.client.charAt(0).toUpperCase() + terms.client.slice(1)}</span>
+              <span>Atendimento</span>
+              <span>Agenda</span>
+              <span>Evolução</span>
+              <span>Financeiro</span>
+              <span>Renovação</span>
+              <span>Atenção</span>
+            </div>
+            <div className="divide-y divide-[var(--color-border)]/60">
+              {filtered.map((row) => (
+                <ClientTableRow key={row.client.id} row={row} timeZone={timeZone} today={today} />
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile / tablet: prioritized cards */}
+          <ul className="space-y-2.5 lg:hidden">
+            {filtered.map((row) => (
+              <li key={row.client.id}>
+                <ClientCard row={row} timeZone={timeZone} today={today} />
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </div>
   );
 }

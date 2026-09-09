@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PageTitle } from "@/components/ui/page-title";
 import { BackLink } from "@/components/app/back-link";
 import { InitialSetupCard } from "@/components/app/initial-setup-card";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -40,7 +41,7 @@ export default function InitialSetupPage() {
     <div className="mx-auto max-w-lg space-y-4 animate-fade-up">
       <BackLink href="/app/profile" label="Mais" />
       <div>
-        <h1 className="h-display text-3xl text-[var(--color-ink)]">Configuração inicial</h1>
+        <PageTitle>Configuração inicial</PageTitle>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Serviço e modelo de ciclo aceleram a criação de ciclos reais para cada cliente. Nada é
           criado automaticamente.

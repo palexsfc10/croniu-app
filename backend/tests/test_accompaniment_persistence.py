@@ -98,6 +98,66 @@ def test_na_survives_reload_and_cycle_is_recognized(client, register_payload):
     assert listed.json()[0]["id"] == cycle.json()["id"]
 
 
+def test_evaluation_never_presented_as_next_step_before_a_cycle_exists(
+    client, register_payload
+):
+    """Avaliação é acompanhamento de evolução, não etapa obrigatória do
+    onboarding inicial — nunca deve ser apresentada como o próximo passo
+    (nem virar `next_action`) enquanto o cliente não tiver um ciclo ativo,
+    mesmo com anamnese já concluída e avaliação ainda "todo". O valor
+    persistido do checklist não muda: só a derivação de qual etapa é
+    apresentada como "próxima"."""
+    _auth(client, register_payload)
+    created = client.post("/api/v1/clients", json={"full_name": "Sem Ciclo Ainda"})
+    assert created.status_code == 201
+    client_id = created.json()["id"]
+
+    analyzed = client.patch(
+        f"/api/v1/clients/{client_id}/journey/accompaniment-step",
+        json={"step": "anamnesis", "status": "done"},
+    )
+    assert analyzed.status_code == 200, analyzed.text
+    body = analyzed.json()
+    assert body["accompaniment_checklist"]["evaluation"] == "todo"
+    assert body["next_step"] != "evaluation"
+    assert body["next_action"] != "register_evaluation"
+
+    # Once a real active cycle exists, evaluation is free to resurface in
+    # its normal place if it's still the earliest open step.
+    svc = client.post(
+        "/api/v1/services",
+        json={"name": "Aula", "default_price_cents": 9000, "default_duration_minutes": 60},
+    )
+    tmpl = client.post(
+        "/api/v1/cycle-templates",
+        json={
+            "name": "2x — mensal",
+            "weekly_frequency": 2,
+            "duration_type": "calendar_months",
+            "duration_value": 1,
+        },
+    )
+    cycle = client.post(
+        "/api/v1/cycles/intelligent",
+        json={
+            "client_id": client_id,
+            "service_id": svc.json()["id"],
+            "cycle_template_id": tmpl.json()["id"],
+            "starts_on": "2026-08-17",
+            "weekdays": [0, 2],
+            "starts_time": "09:00:00",
+            "generate_appointments": True,
+            "idempotency_key": "prep-cycle-eval-gate",
+        },
+    )
+    assert cycle.status_code == 201, cycle.text
+    after = client.get(f"/api/v1/clients/{client_id}/journey")
+    body = after.json()
+    assert body["accompaniment_checklist"]["evaluation"] == "todo"
+    assert body["next_step"] == "evaluation"
+    assert body["next_action"] == "register_evaluation"
+
+
 def test_manual_client_anamnesis_defaults_pending_never_auto_na(
     client, register_payload
 ):
@@ -491,8 +551,10 @@ def test_agenda_complete_only_counts_own_valid_distinct_lessons(
 ):
     from uuid import UUID
 
+    import pytest
     from app.models.appointment import Appointment
     from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
 
     _auth(client, register_payload)
     cid = client.post("/api/v1/clients", json={"full_name": "Cliente Agenda"}).json()["id"]
@@ -544,6 +606,12 @@ def test_agenda_complete_only_counts_own_valid_distinct_lessons(
     )
     assert manual.status_code == 201, manual.text
 
+    # ck_appointments_no_overlap (the same-org exclusion constraint added to stop
+    # double-booking races) now makes a second active appointment at the exact
+    # same organization+slot unconstructible, even via a raw ORM insert that
+    # bypasses agenda_svc entirely. count_cycle_agenda_slots's distinct(starts_at)
+    # dedup is kept as defense-in-depth (e.g. legacy pre-migration rows), but the
+    # scenario it used to guard against going forward is proven unreachable here.
     clone = Appointment(
         organization_id=rows[1].organization_id,
         client_id=rows[1].client_id,
@@ -556,7 +624,9 @@ def test_agenda_complete_only_counts_own_valid_distinct_lessons(
         notes="duplicate-slot",
     )
     db_session.add(clone)
-    db_session.commit()
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
 
     journey = client.get(f"/api/v1/clients/{cid}/journey").json()
     assert journey["accompaniment_checklist"]["cycle"] == "done"

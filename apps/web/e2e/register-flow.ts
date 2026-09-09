@@ -10,9 +10,13 @@ export async function registerProfessional(
   await page.getByLabel("E-mail").fill(opts.email);
   const password = opts.password ?? "SenhaForte1!";
   await page.getByLabel("Senha").fill(password);
-  await page.getByRole("button", { name: "Continuar" }).click();
-  await expect(page.getByText(/Etapa 2 de 2/)).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("radio", { name: "Personal trainer" }).click();
   await page.getByRole("button", { name: "Criar minha conta" }).click();
+  // Cadastro enxuto: profissão migrou para o onboarding pós-login
+  // (/app/onboarding). Pula o wizard aqui para manter o comportamento que os
+  // demais specs esperam — cair direto no app autenticado.
   await expect(page).toHaveURL(/\/app/, { timeout: 45_000 });
+  if (page.url().includes("/app/onboarding")) {
+    await page.getByRole("button", { name: "Concluir depois" }).click();
+    await expect(page).toHaveURL(/\/app$/, { timeout: 15_000 });
+  }
 }

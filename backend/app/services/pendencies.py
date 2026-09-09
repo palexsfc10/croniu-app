@@ -43,13 +43,32 @@ OCCURRENCE_TYPES = {
 DECISION_STATUSES = {"completed", "deferred", "dismissed", "cancelled"}
 
 
+def _org_zoneinfo(tz_name: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(tz_name or "America/Sao_Paulo")
+    except Exception:
+        return ZoneInfo("America/Sao_Paulo")
+
+
 def org_today(tz_name: str, now: datetime | None = None) -> date:
     now = now or datetime.now(UTC)
-    try:
-        tz = ZoneInfo(tz_name or "America/Sao_Paulo")
-    except Exception:
-        tz = ZoneInfo("America/Sao_Paulo")
-    return now.astimezone(tz).date()
+    return now.astimezone(_org_zoneinfo(tz_name)).date()
+
+
+def org_local_date(dt: datetime, tz_name: str | None) -> date:
+    """Convert an ORM timestamp to the organization's local calendar date —
+    never call `.date()` directly on a stored timestamp: columns are
+    `DateTime(timezone=True)` and normally come back tz-aware (UTC) from
+    psycopg, but a naive value (e.g. built by hand in a test or a legacy
+    row) is treated as UTC too, matching how the rest of the codebase
+    already stamps "now" (`datetime.now(UTC)`) — never the server's local
+    timezone. Extracting `.date()` before converting silently uses the
+    UTC calendar day, which can be a day off from the organization's own
+    civil day near local midnight. Same invalid-timezone fallback as
+    `org_today`."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(_org_zoneinfo(tz_name)).date()
 
 
 def routine_defaults(org: Organization) -> dict[str, Any]:
@@ -252,6 +271,9 @@ def _item_out(
     }
 
 
+COMPLETED_WINDOW_DAYS = 45
+
+
 def board(
     db: Session,
     *,
@@ -260,6 +282,8 @@ def board(
     bucket: str | None = None,
     client_id: uuid.UUID | None = None,
     on: date | None = None,
+    include_completed: bool = False,
+    include_cancelled: bool = False,
 ) -> dict[str, Any]:
     today = materialize_org(db, organization_id=organization_id, today=today)
     if on is not None:
@@ -291,10 +315,22 @@ def board(
         ).all()
     }
 
+    completed_cutoff = today - timedelta(days=COMPLETED_WINDOW_DAYS)
+
     def include(row: OperationalOccurrence) -> bool:
-        if row.status in {"cancelled"}:
+        # `on=` (Agenda's day view) keeps its exact original behavior —
+        # completed/cancelled/dismissed never surface there regardless of
+        # the new flags, which only affect the general board (bucket/no
+        # bucket) used by the Rotinas desktop "Concluídas" grouping.
+        if row.status == "cancelled":
+            if on is None and include_cancelled:
+                completed_at = row.completed_at
+                return completed_at is None or completed_at.date() >= completed_cutoff
             return False
         if row.status == "completed":
+            if on is None and include_completed:
+                completed_at = row.completed_at
+                return completed_at is None or completed_at.date() >= completed_cutoff
             return False
         if row.status == "dismissed":
             return False

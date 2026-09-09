@@ -50,6 +50,27 @@ class UserOut(BaseModel):
     email: EmailStr
     full_name: str
     created_at: datetime
+    # Contact WhatsApp of this login's owner + explicit marketing/support
+    # consent — collected in the post-login onboarding wizard, never at
+    # registration, never required. contact_whatsapp_e164 is digits-only
+    # with country code (e.g. "5511999999999"), not auth-related.
+    contact_whatsapp_e164: str | None = None
+    whatsapp_marketing_consent_at: datetime | None = None
+
+
+class WhatsAppConsentUpdateIn(BaseModel):
+    # None = leave the stored number untouched. "" = explicitly clear it
+    # (also revokes consent, since consent without a number is meaningless).
+    contact_whatsapp_e164: str | None = None
+    # True = grant explicit consent (requires a number, just-set or already
+    # stored). False = revoke consent, number is kept. None = don't touch
+    # consent state.
+    consent_granted: bool | None = None
+
+
+class WhatsAppConsentOut(BaseModel):
+    contact_whatsapp_e164: str | None = None
+    whatsapp_marketing_consent_at: datetime | None = None
 
 
 class MeResponse(BaseModel):

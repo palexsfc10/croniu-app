@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.agenda import (
+    AgendaRangeOut,
     AppointmentCreate,
     AppointmentOut,
     AppointmentUpdate,
@@ -155,6 +156,26 @@ def agenda_day(
     )
 
 
+@router.get("/agenda/range", response_model=AgendaRangeOut)
+def agenda_range(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    include_cancelled: bool = Query(default=False),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> AgendaRangeOut:
+    try:
+        return agenda_svc.list_range_agenda(
+            db,
+            organization_id=auth.organization.id,
+            start_date=start_date,
+            end_date=end_date,
+            include_cancelled=include_cancelled,
+        )
+    except AuthError as exc:
+        raise _http(exc) from exc
+
+
 @router.get("/agenda/next")
 def agenda_next(
     after: date | None = Query(default=None),
@@ -175,6 +196,22 @@ def agenda_next(
         "date": local_day.isoformat(),
         "timezone": tz_name,
         "appointment": agenda_svc.appointment_to_out(row).model_dump(mode="json"),
+    }
+
+
+@router.get("/agenda/next-appointments")
+def agenda_next_appointments(
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, dict]:
+    """Next visible appointment per client, batched — powers the Clientes
+    list "próxima sessão" column without an N+1 fetch per row. Keyed by
+    client_id (string) so JSON round-trips cleanly; a client with no
+    upcoming appointment simply has no key."""
+    by_client = agenda_svc.next_appointment_by_client(db, organization_id=auth.organization.id)
+    return {
+        str(client_id): agenda_svc.appointment_to_out(row).model_dump(mode="json")
+        for client_id, row in by_client.items()
     }
 
 

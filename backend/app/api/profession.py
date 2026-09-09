@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -51,17 +51,25 @@ def _out(org) -> ProfessionOut:
 
 @router.get("/organization/profession", response_model=ProfessionOut)
 def get_profession(
+    response: Response,
     auth: AuthContext = Depends(get_current_auth),
 ) -> ProfessionOut:
+    # Personalized, mutable organization state — same convention as the
+    # other per-request endpoints in my_cycle.py. Without this, a GET right
+    # after onboarding's PATCH could be served stale by an intermediary
+    # cache, showing the profession as unset even though it saved correctly.
+    response.headers["Cache-Control"] = "no-store"
     return _out(auth.organization)
 
 
 @router.patch("/organization/profession", response_model=ProfessionOut)
 def update_profession(
     payload: ProfessionUpdateIn,
+    response: Response,
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> ProfessionOut:
+    response.headers["Cache-Control"] = "no-store"
     org = auth.organization
     try:
         cleaned = profession_svc.validate_profession_payload(

@@ -110,6 +110,7 @@ def cycles_suppressed_from_home_attention(
     active_cycles: list[Cycle],
     open_renewal_source_ids: set[uuid.UUID],
     completed_renewal_source_ids: set[uuid.UUID],
+    case_handled_source_ids: set[uuid.UUID] = frozenset(),
 ) -> set[uuid.UUID]:
     """Cycles that must not appear as generic 'cycle ending' on Hoje.
 
@@ -118,8 +119,16 @@ def cycles_suppressed_from_home_attention(
     2. Renewal already resolved with a created successor cycle
     3. Professional already registered renewal contact (contact_confirmed_at)
     4. Same client + same service already has a newer active cycle (manual renewal)
+    5. A `RenewalCase` already exists for this cycle in any non-"open" state
+       (awaiting_client/renewed/ended_without_renewal) — the professional
+       already made a real decision, so the generic nag must stop even when
+       no `RenewalRequest`/`contact_confirmed_at` was ever involved.
     """
-    suppressed = set(open_renewal_source_ids) | set(completed_renewal_source_ids)
+    suppressed = (
+        set(open_renewal_source_ids)
+        | set(completed_renewal_source_ids)
+        | set(case_handled_source_ids)
+    )
 
     for cycle in nearing:
         if cycle.contact_confirmed_at is not None:
@@ -693,7 +702,9 @@ def create_cycle(
     db.add(cycle)
     db.flush()
 
-    if create_receivable and amount is not None and amount >= 0:
+    # A cycle worth R$0,00 (free) never creates a receivable — there is
+    # nothing to charge, so no pendency should ever exist for it.
+    if create_receivable and amount is not None and amount > 0:
         due = receivable_due_on or starts_on
         receivable = Receivable(
             organization_id=organization_id,
@@ -885,6 +896,12 @@ def create_receivable(
     due_on: date,
     notes: str | None,
 ) -> ReceivableOut:
+    if amount_cents <= 0:
+        raise AuthError(
+            "amount_required",
+            "Informe um valor maior que zero para gerar uma cobrança.",
+            422,
+        )
     cycle = get_cycle(db, organization_id=organization_id, cycle_id=cycle_id)
     row = Receivable(
         organization_id=organization_id,
@@ -1160,12 +1177,29 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         ).all()
     )
 
+    from app.models.renewal_case import RenewalCase
+
+    # A RenewalCase in any non-"open" state means the professional already
+    # made a real decision (aguardando cliente / renovada / encerrada sem
+    # renovação) — the generic "cycle ending" nag must stop for that cycle
+    # regardless of whether a RenewalRequest or contact_confirmed_at was
+    # ever involved (the new /app/renewals flow often has neither).
+    case_handled_source_ids = set(
+        db.scalars(
+            select(RenewalCase.source_cycle_id).where(
+                RenewalCase.organization_id == organization_id,
+                RenewalCase.status != "open",
+            )
+        ).all()
+    )
+
     all_for_successor = active_rows  # successor check uses active cycles
     suppressed_nearing = cycles_suppressed_from_home_attention(
         nearing=nearing_all,
         active_cycles=all_for_successor,
         open_renewal_source_ids=open_renewal_source_ids,
         completed_renewal_source_ids=completed_renewal_source_ids,
+        case_handled_source_ids=case_handled_source_ids,
     )
     nearing = [c for c in nearing_all if c.id not in suppressed_nearing]
     renewals = [item for item in nearing if item.contact_confirmed_at is None]
@@ -1175,6 +1209,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         active_cycles=all_for_successor,
         open_renewal_source_ids=open_renewal_source_ids,
         completed_renewal_source_ids=completed_renewal_source_ids,
+        case_handled_source_ids=case_handled_source_ids,
     )
     ended_unrenewed = [c for c in ended_all if c.id not in suppressed_ended]
 
@@ -1182,7 +1217,11 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         select(Receivable)
         .where(
             Receivable.organization_id == organization_id,
-            Receivable.status.in_(["pending", "expected"]),
+            Receivable.status == "pending",
+            # A zero-value receivable (free cycle) is never an actionable
+            # pendency — never surfaced as pending/overdue/risco in the Home,
+            # never a metric, never an attention item.
+            Receivable.amount_cents > 0,
         )
         .options(
             selectinload(Receivable.client),
@@ -1194,6 +1233,11 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     overdue = [item for item in pending if item.due_on < today]
     due_today = [item for item in pending if item.due_on == today]
     due_later = [item for item in pending if item.due_on > today]
+    # A receivable due more than a week out is an indicator/Financeiro
+    # concern only — it must never become the Home hero action either.
+    due_later_this_week = [
+        item for item in due_later if (item.due_on - today).days <= HOME_CYCLE_ENDING_WINDOW_DAYS
+    ]
 
     day_agenda = agenda_svc.list_day_agenda(db, organization_id=organization_id, day=today)
     has_conflict = day_agenda.conflict_count > 0
@@ -1207,7 +1251,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
     priority = select_home_priority(
         overdue=overdue,
         due_today=due_today,
-        due_later=due_later,
+        due_later=due_later_this_week,
         pay_reports=pay_reports,
         ended_unrenewed=ended_unrenewed,
         renewal_reqs=renewal_reqs,
@@ -1216,6 +1260,17 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
         conflict_entity_id=conflict_entity_id,
         appointments_needing_outcome=appointments_needing_outcome,
     )
+
+    # Deterministic cross-kind urgency tiers for the "Precisa de decisão"
+    # queue (lower = more urgent). Shared with the frontend's `today-board`
+    # merge — see ATTENTION_PRIORITY_RANK in apps/web/src/lib/attention-priority.ts.
+    RANK_OVERDUE_PAYMENT = 0
+    RANK_RENEWAL_OVERDUE = 1
+    RANK_CLIENT_REQUEST = 2
+    RANK_OVERDUE_ROUTINE_OR_EVALUATION = 3
+    RANK_RENEWAL_NEARING = 4
+    RANK_PAYMENT_DUE_SOON = 5
+    RANK_APPOINTMENT_SECONDARY = 6
 
     attention: list[AttentionItemOut] = []
     for rr in renewal_reqs:
@@ -1228,6 +1283,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=rr.id,
                 client_name=rr.client_name,
                 tone="warning",
+                priority_rank=RANK_CLIENT_REQUEST,
             )
         )
     for pr in pay_reports:
@@ -1240,12 +1296,18 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=pr.id,
                 client_name=pr.client_name,
                 tone="warning",
+                priority_rank=RANK_CLIENT_REQUEST,
             )
         )
-    for pay in pending:
+    # A receivable due more than a week out is not yet a "decision" — it
+    # stays a Financeiro/indicator concern only. Overdue and due-within-7-days
+    # are the only two buckets that ever enter the decision queue.
+    decision_pending = [item for item in pending if (item.due_on - today).days <= HOME_CYCLE_ENDING_WINDOW_DAYS]
+    for pay in decision_pending:
+        overdue_payment = pay.due_on < today
         label = (
             f"Recebimento atrasado · venceu {pay.due_on.strftime('%d/%m/%Y')}"
-            if pay.due_on < today
+            if overdue_payment
             else f"Recebimento pendente · vence {pay.due_on.strftime('%d/%m/%Y')}"
         )
         attention.append(
@@ -1257,6 +1319,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=pay.id,
                 client_name=pay.client_name,
                 tone="warning",
+                priority_rank=RANK_OVERDUE_PAYMENT if overdue_payment else RANK_PAYMENT_DUE_SOON,
             )
         )
     for cycle in ended_unrenewed:
@@ -1269,6 +1332,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=cycle.id,
                 client_name=cycle.client_name,
                 tone="warning",
+                priority_rank=RANK_RENEWAL_OVERDUE,
             )
         )
     for cycle in nearing:
@@ -1281,6 +1345,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=cycle.id,
                 client_name=cycle.client_name,
                 tone="warning",
+                priority_rank=RANK_RENEWAL_NEARING,
             )
         )
     for appt in appointments_needing_outcome:
@@ -1293,6 +1358,7 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 entity_id=appt.id,
                 client_name=appt.client_name,
                 tone="neutral",
+                priority_rank=RANK_APPOINTMENT_SECONDARY,
             )
         )
 
@@ -1335,9 +1401,12 @@ def build_home_summary(db: Session, *, organization_id: uuid.UUID) -> HomeSummar
                 href="/app/clients/intake",
                 entity_id=organization_id,
                 tone="warning",
+                priority_rank=-1,
             ),
         )
         message = "Veja o que precisa da sua atenção hoje."
+
+    attention.sort(key=lambda item: item.priority_rank)
 
     has_active_service = bool(
         db.scalar(

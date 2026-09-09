@@ -1,6 +1,22 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from fastapi.testclient import TestClient
+
+
+def _today(client: TestClient) -> date:
+    local_today = client.get("/api/v1/organization/preferences").json()["local_today"]
+    y, m, d = (int(part) for part in local_today.split("-"))
+    return date(y, m, d)
+
+
+def _next_weekday_on_or_after(start: date, weekday: int) -> date:
+    """`weekday` uses Python's convention (Monday=0), matching the
+    cycle-intelligence API's `weekdays` payload — relative to whatever
+    "today" actually is when the test runs, instead of a fixed calendar
+    date that ages out of the agenda's real ±31-day window."""
+    return start + timedelta(days=(weekday - start.weekday()) % 7)
 
 
 def _register(client: TestClient, payload: dict) -> None:
@@ -162,13 +178,14 @@ def test_price_change_does_not_alter_snapshot(client, register_payload):
 
 def test_generate_appointments_atomic_conflict(client, register_payload):
     ids = _setup_org(client, register_payload)
-    # Block first lesson slot (Tue 2026-08-04 09:00)
+    tuesday = _next_weekday_on_or_after(_today(client), 1).isoformat()
+    # Block first lesson slot (a real Tuesday, relative to "today").
     blocker = client.post(
         "/api/v1/appointments",
         json={
             "client_id": ids["client_id"],
-            "starts_at": "2026-08-04T09:00:00-03:00",
-            "ends_at": "2026-08-04T10:00:00-03:00",
+            "starts_at": f"{tuesday}T09:00:00-03:00",
+            "ends_at": f"{tuesday}T10:00:00-03:00",
         },
     )
     assert blocker.status_code == 201, blocker.text
@@ -179,7 +196,7 @@ def test_generate_appointments_atomic_conflict(client, register_payload):
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": "2026-08-01",
+            "starts_on": tuesday,
             "weekdays": [1, 3],
             "starts_time": "09:00:00",
             "generate_appointments": True,
@@ -191,7 +208,7 @@ def test_generate_appointments_atomic_conflict(client, register_payload):
     assert res.json()["code"] == "SCHEDULE_CONFLICT"
     assert client.get("/api/v1/cycles").json() == []
     assert client.get("/api/v1/receivables").json() == []
-    appts = client.get("/api/v1/agenda/day", params={"day": "2026-08-04"})
+    appts = client.get("/api/v1/agenda/day", params={"day": tuesday})
     # only the blocker
     assert len(appts.json()["appointments"]) == 1
 
@@ -201,7 +218,7 @@ def test_generate_appointments_atomic_conflict(client, register_payload):
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": "2026-08-01",
+            "starts_on": tuesday,
             "weekdays": [1, 3],
             "starts_time": "09:00:00",
             "generate_appointments": True,
@@ -219,7 +236,7 @@ def test_generate_appointments_atomic_conflict(client, register_payload):
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": "2026-08-01",
+            "starts_on": tuesday,
             "weekdays": [1, 3],
             "starts_time": "11:00:00",
             "generate_appointments": True,
@@ -238,6 +255,7 @@ def test_generate_appointments_atomic_conflict(client, register_payload):
 
 def test_generate_appointments_success(client, register_payload):
     ids = _setup_org(client, register_payload)
+    tuesday = _next_weekday_on_or_after(_today(client), 1).isoformat()
     loc = client.post("/api/v1/locations", json={"name": "Academia Centro"})
     assert loc.status_code == 201
     res = client.post(
@@ -246,7 +264,7 @@ def test_generate_appointments_success(client, register_payload):
             "client_id": ids["client_id"],
             "service_id": ids["service_id"],
             "cycle_template_id": ids["template_id"],
-            "starts_on": "2026-08-01",
+            "starts_on": tuesday,
             "weekdays": [1, 3],
             "starts_time": "09:00:00",
             "generate_appointments": True,
@@ -256,7 +274,7 @@ def test_generate_appointments_success(client, register_payload):
     )
     assert res.status_code == 201, res.text
     cycle_id = res.json()["id"]
-    day = client.get("/api/v1/agenda/day", params={"day": "2026-08-04"})
+    day = client.get("/api/v1/agenda/day", params={"day": tuesday})
     assert day.status_code == 200
     assert len(day.json()["appointments"]) == 1
     assert day.json()["appointments"][0]["cycle_id"] == cycle_id

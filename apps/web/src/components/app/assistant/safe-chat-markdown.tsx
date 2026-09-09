@@ -11,7 +11,16 @@ import type { ReactNode } from "react";
 
 function isSafeHref(href: string): boolean {
   const t = href.trim().toLowerCase();
-  return t.startsWith("https://") || t.startsWith("http://") || t.startsWith("mailto:");
+  if (t.startsWith("https://") || t.startsWith("http://") || t.startsWith("mailto:")) return true;
+  // Same-origin, root-relative in-app link (e.g. "/app/settings/billing") —
+  // lets the assistant point to a real screen without knowing the current
+  // host. Reject "//" (protocol-relative → external) and backslash tricks.
+  return t.startsWith("/") && !t.startsWith("//") && !t.startsWith("/\\");
+}
+
+function isRelativeHref(href: string): boolean {
+  const t = href.trim().toLowerCase();
+  return t.startsWith("/") && !t.startsWith("//");
 }
 
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
@@ -31,13 +40,14 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       const label = match[2];
       const href = match[3];
       if (isSafeHref(href) && !match[1].startsWith("!")) {
+        const relative = isRelativeHref(href);
         nodes.push(
           <a
             key={key}
             href={href}
             className="font-medium text-[var(--color-primary)] underline-offset-2 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
+            target={relative ? undefined : "_blank"}
+            rel={relative ? undefined : "noopener noreferrer"}
           >
             {label}
           </a>

@@ -72,6 +72,7 @@ def _journey_out(row, db: Session | None = None, organization_id=None) -> Journe
         attention_note=row.attention_note,
         next_action=next_action,
         next_action_label=status_labels.next_action_label(next_action),
+        next_step=resolved["next_step"] if resolved is not None else None,
         preparation_status=getattr(row, "preparation_status", None),
         accompaniment_checklist=(resolved["checklist"] if resolved else None)
         or getattr(row, "accompaniment_checklist", None),
