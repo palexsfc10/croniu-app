@@ -28,6 +28,16 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("@/lib/google-auth", () => ({ isGoogleAuthConfigured: true }));
+
+vi.mock("@/components/auth/google-auth-button", () => ({
+  GoogleAuthButton: ({ onCredential }: { onCredential: (credential: string) => void }) => (
+    <button type="button" onClick={() => onCredential("google-credential-stub")}>
+      Continuar com Google (stub)
+    </button>
+  ),
+}));
+
 async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("Seu nome"), "Ana Silva");
   await user.type(screen.getByLabelText(/Nome do negócio/), "Studio Ana");
@@ -43,6 +53,8 @@ describe("RegisterForm — cadastro enxuto (etapa única, sem profissão)", () =
     replace.mockReset();
     refresh.mockReset();
     searchParams = new URLSearchParams();
+    window.dataLayer = undefined;
+    window.history.pushState({}, "", "/register");
   });
 
   it("has no profession/use_cases fields on the register screen", () => {
@@ -146,5 +158,90 @@ describe("RegisterForm — cadastro enxuto (etapa única, sem profissão)", () =
     await fillAndSubmit(user);
     await screen.findByText(/Conta criada\. Enviamos um link para/);
     expect(replace).not.toHaveBeenCalled();
+  }, 15_000);
+
+  it("fires sign_up (method=email) once the backend confirms the account was created", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue({
+      status: 201,
+      data: { onboarding_required: true, user: {}, organization: {}, role: "owner" },
+    });
+    render(<RegisterForm />);
+    await fillAndSubmit(user);
+    expect(window.dataLayer).toContainEqual({ event: "sign_up", method: "email" });
+  }, 15_000);
+
+  it("fires sign_up even when email verification is still pending — the account row already exists", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue({
+      status: 201,
+      data: {
+        requires_email_verification: true,
+        onboarding_required: true,
+        user: {},
+        organization: {},
+        role: "owner",
+      },
+    });
+    render(<RegisterForm />);
+    await fillAndSubmit(user);
+    await screen.findByText(/Conta criada\. Enviamos um link para/);
+    expect(window.dataLayer).toContainEqual({ event: "sign_up", method: "email" });
+  }, 15_000);
+
+  it("does not fire sign_up when the backend rejects registration", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue({
+      status: 409,
+      error: { code: "email_taken", message: "E-mail já cadastrado" },
+    });
+    render(<RegisterForm />);
+    await fillAndSubmit(user);
+    await screen.findByText(/Este e-mail já possui uma conta/);
+    expect(window.dataLayer ?? []).not.toContainEqual(
+      expect.objectContaining({ event: "sign_up" }),
+    );
+  }, 15_000);
+
+  it("preserves UTMs from the landing page in the sign_up payload", async () => {
+    window.history.pushState({}, "", "/register?utm_source=instagram&utm_campaign=lancamento&gclid=abc");
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue({
+      status: 201,
+      data: { onboarding_required: true, user: {}, organization: {}, role: "owner" },
+    });
+    render(<RegisterForm />);
+    await fillAndSubmit(user);
+    expect(window.dataLayer).toContainEqual({
+      event: "sign_up",
+      method: "email",
+      utm_source: "instagram",
+      utm_campaign: "lancamento",
+      gclid: "abc",
+    });
+  }, 15_000);
+
+  it("fires sign_up (method=google) when Google auth creates a brand-new account", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue({
+      status: 200,
+      data: { is_new_user: true, onboarding_required: true, user: {}, organization: {}, role: "owner" },
+    });
+    render(<RegisterForm />);
+    await user.click(screen.getByRole("button", { name: "Continuar com Google (stub)" }));
+    expect(window.dataLayer).toContainEqual({ event: "sign_up", method: "google" });
+  }, 15_000);
+
+  it("does not fire sign_up when Google auth logs into an existing account", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue({
+      status: 200,
+      data: { is_new_user: false, onboarding_required: false, user: {}, organization: {}, role: "owner" },
+    });
+    render(<RegisterForm />);
+    await user.click(screen.getByRole("button", { name: "Continuar com Google (stub)" }));
+    expect(window.dataLayer ?? []).not.toContainEqual(
+      expect.objectContaining({ event: "sign_up" }),
+    );
   }, 15_000);
 });

@@ -11,6 +11,21 @@ import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { isGoogleAuthConfigured } from "@/lib/google-auth";
+import { trackSignUp } from "@/lib/analytics/gtm";
+import { trackPixelCompleteRegistration } from "@/lib/analytics/meta-pixel";
+import { pickTrackedParams } from "@/lib/analytics/utm";
+
+/**
+ * "Continuar com Google" on /login also creates an account when none exists
+ * yet (same /api/v1/auth/google endpoint as register-form.tsx) — sign_up
+ * must fire here too whenever the backend confirms a new account, same rule
+ * as the main register flow, not just on the /register page.
+ */
+function trackGoogleAccountCreated() {
+  const utm = pickTrackedParams(window.location.search);
+  trackSignUp({ method: "google", ...utm });
+  trackPixelCompleteRegistration();
+}
 
 function valuesFromForm(form: HTMLFormElement): LoginValues {
   const data = new FormData(form);
@@ -108,6 +123,9 @@ function LoginFormInner() {
       }
       setFormError(result.error.message);
       return;
+    }
+    if (result.data?.is_new_user) {
+      trackGoogleAccountCreated();
     }
     router.replace("/app");
     router.refresh();

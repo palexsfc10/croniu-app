@@ -12,6 +12,22 @@ import { TextField } from "@/components/ui/text-field";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { isGoogleAuthConfigured } from "@/lib/google-auth";
 import { safeReturnTo } from "@/lib/nomenclature";
+import { trackSignUp, type SignUpMethod } from "@/lib/analytics/gtm";
+import { trackPixelCompleteRegistration } from "@/lib/analytics/meta-pixel";
+import { pickTrackedParams } from "@/lib/analytics/utm";
+
+/**
+ * Fire only once the backend response confirms the account actually exists
+ * (register: any non-error response — verification-pending accounts are
+ * still created rows; Google: `is_new_user`). UTMs come from the current
+ * URL, preserved from the landing page's CTA link (see croniu-site's
+ * app-cta-link.tsx) all the way to /register.
+ */
+function trackAccountCreated(method: SignUpMethod) {
+  const utm = pickTrackedParams(window.location.search);
+  trackSignUp({ method, ...utm });
+  trackPixelCompleteRegistration();
+}
 
 type RegisterResult = MeResponse & {
   requires_email_verification?: boolean;
@@ -98,6 +114,7 @@ function RegisterFormInner() {
       setFormError(humanRegisterError({ ...result.error, status: result.status }));
       return;
     }
+    trackAccountCreated("email");
     if (result.data?.requires_email_verification) {
       setPendingEmail(values.email);
       return;
@@ -140,6 +157,9 @@ function RegisterFormInner() {
       }
       setFormError(humanRegisterError({ ...result.error, status: result.status }));
       return;
+    }
+    if (result.data?.is_new_user) {
+      trackAccountCreated("google");
     }
     router.replace(postAuthDestination(nextPath, result.data?.onboarding_required ?? false));
     router.refresh();
