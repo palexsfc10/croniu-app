@@ -19,10 +19,19 @@ ARG NEXT_PUBLIC_APP_URL=
 # Empty by default — the "Continuar com Google" button renders nothing
 # unless this is set at build time (see apps/web/src/lib/google-auth.ts).
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+# Same immutable image is promoted to both HML and PRD (see
+# .github/workflows/build-release.yml), so these two IDs are baked in either
+# way — what actually keeps HML from loading/sending anything is the
+# runtime CRONIU_ENV/Host gate in apps/web/src/lib/analytics/gtm.ts and
+# meta-pixel.ts, not leaving the build-arg empty here.
+ARG NEXT_PUBLIC_GTM_ID=
+ARG NEXT_PUBLIC_META_PIXEL_ID=
 ENV API_PROXY_TARGET=$API_PROXY_TARGET
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ENV NEXT_PUBLIC_GTM_ID=$NEXT_PUBLIC_GTM_ID
+ENV NEXT_PUBLIC_META_PIXEL_ID=$NEXT_PUBLIC_META_PIXEL_ID
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 ENV NEXT_PUBLIC_GIT_SHA=$NEXT_PUBLIC_GIT_SHA
 ENV NEXT_TELEMETRY_DISABLED=1
