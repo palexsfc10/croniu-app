@@ -4,7 +4,7 @@ import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { CONSENT_UPDATED_EVENT, getStoredConsent } from "@/lib/analytics/consent";
-import { META_PIXEL_ID, isMetaPixelScriptAllowed } from "@/lib/analytics/meta-pixel";
+import { META_PIXEL_ID, isMetaPixelScriptAllowed, metaPixelTrackCalls } from "@/lib/analytics/meta-pixel";
 import { isSensitiveTokenRoute } from "@/lib/analytics/sensitive-routes";
 
 function subscribe(onChange: () => void): () => void {
@@ -31,6 +31,14 @@ function getServerSnapshot(): boolean {
  * a tracked `dl` param, which would otherwise leak the bearer token to Meta
  * (the GTM container has no such auto-fire and is protected differently, by
  * RoutePageviewTracker simply never calling trackPageView on these routes).
+ *
+ * `StartRegistration` (a non-standard event — `fbq('trackCustom', ...)`,
+ * never `track`) additionally fires right after `PageView`, only while the
+ * current route is `/register`: same single-script-execution mechanism as
+ * `PageView` itself, so it fires exactly once per real view of that route
+ * (never on a mere LP click — croniu-site's CTA only fires its own
+ * cta_click/sign_up_start events, nothing Pixel-related) and never carries
+ * name/email/phone. `PageView` and `CompleteRegistration` are unchanged.
  */
 export function MetaPixelScripts({ isHml }: { isHml: boolean }) {
   const marketingConsent = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
@@ -43,6 +51,7 @@ export function MetaPixelScripts({ isHml }: { isHml: boolean }) {
   if (!isMetaPixelScriptAllowed(isHml, marketingConsent) || isHmlHost || isSensitiveTokenRoute(pathname)) {
     return null;
   }
+  const trackCalls = metaPixelTrackCalls(pathname);
   return (
     <>
       <Script id="meta-pixel" strategy="afterInteractive">
@@ -55,7 +64,7 @@ t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '${META_PIXEL_ID}');
-fbq('track', 'PageView');`}
+${trackCalls}`}
       </Script>
       <noscript>
         <img
