@@ -42,3 +42,19 @@ export function trackPixelCompleteRegistration(): void {
   if (typeof window === "undefined" || typeof window.fbq !== "function") return;
   window.fbq("track", "CompleteRegistration");
 }
+
+/**
+ * The `fbq('track'/'trackCustom', ...)` call(s) embedded in the base
+ * snippet after `fbq('init', ...)` — a pure function (not a component)
+ * specifically so it can be unit-tested directly, without fighting
+ * next/script's DOM-insertion timing in jsdom. `PageView` (standard event)
+ * always fires, unchanged. `StartRegistration` is NOT a standard Meta event,
+ * so it must use `trackCustom` (never `track`) — it additionally fires,
+ * once, only on `/register`.
+ */
+export function metaPixelTrackCalls(pathname: string): string {
+  const isRegisterPage = pathname === "/register";
+  return isRegisterPage
+    ? `fbq('track', 'PageView');\nfbq('trackCustom', 'StartRegistration');`
+    : `fbq('track', 'PageView');`;
+}

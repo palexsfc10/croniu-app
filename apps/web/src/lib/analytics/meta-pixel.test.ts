@@ -57,4 +57,31 @@ describe("meta-pixel", () => {
       expect(fbq).toHaveBeenCalledWith("track", "CompleteRegistration");
     });
   });
+
+  describe("metaPixelTrackCalls", () => {
+    it("fires only PageView on an ordinary route", async () => {
+      const { metaPixelTrackCalls } = await import("./meta-pixel");
+      expect(metaPixelTrackCalls("/app")).toBe("fbq('track', 'PageView');");
+      expect(metaPixelTrackCalls("/login")).toBe("fbq('track', 'PageView');");
+    });
+
+    it("fires StartRegistration right after PageView, only on /register", async () => {
+      const { metaPixelTrackCalls } = await import("./meta-pixel");
+      expect(metaPixelTrackCalls("/register")).toBe(
+        "fbq('track', 'PageView');\nfbq('trackCustom', 'StartRegistration');",
+      );
+    });
+
+    it("uses trackCustom (never track) for StartRegistration — it is not a standard Meta event", async () => {
+      const { metaPixelTrackCalls } = await import("./meta-pixel");
+      expect(metaPixelTrackCalls("/register")).toContain("fbq('trackCustom', 'StartRegistration')");
+      expect(metaPixelTrackCalls("/register")).not.toContain("fbq('track', 'StartRegistration')");
+    });
+
+    it("never uses trackCustom for PageView itself", async () => {
+      const { metaPixelTrackCalls } = await import("./meta-pixel");
+      expect(metaPixelTrackCalls("/register")).not.toContain("fbq('trackCustom', 'PageView')");
+      expect(metaPixelTrackCalls("/app")).not.toContain("trackCustom");
+    });
+  });
 });
