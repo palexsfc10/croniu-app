@@ -1,0 +1,18 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1080, "h": 1920, "title": "Reel · Aluno vê sozinho" },
+    { "file": "ReelCiclo.dc.html", "x": 1240, "y": 0, "w": 1080, "h": 1920, "title": "Reel · Ciclo vencendo" },
+    { "file": "PostRotina.dc.html", "x": 2480, "y": 0, "w": 1080, "h": 1350, "title": "Post · Rotina de hoje" },
+    { "file": "PostAvaliacao.dc.html", "x": 3720, "y": 0, "w": 1080, "h": 1350, "title": "Post · Avaliação publicada" }
+  ],
+  "annotations": [
+    {
+      "id": "nota-formato",
+      "x": 0,
+      "y": -230,
+      "w": 900,
+      "text": "Reels em 1080x1920 e posts de feed em 1080x1350.\nNos Reels, a faixa inferior marcada fica coberta pela interface do Instagram (legenda, perfil, botões) — nada essencial ali.\nOs retângulos tracejados são onde entra o personagem gerado por IA, como no criativo atual."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

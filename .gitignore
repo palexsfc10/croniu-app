@@ -80,3 +80,6 @@ logs/
 # Local proof uploads (Sprint 2D) — never commit contents
 var/proofs/
 **/var/proofs/
+
+# Canvas de design montado (artefato de build, ~2MB)
+.design/criativos-instagram-croniu.html
